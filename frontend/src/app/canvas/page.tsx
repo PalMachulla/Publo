@@ -311,9 +311,8 @@ export default function CanvasPage() {
       {/* Header */}
       <header className="border-b border-gray-200 bg-white z-10 shadow-sm">
         <div className="flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <img src="/publo_logo.svg" alt="PUBLO" className="h-6" />
-            <span className="text-gray-300">|</span>
             <input
               ref={titleInputRef}
               type="text"
@@ -468,14 +467,11 @@ export default function CanvasPage() {
           onClose={() => setIsPanelOpen(false)}
           onUpdate={handleNodeUpdate}
         />
-      </div>
 
-      {/* Bottom Footer */}
-      <div className="border-t border-gray-200 bg-white py-2">
-        <div className="text-center">
-          <div className="text-2xl font-light tracking-widest text-gray-300">
-            AIAKAKI
-          </div>
+        {/* Fixed Footer - Intelligence Engineered by AIAKAKI */}
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-2">
+          <p className="text-gray-400 text-sm">Intelligence Engineered by</p>
+          <img src="/aiakaki_logo.svg" alt="AIAKAKI" className="h-3.5" />
         </div>
       </div>
     </div>
