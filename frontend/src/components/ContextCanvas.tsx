@@ -12,7 +12,8 @@ function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
 
   return (
     <div className="relative">
-      <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
+      {/* Only top connector to receive connections from story nodes */}
+      <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white !opacity-0" />
       
       <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200" style={{ width: 600 }}>
         <div className="relative flex items-center gap-3">
@@ -40,8 +41,6 @@ function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
           </button>
         </div>
       </div>
-      
-      <Handle type="source" position={Position.Bottom} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
     </div>
   )
 }

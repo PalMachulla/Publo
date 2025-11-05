@@ -59,10 +59,10 @@ const initialNodes: Node[] = [
 ]
 
 const initialEdges: Edge[] = [
-  { id: 'hero-context', source: 'hero', target: 'context', animated: true, style: { stroke: '#fbbf24' } },
-  { id: 'nemesis-context', source: 'nemesis', target: 'context', animated: true, style: { stroke: '#fbbf24' } },
-  { id: 'place-context', source: 'place', target: 'context', animated: true, style: { stroke: '#fbbf24' } },
-  { id: 'storyline-context', source: 'storyline', target: 'context', animated: true, style: { stroke: '#fbbf24' } },
+  { id: 'hero-context', source: 'hero', target: 'context', animated: false, style: { stroke: '#d1d5db', strokeWidth: 2 }, type: 'default' },
+  { id: 'nemesis-context', source: 'nemesis', target: 'context', animated: false, style: { stroke: '#d1d5db', strokeWidth: 2 }, type: 'default' },
+  { id: 'place-context', source: 'place', target: 'context', animated: false, style: { stroke: '#d1d5db', strokeWidth: 2 }, type: 'default' },
+  { id: 'storyline-context', source: 'storyline', target: 'context', animated: false, style: { stroke: '#d1d5db', strokeWidth: 2 }, type: 'default' },
 ]
 
 export default function CanvasPage() {
@@ -83,18 +83,30 @@ export default function CanvasPage() {
   }
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: '#fbbf24' } }, eds)),
+    (params: Connection) => setEdges((eds) => addEdge({ ...params, animated: false, style: { stroke: '#d1d5db', strokeWidth: 2 }, type: 'default' }, eds)),
     [setEdges]
   )
 
   const addNewNode = () => {
+    const newNodeId = `node-${nodes.length + 1}`
     const newNode: Node = {
-      id: `node-${nodes.length + 1}`,
+      id: newNodeId,
       type: 'storyNode',
       position: { x: Math.random() * 500 + 100, y: Math.random() * 300 + 100 },
       data: { label: 'NEW ELEMENT', description: 'Click to edit' },
     }
     setNodes((nds) => [...nds, newNode])
+    
+    // Automatically connect new node to the context canvas
+    const newEdge: Edge = {
+      id: `${newNodeId}-context`,
+      source: newNodeId,
+      target: 'context',
+      animated: false,
+      style: { stroke: '#d1d5db', strokeWidth: 2 },
+      type: 'default',
+    }
+    setEdges((eds) => [...eds, newEdge])
   }
 
   if (loading) {
@@ -177,16 +189,17 @@ export default function CanvasPage() {
             fitView
             className="bg-gray-50"
             defaultEdgeOptions={{
-              type: 'smoothstep',
+              type: 'default',
               animated: false,
               style: { stroke: '#d1d5db', strokeWidth: 2 },
             }}
           >
             <Background 
-              variant={BackgroundVariant.Dots} 
-              gap={20} 
+              variant={BackgroundVariant.Lines} 
+              gap={24} 
               size={1} 
-              color="#e5e7eb"
+              color="rgba(0, 0, 0, 0.08)"
+              style={{ opacity: 0.5 }}
             />
             <Controls className="!bg-white !border-gray-200 [&>button]:!bg-white [&>button]:!border-gray-200 [&>button:hover]:!bg-gray-50 [&>button]:!fill-gray-600" />
             <MiniMap 
