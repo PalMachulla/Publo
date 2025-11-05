@@ -1,8 +1,8 @@
-import { createClientComponentClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/client'
 import { Node, Edge } from 'reactflow'
 import { Story } from '@/types/nodes'
 
-const supabase = createClientComponentClient()
+const supabase = createClient()
 
 // Get all stories for current user
 export async function getStories(): Promise<Story[]> {
