@@ -61,6 +61,26 @@ export async function createStory(title: string = 'Untitled Story') {
     .single()
 
   if (error) throw error
+
+  // Always create the context canvas node for new stories
+  const contextNode = {
+    id: 'context',
+    story_id: data.id,
+    type: 'contextCanvas',
+    position_x: 200,
+    position_y: 350,
+    data: { placeholder: "What's your story, Morning Glory?", comments: [] }
+  }
+
+  const { error: nodeError } = await supabase
+    .from('nodes')
+    .insert(contextNode)
+
+  if (nodeError) {
+    console.error('Failed to create context node:', nodeError)
+    // Don't throw - story was created successfully
+  }
+
   return data
 }
 

@@ -75,6 +75,18 @@ export default function CanvasPage() {
   
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+
+  // Wrapper to prevent context node deletion
+  const handleNodesChange = useCallback((changes: any) => {
+    // Filter out any removal of the context node
+    const safeChanges = changes.filter((change: any) => {
+      if (change.type === 'remove' && change.id === 'context') {
+        return false // Block deletion of context node
+      }
+      return true
+    })
+    onNodesChange(safeChanges)
+  }, [onNodesChange])
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [storyTitle, setStoryTitle] = useState('Untitled Story')
@@ -114,7 +126,23 @@ export default function CanvasPage() {
   const loadStoryData = async (id: string) => {
     try {
       const { story, nodes: loadedNodes, edges: loadedEdges } = await getStory(id)
-      setNodes(loadedNodes)
+      
+      // Ensure context canvas always exists and is unique
+      const hasContextCanvas = loadedNodes.some(node => node.id === 'context')
+      let finalNodes = loadedNodes
+      
+      if (!hasContextCanvas) {
+        // Add context canvas if it doesn't exist
+        const contextNode: Node = {
+          id: 'context',
+          type: 'contextCanvas',
+          position: { x: 200, y: 350 },
+          data: { placeholder: "What's your story, Morning Glory?", comments: [] },
+        }
+        finalNodes = [...loadedNodes, contextNode]
+      }
+      
+      setNodes(finalNodes)
       setEdges(loadedEdges)
       setStoryTitle(story.title)
     } catch (error) {
@@ -136,15 +164,30 @@ export default function CanvasPage() {
   const handleSave = useCallback(async () => {
     if (!storyId) return
     
+    // Ensure context node is always present before saving
+    const hasContext = nodes.some(node => node.id === 'context')
+    let nodesToSave = nodes
+    
+    if (!hasContext) {
+      const contextNode: Node = {
+        id: 'context',
+        type: 'contextCanvas',
+        position: { x: 200, y: 350 },
+        data: { placeholder: "What's your story, Morning Glory?", comments: [] },
+      }
+      nodesToSave = [...nodes, contextNode]
+      setNodes(nodesToSave)
+    }
+    
     setSaving(true)
     try {
-      await saveCanvas(storyId, nodes, edges)
+      await saveCanvas(storyId, nodesToSave, edges)
     } catch (error) {
       console.error('Failed to save:', error)
     } finally {
       setSaving(false)
     }
-  }, [storyId, nodes, edges])
+  }, [storyId, nodes, edges, setNodes])
 
   // Debounced auto-save
   useEffect(() => {
@@ -376,7 +419,7 @@ export default function CanvasPage() {
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
+            onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
@@ -387,6 +430,17 @@ export default function CanvasPage() {
               type: 'default',
               animated: false,
               style: { stroke: '#d1d5db', strokeWidth: 2 },
+            }}
+            nodesDraggable={true}
+            nodesConnectable={true}
+            elementsSelectable={true}
+            onNodesDelete={(deleted) => {
+              // Prevent deletion of context canvas node
+              const hasContext = deleted.some(node => node.id === 'context')
+              if (hasContext) {
+                alert('The context canvas cannot be deleted - it is a core part of every story!')
+                return false
+              }
             }}
           >
             <Background 
