@@ -19,6 +19,7 @@ import 'reactflow/dist/style.css'
 
 import StoryNode from '@/components/StoryNode'
 import ContextCanvas from '@/components/ContextCanvas'
+import NodeDetailsPanel from '@/components/NodeDetailsPanel'
 
 const nodeTypes = {
   storyNode: StoryNode,
@@ -30,31 +31,31 @@ const initialNodes: Node[] = [
     id: 'hero',
     type: 'storyNode',
     position: { x: 100, y: 50 },
-    data: { label: 'THE HERO', description: 'Main character' },
+    data: { label: 'THE HERO', description: 'Main character', comments: [] },
   },
   {
     id: 'nemesis',
     type: 'storyNode',
     position: { x: 300, y: 50 },
-    data: { label: 'THE NEMESIS', description: 'The antagonist' },
+    data: { label: 'THE NEMESIS', description: 'The antagonist', comments: [] },
   },
   {
     id: 'place',
     type: 'storyNode',
     position: { x: 500, y: 50 },
-    data: { label: 'THE PLACE', description: 'Setting' },
+    data: { label: 'THE PLACE', description: 'Setting', comments: [] },
   },
   {
     id: 'storyline',
     type: 'storyNode',
     position: { x: 700, y: 50 },
-    data: { label: 'THE STORYLINE', description: 'Plot arc' },
+    data: { label: 'THE STORYLINE', description: 'Plot arc', comments: [] },
   },
   {
     id: 'context',
     type: 'contextCanvas',
     position: { x: 200, y: 350 },
-    data: { placeholder: "What's your story, Morning Glory?" },
+    data: { placeholder: "What's your story, Morning Glory?", comments: [] },
   },
 ]
 
@@ -70,6 +71,8 @@ export default function CanvasPage() {
   const router = useRouter()
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null)
+  const [isPanelOpen, setIsPanelOpen] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -87,13 +90,34 @@ export default function CanvasPage() {
     [setEdges]
   )
 
+  // Handle node click
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    setSelectedNode(node)
+    setIsPanelOpen(true)
+  }, [])
+
+  // Handle node update from panel
+  const handleNodeUpdate = useCallback((nodeId: string, newData: any) => {
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === nodeId
+          ? { ...node, data: newData }
+          : node
+      )
+    )
+    // Update selected node to reflect changes in panel
+    setSelectedNode((prev) => 
+      prev?.id === nodeId ? { ...prev, data: newData } : prev
+    )
+  }, [setNodes])
+
   const addNewNode = () => {
     const newNodeId = `node-${nodes.length + 1}`
     const newNode: Node = {
       id: newNodeId,
       type: 'storyNode',
       position: { x: Math.random() * 500 + 100, y: Math.random() * 300 + 100 },
-      data: { label: 'NEW ELEMENT', description: 'Click to edit' },
+      data: { label: 'NEW ELEMENT', description: 'Click to edit', comments: [] },
     }
     setNodes((nds) => [...nds, newNode])
     
@@ -185,6 +209,7 @@ export default function CanvasPage() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onNodeClick={onNodeClick}
             nodeTypes={nodeTypes}
             fitView
             className="bg-gray-50"
@@ -209,6 +234,14 @@ export default function CanvasPage() {
             />
           </ReactFlow>
         </div>
+
+        {/* Right Panel */}
+        <NodeDetailsPanel
+          node={selectedNode}
+          isOpen={isPanelOpen}
+          onClose={() => setIsPanelOpen(false)}
+          onUpdate={handleNodeUpdate}
+        />
       </div>
 
       {/* Bottom Footer */}

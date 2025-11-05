@@ -11,7 +11,7 @@ export default function Home() {
   useEffect(() => {
     if (!loading) {
       if (user) {
-        router.push('/canvas')
+        router.push('/stories')
       } else {
         router.push('/auth')
       }
