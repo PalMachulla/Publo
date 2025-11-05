@@ -90,11 +90,22 @@ export async function saveCanvas(
   nodes: Node[],
   edges: Edge[]
 ) {
+  console.log('Saving canvas:', { storyId, nodeCount: nodes.length, edgeCount: edges.length })
+  
   // Delete existing nodes and edges
-  await Promise.all([
+  const [deleteNodesResult, deleteEdgesResult] = await Promise.all([
     supabase.from('nodes').delete().eq('story_id', storyId),
     supabase.from('edges').delete().eq('story_id', storyId)
   ])
+
+  if (deleteNodesResult.error) {
+    console.error('Error deleting nodes:', deleteNodesResult.error)
+    throw deleteNodesResult.error
+  }
+  if (deleteEdgesResult.error) {
+    console.error('Error deleting edges:', deleteEdgesResult.error)
+    throw deleteEdgesResult.error
+  }
 
   // Insert new nodes
   if (nodes.length > 0) {
@@ -107,8 +118,12 @@ export async function saveCanvas(
       data: node.data
     }))
 
+    console.log('Inserting nodes:', nodeRecords)
     const { error: nodesError } = await supabase.from('nodes').insert(nodeRecords)
-    if (nodesError) throw nodesError
+    if (nodesError) {
+      console.error('Error inserting nodes:', nodesError)
+      throw nodesError
+    }
   }
 
   // Insert new edges
@@ -123,15 +138,26 @@ export async function saveCanvas(
       style: edge.style
     }))
 
+    console.log('Inserting edges:', edgeRecords)
     const { error: edgesError } = await supabase.from('edges').insert(edgeRecords)
-    if (edgesError) throw edgesError
+    if (edgesError) {
+      console.error('Error inserting edges:', edgesError)
+      throw edgesError
+    }
   }
 
   // Update story timestamp
-  await supabase
+  const { error: updateError } = await supabase
     .from('stories')
     .update({ updated_at: new Date().toISOString() })
     .eq('id', storyId)
+
+  if (updateError) {
+    console.error('Error updating story timestamp:', updateError)
+    throw updateError
+  }
+
+  console.log('Canvas saved successfully!')
 }
 
 // Update story metadata
