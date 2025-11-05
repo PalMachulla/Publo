@@ -13,7 +13,6 @@ import ReactFlow, {
   addEdge,
   Connection,
   BackgroundVariant,
-  MiniMap,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
@@ -408,40 +407,20 @@ export default function CanvasPage() {
         </div>
       </header>
 
-      {/* Main Content with Sidebar and Canvas */}
+      {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
-        <div className="w-40 bg-white border-r border-gray-200 p-4 flex flex-col gap-8">
-          {/* Context Canvas Section */}
-          <div>
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 -rotate-90 origin-left translate-x-3 translate-y-16 whitespace-nowrap">
-              Context Canvas
-            </div>
-            <button 
-              onClick={addNewNode}
-              className="w-16 h-16 rounded-full border-2 border-yellow-400 flex items-center justify-center hover:bg-yellow-50 transition-colors ml-4"
-            >
-              <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Step Section */}
-          <div className="mt-auto">
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 -rotate-90 origin-left translate-x-3 translate-y-16 whitespace-nowrap">
-              Publish Flow
-            </div>
-            <button className="w-16 h-16 rounded-full border-2 border-yellow-400 flex items-center justify-center hover:bg-yellow-50 transition-colors ml-4">
-              <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
         {/* Canvas Area with React Flow */}
         <div className="flex-1 relative bg-gray-50">
+          {/* Floating Add Node Button */}
+          <button 
+            onClick={addNewNode}
+            className="absolute top-6 left-6 z-10 w-16 h-16 rounded-full border-2 border-yellow-400 bg-white flex items-center justify-center hover:bg-yellow-50 transition-colors shadow-lg"
+            title="Add new node"
+          >
+            <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -451,6 +430,8 @@ export default function CanvasPage() {
             onNodeClick={onNodeClick}
             nodeTypes={nodeTypes}
             fitView
+            defaultViewport={{ x: 0, y: 0, zoom: 0.75 }}
+            fitViewOptions={{ padding: 0.2, maxZoom: 0.75 }}
             className="bg-gray-50"
             defaultEdgeOptions={{
               type: 'default',
@@ -477,11 +458,6 @@ export default function CanvasPage() {
               style={{ opacity: 0.5 }}
             />
             <Controls className="!bg-white !border-gray-200 [&>button]:!bg-white [&>button]:!border-gray-200 [&>button:hover]:!bg-gray-50 [&>button]:!fill-gray-600" />
-            <MiniMap 
-              className="!bg-white !border-gray-200"
-              maskColor="rgba(243, 244, 246, 0.6)"
-              nodeColor="#e5e7eb"
-            />
           </ReactFlow>
         </div>
 
