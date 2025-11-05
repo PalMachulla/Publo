@@ -1,4 +1,4 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createClientComponentClient } from '@supabase/ssr'
 import { Node, Edge } from 'reactflow'
 import { Story } from '@/types/nodes'
 
