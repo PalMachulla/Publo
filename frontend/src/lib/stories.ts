@@ -92,22 +92,21 @@ export async function saveCanvas(
 ) {
   console.log('Saving canvas:', { storyId, nodeCount: nodes.length, edgeCount: edges.length })
   
-  // Delete existing nodes and edges
-  const [deleteNodesResult, deleteEdgesResult] = await Promise.all([
-    supabase.from('nodes').delete().eq('story_id', storyId),
-    supabase.from('edges').delete().eq('story_id', storyId)
-  ])
-
+  // Delete existing nodes and edges first
+  console.log('Deleting old nodes and edges...')
+  const deleteNodesResult = await supabase.from('nodes').delete().eq('story_id', storyId)
   if (deleteNodesResult.error) {
     console.error('Error deleting nodes:', deleteNodesResult.error)
     throw deleteNodesResult.error
   }
+
+  const deleteEdgesResult = await supabase.from('edges').delete().eq('story_id', storyId)
   if (deleteEdgesResult.error) {
     console.error('Error deleting edges:', deleteEdgesResult.error)
     throw deleteEdgesResult.error
   }
 
-  // Insert new nodes
+  // Insert new nodes using upsert
   if (nodes.length > 0) {
     const nodeRecords = nodes.map(node => ({
       id: node.id,
@@ -118,15 +117,18 @@ export async function saveCanvas(
       data: node.data
     }))
 
-    console.log('Inserting nodes:', nodeRecords)
-    const { error: nodesError } = await supabase.from('nodes').insert(nodeRecords)
+    console.log('Upserting nodes:', nodeRecords)
+    const { error: nodesError } = await supabase
+      .from('nodes')
+      .upsert(nodeRecords, { onConflict: 'id' })
+    
     if (nodesError) {
-      console.error('Error inserting nodes:', nodesError)
+      console.error('Error upserting nodes:', nodesError)
       throw nodesError
     }
   }
 
-  // Insert new edges
+  // Insert new edges using upsert
   if (edges.length > 0) {
     const edgeRecords = edges.map(edge => ({
       id: edge.id,
@@ -138,10 +140,13 @@ export async function saveCanvas(
       style: edge.style
     }))
 
-    console.log('Inserting edges:', edgeRecords)
-    const { error: edgesError } = await supabase.from('edges').insert(edgeRecords)
+    console.log('Upserting edges:', edgeRecords)
+    const { error: edgesError } = await supabase
+      .from('edges')
+      .upsert(edgeRecords, { onConflict: 'id' })
+    
     if (edgesError) {
-      console.error('Error inserting edges:', edgesError)
+      console.error('Error upserting edges:', edgesError)
       throw edgesError
     }
   }

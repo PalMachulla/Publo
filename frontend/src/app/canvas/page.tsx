@@ -273,7 +273,8 @@ export default function CanvasPage() {
   }, [setNodes])
 
   const addNewNode = () => {
-    const newNodeId = `node-${nodes.length + 1}`
+    // Generate unique ID using timestamp + random string to avoid conflicts
+    const newNodeId = `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const newNode: Node = {
       id: newNodeId,
       type: 'storyNode',
