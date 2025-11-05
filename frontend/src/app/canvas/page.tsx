@@ -192,13 +192,25 @@ export default function CanvasPage() {
   // Debounced auto-save
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (nodes.length > 0) {
+      if (nodes.length > 0 && storyId) {
         handleSave()
       }
-    }, 2000) // Save 2 seconds after last change
+    }, 1000) // Save 1 second after last change
 
     return () => clearTimeout(timer)
-  }, [nodes, edges, handleSave])
+  }, [nodes, edges, handleSave, storyId])
+
+  // Save before unmounting or navigating away
+  useEffect(() => {
+    return () => {
+      // Save on unmount if there are unsaved changes
+      if (storyId && nodes.length > 0) {
+        saveCanvas(storyId, nodes, edges).catch(err => {
+          console.error('Failed to save on unmount:', err)
+        })
+      }
+    }
+  }, [storyId, nodes, edges])
 
   const handleLogout = async () => {
     await signOut()
@@ -207,6 +219,11 @@ export default function CanvasPage() {
 
   const handleNewCanvas = async () => {
     try {
+      // Save current canvas before creating new one
+      if (storyId && nodes.length > 0) {
+        await saveCanvas(storyId, nodes, edges)
+      }
+      
       const newStory = await createStory()
       router.push(`/canvas?id=${newStory.id}`)
       setIsMenuOpen(false)
@@ -337,7 +354,15 @@ export default function CanvasPage() {
 
                 {/* My Stories */}
                 <button
-                  onClick={() => {
+                  onClick={async () => {
+                    // Save current canvas before navigating away
+                    if (storyId && nodes.length > 0) {
+                      try {
+                        await saveCanvas(storyId, nodes, edges)
+                      } catch (error) {
+                        console.error('Failed to save before navigation:', error)
+                      }
+                    }
                     router.push('/stories')
                     setIsMenuOpen(false)
                   }}
