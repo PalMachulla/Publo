@@ -126,9 +126,9 @@ export default function CanvasPage() {
       {/* Header */}
       <header className="border-b border-gray-200 bg-white z-10 shadow-sm">
         <div className="flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-gray-900">PUBLO</h1>
-            <span className="text-gray-400">|</span>
+          <div className="flex items-center gap-3">
+            <img src="/publo_logo.svg" alt="PUBLO" className="h-6" />
+            <span className="text-gray-300">|</span>
             <span className="text-sm text-gray-600">Untitled Story</span>
           </div>
           <div className="flex items-center gap-4">
