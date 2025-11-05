@@ -252,6 +252,10 @@ export default function CanvasPage() {
 
   // Handle node click
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    // Don't open panel for context canvas - it has its own input behavior
+    if (node.id === 'context') {
+      return
+    }
     setSelectedNode(node)
     setIsPanelOpen(true)
   }, [])

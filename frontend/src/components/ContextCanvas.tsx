@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useState } from 'react'
+import { memo, useState, useEffect } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 
 export interface ContextCanvasData {
@@ -9,6 +9,23 @@ export interface ContextCanvasData {
 
 function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
   const [input, setInput] = useState('')
+  const [showMessage, setShowMessage] = useState(false)
+
+  const handleSubmit = () => {
+    if (input.trim()) {
+      setShowMessage(true)
+      // Auto-hide after 3 seconds
+      setTimeout(() => {
+        setShowMessage(false)
+      }, 3000)
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSubmit()
+    }
+  }
 
   return (
     <div className="relative">
@@ -21,10 +38,14 @@ function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyPress={handleKeyPress}
             placeholder={data.placeholder || "What's your story, Morning Glory?"}
             className="flex-1 px-5 py-4 bg-gray-50 rounded-xl text-gray-700 placeholder-gray-400 italic focus:outline-none focus:ring-2 focus:ring-yellow-400 border border-gray-200"
           />
-          <button className="bg-yellow-400 hover:bg-yellow-500 p-4 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center">
+          <button 
+            onClick={handleSubmit}
+            className="bg-yellow-400 hover:bg-yellow-500 p-4 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center"
+          >
             <svg 
               className="w-5 h-5 text-white" 
               fill="none" 
@@ -41,6 +62,18 @@ function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
           </button>
         </div>
       </div>
+
+      {/* Message Card */}
+      {showMessage && (
+        <div 
+          className="absolute top-1/2 -translate-y-1/2 -right-4 translate-x-full bg-white rounded-xl shadow-xl border border-gray-200 p-4 w-64 animate-fade-in"
+          style={{ zIndex: 1000 }}
+        >
+          <p className="text-gray-600 text-center italic">
+            Patience, stories will come soon...
+          </p>
+        </div>
+      )}
     </div>
   )
 }
