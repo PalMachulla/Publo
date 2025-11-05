@@ -1,12 +1,75 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import ReactFlow, {
+  Node,
+  Edge,
+  Controls,
+  Background,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  Connection,
+  BackgroundVariant,
+  MiniMap,
+} from 'reactflow'
+import 'reactflow/dist/style.css'
+
+import StoryNode from '@/components/StoryNode'
+import ContextCanvas from '@/components/ContextCanvas'
+
+const nodeTypes = {
+  storyNode: StoryNode,
+  contextCanvas: ContextCanvas,
+}
+
+const initialNodes: Node[] = [
+  {
+    id: 'hero',
+    type: 'storyNode',
+    position: { x: 100, y: 50 },
+    data: { label: 'THE HERO', description: 'Main character' },
+  },
+  {
+    id: 'nemesis',
+    type: 'storyNode',
+    position: { x: 300, y: 50 },
+    data: { label: 'THE NEMESIS', description: 'The antagonist' },
+  },
+  {
+    id: 'place',
+    type: 'storyNode',
+    position: { x: 500, y: 50 },
+    data: { label: 'THE PLACE', description: 'Setting' },
+  },
+  {
+    id: 'storyline',
+    type: 'storyNode',
+    position: { x: 700, y: 50 },
+    data: { label: 'THE STORYLINE', description: 'Plot arc' },
+  },
+  {
+    id: 'context',
+    type: 'contextCanvas',
+    position: { x: 200, y: 350 },
+    data: { placeholder: "What's your story, Morning Glory?" },
+  },
+]
+
+const initialEdges: Edge[] = [
+  { id: 'hero-context', source: 'hero', target: 'context', animated: true, style: { stroke: '#fbbf24' } },
+  { id: 'nemesis-context', source: 'nemesis', target: 'context', animated: true, style: { stroke: '#fbbf24' } },
+  { id: 'place-context', source: 'place', target: 'context', animated: true, style: { stroke: '#fbbf24' } },
+  { id: 'storyline-context', source: 'storyline', target: 'context', animated: true, style: { stroke: '#fbbf24' } },
+]
 
 export default function CanvasPage() {
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -17,6 +80,21 @@ export default function CanvasPage() {
   const handleLogout = async () => {
     await signOut()
     router.push('/auth')
+  }
+
+  const onConnect = useCallback(
+    (params: Connection) => setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: '#fbbf24' } }, eds)),
+    [setEdges]
+  )
+
+  const addNewNode = () => {
+    const newNode: Node = {
+      id: `node-${nodes.length + 1}`,
+      type: 'storyNode',
+      position: { x: Math.random() * 500 + 100, y: Math.random() * 300 + 100 },
+      data: { label: 'NEW ELEMENT', description: 'Click to edit' },
+    }
+    setNodes((nds) => [...nds, newNode])
   }
 
   if (loading) {
@@ -32,96 +110,102 @@ export default function CanvasPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-950">
-        <div className="flex items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-2xl font-bold">Publo</h1>
-            <p className="text-sm text-gray-400 font-mono">Engineering Intelligence</p>
+      <header className="border-b border-gray-200 bg-white z-10 shadow-sm">
+        <div className="flex items-center justify-between px-6 py-3">
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-gray-900">PUBLO</h1>
+            <span className="text-gray-400">|</span>
+            <span className="text-sm text-gray-600">Untitled Story</span>
           </div>
           <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm font-medium">{user.user_metadata?.name || user.email?.split('@')[0] || 'User'}</p>
-              <p className="text-xs text-gray-400">{user.email}</p>
-            </div>
             <button
               onClick={handleLogout}
-              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-md text-sm font-mono transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-md transition-colors"
+              title="Logout"
             >
-              Logout
+              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Canvas Area */}
-      <main className="p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold mb-2">Welcome to your Canvas</h2>
-            <p className="text-gray-400">
-              This is your creative workspace. Start building something amazing!
-            </p>
+      {/* Main Content with Sidebar and Canvas */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Sidebar */}
+        <div className="w-40 bg-white border-r border-gray-200 p-4 flex flex-col gap-8">
+          {/* Context Canvas Section */}
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 -rotate-90 origin-left translate-x-3 translate-y-16 whitespace-nowrap">
+              Context Canvas
+            </div>
+            <button 
+              onClick={addNewNode}
+              className="w-16 h-16 rounded-full border-2 border-yellow-400 flex items-center justify-center hover:bg-yellow-50 transition-colors ml-4"
+            >
+              <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
           </div>
 
-          {/* Canvas Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 min-h-[600px]">
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center text-gray-500">
-                    <svg
-                      className="mx-auto h-24 w-24 mb-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1}
-                        d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z"
-                      />
-                    </svg>
-                    <p className="text-lg font-mono">Your canvas awaits</p>
-                    <p className="text-sm mt-2">Start creating by adding elements</p>
-                  </div>
-                </div>
-              </div>
+          {/* Step Section */}
+          <div className="mt-auto">
+            <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 -rotate-90 origin-left translate-x-3 translate-y-16 whitespace-nowrap">
+              Publish Flow
             </div>
-
-            {/* Sidebar */}
-            <div className="space-y-6">
-              <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
-                <h3 className="font-semibold mb-4 font-mono">Tools</h3>
-                <div className="space-y-2">
-                  <button className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md text-sm text-left transition-colors">
-                    ➕ Add Element
-                  </button>
-                  <button className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md text-sm text-left transition-colors">
-                    🎨 Styles
-                  </button>
-                  <button className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md text-sm text-left transition-colors">
-                    📐 Layout
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
-                <h3 className="font-semibold mb-4 font-mono">Properties</h3>
-                <div className="text-sm text-gray-400">
-                  <p>Select an element to view its properties</p>
-                </div>
-              </div>
-            </div>
+            <button className="w-16 h-16 rounded-full border-2 border-yellow-400 flex items-center justify-center hover:bg-yellow-50 transition-colors ml-4">
+              <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
           </div>
         </div>
-      </main>
+
+        {/* Canvas Area with React Flow */}
+        <div className="flex-1 relative bg-gray-50">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            nodeTypes={nodeTypes}
+            fitView
+            className="bg-gray-50"
+            defaultEdgeOptions={{
+              type: 'smoothstep',
+              animated: false,
+              style: { stroke: '#d1d5db', strokeWidth: 2 },
+            }}
+          >
+            <Background 
+              variant={BackgroundVariant.Dots} 
+              gap={20} 
+              size={1} 
+              color="#e5e7eb"
+            />
+            <Controls className="!bg-white !border-gray-200 [&>button]:!bg-white [&>button]:!border-gray-200 [&>button:hover]:!bg-gray-50 [&>button]:!fill-gray-600" />
+            <MiniMap 
+              className="!bg-white !border-gray-200"
+              maskColor="rgba(243, 244, 246, 0.6)"
+              nodeColor="#e5e7eb"
+            />
+          </ReactFlow>
+        </div>
+      </div>
+
+      {/* Bottom Footer */}
+      <div className="border-t border-gray-200 bg-white py-2">
+        <div className="text-center">
+          <div className="text-2xl font-light tracking-widest text-gray-300">
+            AIAKAKI
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
-
-
-
-
