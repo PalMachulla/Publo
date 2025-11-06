@@ -84,7 +84,7 @@ export async function createStory(title: string = 'Untitled Story') {
   return data
 }
 
-// Save canvas state
+// Save canvas state (optimized - only updates what changed)
 export async function saveCanvas(
   storyId: string,
   nodes: Node[],
@@ -92,77 +92,91 @@ export async function saveCanvas(
 ) {
   console.log('Saving canvas:', { storyId, nodeCount: nodes.length, edgeCount: edges.length })
   
-  // Delete existing nodes and edges first
-  console.log('Deleting old nodes and edges...')
-  const deleteNodesResult = await supabase.from('nodes').delete().eq('story_id', storyId)
-  if (deleteNodesResult.error) {
-    console.error('Error deleting nodes:', deleteNodesResult.error)
-    throw deleteNodesResult.error
-  }
+  const currentNodeIds = nodes.map(n => n.id)
+  const currentEdgeIds = edges.map(e => e.id)
 
-  const deleteEdgesResult = await supabase.from('edges').delete().eq('story_id', storyId)
-  if (deleteEdgesResult.error) {
-    console.error('Error deleting edges:', deleteEdgesResult.error)
-    throw deleteEdgesResult.error
-  }
+  try {
+    // Perform all operations in parallel for speed
+    const operations = []
 
-  // Insert new nodes using upsert
-  if (nodes.length > 0) {
-    const nodeRecords = nodes.map(node => ({
-      id: node.id,
-      story_id: storyId,
-      type: node.type || 'storyNode',
-      position_x: node.position.x,
-      position_y: node.position.y,
-      data: node.data
-    }))
+    // Upsert nodes (updates existing, inserts new)
+    if (nodes.length > 0) {
+      const nodeRecords = nodes.map(node => ({
+        id: node.id,
+        story_id: storyId,
+        type: node.type || 'storyNode',
+        position_x: node.position.x,
+        position_y: node.position.y,
+        data: node.data
+      }))
 
-    console.log('Upserting nodes:', nodeRecords)
-    const { error: nodesError } = await supabase
-      .from('nodes')
-      .upsert(nodeRecords, { onConflict: 'id' })
-    
-    if (nodesError) {
-      console.error('Error upserting nodes:', nodesError)
-      throw nodesError
+      operations.push(
+        supabase.from('nodes').upsert(nodeRecords, { onConflict: 'id' })
+      )
     }
-  }
 
-  // Insert new edges using upsert
-  if (edges.length > 0) {
-    const edgeRecords = edges.map(edge => ({
-      id: edge.id,
-      story_id: storyId,
-      source: edge.source,
-      target: edge.target,
-      type: edge.type,
-      animated: edge.animated,
-      style: edge.style
-    }))
+    // Upsert edges (updates existing, inserts new)
+    if (edges.length > 0) {
+      const edgeRecords = edges.map(edge => ({
+        id: edge.id,
+        story_id: storyId,
+        source: edge.source,
+        target: edge.target,
+        type: edge.type,
+        animated: edge.animated,
+        style: edge.style
+      }))
 
-    console.log('Upserting edges:', edgeRecords)
-    const { error: edgesError } = await supabase
-      .from('edges')
-      .upsert(edgeRecords, { onConflict: 'id' })
-    
-    if (edgesError) {
-      console.error('Error upserting edges:', edgesError)
-      throw edgesError
+      operations.push(
+        supabase.from('edges').upsert(edgeRecords, { onConflict: 'id' })
+      )
     }
+
+    // Delete nodes that no longer exist (only if we have nodes)
+    if (currentNodeIds.length > 0) {
+      operations.push(
+        supabase
+          .from('nodes')
+          .delete()
+          .eq('story_id', storyId)
+          .not('id', 'in', `(${currentNodeIds.join(',')})`)
+      )
+    }
+
+    // Delete edges that no longer exist (only if we have edges)
+    if (currentEdgeIds.length > 0) {
+      operations.push(
+        supabase
+          .from('edges')
+          .delete()
+          .eq('story_id', storyId)
+          .not('id', 'in', `(${currentEdgeIds.join(',')})`)
+      )
+    }
+
+    // Update story timestamp
+    operations.push(
+      supabase
+        .from('stories')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', storyId)
+    )
+
+    // Execute all operations in parallel
+    const results = await Promise.all(operations)
+
+    // Check for errors
+    const errors = results.filter(r => r.error)
+    if (errors.length > 0) {
+      console.error('Save errors:', errors)
+      throw errors[0].error
+    }
+
+    console.log('Canvas saved successfully!')
+  } catch (error) {
+    console.error('Failed to save canvas:', error)
+    throw error
   }
-
-  // Update story timestamp
-  const { error: updateError } = await supabase
-    .from('stories')
-    .update({ updated_at: new Date().toISOString() })
-    .eq('id', storyId)
-
-  if (updateError) {
-    console.error('Error updating story timestamp:', updateError)
-    throw updateError
-  }
-
-  console.log('Canvas saved successfully!')
 }
 
 // Update story metadata
