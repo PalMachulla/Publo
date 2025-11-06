@@ -214,81 +214,18 @@ export default function CanvasPage() {
     
     setSaving(true)
     try {
-      // Add timeout to prevent hanging requests
-      await Promise.race([
-        saveCanvas(storyId, nodesToSave, edges),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Save operation timed out')), 30000)
-        )
-      ])
-      console.log('Canvas saved successfully')
+      await saveCanvas(storyId, nodesToSave, edges)
       // Clear the unsaved changes flag after successful save
       hasUnsavedChangesRef.current = false
     } catch (error) {
-      // Log error but don't disrupt user experience
       console.error('Failed to save canvas:', error)
+      alert('Failed to save canvas. Please try again.')
     } finally {
       setSaving(false)
     }
   }, [storyId, nodes, edges, setNodes, saving])
 
-  // Debounced auto-save - only saves if user made actual changes
-  useEffect(() => {
-    // Don't auto-save while loading initial data
-    if (isLoadingCanvas) return
-    
-    // Don't auto-save if we only have the context node
-    if (nodes.length <= 1) return
-    
-    // Don't auto-save if already saving
-    if (saving) return
-
-    // Only auto-save if there are unsaved changes
-    if (!hasUnsavedChangesRef.current) return
-
-    const timer = setTimeout(() => {
-      if (nodes.length > 0 && storyId && !saving && hasUnsavedChangesRef.current) {
-        console.log('Auto-saving canvas with', nodes.length, 'nodes (changes detected)')
-        handleSave()
-      }
-    }, 10000) // Auto-save 10 seconds after last change
-
-    return () => clearTimeout(timer)
-  }, [nodes, edges, handleSave, storyId, isLoadingCanvas, saving])
-
-  // Save before unmounting or navigating away
-  useEffect(() => {
-    // Capture current values in refs for the cleanup function
-    const savedStoryId = currentStoryIdRef.current
-    const savedNodes = nodes
-    const savedEdges = edges
-    const savedIsLoading = isLoadingRef.current
-    
-    return () => {
-      // Only save if we have actual content (more than just context node)
-      const hasRealNodes = savedNodes.length > 1 || 
-        (savedNodes.length === 1 && savedNodes[0]?.id !== 'context')
-      
-      if (savedStoryId && hasRealNodes) {
-        console.log('Saving on unmount:', { 
-          storyId: savedStoryId, 
-          nodes: savedNodes.length, 
-          edges: savedEdges.length,
-          isLoading: savedIsLoading 
-        })
-        saveCanvas(savedStoryId, savedNodes, savedEdges).catch(err => {
-          console.error('Failed to save on unmount:', err)
-        })
-      } else {
-        console.log('Skipping save on unmount:', { 
-          hasStoryId: !!savedStoryId, 
-          nodeCount: savedNodes.length, 
-          hasRealNodes,
-          isLoading: savedIsLoading
-        })
-      }
-    }
-  }, [nodes, edges])
+  // No auto-save - user controls when to save via manual button
 
   const handleLogout = async () => {
     await signOut()
@@ -297,15 +234,14 @@ export default function CanvasPage() {
 
   const handleNewCanvas = async () => {
     try {
-      // Trigger save in background (don't wait) if there are changes
-      if (storyId && hasUnsavedChangesRef.current) {
-        console.log('Triggering background save before new canvas...')
-        saveCanvas(storyId, nodes, edges).catch(err => {
-          console.error('Background save failed:', err)
-        })
+      // Warn if there are unsaved changes
+      if (hasUnsavedChangesRef.current) {
+        if (!window.confirm('You have unsaved changes. Continue without saving?')) {
+          return
+        }
       }
       
-      // Create and navigate immediately
+      // Create and navigate
       const newStory = await createStory()
       router.push(`/canvas?id=${newStory.id}`)
       setIsMenuOpen(false)
@@ -469,7 +405,7 @@ export default function CanvasPage() {
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-white z-10 shadow-sm">
+      <header className="border-b border-gray-200 bg-white z-10 shadow-sm relative">
         <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-2">
             <img src="/publo_logo.svg" alt="PUBLO" className="h-6" />
@@ -482,20 +418,39 @@ export default function CanvasPage() {
               className="text-sm text-gray-600 bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:bg-gray-50 rounded px-2 py-1 transition-all"
               placeholder="Untitled Story"
             />
+          </div>
+          
+          {/* Center Save Button */}
+          <div className="absolute left-1/2 transform -translate-x-1/2">
             {saving ? (
-              <span className="text-xs text-gray-400">Saving...</span>
+              <div className="flex items-center gap-2 px-6 py-2 bg-gray-50 rounded-lg border border-gray-200">
+                <svg className="animate-spin h-5 w-5 text-yellow-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="text-sm font-medium text-gray-600">Saving...</span>
+              </div>
             ) : hasUnsavedChangesRef.current ? (
               <button
                 onClick={handleSave}
-                className="text-xs px-2 py-1 bg-yellow-400 text-black rounded hover:bg-yellow-500 transition-colors font-medium"
+                className="flex items-center gap-2 px-6 py-2 bg-yellow-400 text-black rounded-lg hover:bg-yellow-500 transition-all shadow-md hover:shadow-lg font-medium"
                 title="Save changes"
               >
-                Save
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                </svg>
+                <span className="text-sm">Save Canvas</span>
               </button>
             ) : (
-              <span className="text-xs text-gray-400">Saved</span>
+              <div className="flex items-center gap-2 px-6 py-2 bg-green-50 rounded-lg border border-green-200">
+                <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-sm font-medium text-green-700">All changes saved</span>
+              </div>
             )}
           </div>
+          
           <div className="flex items-center gap-4">
             {/* Burger Menu */}
             <div className="relative" ref={menuRef}>
@@ -526,14 +481,12 @@ export default function CanvasPage() {
                 {/* My Stories */}
                 <button
                   onClick={() => {
-                    // Trigger save in background (don't wait) if there are changes
-                    if (storyId && hasUnsavedChangesRef.current) {
-                      console.log('Triggering background save before navigation...')
-                      saveCanvas(storyId, nodes, edges).catch(err => {
-                        console.error('Background save failed:', err)
-                      })
+                    // Warn if there are unsaved changes
+                    if (hasUnsavedChangesRef.current) {
+                      if (!window.confirm('You have unsaved changes. Continue without saving?')) {
+                        return
+                      }
                     }
-                    // Navigate immediately
                     router.push('/stories')
                     setIsMenuOpen(false)
                   }}
@@ -548,14 +501,12 @@ export default function CanvasPage() {
                 {/* My Characters */}
                 <button
                   onClick={() => {
-                    // Trigger save in background (don't wait) if there are changes
-                    if (storyId && hasUnsavedChangesRef.current) {
-                      console.log('Triggering background save before navigation...')
-                      saveCanvas(storyId, nodes, edges).catch(err => {
-                        console.error('Background save failed:', err)
-                      })
+                    // Warn if there are unsaved changes
+                    if (hasUnsavedChangesRef.current) {
+                      if (!window.confirm('You have unsaved changes. Continue without saving?')) {
+                        return
+                      }
                     }
-                    // Navigate immediately
                     router.push('/characters')
                     setIsMenuOpen(false)
                   }}
