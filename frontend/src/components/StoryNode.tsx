@@ -12,7 +12,7 @@ function StoryNode({ data, selected }: NodeProps<AnyNodeData>) {
   const colorClass = getNodeColor(nodeType as NodeType)
   const label = nodeData.label || 'NODE'
   const image = nodeData.image
-  const role = nodeType === 'character' ? nodeData.role : null
+  const role = (nodeType === 'character' || nodeType === 'story') ? nodeData.role : null
   
   return (
     <div className="relative">
@@ -22,8 +22,10 @@ function StoryNode({ data, selected }: NodeProps<AnyNodeData>) {
           {label}
         </div>
         {role && (
-          <div className="text-[8px] text-gray-500 font-medium uppercase tracking-wide text-left mt-0.5">
-            {role}
+          <div className="mt-1 inline-block w-fit">
+            <div className="bg-yellow-400 text-black text-[8px] font-semibold uppercase tracking-wide px-2 rounded-full" style={{ paddingTop: '1px', paddingBottom: '1px' }}>
+              {role}
+            </div>
           </div>
         )}
       </div>

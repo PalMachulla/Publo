@@ -15,12 +15,15 @@ export interface BaseNodeData {
   nodeType: NodeType
 }
 
+export type BookRole = 'Baseline' | 'Influence' | 'Writing Style' | 'Inform'
+
 export interface StoryNodeData extends BaseNodeData {
   nodeType: 'story'
   bookId?: string
   bookTitle?: string
   bookAuthor?: string
   year?: number
+  role?: BookRole
   image?: string
 }
 

@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { Node } from 'reactflow'
-import { StoryNodeData, StoryBook } from '@/types/nodes'
+import { StoryNodeData, StoryBook, BookRole } from '@/types/nodes'
 import { getStoryBooks, searchStoryBooks } from '@/lib/storyBooks'
+
+const BOOK_ROLES: BookRole[] = ['Baseline', 'Influence', 'Writing Style', 'Inform']
 
 interface StoryBookPanelProps {
   node: Node<StoryNodeData>
@@ -17,6 +19,7 @@ export default function StoryBookPanel({ node, onUpdate, onDelete }: StoryBookPa
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedBook, setSelectedBook] = useState<StoryBook | null>(null)
   const [title, setTitle] = useState(node.data.label || '')
+  const [role, setRole] = useState<BookRole | ''>(node.data.role || '')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -27,6 +30,7 @@ export default function StoryBookPanel({ node, onUpdate, onDelete }: StoryBookPa
   useEffect(() => {
     setTitle(node.data.label || '')
     setSearchQuery('')
+    setRole(node.data.role || '')
     
     // Reset or set selected book based on node data
     if (node.data.bookId && node.data.bookTitle && node.data.bookAuthor) {
@@ -115,6 +119,14 @@ export default function StoryBookPanel({ node, onUpdate, onDelete }: StoryBookPa
     })
   }
 
+  const handleRoleChange = (newRole: BookRole) => {
+    setRole(newRole)
+    onUpdate(node.id, {
+      ...node.data,
+      role: newRole,
+    })
+  }
+
   const handleClearSelection = () => {
     setSelectedBook(null)
     setSearchQuery('')
@@ -190,6 +202,23 @@ export default function StoryBookPanel({ node, onUpdate, onDelete }: StoryBookPa
               {selectedBook.description && (
                 <p className="text-sm text-gray-700 leading-relaxed">{selectedBook.description}</p>
               )}
+            </div>
+
+            {/* Role in Story */}
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Role in Story</label>
+              <select
+                value={role}
+                onChange={(e) => handleRoleChange(e.target.value as BookRole)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm bg-white"
+              >
+                <option value="">Select role...</option>
+                {BOOK_ROLES.map((roleOption) => (
+                  <option key={roleOption} value={roleOption}>
+                    {roleOption}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Settings Placeholder */}

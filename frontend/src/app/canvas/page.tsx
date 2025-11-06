@@ -84,15 +84,13 @@ export default function CanvasPage() {
   // Load story on mount
   useEffect(() => {
     if (!loading && user && storyId) {
-      // Clear state before loading to prevent stale data saves
+      // Set loading flags before loading
       setIsLoadingCanvas(true)
       isLoadingRef.current = true
       currentStoryIdRef.current = storyId
       
-      // Reset to initial state while loading
-      setNodes(initialNodes)
-      setEdges(initialEdges)
-      
+      // Load data directly without resetting state
+      // (loadStoryData will set the correct nodes/edges)
       loadStoryData(storyId)
     }
   }, [user, loading, storyId])
@@ -195,12 +193,16 @@ export default function CanvasPage() {
   useEffect(() => {
     // Don't auto-save while loading initial data
     if (isLoadingCanvas) return
+    
+    // Don't auto-save if we only have the context node
+    if (nodes.length <= 1) return
 
     const timer = setTimeout(() => {
       if (nodes.length > 0 && storyId) {
+        console.log('Auto-saving canvas with', nodes.length, 'nodes')
         handleSave()
       }
-    }, 2000) // Save 2 seconds after last change
+    }, 1000) // Reduced to 1 second for faster saves
 
     return () => clearTimeout(timer)
   }, [nodes, edges, handleSave, storyId, isLoadingCanvas])
@@ -214,10 +216,26 @@ export default function CanvasPage() {
     const savedIsLoading = isLoadingRef.current
     
     return () => {
-      // Save on unmount if there are unsaved changes and we're not loading
-      if (savedStoryId && savedNodes.length > 0 && !savedIsLoading) {
+      // Only save if we have actual content (more than just context node)
+      const hasRealNodes = savedNodes.length > 1 || 
+        (savedNodes.length === 1 && savedNodes[0]?.id !== 'context')
+      
+      if (savedStoryId && hasRealNodes) {
+        console.log('Saving on unmount:', { 
+          storyId: savedStoryId, 
+          nodes: savedNodes.length, 
+          edges: savedEdges.length,
+          isLoading: savedIsLoading 
+        })
         saveCanvas(savedStoryId, savedNodes, savedEdges).catch(err => {
           console.error('Failed to save on unmount:', err)
+        })
+      } else {
+        console.log('Skipping save on unmount:', { 
+          hasStoryId: !!savedStoryId, 
+          nodeCount: savedNodes.length, 
+          hasRealNodes,
+          isLoading: savedIsLoading
         })
       }
     }
@@ -230,9 +248,12 @@ export default function CanvasPage() {
 
   const handleNewCanvas = async () => {
     try {
-      // Save current canvas before creating new one (only if not loading)
-      if (storyId && nodes.length > 0 && !isLoadingRef.current && currentStoryIdRef.current === storyId) {
+      // Save current canvas before creating new one
+      const hasRealNodes = nodes.length > 1 || (nodes.length === 1 && nodes[0].id !== 'context')
+      
+      if (storyId && hasRealNodes && currentStoryIdRef.current === storyId) {
         try {
+          console.log('Saving before creating new canvas...')
           await Promise.race([
             saveCanvas(storyId, nodes, edges),
             new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 3000))
@@ -346,7 +367,6 @@ export default function CanvasPage() {
       position: { x: Math.random() * 500 + 100, y: Math.random() * 300 + 100 },
       data: nodeData,
     }
-    setNodes((nds) => [...nds, newNode])
     
     // Automatically connect new node to the context canvas
     const newEdge: Edge = {
@@ -357,7 +377,26 @@ export default function CanvasPage() {
       style: { stroke: '#d1d5db', strokeWidth: 2 },
       type: 'default',
     }
-    setEdges((eds) => [...eds, newEdge])
+    
+    // Prepare updated arrays BEFORE setState
+    const updatedNodes = [...nodes, newNode]
+    const updatedEdges = [...edges, newEdge]
+    
+    // Update both nodes and edges
+    setNodes(updatedNodes)
+    setEdges(updatedEdges)
+    
+    // Immediate save after adding node with correct values
+    if (storyId) {
+      console.log('Immediately saving new node:', { nodeCount: updatedNodes.length, edgeCount: updatedEdges.length })
+      
+      // Save synchronously with the updated arrays
+      saveCanvas(storyId, updatedNodes, updatedEdges).then(() => {
+        console.log('New node saved successfully')
+      }).catch(err => {
+        console.error('Failed to immediately save new node:', err)
+      })
+    }
   }
 
   if (loading) {
@@ -420,9 +459,12 @@ export default function CanvasPage() {
                 {/* My Stories */}
                 <button
                   onClick={async () => {
-                    // Save current canvas before navigating away (only if not loading)
-                    if (storyId && nodes.length > 0 && !isLoadingRef.current && currentStoryIdRef.current === storyId) {
+                    // Save current canvas before navigating away
+                    const hasRealNodes = nodes.length > 1 || (nodes.length === 1 && nodes[0].id !== 'context')
+                    
+                    if (storyId && hasRealNodes && currentStoryIdRef.current === storyId) {
                       try {
+                        console.log('Saving before navigating to stories...')
                         await Promise.race([
                           saveCanvas(storyId, nodes, edges),
                           new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 3000))
@@ -531,6 +573,19 @@ export default function CanvasPage() {
           onUpdate={handleNodeUpdate}
           onDelete={handleNodeDelete}
         />
+
+        {/* Loading Indicator */}
+        {isLoadingCanvas && (
+          <div className="fixed bottom-40 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">
+            <div className="flex items-center gap-2">
+              <div className="relative w-4 h-4">
+                <div className="absolute inset-0 border-2 border-gray-300 rounded-full"></div>
+                <div className="absolute inset-0 border-2 border-gray-400 rounded-full border-t-transparent animate-spin"></div>
+              </div>
+              <p className="text-gray-400 text-sm">Loading Canvas...</p>
+            </div>
+          </div>
+        )}
 
         {/* Fixed Footer - Intelligence Engineered by AIAKAKI */}
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-2">
