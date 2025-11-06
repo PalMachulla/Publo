@@ -39,14 +39,29 @@ export interface DocsNodeData extends BaseNodeData {
 }
 
 export type CharacterRole = 'Main' | 'Active' | 'Included' | 'Involved' | 'Passive'
+export type CharacterVisibility = 'private' | 'shared' | 'public'
+
+export interface Character {
+  id: string
+  user_id: string
+  name: string
+  bio?: string
+  photo_url?: string
+  visibility: CharacterVisibility
+  role?: CharacterRole
+  created_at: string
+  updated_at: string
+}
 
 export interface CharacterNodeData extends BaseNodeData {
   nodeType: 'character'
+  characterId?: string // Reference to character in characters table
   characterName?: string
   bio?: string
   photoUrl?: string
   image?: string // For display on canvas (same as photoUrl)
   role?: CharacterRole
+  visibility?: CharacterVisibility
   profilerChat?: Array<{
     id: string
     question: string
