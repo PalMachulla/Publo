@@ -20,6 +20,7 @@ export interface StoryNodeData extends BaseNodeData {
   bookId?: string
   bookTitle?: string
   bookAuthor?: string
+  year?: number
   image?: string
 }
 

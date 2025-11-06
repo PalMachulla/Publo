@@ -29,13 +29,23 @@ export default function StoryBookPanel({ node, onUpdate, onDelete }: StoryBookPa
     setSearchQuery('')
     
     // Reset or set selected book based on node data
-    if (node.data.bookId && books.length > 0) {
-      const book = books.find(b => b.id === node.data.bookId)
-      setSelectedBook(book || null)
+    if (node.data.bookId && node.data.bookTitle && node.data.bookAuthor) {
+      // Reconstruct book object from stored node data
+      const book: StoryBook = {
+        id: node.data.bookId,
+        title: node.data.bookTitle,
+        author: node.data.bookAuthor,
+        year: node.data.year,
+        description: node.data.description,
+        cover_url: node.data.image,
+        gutenberg_id: undefined,
+        full_text_url: undefined,
+      }
+      setSelectedBook(book)
     } else {
       setSelectedBook(null)
     }
-  }, [node.id, node.data.bookId, books])
+  }, [node.id])
 
   const loadBooks = async () => {
     try {
@@ -84,13 +94,14 @@ export default function StoryBookPanel({ node, onUpdate, onDelete }: StoryBookPa
     const newTitle = book.title.toUpperCase()
     setTitle(newTitle)
     
-    // Update node data including cover image
+    // Update node data including cover image and all book details
     onUpdate(node.id, {
       ...node.data,
       label: newTitle,
       bookId: book.id,
       bookTitle: book.title,
       bookAuthor: book.author,
+      year: book.year,
       description: book.description || `${book.title} by ${book.author}`,
       image: book.cover_url || undefined, // Set cover as node image
     })
