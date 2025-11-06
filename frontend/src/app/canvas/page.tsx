@@ -26,31 +26,8 @@ const nodeTypes = {
   contextCanvas: ContextCanvas,
 }
 
+// Only context node on fresh canvas
 const initialNodes: Node[] = [
-  {
-    id: 'hero',
-    type: 'storyNode',
-    position: { x: 100, y: 50 },
-    data: { label: 'THE HERO', description: 'Main character', comments: [] },
-  },
-  {
-    id: 'nemesis',
-    type: 'storyNode',
-    position: { x: 300, y: 50 },
-    data: { label: 'THE NEMESIS', description: 'The antagonist', comments: [] },
-  },
-  {
-    id: 'place',
-    type: 'storyNode',
-    position: { x: 500, y: 50 },
-    data: { label: 'THE PLACE', description: 'Setting', comments: [] },
-  },
-  {
-    id: 'storyline',
-    type: 'storyNode',
-    position: { x: 700, y: 50 },
-    data: { label: 'THE STORYLINE', description: 'Plot arc', comments: [] },
-  },
   {
     id: 'context',
     type: 'contextCanvas',
@@ -59,12 +36,8 @@ const initialNodes: Node[] = [
   },
 ]
 
-const initialEdges: Edge[] = [
-  { id: 'hero-context', source: 'hero', target: 'context', animated: false, style: { stroke: '#d1d5db', strokeWidth: 2 }, type: 'default' },
-  { id: 'nemesis-context', source: 'nemesis', target: 'context', animated: false, style: { stroke: '#d1d5db', strokeWidth: 2 }, type: 'default' },
-  { id: 'place-context', source: 'place', target: 'context', animated: false, style: { stroke: '#d1d5db', strokeWidth: 2 }, type: 'default' },
-  { id: 'storyline-context', source: 'storyline', target: 'context', animated: false, style: { stroke: '#d1d5db', strokeWidth: 2 }, type: 'default' },
-]
+// No edges on fresh canvas
+const initialEdges: Edge[] = []
 
 export default function CanvasPage() {
   const { user, loading, signOut } = useAuth()
@@ -91,6 +64,9 @@ export default function CanvasPage() {
   const [storyTitle, setStoryTitle] = useState('Untitled Story')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [isLoadingCanvas, setIsLoadingCanvas] = useState(true)
+  const isLoadingRef = useRef(true)
+  const currentStoryIdRef = useRef<string | null>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -106,6 +82,15 @@ export default function CanvasPage() {
   // Load story on mount
   useEffect(() => {
     if (!loading && user && storyId) {
+      // Clear state before loading to prevent stale data saves
+      setIsLoadingCanvas(true)
+      isLoadingRef.current = true
+      currentStoryIdRef.current = storyId
+      
+      // Reset to initial state while loading
+      setNodes(initialNodes)
+      setEdges(initialEdges)
+      
       loadStoryData(storyId)
     }
   }, [user, loading, storyId])
@@ -124,6 +109,7 @@ export default function CanvasPage() {
 
   const loadStoryData = async (id: string) => {
     try {
+      console.log(`Loading story: ${id}`)
       const { story, nodes: loadedNodes, edges: loadedEdges } = await getStory(id)
       
       // Ensure context canvas always exists and is unique
@@ -141,11 +127,22 @@ export default function CanvasPage() {
         finalNodes = [...loadedNodes, contextNode]
       }
       
+      console.log(`Loaded ${finalNodes.length} nodes, ${loadedEdges.length} edges for story: ${id}`)
+      
       setNodes(finalNodes)
       setEdges(loadedEdges)
       setStoryTitle(story.title)
+      
+      // Use setTimeout to ensure state updates are applied
+      setTimeout(() => {
+        setIsLoadingCanvas(false)
+        isLoadingRef.current = false
+        console.log(`Story ${id} fully loaded and ready for edits`)
+      }, 500)
     } catch (error) {
       console.error('Failed to load story:', error)
+      setIsLoadingCanvas(false)
+      isLoadingRef.current = false
     }
   }
 
@@ -161,7 +158,11 @@ export default function CanvasPage() {
 
   // Auto-save canvas on changes (debounced)
   const handleSave = useCallback(async () => {
-    if (!storyId) return
+    // Don't save if we're loading or if storyId doesn't match
+    if (!storyId || isLoadingRef.current || currentStoryIdRef.current !== storyId) {
+      console.log('Skipping save: loading or storyId mismatch')
+      return
+    }
     
     // Ensure context node is always present before saving
     const hasContext = nodes.some(node => node.id === 'context')
@@ -190,26 +191,35 @@ export default function CanvasPage() {
 
   // Debounced auto-save
   useEffect(() => {
+    // Don't auto-save while loading initial data
+    if (isLoadingCanvas) return
+
     const timer = setTimeout(() => {
       if (nodes.length > 0 && storyId) {
         handleSave()
       }
-    }, 1000) // Save 1 second after last change
+    }, 2000) // Save 2 seconds after last change
 
     return () => clearTimeout(timer)
-  }, [nodes, edges, handleSave, storyId])
+  }, [nodes, edges, handleSave, storyId, isLoadingCanvas])
 
   // Save before unmounting or navigating away
   useEffect(() => {
+    // Capture current values in refs for the cleanup function
+    const savedStoryId = currentStoryIdRef.current
+    const savedNodes = nodes
+    const savedEdges = edges
+    const savedIsLoading = isLoadingRef.current
+    
     return () => {
-      // Save on unmount if there are unsaved changes
-      if (storyId && nodes.length > 0) {
-        saveCanvas(storyId, nodes, edges).catch(err => {
+      // Save on unmount if there are unsaved changes and we're not loading
+      if (savedStoryId && savedNodes.length > 0 && !savedIsLoading) {
+        saveCanvas(savedStoryId, savedNodes, savedEdges).catch(err => {
           console.error('Failed to save on unmount:', err)
         })
       }
     }
-  }, [storyId, nodes, edges])
+  }, [nodes, edges])
 
   const handleLogout = async () => {
     await signOut()
@@ -218,9 +228,16 @@ export default function CanvasPage() {
 
   const handleNewCanvas = async () => {
     try {
-      // Save current canvas before creating new one
-      if (storyId && nodes.length > 0) {
-        await saveCanvas(storyId, nodes, edges)
+      // Save current canvas before creating new one (only if not loading)
+      if (storyId && nodes.length > 0 && !isLoadingRef.current && currentStoryIdRef.current === storyId) {
+        try {
+          await Promise.race([
+            saveCanvas(storyId, nodes, edges),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 3000))
+          ])
+        } catch (err) {
+          console.error('Failed to save before creating new canvas:', err)
+        }
       }
       
       const newStory = await createStory()
@@ -358,10 +375,13 @@ export default function CanvasPage() {
                 {/* My Stories */}
                 <button
                   onClick={async () => {
-                    // Save current canvas before navigating away
-                    if (storyId && nodes.length > 0) {
+                    // Save current canvas before navigating away (only if not loading)
+                    if (storyId && nodes.length > 0 && !isLoadingRef.current && currentStoryIdRef.current === storyId) {
                       try {
-                        await saveCanvas(storyId, nodes, edges)
+                        await Promise.race([
+                          saveCanvas(storyId, nodes, edges),
+                          new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 3000))
+                        ])
                       } catch (error) {
                         console.error('Failed to save before navigation:', error)
                       }
