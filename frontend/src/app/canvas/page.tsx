@@ -199,7 +199,7 @@ export default function CanvasPage() {
       await Promise.race([
         saveCanvas(storyId, nodesToSave, edges),
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Save operation timed out')), 10000)
+          setTimeout(() => reject(new Error('Save operation timed out')), 30000)
         )
       ])
       console.log('Canvas saved successfully')
@@ -227,7 +227,7 @@ export default function CanvasPage() {
         console.log('Auto-saving canvas with', nodes.length, 'nodes')
         handleSave()
       }
-    }, 5000) // Increased to 5 seconds to reduce database load
+    }, 10000) // Increased to 10 seconds to reduce database load
 
     return () => clearTimeout(timer)
   }, [nodes, edges, handleSave, storyId, isLoadingCanvas, saving])
