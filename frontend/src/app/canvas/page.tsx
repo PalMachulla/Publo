@@ -482,8 +482,18 @@ export default function CanvasPage() {
               className="text-sm text-gray-600 bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:bg-gray-50 rounded px-2 py-1 transition-all"
               placeholder="Untitled Story"
             />
-            {saving && (
+            {saving ? (
               <span className="text-xs text-gray-400">Saving...</span>
+            ) : hasUnsavedChangesRef.current ? (
+              <button
+                onClick={handleSave}
+                className="text-xs px-2 py-1 bg-yellow-400 text-black rounded hover:bg-yellow-500 transition-colors font-medium"
+                title="Save changes"
+              >
+                Save
+              </button>
+            ) : (
+              <span className="text-xs text-gray-400">Saved</span>
             )}
           </div>
           <div className="flex items-center gap-4">
