@@ -294,6 +294,14 @@ export default function CanvasPage() {
     )
   }, [setNodes])
 
+  // Handle node deletion
+  const handleNodeDelete = useCallback((nodeId: string) => {
+    setNodes((nds) => nds.filter((node) => node.id !== nodeId))
+    setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId))
+    setIsPanelOpen(false)
+    setSelectedNode(null)
+  }, [setNodes, setEdges])
+
   const addNewNode = (nodeType: NodeType) => {
     // Generate unique ID using timestamp + random string to avoid conflicts
     const newNodeId = `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -521,6 +529,7 @@ export default function CanvasPage() {
           isOpen={isPanelOpen}
           onClose={() => setIsPanelOpen(false)}
           onUpdate={handleNodeUpdate}
+          onDelete={handleNodeDelete}
         />
 
         {/* Fixed Footer - Intelligence Engineered by AIAKAKI */}

@@ -34,11 +34,21 @@ export interface DocsNodeData extends BaseNodeData {
   }>
 }
 
+export type CharacterRole = 'Main' | 'Active' | 'Included' | 'Involved' | 'Passive'
+
 export interface CharacterNodeData extends BaseNodeData {
   nodeType: 'character'
   characterName?: string
   bio?: string
   photoUrl?: string
+  image?: string // For display on canvas (same as photoUrl)
+  role?: CharacterRole
+  profilerChat?: Array<{
+    id: string
+    question: string
+    answer: string
+    timestamp: string
+  }>
   attributes?: Record<string, any>
 }
 

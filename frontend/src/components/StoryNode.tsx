@@ -12,12 +12,20 @@ function StoryNode({ data, selected }: NodeProps<AnyNodeData>) {
   const colorClass = getNodeColor(nodeType as NodeType)
   const label = nodeData.label || 'NODE'
   const image = nodeData.image
+  const role = nodeType === 'character' ? nodeData.role : null
   
   return (
     <div className="relative">
-      {/* Label above card */}
-      <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2 font-sans text-center">
-        {label}
+      {/* Label above card - fixed height container with text at bottom */}
+      <div className="flex flex-col justify-end mb-2" style={{ width: 90, minHeight: 30 }}>
+        <div className="text-[10px] text-gray-500 uppercase tracking-widest font-sans text-left break-words leading-tight w-full">
+          {label}
+        </div>
+        {role && (
+          <div className="text-[8px] text-gray-500 font-medium uppercase tracking-wide text-left mt-0.5">
+            {role}
+          </div>
+        )}
       </div>
       
       {/* Card */}

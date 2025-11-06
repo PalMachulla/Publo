@@ -2,26 +2,33 @@
 
 import { useState } from 'react'
 import { Node } from 'reactflow'
-import { StoryNodeData, Comment } from '@/types/nodes'
+import { AnyNodeData, Comment } from '@/types/nodes'
 import { useAuth } from '@/contexts/AuthContext'
+import StoryBookPanel from './panels/StoryBookPanel'
+import CharacterPanel from './panels/CharacterPanel'
 
 interface NodeDetailsPanelProps {
-  node: Node<StoryNodeData> | null
+  node: Node<AnyNodeData> | null
   isOpen: boolean
   onClose: () => void
-  onUpdate: (nodeId: string, data: Partial<StoryNodeData>) => void
+  onUpdate: (nodeId: string, data: any) => void
+  onDelete: (nodeId: string) => void
 }
 
 export default function NodeDetailsPanel({
   node,
   isOpen,
   onClose,
-  onUpdate
+  onUpdate,
+  onDelete
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
   const [commentText, setCommentText] = useState('')
 
   if (!node) return null
+  
+  const nodeData = node.data as any
+  const nodeType = nodeData.nodeType || 'story'
 
   const handleAddComment = () => {
     if (!commentText.trim() || !user) return
@@ -40,11 +47,11 @@ export default function NodeDetailsPanel({
   }
 
   const handleUpdateLabel = (label: string) => {
-    onUpdate(node.id, { ...node.data, label })
+    onUpdate(node.id, { ...nodeData, label })
   }
 
   const handleUpdateDescription = (description: string) => {
-    onUpdate(node.id, { ...node.data, description })
+    onUpdate(node.id, { ...nodeData, description })
   }
 
   const handleDeleteComment = (commentId: string) => {
@@ -57,34 +64,56 @@ export default function NodeDetailsPanel({
       {/* Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/20 z-40"
+          className="fixed inset-0 bg-black/10 z-40 transition-opacity duration-300"
           onClick={onClose}
         />
       )}
 
-      {/* Sliding Panel */}
+      {/* Sliding Panel with rounded edges and margin */}
       <div
-        className={`fixed top-0 right-0 h-full w-96 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out z-50 ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
+        className={`fixed top-6 right-6 bottom-6 w-96 bg-white rounded-3xl shadow-lg border border-gray-200 transform transition-all duration-300 ease-in-out z-50 ${
+          isOpen ? 'translate-x-0 opacity-100' : 'translate-x-[420px] opacity-0'
         }`}
       >
-        <div className="h-full flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">Node Details</h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              aria-label="Close panel"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+        <div className="h-full flex flex-col rounded-3xl overflow-hidden">
+          {/* Close Button (only show for generic panel) */}
+          {nodeType !== 'story' && nodeType !== 'character' && (
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white">
+              <h2 className="text-xl font-semibold text-gray-900">Node Details</h2>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                aria-label="Close panel"
+              >
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Close Button for Specialized Panels */}
+          {(nodeType === 'story' || nodeType === 'character') && (
+            <div className="absolute top-6 right-6 z-10">
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors bg-white shadow-md border border-gray-200"
+                aria-label="Close panel"
+              >
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* Route to specialized panel or generic content */}
+          {nodeType === 'story' ? (
+            <StoryBookPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
+          ) : nodeType === 'character' ? (
+            <CharacterPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
+          ) : (
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Node Type Badge */}
             <div className="inline-block px-3 py-1 bg-gray-100 rounded-full text-xs text-gray-600 uppercase tracking-wider">
               {node.type}
@@ -98,7 +127,7 @@ export default function NodeDetailsPanel({
               <input
                 id="node-label"
                 type="text"
-                value={node.data.label}
+                value={nodeData.label || ''}
                 onChange={(e) => handleUpdateLabel(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 transition-all"
               />
@@ -111,7 +140,7 @@ export default function NodeDetailsPanel({
               </label>
               <textarea
                 id="node-description"
-                value={node.data.description || ''}
+                value={nodeData.description || ''}
                 onChange={(e) => handleUpdateDescription(e.target.value)}
                 rows={4}
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none transition-all"
@@ -200,7 +229,8 @@ export default function NodeDetailsPanel({
                 </p>
               </div>
             </div>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </>
