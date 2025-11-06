@@ -42,9 +42,12 @@ function StoryNode({ data, selected }: NodeProps<AnyNodeData>) {
             <img src={image} alt={label} className="w-full h-full object-cover" />
           </div>
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center gap-2">
             <div className={`w-12 h-12 ${colorClass}`}>
               {icon}
+            </div>
+            <div className="text-[9px] text-gray-400 font-light">
+              Click to Edit
             </div>
           </div>
         )}
