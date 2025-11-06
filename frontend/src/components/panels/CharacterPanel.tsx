@@ -152,7 +152,7 @@ export default function CharacterPanel({ node, onUpdate, onDelete }: CharacterPa
           bio,
           photo_url: photoUrl,
           visibility,
-          role,
+          role: role || undefined,
         })
         alert('Character updated successfully!')
       } else {
@@ -162,7 +162,7 @@ export default function CharacterPanel({ node, onUpdate, onDelete }: CharacterPa
           bio,
           photo_url: photoUrl,
           visibility,
-          role: role as CharacterRole,
+          role: role || undefined,
         })
         
         // Update node with character reference
