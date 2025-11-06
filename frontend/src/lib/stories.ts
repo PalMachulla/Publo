@@ -84,7 +84,7 @@ export async function createStory(title: string = 'Untitled Story') {
   return data
 }
 
-// Save canvas state (optimized - only updates what changed)
+// Save canvas state (optimized)
 export async function saveCanvas(
   storyId: string,
   nodes: Node[],
@@ -92,14 +92,10 @@ export async function saveCanvas(
 ) {
   console.log('Saving canvas:', { storyId, nodeCount: nodes.length, edgeCount: edges.length })
   
-  const currentNodeIds = nodes.map(n => n.id)
-  const currentEdgeIds = edges.map(e => e.id)
-
   try {
-    // Perform all operations in parallel for speed
-    const operations = []
+    // Step 1: Upsert nodes and edges (happens in parallel)
+    const upsertPromises = []
 
-    // Upsert nodes (updates existing, inserts new)
     if (nodes.length > 0) {
       const nodeRecords = nodes.map(node => ({
         id: node.id,
@@ -110,12 +106,11 @@ export async function saveCanvas(
         data: node.data
       }))
 
-      operations.push(
+      upsertPromises.push(
         supabase.from('nodes').upsert(nodeRecords, { onConflict: 'id' })
       )
     }
 
-    // Upsert edges (updates existing, inserts new)
     if (edges.length > 0) {
       const edgeRecords = edges.map(edge => ({
         id: edge.id,
@@ -127,49 +122,80 @@ export async function saveCanvas(
         style: edge.style
       }))
 
-      operations.push(
+      upsertPromises.push(
         supabase.from('edges').upsert(edgeRecords, { onConflict: 'id' })
       )
     }
 
-    // Delete nodes that no longer exist (only if we have nodes)
+    // Wait for upserts to complete
+    const upsertResults = await Promise.all(upsertPromises)
+    const upsertErrors = upsertResults.filter(r => r.error)
+    if (upsertErrors.length > 0) {
+      console.error('Upsert errors:', upsertErrors)
+      throw upsertErrors[0].error
+    }
+
+    // Step 2: Clean up deleted items (happens in parallel)
+    const currentNodeIds = nodes.map(n => n.id)
+    const currentEdgeIds = edges.map(e => e.id)
+
+    const cleanupPromises = []
+
+    // Only delete nodes not in current list
     if (currentNodeIds.length > 0) {
-      operations.push(
-        supabase
-          .from('nodes')
-          .delete()
-          .eq('story_id', storyId)
-          .not('id', 'in', `(${currentNodeIds.join(',')})`)
-      )
+      // Use a subquery approach - delete nodes for this story that aren't in the current list
+      const { data: existingNodes } = await supabase
+        .from('nodes')
+        .select('id')
+        .eq('story_id', storyId)
+      
+      if (existingNodes && existingNodes.length > 0) {
+        const nodesToDelete = existingNodes
+          .filter(n => !currentNodeIds.includes(n.id))
+          .map(n => n.id)
+        
+        if (nodesToDelete.length > 0) {
+          cleanupPromises.push(
+            supabase.from('nodes').delete().in('id', nodesToDelete)
+          )
+        }
+      }
     }
 
-    // Delete edges that no longer exist (only if we have edges)
+    // Only delete edges not in current list
     if (currentEdgeIds.length > 0) {
-      operations.push(
-        supabase
-          .from('edges')
-          .delete()
-          .eq('story_id', storyId)
-          .not('id', 'in', `(${currentEdgeIds.join(',')})`)
-      )
+      const { data: existingEdges } = await supabase
+        .from('edges')
+        .select('id')
+        .eq('story_id', storyId)
+      
+      if (existingEdges && existingEdges.length > 0) {
+        const edgesToDelete = existingEdges
+          .filter(e => !currentEdgeIds.includes(e.id))
+          .map(e => e.id)
+        
+        if (edgesToDelete.length > 0) {
+          cleanupPromises.push(
+            supabase.from('edges').delete().in('id', edgesToDelete)
+          )
+        }
+      }
     }
 
-    // Update story timestamp
-    operations.push(
+    // Update timestamp
+    cleanupPromises.push(
       supabase
         .from('stories')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', storyId)
     )
 
-    // Execute all operations in parallel
-    const results = await Promise.all(operations)
-
-    // Check for errors
-    const errors = results.filter(r => r.error)
-    if (errors.length > 0) {
-      console.error('Save errors:', errors)
-      throw errors[0].error
+    // Wait for cleanup to complete
+    const cleanupResults = await Promise.all(cleanupPromises)
+    const cleanupErrors = cleanupResults.filter(r => r.error)
+    if (cleanupErrors.length > 0) {
+      console.error('Cleanup errors:', cleanupErrors)
+      // Don't throw for cleanup errors, they're not critical
     }
 
     console.log('Canvas saved successfully!')
