@@ -172,9 +172,9 @@ export default function CanvasPage() {
 
   // Auto-save canvas on changes (debounced)
   const handleSave = useCallback(async () => {
-    // Don't save if we're loading or if storyId doesn't match
-    if (!storyId || isLoadingRef.current || currentStoryIdRef.current !== storyId) {
-      console.log('Skipping save: loading or storyId mismatch')
+    // Don't save if we're loading or if storyId doesn't match or already saving
+    if (!storyId || isLoadingRef.current || currentStoryIdRef.current !== storyId || saving) {
+      console.log('Skipping save: loading, storyId mismatch, or already saving')
       return
     }
     
@@ -195,31 +195,42 @@ export default function CanvasPage() {
     
     setSaving(true)
     try {
-      await saveCanvas(storyId, nodesToSave, edges)
+      // Add timeout to prevent hanging requests
+      await Promise.race([
+        saveCanvas(storyId, nodesToSave, edges),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Save operation timed out')), 10000)
+        )
+      ])
+      console.log('Canvas saved successfully')
     } catch (error) {
-      console.error('Failed to save:', error)
+      // Log error but don't disrupt user experience
+      console.error('Failed to save canvas:', error)
     } finally {
       setSaving(false)
     }
-  }, [storyId, nodes, edges, setNodes])
+  }, [storyId, nodes, edges, setNodes, saving])
 
-  // Debounced auto-save
+  // Debounced auto-save with longer delay to prevent overwhelming database
   useEffect(() => {
     // Don't auto-save while loading initial data
     if (isLoadingCanvas) return
     
     // Don't auto-save if we only have the context node
     if (nodes.length <= 1) return
+    
+    // Don't auto-save if already saving
+    if (saving) return
 
     const timer = setTimeout(() => {
-      if (nodes.length > 0 && storyId) {
+      if (nodes.length > 0 && storyId && !saving) {
         console.log('Auto-saving canvas with', nodes.length, 'nodes')
         handleSave()
       }
-    }, 1000) // Reduced to 1 second for faster saves
+    }, 5000) // Increased to 5 seconds to reduce database load
 
     return () => clearTimeout(timer)
-  }, [nodes, edges, handleSave, storyId, isLoadingCanvas])
+  }, [nodes, edges, handleSave, storyId, isLoadingCanvas, saving])
 
   // Save before unmounting or navigating away
   useEffect(() => {
