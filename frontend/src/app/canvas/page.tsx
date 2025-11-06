@@ -59,8 +59,25 @@ export default function CanvasPage() {
       }
       return true
     })
+    
+    // Mark as having unsaved changes if there are actual changes
+    if (safeChanges.length > 0 && !isLoadingRef.current) {
+      hasUnsavedChangesRef.current = true
+    }
+    
     onNodesChange(safeChanges)
   }, [onNodesChange])
+
+  // Wrapper for edges to track changes
+  const handleEdgesChange = useCallback((changes: any) => {
+    // Mark as having unsaved changes if there are actual changes
+    if (changes.length > 0 && !isLoadingRef.current) {
+      hasUnsavedChangesRef.current = true
+    }
+    
+    onEdgesChange(changes)
+  }, [onEdgesChange])
+
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [storyTitle, setStoryTitle] = useState('Untitled Story')
@@ -72,6 +89,7 @@ export default function CanvasPage() {
   const isLoadingRef = useRef(true)
   const currentStoryIdRef = useRef<string | null>(null)
   const lastLoadedStoryIdRef = useRef<string | null>(null)
+  const hasUnsavedChangesRef = useRef(false) // Track if user made changes
   const titleInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
@@ -151,6 +169,7 @@ export default function CanvasPage() {
       setTimeout(() => {
         setIsLoadingCanvas(false)
         isLoadingRef.current = false
+        hasUnsavedChangesRef.current = false // Clear unsaved changes flag after loading
         console.log(`Story ${id} fully loaded and ready for edits`)
       }, 500)
     } catch (error) {
@@ -203,6 +222,8 @@ export default function CanvasPage() {
         )
       ])
       console.log('Canvas saved successfully')
+      // Clear the unsaved changes flag after successful save
+      hasUnsavedChangesRef.current = false
     } catch (error) {
       // Log error but don't disrupt user experience
       console.error('Failed to save canvas:', error)
@@ -211,7 +232,7 @@ export default function CanvasPage() {
     }
   }, [storyId, nodes, edges, setNodes, saving])
 
-  // Debounced auto-save with longer delay to prevent overwhelming database
+  // Debounced auto-save - only saves if user made actual changes
   useEffect(() => {
     // Don't auto-save while loading initial data
     if (isLoadingCanvas) return
@@ -222,12 +243,15 @@ export default function CanvasPage() {
     // Don't auto-save if already saving
     if (saving) return
 
+    // Only auto-save if there are unsaved changes
+    if (!hasUnsavedChangesRef.current) return
+
     const timer = setTimeout(() => {
-      if (nodes.length > 0 && storyId && !saving) {
-        console.log('Auto-saving canvas with', nodes.length, 'nodes')
+      if (nodes.length > 0 && storyId && !saving && hasUnsavedChangesRef.current) {
+        console.log('Auto-saving canvas with', nodes.length, 'nodes (changes detected)')
         handleSave()
       }
-    }, 10000) // Increased to 10 seconds to reduce database load
+    }, 10000) // Auto-save 10 seconds after last change
 
     return () => clearTimeout(timer)
   }, [nodes, edges, handleSave, storyId, isLoadingCanvas, saving])
@@ -631,7 +655,7 @@ export default function CanvasPage() {
             nodes={nodes}
             edges={edges}
             onNodesChange={handleNodesChange}
-            onEdgesChange={onEdgesChange}
+            onEdgesChange={handleEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
             nodeTypes={nodeTypes}
