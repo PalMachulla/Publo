@@ -69,6 +69,7 @@ export default function CanvasPage() {
   const [isLoadingCanvas, setIsLoadingCanvas] = useState(true)
   const isLoadingRef = useRef(true)
   const currentStoryIdRef = useRef<string | null>(null)
+  const lastLoadedStoryIdRef = useRef<string | null>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -81,13 +82,16 @@ export default function CanvasPage() {
     }
   }, [user, loading, router, storyId])
 
-  // Load story on mount
+  // Load story on mount or when storyId changes
   useEffect(() => {
-    if (!loading && user && storyId) {
+    if (!loading && user && storyId && storyId !== lastLoadedStoryIdRef.current) {
+      console.log('Loading story:', storyId, '(previously loaded:', lastLoadedStoryIdRef.current, ')')
+      
       // Set loading flags before loading
       setIsLoadingCanvas(true)
       isLoadingRef.current = true
       currentStoryIdRef.current = storyId
+      lastLoadedStoryIdRef.current = storyId
       
       // Load data directly without resetting state
       // (loadStoryData will set the correct nodes/edges)
@@ -388,13 +392,25 @@ export default function CanvasPage() {
     
     // Immediate save after adding node with correct values
     if (storyId) {
-      console.log('Immediately saving new node:', { nodeCount: updatedNodes.length, edgeCount: updatedEdges.length })
+      console.log('Immediately saving new node:', { 
+        storyId, 
+        nodeCount: updatedNodes.length, 
+        edgeCount: updatedEdges.length,
+        isLoading: isLoadingRef.current 
+      })
+      
+      // Temporarily mark as not loading to allow save
+      const wasLoading = isLoadingRef.current
+      isLoadingRef.current = false
       
       // Save synchronously with the updated arrays
       saveCanvas(storyId, updatedNodes, updatedEdges).then(() => {
-        console.log('New node saved successfully')
+        console.log('New node saved successfully to database')
       }).catch(err => {
         console.error('Failed to immediately save new node:', err)
+      }).finally(() => {
+        // Restore loading state
+        isLoadingRef.current = wasLoading
       })
     }
   }
