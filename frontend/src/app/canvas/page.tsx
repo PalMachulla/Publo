@@ -66,6 +66,7 @@ export default function CanvasPage() {
   const [storyTitle, setStoryTitle] = useState('Untitled Story')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
+  const [userAvatar, setUserAvatar] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [isLoadingCanvas, setIsLoadingCanvas] = useState(true)
   const isLoadingRef = useRef(true)
@@ -81,6 +82,10 @@ export default function CanvasPage() {
     } else if (!loading && user && !storyId) {
       // Redirect to stories page if no story ID
       router.push('/stories')
+    } else if (user) {
+      // Get user avatar from metadata (social login)
+      const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture
+      setUserAvatar(avatar)
     }
   }, [user, loading, router, storyId])
 
@@ -554,10 +559,14 @@ export default function CanvasPage() {
             <div className="relative" ref={profileMenuRef}>
               <button
                 onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold hover:shadow-lg transition-shadow"
+                className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold hover:shadow-lg transition-shadow overflow-hidden"
                 title="Profile"
               >
-                {user?.email?.[0].toUpperCase() || 'U'}
+                {userAvatar ? (
+                  <img src={userAvatar} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  user?.email?.[0].toUpperCase() || 'U'
+                )}
               </button>
 
               {isProfileMenuOpen && (

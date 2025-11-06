@@ -13,7 +13,10 @@ export default function StoriesPage() {
   const [loadingStories, setLoadingStories] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
+  const [userAvatar, setUserAvatar] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const profileMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -23,14 +26,20 @@ export default function StoriesPage() {
 
     if (user) {
       loadStories()
+      // Get user avatar from metadata (social login)
+      const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture
+      setUserAvatar(avatar)
     }
   }, [user, loading, router])
 
-  // Close menu when clicking outside
+  // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as HTMLElement)) {
         setIsMenuOpen(false)
+      }
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as HTMLElement)) {
+        setIsProfileMenuOpen(false)
       }
     }
 
@@ -101,32 +110,85 @@ export default function StoriesPage() {
           <div className="flex items-center gap-3">
             <img src="/publo_logo.svg" alt="PUBLO" className="h-6" />
           </div>
-          <div className="flex items-center gap-4 relative" ref={menuRef}>
-            <span className="text-sm text-gray-600">{user?.email}</span>
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-2 hover:bg-gray-100 rounded-md transition-colors"
-              title="Menu"
-            >
-              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
+          <div className="flex items-center gap-4">
+            {/* Burger Menu */}
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="p-2 hover:bg-gray-100 rounded-md transition-colors"
+                title="Menu"
+              >
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
 
-            {/* Dropdown Menu */}
-            {isMenuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                <button
-                  onClick={handleLogout}
-                  className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3"
-                >
-                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  Log Out
-                </button>
-              </div>
-            )}
+              {/* Burger Dropdown Menu */}
+              {isMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
+                  {/* My Characters */}
+                  <button
+                    onClick={() => {
+                      router.push('/characters')
+                      setIsMenuOpen(false)
+                    }}
+                    className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3"
+                  >
+                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    My Characters
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Profile Picture Dropdown */}
+            <div className="relative" ref={profileMenuRef}>
+              <button
+                onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold hover:shadow-lg transition-shadow overflow-hidden"
+                title="Profile"
+              >
+                {userAvatar ? (
+                  <img src={userAvatar} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  user?.email?.[0].toUpperCase() || 'U'
+                )}
+              </button>
+
+              {/* Profile Dropdown Menu */}
+              {isProfileMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
+                  {/* Profile */}
+                  <button
+                    onClick={() => {
+                      alert('Profile page coming soon!')
+                      setIsProfileMenuOpen(false)
+                    }}
+                    className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3"
+                  >
+                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Profile
+                  </button>
+
+                  <div className="border-t border-gray-200 my-2"></div>
+
+                  {/* Logout */}
+                  <button
+                    onClick={handleLogout}
+                    className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-3"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    Log Out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
