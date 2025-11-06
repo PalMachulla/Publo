@@ -19,7 +19,9 @@ import 'reactflow/dist/style.css'
 import StoryNode from '@/components/StoryNode'
 import ContextCanvas from '@/components/ContextCanvas'
 import NodeDetailsPanel from '@/components/NodeDetailsPanel'
+import NodeTypeMenu from '@/components/NodeTypeMenu'
 import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/lib/stories'
+import { NodeType } from '@/types/nodes'
 
 const nodeTypes = {
   storyNode: StoryNode,
@@ -292,14 +294,49 @@ export default function CanvasPage() {
     )
   }, [setNodes])
 
-  const addNewNode = () => {
+  const addNewNode = (nodeType: NodeType) => {
     // Generate unique ID using timestamp + random string to avoid conflicts
     const newNodeId = `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
+    // Initialize node data based on type
+    let nodeData: any = {
+      label: 'NEW NODE',
+      description: 'Click to edit',
+      comments: [],
+      nodeType: nodeType,
+    }
+    
+    // Customize label based on node type
+    switch (nodeType) {
+      case 'story':
+        nodeData.label = 'STORY BOOK'
+        nodeData.description = 'Select a book'
+        break
+      case 'docs':
+        nodeData.label = 'DOCUMENTS'
+        nodeData.description = 'Upload files'
+        nodeData.documents = []
+        break
+      case 'character':
+        nodeData.label = 'CHARACTER'
+        nodeData.description = 'Create a persona'
+        break
+      case 'location':
+        nodeData.label = 'LOCATION'
+        nodeData.description = 'Set a place'
+        break
+      case 'link':
+        nodeData.label = 'LINKS'
+        nodeData.description = 'Add URLs'
+        nodeData.links = []
+        break
+    }
+    
     const newNode: Node = {
       id: newNodeId,
       type: 'storyNode',
       position: { x: Math.random() * 500 + 100, y: Math.random() * 300 + 100 },
-      data: { label: 'NEW ELEMENT', description: 'Click to edit', comments: [] },
+      data: nodeData,
     }
     setNodes((nds) => [...nds, newNode])
     
@@ -434,16 +471,10 @@ export default function CanvasPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Canvas Area with React Flow */}
         <div className="flex-1 relative bg-gray-50">
-          {/* Floating Add Node Button */}
-          <button 
-            onClick={addNewNode}
-            className="absolute top-6 left-6 z-10 w-16 h-16 rounded-full border-2 border-yellow-400 bg-white flex items-center justify-center hover:bg-yellow-50 transition-colors shadow-lg"
-            title="Add new node"
-          >
-            <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
+          {/* Floating Add Node Menu */}
+          <div className="absolute top-6 left-6 z-10">
+            <NodeTypeMenu onSelectNodeType={addNewNode} />
+          </div>
           <ReactFlow
             nodes={nodes}
             edges={edges}

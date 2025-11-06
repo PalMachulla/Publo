@@ -2,14 +2,14 @@
 
 import { memo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
+import { AnyNodeData, NodeType } from '@/types/nodes'
+import { getNodeIcon, getNodeColor } from '@/lib/nodeIcons'
 
-export interface StoryNodeData {
-  label: string
-  image?: string
-  description?: string
-}
-
-function StoryNode({ data, selected }: NodeProps<StoryNodeData>) {
+function StoryNode({ data, selected }: NodeProps<AnyNodeData>) {
+  const nodeType = (data as any).nodeType || 'story'
+  const icon = getNodeIcon(nodeType as NodeType)
+  const colorClass = getNodeColor(nodeType as NodeType)
+  
   return (
     <div className="relative">
       {/* Label above card */}
@@ -29,8 +29,10 @@ function StoryNode({ data, selected }: NodeProps<StoryNodeData>) {
             <img src={data.image} alt={data.label} className="w-full h-full object-cover" />
           </div>
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-            <span className="text-gray-400 text-3xl font-light">+</span>
+          <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+            <div className={`w-12 h-12 ${colorClass}`}>
+              {icon}
+            </div>
           </div>
         )}
       </div>
