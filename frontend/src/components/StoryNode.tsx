@@ -6,15 +6,18 @@ import { AnyNodeData, NodeType } from '@/types/nodes'
 import { getNodeIcon, getNodeColor } from '@/lib/nodeIcons'
 
 function StoryNode({ data, selected }: NodeProps<AnyNodeData>) {
-  const nodeType = (data as any).nodeType || 'story'
+  const nodeData = data as any
+  const nodeType = nodeData.nodeType || 'story'
   const icon = getNodeIcon(nodeType as NodeType)
   const colorClass = getNodeColor(nodeType as NodeType)
+  const label = nodeData.label || 'NODE'
+  const image = nodeData.image
   
   return (
     <div className="relative">
       {/* Label above card */}
       <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2 font-sans text-center">
-        {data.label}
+        {label}
       </div>
       
       {/* Card */}
@@ -24,9 +27,9 @@ function StoryNode({ data, selected }: NodeProps<AnyNodeData>) {
         }`}
         style={{ width: 90, height: 120 }}
       >
-        {data.image ? (
+        {image ? (
           <div className="w-full h-full">
-            <img src={data.image} alt={data.label} className="w-full h-full object-cover" />
+            <img src={image} alt={label} className="w-full h-full object-cover" />
           </div>
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
