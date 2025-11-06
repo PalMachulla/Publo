@@ -90,23 +90,27 @@ export default function NodeTypeMenu({ onSelectNodeType }: NodeTypeMenuProps) {
 
   return (
     <div className="relative" ref={menuRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-16 h-16 rounded-full border-2 border-yellow-400 bg-white flex items-center justify-center hover:bg-yellow-50 transition-colors shadow-lg"
-        title="Add node"
-      >
-        <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-      </button>
-
-      {isOpen && (
-        <div className="absolute top-0 left-20 w-64 bg-white rounded-xl shadow-2xl border border-gray-200 py-2 z-50 animate-fade-in">
-          <div className="px-4 py-2 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-700">Add Node</h3>
-            <p className="text-xs text-gray-500">Choose a node type</p>
+      {/* Vertical expanding menu - single unified element */}
+      <div className="bg-white rounded-3xl shadow-lg border border-gray-200 overflow-hidden">
+        {/* Header with button */}
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center gap-2 p-2 w-full hover:bg-gray-50 transition-colors"
+        >
+          {/* Small round button with 2px padding around it */}
+          <div className="w-8 h-8 rounded-full border-2 border-yellow-400 bg-white flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
           </div>
-          <div className="max-h-96 overflow-y-auto">
+          
+          {/* Text */}
+          <div className="text-xs font-semibold text-gray-700 pr-2">Add Node</div>
+        </button>
+
+        {/* Expanded node types */}
+        {isOpen && (
+          <div className="border-t border-gray-200">
             {nodeTypes.map((nodeType) => (
               <button
                 key={nodeType.type}
@@ -127,8 +131,8 @@ export default function NodeTypeMenu({ onSelectNodeType }: NodeTypeMenuProps) {
               </button>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
