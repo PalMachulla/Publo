@@ -297,21 +297,15 @@ export default function CanvasPage() {
 
   const handleNewCanvas = async () => {
     try {
-      // Save current canvas before creating new one
-      const hasRealNodes = nodes.length > 1 || (nodes.length === 1 && nodes[0].id !== 'context')
-      
-      if (storyId && hasRealNodes && currentStoryIdRef.current === storyId) {
-        try {
-          console.log('Saving before creating new canvas...')
-          await Promise.race([
-            saveCanvas(storyId, nodes, edges),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 3000))
-          ])
-        } catch (err) {
-          console.error('Failed to save before creating new canvas:', err)
-        }
+      // Trigger save in background (don't wait) if there are changes
+      if (storyId && hasUnsavedChangesRef.current) {
+        console.log('Triggering background save before new canvas...')
+        saveCanvas(storyId, nodes, edges).catch(err => {
+          console.error('Background save failed:', err)
+        })
       }
       
+      // Create and navigate immediately
       const newStory = await createStory()
       router.push(`/canvas?id=${newStory.id}`)
       setIsMenuOpen(false)
@@ -521,21 +515,15 @@ export default function CanvasPage() {
 
                 {/* My Stories */}
                 <button
-                  onClick={async () => {
-                    // Save current canvas before navigating away
-                    const hasRealNodes = nodes.length > 1 || (nodes.length === 1 && nodes[0].id !== 'context')
-                    
-                    if (storyId && hasRealNodes && currentStoryIdRef.current === storyId) {
-                      try {
-                        console.log('Saving before navigating to stories...')
-                        await Promise.race([
-                          saveCanvas(storyId, nodes, edges),
-                          new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 3000))
-                        ])
-                      } catch (error) {
-                        console.error('Failed to save before navigation:', error)
-                      }
+                  onClick={() => {
+                    // Trigger save in background (don't wait) if there are changes
+                    if (storyId && hasUnsavedChangesRef.current) {
+                      console.log('Triggering background save before navigation...')
+                      saveCanvas(storyId, nodes, edges).catch(err => {
+                        console.error('Background save failed:', err)
+                      })
                     }
+                    // Navigate immediately
                     router.push('/stories')
                     setIsMenuOpen(false)
                   }}
@@ -549,21 +537,15 @@ export default function CanvasPage() {
 
                 {/* My Characters */}
                 <button
-                  onClick={async () => {
-                    // Save current canvas before navigating away
-                    const hasRealNodes = nodes.length > 1 || (nodes.length === 1 && nodes[0].id !== 'context')
-                    
-                    if (storyId && hasRealNodes && currentStoryIdRef.current === storyId) {
-                      try {
-                        console.log('Saving before navigating to characters...')
-                        await Promise.race([
-                          saveCanvas(storyId, nodes, edges),
-                          new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 3000))
-                        ])
-                      } catch (error) {
-                        console.error('Failed to save before navigation:', error)
-                      }
+                  onClick={() => {
+                    // Trigger save in background (don't wait) if there are changes
+                    if (storyId && hasUnsavedChangesRef.current) {
+                      console.log('Triggering background save before navigation...')
+                      saveCanvas(storyId, nodes, edges).catch(err => {
+                        console.error('Background save failed:', err)
+                      })
                     }
+                    // Navigate immediately
                     router.push('/characters')
                     setIsMenuOpen(false)
                   }}
