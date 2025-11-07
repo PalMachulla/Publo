@@ -4,6 +4,31 @@
 
 Publo uses a node-based canvas system for building and organizing story elements. Each canvas contains interconnected nodes that represent different aspects of your story—from source materials and characters to locations and reference links.
 
+### The Agent Architecture Vision
+
+**Publo is designed as an intelligent agent orchestration system.** Each node you create on the canvas is not just a static container for information—it's designed to become an autonomous agent or a system of specialized agents.
+
+**Key Concepts**:
+
+- **Nodes as Agents**: Each node type (Story Book, Character, Location, etc.) will evolve into an intelligent agent with specialized capabilities
+- **Agent Orchestration**: All node agents serve and communicate with a higher-level agent orchestrator
+- **Context Node as Orchestrator**: The Context Node acts as the central orchestrator, coordinating between specialized node agents
+- **Multi-Agent Systems**: Complex nodes (like Characters) may contain their own system of sub-agents working together
+- **Hierarchical Intelligence**: Lower-level node agents feed insights to the orchestrator, which synthesizes and directs the overall story generation
+
+**What This Means**:
+
+When you add a **Character Node**, you're not just storing a bio—you're creating an agent that will understand character motivations, maintain consistency, and actively participate in story generation. When you add a **Story Book Node**, you're deploying an agent that can analyze literary patterns and apply stylistic influences.
+
+The **Context Node** (prompt bar) will become the orchestrator that:
+- Receives your story intent
+- Delegates tasks to specialized node agents
+- Synthesizes agent outputs into coherent narratives
+- Maintains consistency across all agents
+- Learns from agent interactions
+
+**Current State**: Today, nodes store structured data. Tomorrow, they'll be active participants in your creative process, each bringing specialized intelligence to serve your story vision.
+
 ---
 
 ## What Are Nodes?
@@ -25,6 +50,8 @@ All nodes connect to a central **Context Node** at the bottom of the canvas, whi
 ### 1. Story Book Node 📖
 
 **Purpose**: Link copyright-free books to your story as source material, inspiration, or style references.
+
+> **Agent Vision**: Story Book Nodes will become literary analysis agents capable of extracting themes, patterns, and stylistic elements from source material. They'll provide intelligent recommendations and apply literary techniques to your story generation.
 
 **Features**:
 - Search and select from public domain books via Open Library API
@@ -49,6 +76,8 @@ All nodes connect to a central **Context Node** at the bottom of the canvas, whi
 ### 2. Character Node 👤
 
 **Purpose**: Create and manage characters (personas) for your story.
+
+> **Agent Vision**: Character Nodes will become intelligent agents that understand personality, maintain consistency, generate in-character dialogue, and actively participate in story development. Each character may operate as a multi-agent system with specialized sub-agents.
 
 **Features**:
 - Editable name and bio
@@ -144,6 +173,8 @@ All nodes connect to a central **Context Node** at the bottom of the canvas, whi
 ### 6. Context Node (Special) 💬
 
 **Purpose**: Central hub for your story prompt and canvas interactions.
+
+> **Agent Vision**: The Context Node serves as the **central agent orchestrator**. It coordinates all specialized node agents, synthesizes their outputs into coherent narratives, delegates tasks, maintains consistency, and learns from interactions to better serve your creative vision.
 
 **Characteristics**:
 - Automatically present on every canvas
@@ -298,16 +329,64 @@ All nodes connect to a central **Context Node** at the bottom of the canvas, whi
 
 ## Future Features
 
-### Planned Enhancements
+### Agent Intelligence Roadmap
 
-- **Context Node Input**: AI-powered story generation from prompts
-- **Character Profiler**: AI chatbot to develop character personalities
-- **Location Maps**: OpenStreetMap integration for visual location setting
-- **Link Scraping**: Automatic content extraction from URLs
-- **Collaborative Canvas**: Share and co-edit with other users
-- **Node-to-Node Connections**: Link nodes beyond the context hub
-- **Export Options**: Generate story outlines and reports
-- **Version History**: Track canvas changes over time
+Each node type is being designed to function as an intelligent agent or agent system. Here's how the agent capabilities will evolve:
+
+#### Context Node Agent (Orchestrator)
+- **AI-powered story generation** from natural language prompts
+- **Agent coordination** across all node types
+- **Narrative synthesis** from multiple agent inputs
+- **Consistency management** across the story universe
+- **Learning system** that improves from user interactions
+- **Task delegation** to specialized node agents
+
+#### Story Book Node Agents
+- **Literary analysis** of selected books (themes, patterns, structure)
+- **Style extraction** and application to generated content
+- **Plot structure recommendations** based on selected books
+- **Automatic chapter/scene suggestions** inspired by source material
+- **Cross-reference** themes and motifs from multiple books
+
+#### Character Node Agents
+- **Character Profiler AI**: Interactive chatbot to develop deep character profiles
+- **Personality modeling** using functional and emotional drives
+- **Dialogue generation** in character voice
+- **Character consistency checking** across scenes
+- **Relationship mapping** between characters
+- **Character arc suggestions** based on story progression
+- **Multi-agent system**: Each character may have sub-agents for dialogue, actions, and development
+
+#### Document Node Agents
+- **Content extraction** and semantic analysis
+- **Research synthesis** from multiple documents
+- **Fact-checking** against uploaded references
+- **Quote and citation management**
+- **Automatic summarization** of key points
+
+#### Location Node Agents
+- **OpenStreetMap integration** for visual location setting
+- **Geographic consistency** validation
+- **Scene setting generation** based on location data
+- **Travel time and logistics** calculations
+- **Atmospheric descriptions** derived from location characteristics
+
+#### Link Node Agents
+- **Automatic web scraping** and content extraction
+- **Research summarization** from linked sources
+- **Real-time fact validation**
+- **Citation and reference management**
+- **Trend analysis** from web sources
+
+### Platform Enhancements
+
+- **Inter-Agent Communication**: Nodes will communicate to maintain story coherence
+- **Collaborative Canvas**: Share and co-edit with other users, with multi-agent coordination
+- **Node-to-Node Connections**: Direct agent-to-agent communication pathways
+- **Export Options**: Generate story outlines, character sheets, and full manuscripts
+- **Version History**: Track canvas and agent decision changes over time
+- **Agent Memory**: Long-term memory for agents to learn user preferences
+- **Custom Agent Training**: Fine-tune agent behaviors for your writing style
 
 ---
 
