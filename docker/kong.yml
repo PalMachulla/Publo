@@ -118,11 +118,4 @@ plugins:
         - X-Auth-Token
       credentials: true
       max_age: 3600
-  - name: key-auth
-    config:
-      key_names:
-        - apikey
-        - Authorization
-      key_in_body: false
-      hide_credentials: true
 

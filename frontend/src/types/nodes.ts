@@ -6,7 +6,7 @@ export interface Comment {
   created_at: string
 }
 
-export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'link' | 'context'
+export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'research' | 'context'
 
 export interface BaseNodeData {
   label: string
@@ -79,14 +79,22 @@ export interface LocationNodeData extends BaseNodeData {
   address?: string
 }
 
-export interface LinkNodeData extends BaseNodeData {
-  nodeType: 'link'
-  links: Array<{
+export interface ResearchNodeData extends BaseNodeData {
+  nodeType: 'research'
+  prompt?: string
+  status?: 'idle' | 'researching' | 'completed' | 'error'
+  queries?: string[]
+  results?: Array<{
     id: string
+    query: string
     url: string
     title?: string
+    snippet?: string
     scrapedContent?: string
+    timestamp: string
   }>
+  summary?: string
+  error?: string
 }
 
 export interface ContextCanvasData {
@@ -95,7 +103,7 @@ export interface ContextCanvasData {
   comments: Comment[]
 }
 
-export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | LinkNodeData | ContextCanvasData
+export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData
 
 export interface Story {
   id: string

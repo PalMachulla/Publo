@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useState, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { createClient } from '@/lib/supabase/client'
 import ReactFlow, {
   Node,
   Edge,
@@ -47,6 +48,9 @@ export default function CanvasPage() {
   const searchParams = useSearchParams()
   const storyId = searchParams.get('id')
   
+  const [hasAccess, setHasAccess] = useState<boolean | null>(true) // Temporarily bypassed
+  const [checkingAccess, setCheckingAccess] = useState(false) // Temporarily bypassed
+  
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
@@ -84,6 +88,11 @@ export default function CanvasPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [userAvatar, setUserAvatar] = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<'prospect' | 'admin' | 'user' | null>(null)
+  
+  // TEMPORARY: Force admin for your email while debugging
+  const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
+  console.log('🔧 isForceAdmin check:', { email: user?.email, isForceAdmin, userRole })
   const [saving, setSaving] = useState(false)
   const [isLoadingCanvas, setIsLoadingCanvas] = useState(true)
   const isLoadingRef = useRef(true)
@@ -94,18 +103,97 @@ export default function CanvasPage() {
   const menuRef = useRef<HTMLDivElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
 
+  // Check access control - TEMPORARILY DISABLED
+  /*
+  useEffect(() => {
+    async function checkAccess() {
+      if (!user) return
+
+      setCheckingAccess(true)
+      const supabase = createClient()
+      
+      try {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('access_status')
+          .eq('id', user.id)
+          .single()
+
+        if (error) {
+          console.error('Error checking access:', error)
+          // If profile doesn't exist, create it
+          if (error.code === 'PGRST116') {
+            await supabase.from('user_profiles').insert({
+              id: user.id,
+              email: user.email,
+              full_name: user.user_metadata?.name,
+              access_status: 'waitlist'
+            })
+            setHasAccess(false)
+          } else {
+            setHasAccess(false)
+          }
+        } else {
+          setHasAccess(data?.access_status === 'granted')
+        }
+      } catch (error) {
+        console.error('Access check failed:', error)
+        setHasAccess(false)
+      } finally {
+        setCheckingAccess(false)
+      }
+    }
+
+    if (!loading && user) {
+      checkAccess()
+    }
+  }, [user, loading])
+  */
+
   useEffect(() => {
     if (!loading && !user) {
       router.push('/auth')
-    } else if (!loading && user && !storyId) {
+    } else if (!checkingAccess && hasAccess === false && user) {
+      router.push('/waitlist')
+    } else if (!loading && user && hasAccess && !storyId) {
       // Redirect to stories page if no story ID
       router.push('/stories')
     } else if (user) {
       // Get user avatar from metadata (social login)
       const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture
       setUserAvatar(avatar)
+      
+      // Check user role for admin access
+      const checkUserRole = async () => {
+        try {
+          const supabase = createClient()
+          console.log('🔍 Checking user role for:', user.id, user.email)
+          
+          const { data, error } = await supabase
+            .from('user_profiles')
+            .select('role, access_status, access_tier')
+            .eq('id', user.id)
+            .single()
+          
+          if (error) {
+            console.error('❌ Error fetching user role:', error)
+            console.error('Error details:', JSON.stringify(error, null, 2))
+          } else {
+            console.log('✅ User profile data:', data)
+            if (data && data.role) {
+              setUserRole(data.role)
+              console.log('✅ User role set to:', data.role)
+            } else {
+              console.warn('⚠️ No role found in data:', data)
+            }
+          }
+        } catch (err) {
+          console.error('❌ Exception checking user role:', err)
+        }
+      }
+      checkUserRole()
     }
-  }, [user, loading, router, storyId])
+  }, [user, loading, router, storyId, checkingAccess, hasAccess])
 
   // Load story on mount or when storyId changes
   useEffect(() => {
@@ -390,10 +478,12 @@ export default function CanvasPage() {
     }
   }
 
-  if (loading) {
+  if (loading || checkingAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-white text-xl font-mono">Loading...</div>
+        <div className="text-white text-xl font-mono">
+          {loading ? 'Loading...' : 'Checking access...'}
+        </div>
       </div>
     )
   }
@@ -566,6 +656,22 @@ export default function CanvasPage() {
                     </svg>
                     Profile
                   </button>
+
+                  {/* Admin Panel - Only show for admins */}
+                  {(userRole === 'admin' || isForceAdmin) && (
+                    <button
+                      onClick={() => {
+                        router.push('/admin')
+                        setIsProfileMenuOpen(false)
+                      }}
+                      className="w-full px-4 py-3 text-left text-sm text-purple-600 hover:bg-purple-50 transition-colors flex items-center gap-3"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                      Admin Panel {isForceAdmin && '(Override)'}
+                    </button>
+                  )}
 
                   <div className="border-t border-gray-200 my-2"></div>
 

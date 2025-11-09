@@ -17,6 +17,10 @@ export default function StoriesPage() {
   const [userAvatar, setUserAvatar] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
+  
+  // TEMPORARY: Force admin for your email while debugging
+  const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
+  console.log('🔧 Stories page - isForceAdmin check:', { email: user?.email, isForceAdmin })
 
   useEffect(() => {
     if (!loading && !user) {
@@ -173,6 +177,22 @@ export default function StoriesPage() {
                     </svg>
                     Profile
                   </button>
+
+                  {/* Admin Panel - Only show for admins */}
+                  {isForceAdmin && (
+                    <button
+                      onClick={() => {
+                        router.push('/admin')
+                        setIsProfileMenuOpen(false)
+                      }}
+                      className="w-full px-4 py-3 text-left text-sm text-purple-600 hover:bg-purple-50 transition-colors flex items-center gap-3"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                      Admin Panel (Override)
+                    </button>
+                  )}
 
                   <div className="border-t border-gray-200 my-2"></div>
 
