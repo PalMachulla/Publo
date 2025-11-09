@@ -421,10 +421,12 @@ export default function CanvasPage() {
         nodeData.label = 'LOCATION'
         nodeData.description = 'Set a place'
         break
-      case 'link':
-        nodeData.label = 'LINKS'
-        nodeData.description = 'Add URLs'
-        nodeData.links = []
+      case 'research':
+        nodeData.label = 'RESEARCH'
+        nodeData.description = 'AI-powered research'
+        nodeData.status = 'idle'
+        nodeData.queries = []
+        nodeData.results = []
         break
     }
     
