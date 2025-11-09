@@ -110,6 +110,8 @@ export interface Story {
   user_id: string
   title: string
   description?: string
+  is_public: boolean
+  shared: boolean
   created_at: string
   updated_at: string
 }

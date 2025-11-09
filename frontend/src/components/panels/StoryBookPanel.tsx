@@ -49,7 +49,7 @@ export default function StoryBookPanel({ node, onUpdate, onDelete }: StoryBookPa
     } else {
       setSelectedBook(null)
     }
-  }, [node.id])
+  }, [node.id, node.data.label, node.data.role, node.data.bookId, node.data.bookTitle, node.data.bookAuthor, node.data.year, node.data.description, node.data.image])
 
   const loadBooks = async () => {
     try {
