@@ -17,7 +17,7 @@ export default function ResearchPanel({ node, onUpdate, onDelete }: ResearchPane
 
   useEffect(() => {
     setPrompt(node.data.prompt || '')
-  }, [node.id])
+  }, [node.id, node.data.prompt])
 
   const handleStartResearch = async () => {
     if (!prompt.trim()) {

@@ -144,7 +144,7 @@ export default function WaitlistPage() {
                   Join the Waitlist
                 </h2>
                 <p className="text-gray-600">
-                  We're currently in private beta. Request access and we'll notify you when you're approved.
+                  We&apos;re currently in private beta. Request access and we&apos;ll notify you when you&apos;re approved.
                 </p>
               </div>
 
@@ -246,10 +246,10 @@ export default function WaitlistPage() {
                 </svg>
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                You're on the list!
+                You&apos;re on the list!
               </h3>
               <p className="text-gray-600 mb-6">
-                We'll send you an email when your access is approved.
+                We&apos;ll send you an email when your access is approved.
               </p>
               {user && (
                 <button
