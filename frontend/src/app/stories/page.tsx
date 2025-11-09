@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { getStories, createStory, deleteStory } from '@/lib/stories'
 import { Story } from '@/types/nodes'
+import { createClient } from '@/lib/supabase/client'
 
 export default function StoriesPage() {
   const { user, loading, signOut } = useAuth()
@@ -15,6 +16,8 @@ export default function StoriesPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [userAvatar, setUserAvatar] = useState<string | null>(null)
+  const [checkingAccess, setCheckingAccess] = useState(true)
+  const [hasAccess, setHasAccess] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
   
@@ -22,19 +25,65 @@ export default function StoriesPage() {
   const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
   console.log('🔧 Stories page - isForceAdmin check:', { email: user?.email, isForceAdmin })
 
+  // Check user access and role
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/auth')
-      return
+    async function checkUserAccess() {
+      if (!user) {
+        setCheckingAccess(false)
+        return
+      }
+
+      try {
+        const supabase = createClient()
+        const { data: profile, error } = await supabase
+          .from('user_profiles')
+          .select('role, access_status')
+          .eq('id', user.id)
+          .single()
+
+        if (error) {
+          console.error('Error checking user access:', error)
+          setHasAccess(false)
+          setCheckingAccess(false)
+          return
+        }
+
+        // Check if user has proper role and access
+        // Admins and users with granted access can proceed
+        // Prospects must go to waitlist
+        if (profile.role === 'admin' || profile.role === 'user') {
+          setHasAccess(true)
+        } else if (profile.role === 'prospect') {
+          setHasAccess(false)
+          router.push('/waitlist')
+        } else {
+          setHasAccess(false)
+        }
+        
+        setCheckingAccess(false)
+      } catch (error) {
+        console.error('Access check failed:', error)
+        setHasAccess(false)
+        setCheckingAccess(false)
+      }
     }
 
-    if (user) {
+    if (!loading && user) {
+      checkUserAccess()
+    } else if (!loading && !user) {
+      router.push('/auth')
+    }
+  }, [user, loading, router])
+
+  // Load stories and avatar after access is granted
+  useEffect(() => {
+    if (!loading && user && hasAccess) {
       loadStories()
       // Get user avatar from metadata (social login)
       const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture
       setUserAvatar(avatar)
     }
-  }, [user, loading, router])
+  }, [user, loading, hasAccess])
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -98,10 +147,22 @@ export default function StoriesPage() {
     router.push('/auth')
   }
 
-  if (loading || loadingStories) {
+  if (loading || checkingAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-gray-600 text-xl">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!hasAccess) {
+    return null // Will redirect to waitlist
+  }
+
+  if (loadingStories) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-gray-600 text-xl">Loading canvases...</div>
       </div>
     )
   }

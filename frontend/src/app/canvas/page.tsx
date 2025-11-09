@@ -49,8 +49,8 @@ export default function CanvasPage() {
   const searchParams = useSearchParams()
   const storyId = searchParams.get('id')
   
-  const [hasAccess, setHasAccess] = useState<boolean | null>(true) // Temporarily bypassed
-  const [checkingAccess, setCheckingAccess] = useState(false) // Temporarily bypassed
+  const [hasAccess, setHasAccess] = useState<boolean>(false)
+  const [checkingAccess, setCheckingAccess] = useState(true)
   
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
@@ -112,8 +112,7 @@ export default function CanvasPage() {
   const [sendingInvite, setSendingInvite] = useState(false)
   const sharingDropdownRef = useRef<HTMLDivElement>(null)
 
-  // Check access control - TEMPORARILY DISABLED
-  /*
+  // Check access control
   useEffect(() => {
     async function checkAccess() {
       if (!user) return
@@ -122,9 +121,9 @@ export default function CanvasPage() {
       const supabase = createClient()
       
       try {
-        const { data, error } = await supabase
+        const { data: profile, error } = await supabase
           .from('user_profiles')
-          .select('access_status')
+          .select('role, access_status')
           .eq('id', user.id)
           .single()
 
@@ -136,6 +135,7 @@ export default function CanvasPage() {
               id: user.id,
               email: user.email,
               full_name: user.user_metadata?.name,
+              role: 'prospect',
               access_status: 'waitlist'
             })
             setHasAccess(false)
@@ -143,7 +143,15 @@ export default function CanvasPage() {
             setHasAccess(false)
           }
         } else {
-          setHasAccess(data?.access_status === 'granted')
+          // Check if user has proper role (admin or user)
+          // Prospects must go to waitlist
+          if (profile.role === 'admin' || profile.role === 'user') {
+            setHasAccess(true)
+          } else if (profile.role === 'prospect') {
+            setHasAccess(false)
+          } else {
+            setHasAccess(false)
+          }
         }
       } catch (error) {
         console.error('Access check failed:', error)
@@ -157,7 +165,6 @@ export default function CanvasPage() {
       checkAccess()
     }
   }, [user, loading])
-  */
 
   useEffect(() => {
     if (!loading && !user) {
