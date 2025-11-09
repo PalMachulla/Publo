@@ -22,6 +22,7 @@ import ContextCanvas from '@/components/ContextCanvas'
 import NodeDetailsPanel from '@/components/NodeDetailsPanel'
 import NodeTypeMenu from '@/components/NodeTypeMenu'
 import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/lib/stories'
+import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
 import { NodeType } from '@/types/nodes'
 
 const nodeTypes = {
@@ -102,6 +103,14 @@ export default function CanvasPage() {
   const titleInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
+  
+  // Sharing state
+  const [sharingDropdownOpen, setSharingDropdownOpen] = useState(false)
+  const [canvasVisibility, setCanvasVisibility] = useState<'private' | 'shared' | 'public'>('private')
+  const [sharedEmails, setSharedEmails] = useState<string[]>([])
+  const [emailInput, setEmailInput] = useState('')
+  const [sendingInvite, setSendingInvite] = useState(false)
+  const sharingDropdownRef = useRef<HTMLDivElement>(null)
 
   // Check access control - TEMPORARILY DISABLED
   /*
@@ -221,6 +230,9 @@ export default function CanvasPage() {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as HTMLElement)) {
         setIsProfileMenuOpen(false)
       }
+      if (sharingDropdownRef.current && !sharingDropdownRef.current.contains(event.target as HTMLElement)) {
+        setSharingDropdownOpen(false)
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
@@ -231,6 +243,24 @@ export default function CanvasPage() {
     try {
       console.log(`Loading story: ${id}`)
       const { story, nodes: loadedNodes, edges: loadedEdges } = await getStory(id)
+      
+      // Load canvas visibility and shared emails
+      if (story.is_public) {
+        setCanvasVisibility('public')
+      } else if (story.shared) {
+        setCanvasVisibility('shared')
+      } else {
+        setCanvasVisibility('private')
+      }
+      
+      // Load shared emails from database
+      try {
+        const shares = await getCanvasShares(id)
+        setSharedEmails(shares.map(share => share.shared_with_email))
+      } catch (error) {
+        console.error('Failed to load shared users:', error)
+        setSharedEmails([])
+      }
       
       // Ensure context canvas always exists and is unique
       const hasContextCanvas = loadedNodes.some(node => node.id === 'context')
@@ -318,6 +348,86 @@ export default function CanvasPage() {
   const handleLogout = async () => {
     await signOut()
     router.push('/auth')
+  }
+
+  const handleVisibilityChange = async (newVisibility: 'private' | 'shared' | 'public') => {
+    if (!storyId) return
+    
+    try {
+      setCanvasVisibility(newVisibility)
+      
+      // Update the story in the database
+      await updateStory(storyId, {
+        is_public: newVisibility === 'public',
+        shared: newVisibility === 'shared' || newVisibility === 'public',
+      })
+      
+      // If changing to private, clear shared emails
+      if (newVisibility === 'private' && sharedEmails.length > 0) {
+        // Remove all shares from database
+        const removePromises = sharedEmails.map(email => removeCanvasShare(storyId, email))
+        await Promise.all(removePromises)
+        setSharedEmails([])
+      }
+    } catch (error) {
+      console.error('Failed to update visibility:', error)
+      alert('Failed to update canvas visibility')
+    }
+  }
+
+  const handleAddSharedEmail = async () => {
+    if (!emailInput.trim() || !storyId) return
+    
+    const email = emailInput.trim().toLowerCase()
+    
+    // Basic email validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert('Please enter a valid email address')
+      return
+    }
+    
+    // Check if already shared
+    if (sharedEmails.includes(email)) {
+      alert('This email is already added')
+      setEmailInput('')
+      return
+    }
+    
+    try {
+      setSendingInvite(true)
+      
+      const result = await shareCanvas(storyId, email, 'view')
+      
+      if (result.success) {
+        setSharedEmails([...sharedEmails, email])
+        alert(result.message)
+        setEmailInput('')
+      } else {
+        alert(result.message)
+      }
+    } catch (error) {
+      console.error('Failed to share canvas:', error)
+      alert('Failed to share canvas. Please try again.')
+    } finally {
+      setSendingInvite(false)
+    }
+  }
+
+  const handleRemoveSharedEmail = async (email: string) => {
+    if (!storyId) return
+    
+    try {
+      const success = await removeCanvasShare(storyId, email)
+      if (success) {
+        setSharedEmails(sharedEmails.filter(e => e !== email))
+        console.log('Removed access for:', email)
+      } else {
+        alert('Failed to remove access')
+      }
+    } catch (error) {
+      console.error('Failed to remove shared access:', error)
+      alert('Failed to remove access')
+    }
   }
 
   const handleNewCanvas = async () => {
@@ -512,11 +622,12 @@ export default function CanvasPage() {
             />
           </div>
           
-          {/* Center Save Button */}
-          <div className="absolute left-1/2 transform -translate-x-1/2">
+          {/* Center Save Button + Sharing Dropdown */}
+          <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center">
+            {/* Save Button - expands left */}
             {saving ? (
-              <div className="flex items-center gap-2 px-5 py-2 bg-gray-100 rounded-full transition-all">
-                <svg className="animate-spin h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <div className="flex items-center gap-2 px-5 py-2 h-[38px] bg-gray-100 rounded-l-full transition-all">
+                <svg className="animate-spin h-4 w-4 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
@@ -525,7 +636,7 @@ export default function CanvasPage() {
             ) : hasUnsavedChangesRef.current ? (
               <button
                 onClick={handleSave}
-                className="flex items-center gap-2 px-5 py-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-all"
+                className="flex items-center gap-2 px-5 py-2 h-[38px] bg-gray-100 hover:bg-gray-200 rounded-l-full transition-all"
                 title="Save changes"
               >
                 <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -534,13 +645,162 @@ export default function CanvasPage() {
                 <span className="text-sm text-gray-600">Save Changes</span>
               </button>
             ) : (
-              <div className="flex items-center gap-2 px-5 py-2 bg-gray-100 rounded-full transition-all">
-                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-2 px-5 py-2 h-[38px] bg-gray-100 rounded-l-full transition-all">
+                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                <span className="text-sm text-gray-500">All changes saved</span>
+                <span className="text-sm text-gray-600">All changes saved</span>
               </div>
             )}
+
+            {/* Sharing Dropdown Button - fixed to right of Save */}
+            <div className="relative" ref={sharingDropdownRef}>
+              <button
+                onClick={() => setSharingDropdownOpen(!sharingDropdownOpen)}
+                className="flex items-center gap-1.5 px-3 py-2 h-[38px] bg-gray-100 hover:bg-gray-200 rounded-r-full border-l border-gray-200 transition-all"
+                title="Canvas visibility"
+              >
+                {canvasVisibility === 'public' ? (
+                  <>
+                    <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm text-gray-600 font-medium">Public</span>
+                  </>
+                ) : canvasVisibility === 'shared' ? (
+                  <>
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                    </svg>
+                    <span className="text-sm text-gray-600 font-medium">Shared</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <span className="text-sm text-gray-600 font-medium">Private</span>
+                  </>
+                )}
+                <svg className={`w-3 h-3 text-gray-600 transition-transform ${sharingDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Sharing Dropdown Menu */}
+              {sharingDropdownOpen && (
+                <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
+                  <div className="px-4 py-2 border-b border-gray-100">
+                    <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Canvas Visibility</h3>
+                  </div>
+                  
+                  {/* Visibility Options */}
+                  <div className="p-2">
+                    <button
+                      onClick={() => handleVisibilityChange('private')}
+                      className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-gray-50 transition-colors ${canvasVisibility === 'private' ? 'bg-gray-100' : ''}`}
+                    >
+                      <svg className="w-5 h-5 text-gray-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                      <div className="flex-1 text-left">
+                        <div className="font-medium text-sm text-gray-900">Private</div>
+                        <div className="text-xs text-gray-500">Only you can access this canvas</div>
+                      </div>
+                      {canvasVisibility === 'private' && (
+                        <svg className="w-4 h-4 text-blue-600 mt-1" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
+                    
+                    <button
+                      onClick={() => handleVisibilityChange('shared')}
+                      className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-gray-50 transition-colors ${canvasVisibility === 'shared' ? 'bg-gray-100' : ''}`}
+                    >
+                      <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                      </svg>
+                      <div className="flex-1 text-left">
+                        <div className="font-medium text-sm text-gray-900">Shared</div>
+                        <div className="text-xs text-gray-500">Share with specific people</div>
+                      </div>
+                      {canvasVisibility === 'shared' && (
+                        <svg className="w-4 h-4 text-blue-600 mt-1" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
+                    
+                    <button
+                      onClick={() => handleVisibilityChange('public')}
+                      className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-gray-50 transition-colors ${canvasVisibility === 'public' ? 'bg-gray-100' : ''}`}
+                    >
+                      <svg className="w-5 h-5 text-green-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="flex-1 text-left">
+                        <div className="font-medium text-sm text-gray-900">Public</div>
+                        <div className="text-xs text-gray-500">Anyone with the link can view</div>
+                      </div>
+                      {canvasVisibility === 'public' && (
+                        <svg className="w-4 h-4 text-blue-600 mt-1" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Email Input for Shared */}
+                  {canvasVisibility === 'shared' && (
+                    <>
+                      <div className="border-t border-gray-100 px-4 py-3">
+                        <label className="text-xs font-medium text-gray-700 mb-2 block">Share with email</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={emailInput}
+                            onChange={(e) => setEmailInput(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleAddSharedEmail()}
+                            placeholder="email@example.com"
+                            className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            disabled={sendingInvite}
+                          />
+                          <button
+                            onClick={handleAddSharedEmail}
+                            disabled={sendingInvite || !emailInput.trim()}
+                            className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {sendingInvite ? 'Adding...' : 'Add'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Shared Emails List */}
+                      {sharedEmails.length > 0 && (
+                        <div className="border-t border-gray-100 px-4 py-2 max-h-40 overflow-y-auto">
+                          <div className="text-xs font-medium text-gray-700 mb-2">Shared with ({sharedEmails.length})</div>
+                          {sharedEmails.map((email) => (
+                            <div key={email} className="flex items-center justify-between py-1.5 group">
+                              <span className="text-sm text-gray-700">{email}</span>
+                              <button
+                                onClick={() => handleRemoveSharedEmail(email)}
+                                className="text-red-600 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Remove access"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center gap-4">
