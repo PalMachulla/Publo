@@ -317,10 +317,22 @@ export default function CanvasPage() {
         finalNodes = [...loadedNodes, contextNode]
       }
       
+      // Upgrade all edges to use smoothstep for consistent curved lines
+      const upgradedEdges = loadedEdges.map((edge: Edge) => ({
+        ...edge,
+        type: 'smoothstep',
+        style: { 
+          ...edge.style,
+          stroke: edge.style?.stroke || '#9ca3af', 
+          strokeWidth: edge.style?.strokeWidth || 2 
+        },
+        pathOptions: { borderRadius: 8 }
+      }))
+      
       console.log(`Loaded ${finalNodes.length} nodes, ${loadedEdges.length} edges for story: ${id}`)
       
       setNodes(finalNodes)
-      setEdges(loadedEdges)
+      setEdges(upgradedEdges)
       setStoryTitle(story.title)
       
       // Use setTimeout to ensure state updates are applied
