@@ -1,6 +1,6 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { useCanvas } from '@/contexts/CanvasContext'
 
@@ -15,8 +15,11 @@ interface Story {
   preview: string
 }
 
+type ViewMode = 'grid' | 'list'
+
 function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
   const { onPromptSubmit } = useCanvas()
+  const [viewMode, setViewMode] = useState<ViewMode>('grid')
 
   // Mock stories for now - will be replaced with real data later
   const stories: Story[] = [
@@ -59,8 +62,42 @@ function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
       <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden" style={{ width: 700 }}>
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-          <h2 className="text-lg font-semibold text-gray-900">Story Explorer</h2>
-          <p className="text-xs text-gray-500 mt-1">Choose a story or create a new one</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Story Explorer</h2>
+              <p className="text-xs text-gray-500 mt-1">Choose a story or create a new one</p>
+            </div>
+            
+            {/* View Toggle */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-2 rounded transition-colors ${
+                  viewMode === 'grid' 
+                    ? 'bg-white text-gray-900 shadow-sm' 
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+                title="Grid view"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded transition-colors ${
+                  viewMode === 'list' 
+                    ? 'bg-white text-gray-900 shadow-sm' 
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+                title="List view"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Content */}
@@ -97,40 +134,71 @@ function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
             <div className="flex-1 h-px bg-gray-200"></div>
           </div>
 
-          {/* Story List */}
-          <div className="space-y-2">
-            {stories.map((story) => (
-              <button
-                key={story.id}
-                onClick={() => handleOpenStory(story)}
-                className="w-full p-4 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all text-left group bg-white hover:bg-gray-50"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <h4 className="text-sm font-semibold text-gray-900 truncate">
+          {/* Story Grid/List */}
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-2 gap-3">
+              {stories.map((story) => (
+                <button
+                  key={story.id}
+                  onClick={() => handleOpenStory(story)}
+                  className="p-4 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all text-left group bg-white hover:bg-gray-50 flex flex-col"
+                >
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-semibold text-gray-900 truncate mb-1">
                         {story.title}
                       </h4>
-                      <span className="text-xs text-gray-400 flex-shrink-0 ml-2">
+                      <span className="text-xs text-gray-400">
                         {story.lastEdited}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 line-clamp-2">
-                      {story.preview}
-                    </p>
                   </div>
-                  <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </button>
-            ))}
-          </div>
+                  <p className="text-xs text-gray-500 line-clamp-3 flex-1">
+                    {story.preview}
+                  </p>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {stories.map((story) => (
+                <button
+                  key={story.id}
+                  onClick={() => handleOpenStory(story)}
+                  className="w-full p-4 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all text-left group bg-white hover:bg-gray-50"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <h4 className="text-sm font-semibold text-gray-900 truncate">
+                          {story.title}
+                        </h4>
+                        <span className="text-xs text-gray-400 flex-shrink-0 ml-2">
+                          {story.lastEdited}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 line-clamp-2">
+                        {story.preview}
+                      </p>
+                    </div>
+                    <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
