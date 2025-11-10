@@ -21,6 +21,7 @@ import StoryNode from '@/components/StoryNode'
 import ContextCanvas from '@/components/ContextCanvas'
 import NodeDetailsPanel from '@/components/NodeDetailsPanel'
 import NodeTypeMenu from '@/components/NodeTypeMenu'
+import AIDocumentPanel from '@/components/AIDocumentPanel'
 import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/lib/stories'
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
 import { NodeType } from '@/types/nodes'
@@ -90,6 +91,7 @@ export default function CanvasPage() {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [userAvatar, setUserAvatar] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<'prospect' | 'admin' | 'user' | null>(null)
+  const [isAIDocPanelOpen, setIsAIDocPanelOpen] = useState(false)
   
   // TEMPORARY: Force admin for your email while debugging
   const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
@@ -969,6 +971,21 @@ export default function CanvasPage() {
           <div className="absolute top-6 left-6 z-10">
             <NodeTypeMenu onSelectNodeType={addNewNode} />
           </div>
+          
+          {/* Floating AI Document Button */}
+          <button
+            onClick={() => setIsAIDocPanelOpen(true)}
+            className="absolute bottom-8 right-8 p-4 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-full shadow-lg transition-all hover:shadow-xl z-10 group"
+            title="Open AI Document Assistant"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+              AI Document Assistant
+            </span>
+          </button>
+          
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -1036,6 +1053,12 @@ export default function CanvasPage() {
           <p className="text-gray-400 text-sm">Intelligence Engineered by</p>
           <img src="/aiakaki_logo.svg" alt="AIAKAKI" className="h-3.5" />
         </div>
+
+        {/* AI Document Panel */}
+        <AIDocumentPanel 
+          isOpen={isAIDocPanelOpen} 
+          onClose={() => setIsAIDocPanelOpen(false)} 
+        />
       </div>
     </div>
   )

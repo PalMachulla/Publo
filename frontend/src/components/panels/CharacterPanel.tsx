@@ -243,19 +243,19 @@ export default function CharacterPanel({ node, onUpdate, onDelete }: CharacterPa
   return (
     <div className="flex flex-col h-full">
       {/* Editable Name */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-white rounded-t-3xl">
+      <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-3xl">
         <input
           type="text"
           value={name}
           onChange={(e) => handleNameChange(e.target.value)}
-          className="text-xl font-semibold text-gray-900 w-full bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-blue-400 rounded px-2 py-1"
+          className="text-xl font-semibold text-gray-900 w-full bg-white rounded-full border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-200 rounded px-2 py-1"
           placeholder="Character Name"
         />
-        <div className="text-xs text-gray-500 uppercase tracking-wide mt-1 px-2">Character Node</div>
+        <div className="flex-1 text-xs text-gray-500 bg-gray-100 rounded-full uppercase tracking-wide mt-1 p-1 px-3 inline-block">Character Node</div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+      <div className="flex-1 bg-gray-50 overflow-y-auto px-6 py-4 space-y-6">
         {/* Browse Existing Characters */}
         <div>
           <button
