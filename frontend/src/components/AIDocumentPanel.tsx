@@ -355,10 +355,10 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
                               {message.tasks.map((task) => (
                                 <div 
                                   key={task.id} 
-                                  className="flex items-start gap-3 group"
+                                  className="flex items-center gap-3 group"
                                 >
                                   {/* Status Icon */}
-                                  <div className="flex-shrink-0 w-5 h-5 mt-0.5">
+                                  <div className="flex-shrink-0 w-5 h-5">
                                     {task.status === 'completed' ? (
                                       <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -376,7 +376,7 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
                                   </div>
                                   
                                   {/* Task Text */}
-                                  <p className={`text-sm flex-1 px-3 py-1.5 rounded bg-white/40 backdrop-blur-sm ${
+                                  <p className={`text-sm flex-1 px-3 py-1.5 rounded bg-white/20 backdrop-blur-sm ${
                                     task.status === 'completed' ? 'text-gray-600 line-through' : 
                                     task.status === 'in_progress' ? 'text-gray-900 font-medium' : 
                                     'text-gray-500'
