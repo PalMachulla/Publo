@@ -27,7 +27,7 @@ import AIDocumentPanel from '@/components/AIDocumentPanel'
 import { CanvasProvider } from '@/contexts/CanvasContext'
 import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/lib/stories'
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
-import { NodeType } from '@/types/nodes'
+import { NodeType, StoryFormat } from '@/types/nodes'
 
 const nodeTypes = {
   storyNode: StoryNode,
@@ -385,7 +385,7 @@ export default function CanvasPage() {
   }, [])
 
   // Handle Create Story node click - spawn new story draft
-  const handleCreateStory = useCallback(() => {
+  const handleCreateStory = useCallback((format: StoryFormat) => {
     // Count existing story drafts to calculate position
     const storyNodes = nodes.filter(node => node.type === 'storyDraftNode')
     const storyCount = storyNodes.length
@@ -405,6 +405,17 @@ export default function CanvasPage() {
     const storyId = `story-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const now = new Date().toISOString()
     
+    // Get formatted title based on format
+    const formatLabels: Record<StoryFormat, string> = {
+      'novel': 'Untitled Novel',
+      'report': 'Untitled Report',
+      'short-story': 'Untitled Short Story',
+      'article': 'Untitled Article',
+      'screenplay': 'Untitled Screenplay',
+      'essay': 'Untitled Essay'
+    }
+    const title = formatLabels[format] || 'Untitled Story'
+    
     // Create new story draft node
     const newStoryNode: Node = {
       id: storyId,
@@ -414,12 +425,13 @@ export default function CanvasPage() {
         y: 650 // 150px below Create node - all stories at same horizontal level
       },
       data: {
-        label: 'Untitled Story',
+        label: title,
         comments: [],
         nodeType: 'story-draft' as NodeType,
         storyId: storyId,
-        title: 'Untitled Story',
+        title: title,
         status: 'draft' as const,
+        format: format,
         content: '',
         createdAt: now,
         updatedAt: now,
@@ -449,6 +461,24 @@ export default function CanvasPage() {
     
     console.log('Created new story node:', storyId)
   }, [nodes, edges, setNodes, setEdges])
+  
+  // Update Create Story node with the callback whenever nodes or handleCreateStory changes
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === 'context' && node.type === 'createStoryNode') {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              onCreateStory: handleCreateStory
+            }
+          }
+        }
+        return node
+      })
+    )
+  }, [handleCreateStory, setNodes])
   
   // Handle Story Draft node click - open in AI Document Panel
   const handleStoryDraftClick = useCallback((node: Node) => {
@@ -614,11 +644,9 @@ export default function CanvasPage() {
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     console.log('Node clicked:', { id: node.id, type: node.type, nodeType: node.data?.nodeType })
     
-    // Handle Create Story node - spawn new story draft
+    // Create Story node has its own menu - don't handle click here
     if (node.type === 'createStoryNode' || node.id === 'context') {
-      console.log('Create Story node clicked - spawning new draft')
-      event.stopPropagation()
-      handleCreateStory()
+      // The StoryFormatMenu handles the interaction
       return
     }
     
@@ -634,7 +662,7 @@ export default function CanvasPage() {
     console.log('Regular node clicked - opening details panel')
     setSelectedNode(node)
     setIsPanelOpen(true)
-  }, [handleCreateStory, handleStoryDraftClick])
+  }, [handleStoryDraftClick])
 
   // Handle node update from panel
   const handleNodeUpdate = useCallback((nodeId: string, newData: any) => {

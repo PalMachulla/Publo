@@ -109,11 +109,14 @@ export interface CreateStoryNodeData extends BaseNodeData {
 
 export type StoryDraftStatus = 'draft' | 'active' | 'published'
 
+export type StoryFormat = 'novel' | 'report' | 'short-story' | 'article' | 'screenplay' | 'essay'
+
 export interface StoryDraftNodeData extends BaseNodeData {
   nodeType: 'story-draft'
   storyId: string
   title: string
   status: StoryDraftStatus
+  format: StoryFormat
   content: string
   parentStoryId?: string
   createdAt: string
