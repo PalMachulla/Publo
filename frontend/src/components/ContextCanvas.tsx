@@ -12,9 +12,12 @@ function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
   const [input, setInput] = useState('')
 
   const handleSubmit = () => {
+    console.log('🔘 Button clicked, input:', input, 'callback exists:', !!data.onSubmitPrompt)
     if (input.trim() && data.onSubmitPrompt) {
       data.onSubmitPrompt(input)
       setInput('') // Clear input after submitting
+    } else if (input.trim()) {
+      console.warn('⚠️ No onSubmitPrompt callback found!')
     }
   }
 

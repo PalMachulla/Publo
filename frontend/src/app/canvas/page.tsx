@@ -106,6 +106,7 @@ export default function CanvasPage() {
   const titleInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
+  const callbackAttachedRef = useRef(false)
   
   // Sharing state
   const [sharingDropdownOpen, setSharingDropdownOpen] = useState(false)
@@ -224,6 +225,7 @@ export default function CanvasPage() {
       isLoadingRef.current = true
       currentStoryIdRef.current = storyId
       lastLoadedStoryIdRef.current = storyId
+      callbackAttachedRef.current = false // Reset callback flag for new story
       
       // Load data directly without resetting state
       // (loadStoryData will set the correct nodes/edges)
@@ -361,26 +363,34 @@ export default function CanvasPage() {
   }
 
   const handlePromptSubmit = (prompt: string) => {
+    console.log('🚀 handlePromptSubmit called with:', prompt)
     setInitialPrompt(prompt)
     setIsAIDocPanelOpen(true)
   }
 
   // Update context node with onSubmitPrompt callback
   useEffect(() => {
-    setNodes((nds) =>
-      nds.map((node) =>
-        node.id === 'context'
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                onSubmitPrompt: handlePromptSubmit,
-              },
-            }
-          : node
-      )
-    )
-  }, [setNodes])
+    if (nodes.length > 0 && !callbackAttachedRef.current) {
+      const contextNode = nodes.find(node => node.id === 'context')
+      if (contextNode) {
+        console.log('✅ Attaching onSubmitPrompt callback to context node')
+        callbackAttachedRef.current = true
+        setNodes((nds) =>
+          nds.map((node) =>
+            node.id === 'context'
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    onSubmitPrompt: handlePromptSubmit,
+                  },
+                }
+              : node
+          )
+        )
+      }
+    }
+  }, [nodes, setNodes])
 
   const handleVisibilityChange = async (newVisibility: 'private' | 'shared' | 'public') => {
     if (!storyId) return
