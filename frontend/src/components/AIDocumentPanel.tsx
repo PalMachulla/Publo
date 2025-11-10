@@ -360,11 +360,11 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
                                   {/* Status Icon */}
                                   <div className="flex-shrink-0 w-5 h-5 mt-0.5">
                                     {task.status === 'completed' ? (
-                                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                       </svg>
                                     ) : task.status === 'in_progress' ? (
-                                      <svg className="w-5 h-5 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                                      <svg className="w-5 h-5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                       </svg>
@@ -376,7 +376,7 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
                                   </div>
                                   
                                   {/* Task Text */}
-                                  <p className={`text-sm flex-1 ${
+                                  <p className={`text-sm flex-1 px-3 py-1.5 rounded bg-white/40 backdrop-blur-sm ${
                                     task.status === 'completed' ? 'text-gray-600 line-through' : 
                                     task.status === 'in_progress' ? 'text-gray-900 font-medium' : 
                                     'text-gray-500'
