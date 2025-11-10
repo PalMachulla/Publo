@@ -49,18 +49,44 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
       setTimeout(() => {
         const aiResponse: Message = {
           role: 'assistant',
-          content: 'I\'ll help you with that. Let me break this down into steps:',
+          content: 'I\'ll help you with that. Here\'s my reasoning process:',
           tasks: [
-            { id: '1', text: 'Analyzing your request and understanding the context', status: 'completed' },
-            { id: '2', text: 'Researching relevant information and sources', status: 'completed' },
-            { id: '3', text: 'Structuring the content and outlining key points', status: 'in_progress' },
-            { id: '4', text: 'Drafting the document with proper formatting', status: 'pending' },
-            { id: '5', text: 'Review and refine the final output', status: 'pending' },
+            { id: '1', text: 'Understanding the prompt and extracting key requirements', status: 'in_progress' },
+            { id: '2', text: 'Breaking down the task into logical components', status: 'pending' },
+            { id: '3', text: 'Identifying the narrative structure and tone', status: 'pending' },
+            { id: '4', text: 'Researching relevant themes and context', status: 'pending' },
+            { id: '5', text: 'Outlining the document structure', status: 'pending' },
+            { id: '6', text: 'Drafting initial content with key points', status: 'pending' },
+            { id: '7', text: 'Refining language and ensuring coherence', status: 'pending' },
           ]
         }
         setMessages(prev => [...prev, aiResponse])
         
-        // Simulate task progression
+        // Simulate realistic task progression
+        setTimeout(() => {
+          setMessages(prev => prev.map((msg, idx) => 
+            idx === prev.length - 1 && msg.tasks ? {
+              ...msg,
+              tasks: msg.tasks.map(task => 
+                task.id === '1' ? { ...task, status: 'completed' } : 
+                task.id === '2' ? { ...task, status: 'in_progress' } : task
+              )
+            } : msg
+          ))
+        }, 1200)
+        
+        setTimeout(() => {
+          setMessages(prev => prev.map((msg, idx) => 
+            idx === prev.length - 1 && msg.tasks ? {
+              ...msg,
+              tasks: msg.tasks.map(task => 
+                task.id === '2' ? { ...task, status: 'completed' } : 
+                task.id === '3' ? { ...task, status: 'in_progress' } : task
+              )
+            } : msg
+          ))
+        }, 2400)
+        
         setTimeout(() => {
           setMessages(prev => prev.map((msg, idx) => 
             idx === prev.length - 1 && msg.tasks ? {
@@ -71,7 +97,7 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
               )
             } : msg
           ))
-        }, 2000)
+        }, 3800)
         
         setTimeout(() => {
           setMessages(prev => prev.map((msg, idx) => 
@@ -83,18 +109,42 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
               )
             } : msg
           ))
-        }, 4000)
+        }, 5200)
         
         setTimeout(() => {
           setMessages(prev => prev.map((msg, idx) => 
             idx === prev.length - 1 && msg.tasks ? {
               ...msg,
               tasks: msg.tasks.map(task => 
-                task.id === '5' ? { ...task, status: 'completed' } : task
+                task.id === '5' ? { ...task, status: 'completed' } : 
+                task.id === '6' ? { ...task, status: 'in_progress' } : task
               )
             } : msg
           ))
-        }, 6000)
+        }, 6600)
+        
+        setTimeout(() => {
+          setMessages(prev => prev.map((msg, idx) => 
+            idx === prev.length - 1 && msg.tasks ? {
+              ...msg,
+              tasks: msg.tasks.map(task => 
+                task.id === '6' ? { ...task, status: 'completed' } : 
+                task.id === '7' ? { ...task, status: 'in_progress' } : task
+              )
+            } : msg
+          ))
+        }, 8200)
+        
+        setTimeout(() => {
+          setMessages(prev => prev.map((msg, idx) => 
+            idx === prev.length - 1 && msg.tasks ? {
+              ...msg,
+              tasks: msg.tasks.map(task => 
+                task.id === '7' ? { ...task, status: 'completed' } : task
+              )
+            } : msg
+          ))
+        }, 9800)
       }, 800)
     }
     
@@ -152,42 +202,81 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
     setMessages(prev => [...prev, { role: 'user', content: userMessage }])
     setInput('')
     
-    // Simulate AI response with tasks
+    // Simulate AI response with reasoning tasks
     setTimeout(() => {
+      const timestamp = Date.now()
       const aiResponse: Message = {
         role: 'assistant',
-        content: 'Processing your request. Here\'s my approach:',
+        content: 'Thinking through your request...',
         tasks: [
-          { id: `${Date.now()}-1`, text: 'Understanding your specific requirements', status: 'completed' },
-          { id: `${Date.now()}-2`, text: 'Gathering relevant information', status: 'in_progress' },
-          { id: `${Date.now()}-3`, text: 'Composing the response', status: 'pending' },
+          { id: `${timestamp}-1`, text: 'Analyzing the context of your input', status: 'in_progress' },
+          { id: `${timestamp}-2`, text: 'Determining the best approach for this task', status: 'pending' },
+          { id: `${timestamp}-3`, text: 'Gathering relevant information and examples', status: 'pending' },
+          { id: `${timestamp}-4`, text: 'Structuring the response for clarity', status: 'pending' },
+          { id: `${timestamp}-5`, text: 'Composing and refining the output', status: 'pending' },
         ]
       }
       setMessages(prev => [...prev, aiResponse])
       
-      // Simulate task progression
+      // Simulate realistic task progression
       setTimeout(() => {
         setMessages(prev => prev.map((msg, idx) => 
           idx === prev.length - 1 && msg.tasks ? {
             ...msg,
             tasks: msg.tasks.map(task => 
-              task.status === 'in_progress' ? { ...task, status: 'completed' } : 
-              task.status === 'pending' ? { ...task, status: 'in_progress' } : task
+              task.id === `${timestamp}-1` ? { ...task, status: 'completed' } : 
+              task.id === `${timestamp}-2` ? { ...task, status: 'in_progress' } : task
             )
           } : msg
         ))
-      }, 1500)
+      }, 1000)
       
       setTimeout(() => {
         setMessages(prev => prev.map((msg, idx) => 
           idx === prev.length - 1 && msg.tasks ? {
             ...msg,
             tasks: msg.tasks.map(task => 
-              task.status === 'in_progress' ? { ...task, status: 'completed' } : task
+              task.id === `${timestamp}-2` ? { ...task, status: 'completed' } : 
+              task.id === `${timestamp}-3` ? { ...task, status: 'in_progress' } : task
             )
           } : msg
         ))
-      }, 3000)
+      }, 2200)
+      
+      setTimeout(() => {
+        setMessages(prev => prev.map((msg, idx) => 
+          idx === prev.length - 1 && msg.tasks ? {
+            ...msg,
+            tasks: msg.tasks.map(task => 
+              task.id === `${timestamp}-3` ? { ...task, status: 'completed' } : 
+              task.id === `${timestamp}-4` ? { ...task, status: 'in_progress' } : task
+            )
+          } : msg
+        ))
+      }, 3600)
+      
+      setTimeout(() => {
+        setMessages(prev => prev.map((msg, idx) => 
+          idx === prev.length - 1 && msg.tasks ? {
+            ...msg,
+            tasks: msg.tasks.map(task => 
+              task.id === `${timestamp}-4` ? { ...task, status: 'completed' } : 
+              task.id === `${timestamp}-5` ? { ...task, status: 'in_progress' } : task
+            )
+          } : msg
+        ))
+      }, 5000)
+      
+      setTimeout(() => {
+        setMessages(prev => prev.map((msg, idx) => 
+          idx === prev.length - 1 && msg.tasks ? {
+            ...msg,
+            tasks: msg.tasks.map(task => 
+              task.id === `${timestamp}-5` ? { ...task, status: 'completed' } : task
+            )
+          } : msg
+        ))
+      }, 6500)
     }, 500)
   }
 
@@ -230,8 +319,11 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
           >
             {/* Grid background */}
             <div className="absolute inset-0 z-0" style={{
-              backgroundImage: `radial-gradient(circle, #e5e7eb 1px, transparent 1px)`,
-              backgroundSize: '20px 20px'
+              backgroundImage: `
+                linear-gradient(to right, #e5e7eb 1px, transparent 1px),
+                linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
+              `,
+              backgroundSize: '24px 24px'
             }} />
             
             {/* Chat Messages */}
