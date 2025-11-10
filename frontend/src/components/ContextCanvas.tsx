@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useState, useEffect } from 'react'
+import { memo, useState } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 
 export interface ContextCanvasData {
@@ -10,21 +10,11 @@ export interface ContextCanvasData {
 
 function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
   const [input, setInput] = useState('')
-  const [showMessage, setShowMessage] = useState(false)
 
   const handleSubmit = () => {
-    if (input.trim()) {
-      // Call the onSubmitPrompt callback if provided
-      if (data.onSubmitPrompt) {
-        data.onSubmitPrompt(input)
-        setInput('') // Clear input after submitting
-      } else {
-        setShowMessage(true)
-        // Auto-hide after 3 seconds
-        setTimeout(() => {
-          setShowMessage(false)
-        }, 3000)
-      }
+    if (input.trim() && data.onSubmitPrompt) {
+      data.onSubmitPrompt(input)
+      setInput('') // Clear input after submitting
     }
   }
 
@@ -69,18 +59,6 @@ function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
           </button>
         </div>
       </div>
-
-      {/* Message Card */}
-      {showMessage && (
-        <div 
-          className="absolute top-1/2 -translate-y-1/2 -right-4 translate-x-full bg-white rounded-xl shadow-xl border border-gray-200 p-4 w-64 animate-fade-in"
-          style={{ zIndex: 1000 }}
-        >
-          <p className="text-gray-600 text-center italic">
-            Patience, stories will come soon...
-          </p>
-        </div>
-      )}
     </div>
   )
 }
