@@ -20,9 +20,19 @@ interface AIDocumentPanelProps {
   isOpen: boolean
   onClose: () => void
   initialPrompt?: string
+  storyId?: string
+  initialContent?: string
+  onSave?: (storyId: string, content: string) => void
 }
 
-export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDocumentPanelProps) {
+export default function AIDocumentPanel({ 
+  isOpen, 
+  onClose, 
+  initialPrompt,
+  storyId,
+  initialContent,
+  onSave
+}: AIDocumentPanelProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [documentContent, setDocumentContent] = useState('')
@@ -31,6 +41,13 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hasProcessedInitialPrompt = useRef(false)
+  
+  // Load initial content when storyId changes
+  useEffect(() => {
+    if (initialContent) {
+      setDocumentContent(initialContent)
+    }
+  }, [initialContent])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })

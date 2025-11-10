@@ -102,6 +102,7 @@ export default function CanvasPage() {
   const [userRole, setUserRole] = useState<'prospect' | 'admin' | 'user' | null>(null)
   const [isAIDocPanelOpen, setIsAIDocPanelOpen] = useState(false)
   const [initialPrompt, setInitialPrompt] = useState('')
+  const [currentStoryDraftId, setCurrentStoryDraftId] = useState<string | null>(null)
   
   // TEMPORARY: Force admin for your email while debugging
   const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
@@ -441,6 +442,7 @@ export default function CanvasPage() {
     hasUnsavedChangesRef.current = true
     
     // Open AI Document Panel with the new story
+    setCurrentStoryDraftId(storyId)
     setInitialPrompt('Create a new story')
     setIsAIDocPanelOpen(true)
     
@@ -452,12 +454,37 @@ export default function CanvasPage() {
     const storyData = node.data as any
     console.log('Opening story draft:', storyData.title)
     
+    // Set the current story draft for editing
+    setCurrentStoryDraftId(node.id)
+    
     // Load story content into AI Document Panel
     setInitialPrompt(storyData.content || storyData.title || 'Continue this story')
     setIsAIDocPanelOpen(true)
-    
-    // TODO: Pass story ID to panel for saving updates back to node
   }, [])
+  
+  // Handle saving story draft content
+  const handleSaveStoryDraft = useCallback((nodeId: string, content: string) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          const now = new Date().toISOString()
+          const preview = content.substring(0, 100) + (content.length > 100 ? '...' : '')
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              content,
+              preview,
+              updatedAt: now,
+            }
+          }
+        }
+        return node
+      })
+    )
+    hasUnsavedChangesRef.current = true
+    console.log('Updated story draft:', nodeId)
+  }, [setNodes])
 
   const handleVisibilityChange = async (newVisibility: 'private' | 'shared' | 'public') => {
     if (!storyId) return
@@ -1168,9 +1195,17 @@ export default function CanvasPage() {
           isOpen={isAIDocPanelOpen} 
           onClose={() => {
             setIsAIDocPanelOpen(false)
-            setInitialPrompt('') // Clear initial prompt when closing
+            setInitialPrompt('')
+            setCurrentStoryDraftId(null)
           }}
           initialPrompt={initialPrompt}
+          storyId={currentStoryDraftId || undefined}
+          initialContent={
+            currentStoryDraftId 
+              ? nodes.find(n => n.id === currentStoryDraftId)?.data?.content || ''
+              : ''
+          }
+          onSave={handleSaveStoryDraft}
         />
       </div>
     </div>
