@@ -11,8 +11,11 @@ interface CreateStoryNodeInternalData extends CreateStoryNodeData {
 
 function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeInternalData>) {
   const handleFormatSelect = (format: StoryFormat) => {
+    console.log('StoryFormatMenu selected format:', format)
     if (data.onCreateStory) {
       data.onCreateStory(format)
+    } else {
+      console.error('onCreateStory callback not found in node data')
     }
   }
 

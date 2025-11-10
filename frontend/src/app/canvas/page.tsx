@@ -29,10 +29,21 @@ import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/l
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
 import { NodeType, StoryFormat } from '@/types/nodes'
 
+// Create a wrapper component for CreateStoryNode that injects the callback from ref
+const CreateStoryNodeWrapper = (props: any) => {
+  // Get the ref from the parent scope
+  const callbackRef = (window as any).__handleCreateStoryRef
+  const enhancedData = {
+    ...props.data,
+    onCreateStory: callbackRef?.current || props.data.onCreateStory
+  }
+  return <CreateStoryNode {...props} data={enhancedData} />
+}
+
 const nodeTypes = {
   storyNode: StoryNode,
   contextCanvas: ContextCanvas,
-  createStoryNode: CreateStoryNode,
+  createStoryNode: CreateStoryNodeWrapper,
   storyDraftNode: StoryDraftNode,
 }
 
@@ -45,7 +56,11 @@ const initialNodes: Node[] = [
     data: { 
       label: 'Create Story',
       comments: [],
-      nodeType: 'create-story' as NodeType
+      nodeType: 'create-story' as NodeType,
+      onCreateStory: (format: StoryFormat) => {
+        // This will be replaced by the ref during render
+        console.warn('onCreateStory called before ref was set')
+      }
     },
   },
 ]
@@ -124,6 +139,7 @@ export default function CanvasPage() {
   const [emailInput, setEmailInput] = useState('')
   const [sendingInvite, setSendingInvite] = useState(false)
   const sharingDropdownRef = useRef<HTMLDivElement>(null)
+  const handleCreateStoryRef = useRef<((format: StoryFormat) => void) | null>(null)
 
   // Check access control
   useEffect(() => {
@@ -386,6 +402,7 @@ export default function CanvasPage() {
 
   // Handle Create Story node click - spawn new story draft
   const handleCreateStory = useCallback((format: StoryFormat) => {
+    console.log('handleCreateStory called with format:', format)
     // Count existing story drafts to calculate position
     const storyNodes = nodes.filter(node => node.type === 'storyDraftNode')
     const storyCount = storyNodes.length
@@ -462,23 +479,10 @@ export default function CanvasPage() {
     console.log('Created new story node:', storyId)
   }, [nodes, edges, setNodes, setEdges])
   
-  // Update Create Story node with the callback whenever nodes or handleCreateStory changes
-  useEffect(() => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === 'context' && node.type === 'createStoryNode') {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              onCreateStory: handleCreateStory
-            }
-          }
-        }
-        return node
-      })
-    )
-  }, [handleCreateStory, setNodes])
+  // Store the callback in a ref so it can be accessed by nodes without causing re-renders
+  handleCreateStoryRef.current = handleCreateStory
+  // Also store on window for the wrapper component to access
+  ;(window as any).__handleCreateStoryRef = handleCreateStoryRef
   
   // Handle Story Draft node click - open in AI Document Panel
   const handleStoryDraftClick = useCallback((node: Node) => {
