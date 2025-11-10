@@ -5,9 +5,10 @@ import { useState, useRef, useEffect } from 'react'
 interface AIDocumentPanelProps {
   isOpen: boolean
   onClose: () => void
+  initialPrompt?: string
 }
 
-export default function AIDocumentPanel({ isOpen, onClose }: AIDocumentPanelProps) {
+export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDocumentPanelProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([])
   const [documentContent, setDocumentContent] = useState('')
@@ -15,6 +16,7 @@ export default function AIDocumentPanel({ isOpen, onClose }: AIDocumentPanelProp
   const [isDragging, setIsDragging] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const hasProcessedInitialPrompt = useRef(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -23,6 +25,30 @@ export default function AIDocumentPanel({ isOpen, onClose }: AIDocumentPanelProp
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // Handle initial prompt when panel opens
+  useEffect(() => {
+    if (isOpen && initialPrompt && !hasProcessedInitialPrompt.current) {
+      hasProcessedInitialPrompt.current = true
+      // Add user message with initial prompt
+      setMessages([{ role: 'user', content: initialPrompt }])
+      
+      // TODO: Send to AI and get response
+      // For now, just echo back
+      setTimeout(() => {
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `You said: "${initialPrompt}". This is where the AI response will appear.` 
+        }])
+      }, 500)
+    }
+    
+    // Reset the flag when panel closes
+    if (!isOpen) {
+      hasProcessedInitialPrompt.current = false
+      setMessages([]) // Clear messages when panel closes
+    }
+  }, [isOpen, initialPrompt])
 
   // Handle mouse drag for resizing
   const handleMouseDown = (e: React.MouseEvent) => {

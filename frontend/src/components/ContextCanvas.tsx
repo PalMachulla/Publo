@@ -5,6 +5,7 @@ import { Handle, Position, NodeProps } from 'reactflow'
 
 export interface ContextCanvasData {
   placeholder?: string
+  onSubmitPrompt?: (prompt: string) => void
 }
 
 function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
@@ -13,11 +14,17 @@ function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
 
   const handleSubmit = () => {
     if (input.trim()) {
-      setShowMessage(true)
-      // Auto-hide after 3 seconds
-      setTimeout(() => {
-        setShowMessage(false)
-      }, 3000)
+      // Call the onSubmitPrompt callback if provided
+      if (data.onSubmitPrompt) {
+        data.onSubmitPrompt(input)
+        setInput('') // Clear input after submitting
+      } else {
+        setShowMessage(true)
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+          setShowMessage(false)
+        }, 3000)
+      }
     }
   }
 
