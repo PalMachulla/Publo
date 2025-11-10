@@ -362,11 +362,11 @@ export default function CanvasPage() {
     router.push('/auth')
   }
 
-  const handlePromptSubmit = (prompt: string) => {
+  const handlePromptSubmit = useCallback((prompt: string) => {
     console.log('🚀 handlePromptSubmit called with:', prompt)
     setInitialPrompt(prompt)
     setIsAIDocPanelOpen(true)
-  }
+  }, [])
 
   // Update context node with onSubmitPrompt callback
   useEffect(() => {
@@ -390,7 +390,7 @@ export default function CanvasPage() {
         )
       }
     }
-  }, [nodes, setNodes])
+  }, [nodes, setNodes, handlePromptSubmit])
 
   const handleVisibilityChange = async (newVisibility: 'private' | 'shared' | 'public') => {
     if (!storyId) return
