@@ -30,6 +30,11 @@ export default function NodeDetailsPanel({
   
   const nodeData = node.data as any
   const nodeType = nodeData.nodeType || 'story'
+  
+  // Don't show panel for create-story or story-draft nodes - they have their own interactions
+  if (nodeType === 'create-story' || nodeType === 'story-draft') {
+    return null
+  }
 
   const handleAddComment = () => {
     if (!commentText.trim() || !user) return

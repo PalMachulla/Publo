@@ -605,19 +605,26 @@ export default function CanvasPage() {
 
   // Handle node click
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    console.log('Node clicked:', { id: node.id, type: node.type, nodeType: node.data?.nodeType })
+    
     // Handle Create Story node - spawn new story draft
-    if (node.type === 'createStoryNode') {
+    if (node.type === 'createStoryNode' || node.id === 'context') {
+      console.log('Create Story node clicked - spawning new draft')
+      event.stopPropagation()
       handleCreateStory()
       return
     }
     
     // Handle Story Draft node - open in AI Document Panel
     if (node.type === 'storyDraftNode') {
+      console.log('Story Draft node clicked - opening in AI panel')
+      event.stopPropagation()
       handleStoryDraftClick(node)
       return
     }
     
     // For other node types, open details panel
+    console.log('Regular node clicked - opening details panel')
     setSelectedNode(node)
     setIsPanelOpen(true)
   }, [handleCreateStory, handleStoryDraftClick])
