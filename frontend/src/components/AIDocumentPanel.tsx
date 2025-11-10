@@ -13,6 +13,7 @@ interface Message {
   content: string
   tasks?: Task[]
   isThinkingCollapsed?: boolean
+  hasAutoCollapsed?: boolean
 }
 
 interface AIDocumentPanelProps {
@@ -39,15 +40,15 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
     scrollToBottom()
   }, [messages])
 
-  // Auto-collapse thinking box when all tasks are completed
+  // Auto-collapse thinking box when all tasks are completed (only once)
   useEffect(() => {
     messages.forEach((msg, idx) => {
-      if (msg.role === 'assistant' && msg.tasks && !msg.isThinkingCollapsed) {
+      if (msg.role === 'assistant' && msg.tasks && !msg.isThinkingCollapsed && !msg.hasAutoCollapsed) {
         const allCompleted = msg.tasks.every(task => task.status === 'completed')
         if (allCompleted) {
           setTimeout(() => {
             setMessages(prev => prev.map((m, i) => 
-              i === idx ? { ...m, isThinkingCollapsed: true } : m
+              i === idx ? { ...m, isThinkingCollapsed: true, hasAutoCollapsed: true } : m
             ))
           }, 1000) // Wait 1 second before collapsing
         }
@@ -57,7 +58,11 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
 
   const toggleThinkingCollapse = (messageIndex: number) => {
     setMessages(prev => prev.map((msg, idx) => 
-      idx === messageIndex ? { ...msg, isThinkingCollapsed: !msg.isThinkingCollapsed } : msg
+      idx === messageIndex ? { 
+        ...msg, 
+        isThinkingCollapsed: !msg.isThinkingCollapsed
+        // Keep hasAutoCollapsed as is - once auto-collapsed, never auto-collapse again
+      } : msg
     ))
   }
 
@@ -74,6 +79,7 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
           role: 'assistant',
           content: 'I\'ll help you with that. Here\'s my reasoning process:',
           isThinkingCollapsed: false,
+          hasAutoCollapsed: false,
           tasks: [
             { id: '1', text: 'Understanding the prompt and extracting key requirements', status: 'in_progress' },
             { id: '2', text: 'Breaking down the task into logical components', status: 'pending' },
@@ -233,6 +239,7 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
         role: 'assistant',
         content: 'Thinking through your request...',
         isThinkingCollapsed: false,
+        hasAutoCollapsed: false,
         tasks: [
           { id: `${timestamp}-1`, text: 'Analyzing the context of your input', status: 'in_progress' },
           { id: `${timestamp}-2`, text: 'Determining the best approach for this task', status: 'pending' },
