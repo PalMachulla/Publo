@@ -191,8 +191,14 @@ export default function AdminPage() {
 
   if (loading || checkingAdmin || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-600 text-lg font-mono">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 relative overflow-hidden">
+        {/* Grid background */}
+        <div className="absolute inset-0 z-0" style={{
+          backgroundImage: `radial-gradient(circle, #e5e7eb 1px, transparent 1px)`,
+          backgroundSize: '20px 20px'
+        }} />
+        
+        <div className="text-gray-900 text-lg font-mono relative z-10">Loading...</div>
       </div>
     )
   }

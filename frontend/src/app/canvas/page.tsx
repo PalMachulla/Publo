@@ -609,8 +609,14 @@ export default function CanvasPage() {
 
   if (loading || checkingAccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-white text-xl font-mono">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 relative overflow-hidden">
+        {/* Grid background */}
+        <div className="absolute inset-0 z-0" style={{
+          backgroundImage: `radial-gradient(circle, #e5e7eb 1px, transparent 1px)`,
+          backgroundSize: '20px 20px'
+        }} />
+        
+        <div className="text-gray-900 text-xl font-mono relative z-10">
           {loading ? 'Loading...' : 'Checking access...'}
         </div>
       </div>

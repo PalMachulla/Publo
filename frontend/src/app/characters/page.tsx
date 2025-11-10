@@ -101,8 +101,14 @@ export default function CharactersPage() {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-500">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 relative overflow-hidden">
+        {/* Grid background */}
+        <div className="absolute inset-0 z-0" style={{
+          backgroundImage: `radial-gradient(circle, #e5e7eb 1px, transparent 1px)`,
+          backgroundSize: '20px 20px'
+        }} />
+        
+        <div className="text-gray-900 relative z-10">Loading...</div>
       </div>
     )
   }

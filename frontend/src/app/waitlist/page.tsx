@@ -50,8 +50,14 @@ export default function WaitlistPage() {
 
   if (loading || checkingAccess) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center relative overflow-hidden">
+        {/* Grid background */}
+        <div className="absolute inset-0 z-0" style={{
+          backgroundImage: `radial-gradient(circle, #e5e7eb 1px, transparent 1px)`,
+          backgroundSize: '20px 20px'
+        }} />
+        
+        <div className="text-gray-900 relative z-10">Loading...</div>
       </div>
     )
   }
