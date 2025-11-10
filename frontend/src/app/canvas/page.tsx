@@ -317,16 +317,15 @@ export default function CanvasPage() {
         finalNodes = [...loadedNodes, contextNode]
       }
       
-      // Upgrade all edges to use smoothstep for consistent curved lines
+      // Upgrade all edges to use bezier for smooth curved lines
       const upgradedEdges = loadedEdges.map((edge: Edge) => ({
         ...edge,
-        type: 'smoothstep',
+        type: 'default', // Default type uses smooth bezier curves
         style: { 
           ...edge.style,
           stroke: edge.style?.stroke || '#9ca3af', 
           strokeWidth: edge.style?.strokeWidth || 2 
-        },
-        pathOptions: { borderRadius: 8 }
+        }
       }))
       
       console.log(`Loaded ${finalNodes.length} nodes, ${loadedEdges.length} edges for story: ${id}`)
@@ -468,15 +467,14 @@ export default function CanvasPage() {
       },
     }
     
-    // Create edge from Create node to new story with smooth rounded corners
+    // Create edge from Create node to new story with smooth curved lines
     const newEdge: Edge = {
       id: `context-${storyId}`,
       source: 'context',
       target: storyId,
       animated: false,
       style: { stroke: '#9ca3af', strokeWidth: 2 }, // Subtle edge thickness
-      type: 'smoothstep', // Smooth step edges for angled connectors with subtle rounded corners
-      pathOptions: { borderRadius: 8 }
+      type: 'default' // Default type uses smooth bezier curves
     }
     
     setNodes([...nodes, newStoryNode])
@@ -650,8 +648,7 @@ export default function CanvasPage() {
       ...params, 
       animated: false, 
       style: { stroke: '#9ca3af', strokeWidth: 2 }, // Subtle edge thickness
-      type: 'smoothstep',
-      pathOptions: { borderRadius: 8 }
+      type: 'default' // Default type uses smooth bezier curves
     }, eds)),
     [setEdges]
   )
@@ -763,8 +760,7 @@ export default function CanvasPage() {
       target: 'context',
       animated: false,
       style: { stroke: '#9ca3af', strokeWidth: 2 }, // Subtle edge thickness
-      type: 'smoothstep',
-      pathOptions: { borderRadius: 8 }
+      type: 'default' // Default type uses smooth bezier curves
     }
     
     // Prepare updated arrays BEFORE setState
@@ -1193,7 +1189,7 @@ export default function CanvasPage() {
             fitViewOptions={{ padding: 0.2, maxZoom: 0.75 }}
             className="bg-gray-50"
             defaultEdgeOptions={{
-              type: 'smoothstep',
+              type: 'default', // Default type uses smooth bezier curves
               animated: false,
               style: { stroke: '#9ca3af', strokeWidth: 2 } // Subtle edge thickness
             }}
