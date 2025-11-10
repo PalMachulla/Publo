@@ -11,7 +11,10 @@ export default function AIDocumentPanel({ isOpen, onClose }: AIDocumentPanelProp
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([])
   const [documentContent, setDocumentContent] = useState('')
+  const [leftPanelWidth, setLeftPanelWidth] = useState(50) // Percentage
+  const [isDragging, setIsDragging] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -20,6 +23,44 @@ export default function AIDocumentPanel({ isOpen, onClose }: AIDocumentPanelProp
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // Handle mouse drag for resizing
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging || !containerRef.current) return
+    
+    const containerRect = containerRef.current.getBoundingClientRect()
+    const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100
+    
+    // Constrain between 30% and 70%
+    if (newWidth >= 30 && newWidth <= 70) {
+      setLeftPanelWidth(newWidth)
+    }
+  }
+
+  const handleMouseUp = () => {
+    setIsDragging(false)
+  }
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+    }
+  }, [isDragging])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,9 +112,12 @@ export default function AIDocumentPanel({ isOpen, onClose }: AIDocumentPanelProp
         </div>
 
         {/* Split Content */}
-        <div className="flex h-[calc(100vh-4rem)]">
+        <div className="flex h-[calc(100vh-4rem)]" ref={containerRef}>
           {/* Left Side - AI Chat */}
-          <div className="w-1/2 border-r border-gray-200 flex flex-col bg-gray-50">
+          <div 
+            className="border-r border-gray-200 flex flex-col bg-gray-50 relative" 
+            style={{ width: `${leftPanelWidth}%` }}
+          >
             {/* Chat Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.length === 0 ? (
@@ -132,8 +176,23 @@ export default function AIDocumentPanel({ isOpen, onClose }: AIDocumentPanelProp
             </div>
           </div>
 
+          {/* Resize Handle */}
+          <div 
+            className={`relative w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors group ${
+              isDragging ? 'bg-blue-500' : ''
+            }`}
+            onMouseDown={handleMouseDown}
+          >
+            {/* Center Handle Bar */}
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-6 h-12 bg-gray-300 group-hover:bg-blue-500 rounded-full flex items-center justify-center shadow-md transition-colors">
+              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+              </svg>
+            </div>
+          </div>
+
           {/* Right Side - Document Editor */}
-          <div className="w-1/2 flex flex-col bg-white">
+          <div className="flex flex-col bg-white" style={{ width: `${100 - leftPanelWidth}%` }}>
             {/* Editor Toolbar */}
             <div className="h-12 border-b border-gray-200 flex items-center px-4 gap-2 bg-gray-50">
               <button className="p-1.5 hover:bg-gray-200 rounded transition-colors" title="Bold">
