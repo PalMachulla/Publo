@@ -433,9 +433,9 @@ export default function CanvasPage() {
       source: 'context',
       target: storyId,
       animated: false,
-      style: { stroke: '#9ca3af', strokeWidth: 3 }, // Match node border thickness
-      type: 'smoothstep', // Smooth step edges for angled connectors with rounded corners
-      pathOptions: { borderRadius: 20 }
+      style: { stroke: '#9ca3af', strokeWidth: 2 }, // Subtle edge thickness
+      type: 'smoothstep', // Smooth step edges for angled connectors with subtle rounded corners
+      pathOptions: { borderRadius: 8 }
     }
     
     setNodes([...nodes, newStoryNode])
@@ -603,9 +603,9 @@ export default function CanvasPage() {
     (params: Connection) => setEdges((eds) => addEdge({ 
       ...params, 
       animated: false, 
-      style: { stroke: '#9ca3af', strokeWidth: 3 }, // Match node border thickness and color
+      style: { stroke: '#9ca3af', strokeWidth: 2 }, // Subtle edge thickness
       type: 'smoothstep',
-      pathOptions: { borderRadius: 20 }
+      pathOptions: { borderRadius: 8 }
     }, eds)),
     [setEdges]
   )
@@ -718,9 +718,9 @@ export default function CanvasPage() {
       source: newNodeId,
       target: 'context',
       animated: false,
-      style: { stroke: '#9ca3af', strokeWidth: 3 }, // Match node border thickness and color
+      style: { stroke: '#9ca3af', strokeWidth: 2 }, // Subtle edge thickness
       type: 'smoothstep',
-      pathOptions: { borderRadius: 20 }
+      pathOptions: { borderRadius: 8 }
     }
     
     // Prepare updated arrays BEFORE setState
@@ -1151,7 +1151,7 @@ export default function CanvasPage() {
             defaultEdgeOptions={{
               type: 'smoothstep',
               animated: false,
-              style: { stroke: '#9ca3af', strokeWidth: 3 } // Match node border thickness and color
+              style: { stroke: '#9ca3af', strokeWidth: 2 } // Subtle edge thickness
             }}
             nodesDraggable={true}
             nodesConnectable={true}
