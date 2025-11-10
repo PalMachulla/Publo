@@ -12,6 +12,7 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   tasks?: Task[]
+  isThinkingCollapsed?: boolean
 }
 
 interface AIDocumentPanelProps {
@@ -38,6 +39,28 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
     scrollToBottom()
   }, [messages])
 
+  // Auto-collapse thinking box when all tasks are completed
+  useEffect(() => {
+    messages.forEach((msg, idx) => {
+      if (msg.role === 'assistant' && msg.tasks && !msg.isThinkingCollapsed) {
+        const allCompleted = msg.tasks.every(task => task.status === 'completed')
+        if (allCompleted) {
+          setTimeout(() => {
+            setMessages(prev => prev.map((m, i) => 
+              i === idx ? { ...m, isThinkingCollapsed: true } : m
+            ))
+          }, 1000) // Wait 1 second before collapsing
+        }
+      }
+    })
+  }, [messages])
+
+  const toggleThinkingCollapse = (messageIndex: number) => {
+    setMessages(prev => prev.map((msg, idx) => 
+      idx === messageIndex ? { ...msg, isThinkingCollapsed: !msg.isThinkingCollapsed } : msg
+    ))
+  }
+
   // Handle initial prompt when panel opens
   useEffect(() => {
     if (isOpen && initialPrompt && !hasProcessedInitialPrompt.current) {
@@ -50,6 +73,7 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
         const aiResponse: Message = {
           role: 'assistant',
           content: 'I\'ll help you with that. Here\'s my reasoning process:',
+          isThinkingCollapsed: false,
           tasks: [
             { id: '1', text: 'Understanding the prompt and extracting key requirements', status: 'in_progress' },
             { id: '2', text: 'Breaking down the task into logical components', status: 'pending' },
@@ -208,6 +232,7 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
       const aiResponse: Message = {
         role: 'assistant',
         content: 'Thinking through your request...',
+        isThinkingCollapsed: false,
         tasks: [
           { id: `${timestamp}-1`, text: 'Analyzing the context of your input', status: 'in_progress' },
           { id: `${timestamp}-2`, text: 'Determining the best approach for this task', status: 'pending' },
@@ -349,42 +374,67 @@ export default function AIDocumentPanel({ isOpen, onClose, initialPrompt }: AIDo
                         <div className="space-y-2">
                           <p className="text-sm text-gray-700 mb-3">{message.content}</p>
                           
-                          {/* Task List */}
+                          {/* Thinking Process Box */}
                           {message.tasks && message.tasks.length > 0 && (
-                            <div className="space-y-2 mt-3">
-                              {message.tasks.map((task) => (
-                                <div 
-                                  key={task.id} 
-                                  className="flex items-center gap-3 group"
+                            <div className="bg-gray-100 rounded-lg border border-gray-200 overflow-hidden">
+                              {/* Header */}
+                              <button
+                                onClick={() => toggleThinkingCollapse(index)}
+                                className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-200 transition-colors"
+                              >
+                                <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                                  Thinking Process
+                                </span>
+                                <svg 
+                                  className={`w-4 h-4 text-gray-500 transition-transform ${
+                                    message.isThinkingCollapsed ? 'rotate-0' : 'rotate-180'
+                                  }`} 
+                                  fill="none" 
+                                  stroke="currentColor" 
+                                  viewBox="0 0 24 24"
                                 >
-                                  {/* Status Icon */}
-                                  <div className="flex-shrink-0 w-5 h-5">
-                                    {task.status === 'completed' ? (
-                                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                      </svg>
-                                    ) : task.status === 'in_progress' ? (
-                                      <svg className="w-5 h-5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                      </svg>
-                                    ) : (
-                                      <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <circle cx="12" cy="12" r="9" strokeWidth="2" />
-                                      </svg>
-                                    )}
-                                  </div>
-                                  
-                                  {/* Task Text */}
-                                  <p className={`text-sm flex-1 px-3 py-1.5 rounded bg-white/20 backdrop-blur-sm ${
-                                    task.status === 'completed' ? 'text-gray-600 line-through' : 
-                                    task.status === 'in_progress' ? 'text-gray-900 font-medium' : 
-                                    'text-gray-500'
-                                  }`}>
-                                    {task.text}
-                                  </p>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              
+                              {/* Task List */}
+                              {!message.isThinkingCollapsed && (
+                                <div className="px-4 pb-3 space-y-2">
+                                  {message.tasks.map((task) => (
+                                    <div 
+                                      key={task.id} 
+                                      className="flex items-center gap-3 group"
+                                    >
+                                      {/* Status Icon */}
+                                      <div className="flex-shrink-0 w-5 h-5">
+                                        {task.status === 'completed' ? (
+                                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                        ) : task.status === 'in_progress' ? (
+                                          <svg className="w-5 h-5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                          </svg>
+                                        ) : (
+                                          <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <circle cx="12" cy="12" r="9" strokeWidth="2" />
+                                          </svg>
+                                        )}
+                                      </div>
+                                      
+                                      {/* Task Text */}
+                                      <p className={`text-sm flex-1 px-3 py-1.5 rounded bg-white/20 backdrop-blur-sm ${
+                                        task.status === 'completed' ? 'text-gray-600 line-through' : 
+                                        task.status === 'in_progress' ? 'text-gray-900 font-medium' : 
+                                        'text-gray-500'
+                                      }`}>
+                                        {task.text}
+                                      </p>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
                             </div>
                           )}
                         </div>
