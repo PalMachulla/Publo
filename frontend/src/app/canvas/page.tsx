@@ -19,6 +19,8 @@ import 'reactflow/dist/style.css'
 
 import StoryNode from '@/components/StoryNode'
 import ContextCanvas from '@/components/ContextCanvas'
+import CreateStoryNode from '@/components/nodes/CreateStoryNode'
+import StoryDraftNode from '@/components/nodes/StoryDraftNode'
 import NodeDetailsPanel from '@/components/NodeDetailsPanel'
 import NodeTypeMenu from '@/components/NodeTypeMenu'
 import AIDocumentPanel from '@/components/AIDocumentPanel'
@@ -30,15 +32,21 @@ import { NodeType } from '@/types/nodes'
 const nodeTypes = {
   storyNode: StoryNode,
   contextCanvas: ContextCanvas,
+  createStoryNode: CreateStoryNode,
+  storyDraftNode: StoryDraftNode,
 }
 
-// Only context node on fresh canvas
+// Only Create Story node on fresh canvas
 const initialNodes: Node[] = [
   {
     id: 'context',
-    type: 'contextCanvas',
-    position: { x: 200, y: 350 },
-    data: { placeholder: "What's your story, Morning Glory?", comments: [] },
+    type: 'createStoryNode',
+    position: { x: 250, y: 500 },
+    data: { 
+      label: 'Create Story',
+      comments: [],
+      nodeType: 'create-story' as NodeType
+    },
   },
 ]
 
@@ -278,12 +286,16 @@ export default function CanvasPage() {
       let finalNodes = loadedNodes
       
       if (!hasContextCanvas) {
-        // Add context canvas if it doesn't exist
+        // Add Create Story node if it doesn't exist
         const contextNode: Node = {
           id: 'context',
-          type: 'contextCanvas',
-          position: { x: 200, y: 350 },
-          data: { placeholder: "What's your story, Morning Glory?", comments: [] },
+          type: 'createStoryNode',
+          position: { x: 250, y: 500 },
+          data: { 
+            label: 'Create Story',
+            comments: [],
+            nodeType: 'create-story' as NodeType
+          },
         }
         finalNodes = [...loadedNodes, contextNode]
       }
@@ -333,9 +345,13 @@ export default function CanvasPage() {
     if (!hasContext) {
       const contextNode: Node = {
         id: 'context',
-        type: 'contextCanvas',
-        position: { x: 200, y: 350 },
-        data: { placeholder: "What's your story, Morning Glory?", comments: [] },
+        type: 'createStoryNode',
+        position: { x: 250, y: 500 },
+        data: { 
+          label: 'Create Story',
+          comments: [],
+          nodeType: 'create-story' as NodeType
+        },
       }
       nodesToSave = [...nodes, contextNode]
       setNodes(nodesToSave)
@@ -365,6 +381,82 @@ export default function CanvasPage() {
     console.log('🚀 handlePromptSubmit called with:', prompt)
     setInitialPrompt(prompt)
     setIsAIDocPanelOpen(true)
+  }, [])
+
+  // Handle Create Story node click - spawn new story draft
+  const handleCreateStory = useCallback(() => {
+    // Count existing story drafts to calculate position
+    const storyNodes = nodes.filter(node => node.type === 'storyDraftNode')
+    const storyCount = storyNodes.length
+    
+    // Calculate horizontal position (spread out from center)
+    // Pattern: 0: x=0, 1: x=-200, 2: x=200, 3: x=-400, 4: x=400, etc.
+    let xOffset: number
+    if (storyCount === 0) {
+      xOffset = 0
+    } else {
+      const index = Math.floor((storyCount + 1) / 2)
+      const isLeft = storyCount % 2 === 1
+      xOffset = (isLeft ? -1 : 1) * index * 200
+    }
+    
+    // Generate unique ID for the story
+    const storyId = `story-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const now = new Date().toISOString()
+    
+    // Create new story draft node
+    const newStoryNode: Node = {
+      id: storyId,
+      type: 'storyDraftNode',
+      position: { 
+        x: 250 + xOffset, // Center at 250 (same as Create node) + offset
+        y: 650 // 150px below Create node
+      },
+      data: {
+        label: 'Untitled Story',
+        comments: [],
+        nodeType: 'story-draft' as NodeType,
+        storyId: storyId,
+        title: 'Untitled Story',
+        status: 'draft' as const,
+        content: '',
+        createdAt: now,
+        updatedAt: now,
+        preview: ''
+      },
+    }
+    
+    // Create edge from Create node to new story
+    const newEdge: Edge = {
+      id: `context-${storyId}`,
+      source: 'context',
+      target: storyId,
+      animated: false,
+      style: { stroke: '#9ca3af', strokeWidth: 2 },
+      type: 'default',
+    }
+    
+    setNodes([...nodes, newStoryNode])
+    setEdges([...edges, newEdge])
+    hasUnsavedChangesRef.current = true
+    
+    // Open AI Document Panel with the new story
+    setInitialPrompt('Create a new story')
+    setIsAIDocPanelOpen(true)
+    
+    console.log('Created new story node:', storyId)
+  }, [nodes, edges, setNodes, setEdges])
+  
+  // Handle Story Draft node click - open in AI Document Panel
+  const handleStoryDraftClick = useCallback((node: Node) => {
+    const storyData = node.data as any
+    console.log('Opening story draft:', storyData.title)
+    
+    // Load story content into AI Document Panel
+    setInitialPrompt(storyData.content || storyData.title || 'Continue this story')
+    setIsAIDocPanelOpen(true)
+    
+    // TODO: Pass story ID to panel for saving updates back to node
   }, [])
 
   const handleVisibilityChange = async (newVisibility: 'private' | 'shared' | 'public') => {
@@ -486,13 +578,22 @@ export default function CanvasPage() {
 
   // Handle node click
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    // Don't open panel for context canvas - it has its own input behavior
-    if (node.id === 'context') {
+    // Handle Create Story node - spawn new story draft
+    if (node.type === 'createStoryNode') {
+      handleCreateStory()
       return
     }
+    
+    // Handle Story Draft node - open in AI Document Panel
+    if (node.type === 'storyDraftNode') {
+      handleStoryDraftClick(node)
+      return
+    }
+    
+    // For other node types, open details panel
     setSelectedNode(node)
     setIsPanelOpen(true)
-  }, [])
+  }, [handleCreateStory, handleStoryDraftClick])
 
   // Handle node update from panel
   const handleNodeUpdate = useCallback((nodeId: string, newData: any) => {
@@ -518,6 +619,12 @@ export default function CanvasPage() {
   }, [setNodes, setEdges])
 
   const addNewNode = (nodeType: NodeType) => {
+    // Don't allow manual creation of create-story or story-draft nodes
+    if (nodeType === 'create-story' || nodeType === 'story-draft') {
+      console.warn('Cannot manually create', nodeType, 'nodes')
+      return
+    }
+    
     // Generate unique ID using timestamp + random string to avoid conflicts
     const newNodeId = `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     
@@ -1011,7 +1118,7 @@ export default function CanvasPage() {
               // Prevent deletion of context canvas node
               const hasContext = deleted.some(node => node.id === 'context')
               if (hasContext) {
-                alert('The context canvas cannot be deleted - it is a core part of every story!')
+                alert('The Create Story node cannot be deleted - it is a core part of your canvas!')
                 return false
               }
             }}

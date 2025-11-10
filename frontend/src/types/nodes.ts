@@ -6,7 +6,7 @@ export interface Comment {
   created_at: string
 }
 
-export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'research' | 'context'
+export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'research' | 'context' | 'create-story' | 'story-draft'
 
 export interface BaseNodeData {
   label: string
@@ -103,7 +103,25 @@ export interface ContextCanvasData {
   comments: Comment[]
 }
 
-export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData
+export interface CreateStoryNodeData extends BaseNodeData {
+  nodeType: 'create-story'
+}
+
+export type StoryDraftStatus = 'draft' | 'active' | 'published'
+
+export interface StoryDraftNodeData extends BaseNodeData {
+  nodeType: 'story-draft'
+  storyId: string
+  title: string
+  status: StoryDraftStatus
+  content: string
+  parentStoryId?: string
+  createdAt: string
+  updatedAt: string
+  preview?: string
+}
+
+export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData
 
 export interface Story {
   id: string

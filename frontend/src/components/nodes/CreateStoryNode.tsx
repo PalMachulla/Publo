@@ -4,8 +4,7 @@ import { memo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { CreateStoryNodeData } from '@/types/nodes'
 
-// ContextCanvas is now just a wrapper that renders the CreateStoryNode
-function ContextCanvas({ data, selected }: NodeProps<CreateStoryNodeData>) {
+function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
   return (
     <div className="relative">
       {/* Handles on all sides for connections */}
@@ -52,5 +51,5 @@ function ContextCanvas({ data, selected }: NodeProps<CreateStoryNodeData>) {
   )
 }
 
-export default memo(ContextCanvas)
+export default memo(CreateStoryNode)
 
