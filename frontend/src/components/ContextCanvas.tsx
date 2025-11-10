@@ -2,22 +2,23 @@
 
 import { memo, useState } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
+import { useCanvas } from '@/contexts/CanvasContext'
 
 export interface ContextCanvasData {
   placeholder?: string
-  onSubmitPrompt?: (prompt: string) => void
 }
 
 function ContextCanvas({ data }: NodeProps<ContextCanvasData>) {
   const [input, setInput] = useState('')
+  const { onPromptSubmit } = useCanvas()
 
   const handleSubmit = () => {
-    console.log('🔘 Button clicked, input:', input, 'callback exists:', !!data.onSubmitPrompt)
-    if (input.trim() && data.onSubmitPrompt) {
-      data.onSubmitPrompt(input)
+    console.log('🔘 Button clicked, input:', input, 'callback exists:', !!onPromptSubmit)
+    if (input.trim() && onPromptSubmit) {
+      onPromptSubmit(input)
       setInput('') // Clear input after submitting
     } else if (input.trim()) {
-      console.warn('⚠️ No onSubmitPrompt callback found!')
+      console.warn('⚠️ No onPromptSubmit callback found in context!')
     }
   }
 

@@ -22,6 +22,7 @@ import ContextCanvas from '@/components/ContextCanvas'
 import NodeDetailsPanel from '@/components/NodeDetailsPanel'
 import NodeTypeMenu from '@/components/NodeTypeMenu'
 import AIDocumentPanel from '@/components/AIDocumentPanel'
+import { CanvasProvider } from '@/contexts/CanvasContext'
 import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/lib/stories'
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
 import { NodeType } from '@/types/nodes'
@@ -106,7 +107,6 @@ export default function CanvasPage() {
   const titleInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
-  const callbackAttachedRef = useRef(false)
   
   // Sharing state
   const [sharingDropdownOpen, setSharingDropdownOpen] = useState(false)
@@ -225,7 +225,6 @@ export default function CanvasPage() {
       isLoadingRef.current = true
       currentStoryIdRef.current = storyId
       lastLoadedStoryIdRef.current = storyId
-      callbackAttachedRef.current = false // Reset callback flag for new story
       
       // Load data directly without resetting state
       // (loadStoryData will set the correct nodes/edges)
@@ -367,30 +366,6 @@ export default function CanvasPage() {
     setInitialPrompt(prompt)
     setIsAIDocPanelOpen(true)
   }, [])
-
-  // Update context node with onSubmitPrompt callback
-  useEffect(() => {
-    if (nodes.length > 0 && !callbackAttachedRef.current) {
-      const contextNode = nodes.find(node => node.id === 'context')
-      if (contextNode) {
-        console.log('✅ Attaching onSubmitPrompt callback to context node')
-        callbackAttachedRef.current = true
-        setNodes((nds) =>
-          nds.map((node) =>
-            node.id === 'context'
-              ? {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    onSubmitPrompt: handlePromptSubmit,
-                  },
-                }
-              : node
-          )
-        )
-      }
-    }
-  }, [nodes, setNodes, handlePromptSubmit])
 
   const handleVisibilityChange = async (newVisibility: 'private' | 'shared' | 'public') => {
     if (!storyId) return
@@ -998,14 +973,15 @@ export default function CanvasPage() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Canvas Area with React Flow */}
-        <div className="flex-1 relative bg-gray-50">
-          {/* Floating Add Node Menu */}
-          <div className="absolute top-6 left-6 z-10">
-            <NodeTypeMenu onSelectNodeType={addNewNode} />
-          </div>
-          
-          <ReactFlow
+        <CanvasProvider value={{ onPromptSubmit: handlePromptSubmit }}>
+          {/* Canvas Area with React Flow */}
+          <div className="flex-1 relative bg-gray-50">
+            {/* Floating Add Node Menu */}
+            <div className="absolute top-6 left-6 z-10">
+              <NodeTypeMenu onSelectNodeType={addNewNode} />
+            </div>
+            
+            <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodesChange={handleNodesChange}
@@ -1043,7 +1019,8 @@ export default function CanvasPage() {
             />
             <Controls className="!bg-white !border-gray-200 [&>button]:!bg-white [&>button]:!border-gray-200 [&>button:hover]:!bg-gray-50 [&>button]:!fill-gray-600" />
           </ReactFlow>
-        </div>
+          </div>
+        </CanvasProvider>
 
         {/* Right Panel */}
         <NodeDetailsPanel
