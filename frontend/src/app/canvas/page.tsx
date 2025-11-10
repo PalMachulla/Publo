@@ -390,15 +390,15 @@ export default function CanvasPage() {
     const storyNodes = nodes.filter(node => node.type === 'storyDraftNode')
     const storyCount = storyNodes.length
     
-    // Calculate horizontal position (spread out from center)
-    // Pattern: 0: x=0, 1: x=-200, 2: x=200, 3: x=-400, 4: x=400, etc.
+    // Calculate horizontal position (spread out from center with wider spacing)
+    // Pattern: 0: x=0, 1: x=-250, 2: x=250, 3: x=-500, 4: x=500, etc.
     let xOffset: number
     if (storyCount === 0) {
       xOffset = 0
     } else {
       const index = Math.floor((storyCount + 1) / 2)
       const isLeft = storyCount % 2 === 1
-      xOffset = (isLeft ? -1 : 1) * index * 200
+      xOffset = (isLeft ? -1 : 1) * index * 250 // Increased spacing for rounded square nodes
     }
     
     // Generate unique ID for the story
@@ -410,8 +410,8 @@ export default function CanvasPage() {
       id: storyId,
       type: 'storyDraftNode',
       position: { 
-        x: 250 + xOffset, // Center at 250 (same as Create node) + offset
-        y: 650 // 150px below Create node
+        x: 205 + xOffset, // Center at 205 (adjusted for 90px node width) + offset
+        y: 650 // 150px below Create node - all stories at same horizontal level
       },
       data: {
         label: 'Untitled Story',
@@ -427,14 +427,15 @@ export default function CanvasPage() {
       },
     }
     
-    // Create edge from Create node to new story
+    // Create edge from Create node to new story with smooth rounded corners
     const newEdge: Edge = {
       id: `context-${storyId}`,
       source: 'context',
       target: storyId,
       animated: false,
       style: { stroke: '#9ca3af', strokeWidth: 2 },
-      type: 'default',
+      type: 'smoothstep', // Smooth step edges for angled connectors with rounded corners
+      pathOptions: { borderRadius: 20 }
     }
     
     setNodes([...nodes, newStoryNode])
@@ -599,7 +600,13 @@ export default function CanvasPage() {
   }
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge({ ...params, animated: false, style: { stroke: '#d1d5db', strokeWidth: 2 }, type: 'default' }, eds)),
+    (params: Connection) => setEdges((eds) => addEdge({ 
+      ...params, 
+      animated: false, 
+      style: { stroke: '#d1d5db', strokeWidth: 2 }, 
+      type: 'smoothstep',
+      pathOptions: { borderRadius: 20 }
+    }, eds)),
     [setEdges]
   )
 
