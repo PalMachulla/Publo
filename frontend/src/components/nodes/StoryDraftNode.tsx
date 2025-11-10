@@ -8,56 +8,55 @@ import { getFormatIcon } from '@/components/StoryFormatMenu'
 function StoryDraftNode({ data, selected }: NodeProps<StoryDraftNodeData>) {
   const { title, status, format } = data
   
-  // Status colors
-  const getBorderColor = () => {
+  // Status badge colors
+  const getStatusBadge = () => {
     switch (status) {
-      case 'draft':
-        return 'border-gray-400'
       case 'active':
-        return 'border-blue-500'
+        return (
+          <div className="mt-1 inline-block w-fit">
+            <div className="bg-blue-500 text-white text-[8px] font-semibold uppercase tracking-wide px-2 rounded-full" style={{ paddingTop: '1px', paddingBottom: '1px' }}>
+              ACTIVE
+            </div>
+          </div>
+        )
       case 'published':
-        return 'border-green-500'
-      default:
-        return 'border-gray-400'
-    }
-  }
-  
-  const getStatusColor = () => {
-    switch (status) {
+        return (
+          <div className="mt-1 inline-block w-fit">
+            <div className="bg-green-500 text-white text-[8px] font-semibold uppercase tracking-wide px-2 rounded-full" style={{ paddingTop: '1px', paddingBottom: '1px' }}>
+              PUBLISHED
+            </div>
+          </div>
+        )
       case 'draft':
-        return 'bg-gray-400'
-      case 'active':
-        return 'bg-blue-500'
-      case 'published':
-        return 'bg-green-500'
       default:
-        return 'bg-gray-400'
+        return (
+          <div className="mt-1 inline-block w-fit">
+            <div className="bg-gray-400 text-white text-[8px] font-semibold uppercase tracking-wide px-2 rounded-full" style={{ paddingTop: '1px', paddingBottom: '1px' }}>
+              DRAFT
+            </div>
+          </div>
+        )
     }
   }
 
   return (
     <div className="relative">
-      {/* Label above card */}
+      {/* Label above card - matching other node types */}
       <div className="flex flex-col justify-end mb-2" style={{ width: 90, minHeight: 30 }}>
         <div className="text-[10px] text-gray-500 uppercase tracking-widest font-sans text-left break-words leading-tight w-full">
           {title || 'Untitled Story'}
         </div>
+        {getStatusBadge()}
       </div>
       
-      {/* Handles for connections */}
-      <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
-      <Handle type="source" position={Position.Bottom} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
-      
-      {/* Rounded square card - similar to other node types */}
+      {/* Card - matching other node styling */}
       <div
-        className={`
-          bg-white rounded-lg shadow-lg transition-all overflow-hidden
-          border-2 ${getBorderColor()}
-          ${selected ? 'ring-2 ring-blue-400 shadow-xl' : 'shadow-md'}
-        `}
+        className={`bg-white rounded-lg shadow-lg transition-all overflow-hidden ${
+          selected ? 'ring-2 ring-yellow-400 shadow-xl' : 'shadow-md'
+        }`}
         style={{ width: 90, height: 120 }}
       >
-        <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center gap-2 relative">
+        <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center gap-2">
           {/* Format-specific icon */}
           <div className="w-12 h-12 text-gray-400">
             {format ? getFormatIcon(format) : (
@@ -68,21 +67,14 @@ function StoryDraftNode({ data, selected }: NodeProps<StoryDraftNodeData>) {
             )}
           </div>
           
-          {/* Status badge */}
-          <div 
-            className={`absolute top-2 right-2 ${getStatusColor()} rounded-full`}
-            style={{ 
-              width: 10, 
-              height: 10
-            }}
-            title={status.charAt(0).toUpperCase() + status.slice(1)}
-          />
-          
           <div className="text-[9px] text-gray-400 font-light">
             Click to Edit
           </div>
         </div>
       </div>
+      
+      {/* Only bottom connector - matching other nodes */}
+      <Handle type="source" position={Position.Bottom} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
     </div>
   )
 }
