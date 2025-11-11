@@ -22,10 +22,10 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
       
       {/* Circular node */}
       <div
-        className={`bg-white rounded-full shadow-lg transition-all overflow-hidden ${
+        className={`relative bg-white rounded-full shadow-lg transition-all overflow-hidden ${
           selected ? 'ring-2 ring-yellow-400 shadow-xl' : 'shadow-md'
         }`}
-        style={{ width: 100, height: 100 }}
+        style={{ width: 100, height: 100, zIndex: 1 }}
       >
         <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center gap-1">
           <div className={`w-12 h-12 ${colorClass}`}>
