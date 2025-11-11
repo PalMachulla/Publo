@@ -80,12 +80,14 @@ export default function AIDocumentPanel({
   // Document editor with auto-save
   const {
     content,
+    setContent,
     wordCount,
     saveStatus,
     lastSaved,
     saveError,
     handleEditorUpdate,
     isDirty,
+    saveNow,
   } = useDocumentEditor({
     initialContent: activeSection?.content || '',
     onSave: async (newContent, words) => {
@@ -97,9 +99,16 @@ export default function AIDocumentPanel({
         })
       }
     },
-    autoSaveDelay: 2000,
+    autoSaveDelay: 999999, // Effectively disable auto-save (manual save only)
     enabled: !!activeSection,
   })
+
+  // Update content when active section changes (without remounting editor)
+  useEffect(() => {
+    if (activeSection && activeSection.content !== content) {
+      setContent(activeSection.content)
+    }
+  }, [activeSection?.id, activeSection?.content, content, setContent])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -454,51 +463,6 @@ export default function AIDocumentPanel({
   }
 
   // Save status indicator
-  const renderSaveStatus = () => {
-    if (saveStatus === 'saving') {
-      return (
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <span>Saving...</span>
-        </div>
-      )
-    }
-
-    if (saveStatus === 'saved') {
-      return (
-        <div className="flex items-center gap-2 text-sm text-green-600">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          <span>Saved {lastSaved && `at ${lastSaved.toLocaleTimeString()}`}</span>
-        </div>
-      )
-    }
-
-    if (saveStatus === 'error') {
-      return (
-        <div className="flex items-center gap-2 text-sm text-red-600">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-          <span>Error: {saveError || 'Failed to save'}</span>
-        </div>
-      )
-    }
-
-    if (isDirty) {
-      return <div className="text-sm text-gray-400">Unsaved changes</div>
-    }
-
-    return null
-  }
 
   return (
     <>
@@ -520,18 +484,52 @@ export default function AIDocumentPanel({
         <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white">
           <div className="flex items-center gap-4">
             <h2 className="text-lg font-semibold text-gray-900">AI Document Assistant</h2>
-            {renderSaveStatus()}
             <div className="text-sm text-gray-500">{wordCount} words</div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Close panel"
-          >
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Save Button */}
+            <button
+              onClick={saveNow}
+              disabled={!isDirty || saveStatus === 'saving'}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                isDirty
+                  ? 'bg-yellow-400 hover:bg-yellow-500 text-gray-900'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              } ${saveStatus === 'saving' ? 'opacity-50' : ''}`}
+            >
+              {saveStatus === 'saving' ? (
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  <span>Saving...</span>
+                </div>
+              ) : isDirty ? (
+                'Save Changes'
+              ) : (
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Saved</span>
+                </div>
+              )}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Close panel"
+            >
+              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Split Content */}
@@ -565,7 +563,6 @@ export default function AIDocumentPanel({
 
                 {/* Editor */}
                 <ProseMirrorEditor
-                  key={activeSection?.id || 'no-section'} // Force remount when section changes
                   ref={editorRef}
                   content={content}
                   onUpdate={handleEditorUpdate}
