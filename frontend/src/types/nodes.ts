@@ -134,12 +134,14 @@ export interface ClusterNodeData extends BaseNodeData {
 export interface StoryStructureItem {
   id: string
   level: number
+  parentId?: string // Reference to parent item ID for hierarchy
   name: string // e.g., "Chapter 1", "Act I", "Episode 1"
   title?: string
   description?: string
   order: number
   completed?: boolean
   content?: string
+  expanded?: boolean // Whether child items are visible
 }
 
 export interface StoryStructureNodeData extends BaseNodeData {
@@ -149,6 +151,7 @@ export interface StoryStructureNodeData extends BaseNodeData {
   items: StoryStructureItem[] // The structural items (chapters, scenes, etc.)
   activeLevel: number // Which hierarchy level is currently being displayed (1 = top level)
   onItemClick?: (item: StoryStructureItem, allItems: StoryStructureItem[], format: StoryFormat) => void // Callback when item is clicked
+  onItemsUpdate?: (items: StoryStructureItem[]) => void // Callback when items are updated (e.g., expanded state)
 }
 
 export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData | ClusterNodeData | StoryStructureNodeData

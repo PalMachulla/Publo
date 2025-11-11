@@ -318,7 +318,8 @@ export default function CanvasPage() {
             ...node,
             data: {
               ...node.data,
-              onItemClick: handleStructureItemClick
+              onItemClick: handleStructureItemClick,
+              onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(node.id, items)
             }
           }
         }
@@ -448,6 +449,33 @@ ${isClickedItem ? '\n[Start writing here...]\n' : ''}
     
     console.log('Opening AI Document Panel with structure:', structuredContent)
   }, [])
+  
+  // Handle story structure items update (e.g., expanded state changes)
+  const handleStructureItemsUpdate = useCallback((nodeId: string, updatedItems: any[]) => {
+    console.log('Structure items updated:', { nodeId, updatedItems })
+    
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              items: updatedItems,
+              onItemClick: handleStructureItemClick,
+              onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(nodeId, items)
+            }
+          }
+        }
+        return node
+      })
+    )
+    
+    // Mark as having unsaved changes
+    if (!isLoadingRef.current) {
+      hasUnsavedChangesRef.current = true
+    }
+  }, [handleStructureItemClick])
 
   // Handle Create Story node click - spawn new story structure node
   const handleCreateStory = useCallback((format: StoryFormat) => {
@@ -476,7 +504,8 @@ ${isClickedItem ? '\n[Start writing here...]\n' : ''}
       format: format,
       items: [],
       activeLevel: 1,
-      onItemClick: handleStructureItemClick
+      onItemClick: handleStructureItemClick,
+      onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(structureId, items)
     }
     
     const newStructureNode: Node<StoryStructureNodeData> = {
@@ -696,9 +725,10 @@ ${isClickedItem ? '\n[Start writing here...]\n' : ''}
         if (node.id === nodeId) {
           const mergedData = { ...node.data, ...newData }
           
-          // Inject onItemClick callback for story structure nodes
+          // Inject callbacks for story structure nodes
           if (mergedData.nodeType === 'story-structure' || node.type === 'storyStructureNode') {
             mergedData.onItemClick = handleStructureItemClick
+            mergedData.onItemsUpdate = (items: any[]) => handleStructureItemsUpdate(nodeId, items)
           }
           
           const updatedNode = { ...node, data: mergedData }
@@ -713,9 +743,10 @@ ${isClickedItem ? '\n[Start writing here...]\n' : ''}
       if (prev?.id === nodeId) {
         const mergedData = { ...prev.data, ...newData }
         
-        // Inject onItemClick callback for story structure nodes
+        // Inject callbacks for story structure nodes
         if (mergedData.nodeType === 'story-structure' || prev.type === 'storyStructureNode') {
           mergedData.onItemClick = handleStructureItemClick
+          mergedData.onItemsUpdate = (items: any[]) => handleStructureItemsUpdate(nodeId, items)
         }
         
         return { ...prev, data: mergedData }
@@ -727,7 +758,7 @@ ${isClickedItem ? '\n[Start writing here...]\n' : ''}
     if (!isLoadingRef.current) {
       hasUnsavedChangesRef.current = true
     }
-  }, [setNodes, handleStructureItemClick])
+  }, [setNodes, handleStructureItemClick, handleStructureItemsUpdate])
 
   // Handle node deletion
   const handleNodeDelete = useCallback((nodeId: string) => {
