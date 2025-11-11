@@ -41,12 +41,13 @@ export function useDocumentEditor({
 
   // Update content when initialContent changes
   useEffect(() => {
-    if (initialContent !== content && !isDirty) {
+    if (initialContent !== content) {
       setContent(initialContent)
       lastSavedContentRef.current = initialContent
       setWordCount(calculateWordCount(initialContent))
+      setIsDirty(false) // Reset dirty state when content is set externally
     }
-  }, [initialContent])
+  }, [initialContent, content])
 
   // Save function
   const save = useCallback(

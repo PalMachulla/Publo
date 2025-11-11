@@ -236,9 +236,25 @@ export default function AIDocumentPanel({
     }
   }, [isOpen, storyStructureNodeId, structureItems, sectionsLoading, initializeSections])
 
+  // Set active section when sections load
+  useEffect(() => {
+    if (sections.length > 0 && !activeSectionId) {
+      // If initialSectionId is provided, try to find that section
+      if (initialSectionId) {
+        const targetSection = sections.find(s => s.structure_item_id === initialSectionId)
+        if (targetSection) {
+          setActiveSectionId(targetSection.id)
+          return
+        }
+      }
+      // Otherwise, set the first section as active
+      setActiveSectionId(sections[0].id)
+    }
+  }, [sections, activeSectionId, initialSectionId])
+
   // Scroll to initial section
   useEffect(() => {
-    if (isOpen && initialSectionId && editorRef.current) {
+    if (isOpen && initialSectionId && editorRef.current && sections.length > 0) {
       setTimeout(() => {
         const structureItem = structureItems.find(item => item.id === initialSectionId)
         if (structureItem) {
@@ -246,7 +262,7 @@ export default function AIDocumentPanel({
         }
       }, 500)
     }
-  }, [isOpen, initialSectionId, structureItems])
+  }, [isOpen, initialSectionId, structureItems, sections])
 
   // Handle mouse drag for resizing
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -549,6 +565,7 @@ export default function AIDocumentPanel({
 
                 {/* Editor */}
                 <ProseMirrorEditor
+                  key={activeSection?.id || 'no-section'} // Force remount when section changes
                   ref={editorRef}
                   content={content}
                   onUpdate={handleEditorUpdate}
