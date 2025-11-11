@@ -6,7 +6,7 @@ export interface Comment {
   created_at: string
 }
 
-export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'research' | 'context' | 'create-story' | 'story-draft' | 'cluster'
+export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'research' | 'context' | 'create-story' | 'story-draft' | 'cluster' | 'story-structure'
 
 export interface BaseNodeData {
   label: string
@@ -109,7 +109,7 @@ export interface CreateStoryNodeData extends BaseNodeData {
 
 export type StoryDraftStatus = 'draft' | 'active' | 'published'
 
-export type StoryFormat = 'novel' | 'report' | 'short-story' | 'article' | 'screenplay' | 'essay'
+export type StoryFormat = 'novel' | 'report' | 'short-story' | 'article' | 'screenplay' | 'essay' | 'podcast'
 
 export interface StoryDraftNodeData extends BaseNodeData {
   nodeType: 'story-draft'
@@ -131,7 +131,26 @@ export interface ClusterNodeData extends BaseNodeData {
   isActive?: boolean // Active or passive status
 }
 
-export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData | ClusterNodeData
+export interface StoryStructureItem {
+  id: string
+  level: number
+  name: string // e.g., "Chapter 1", "Act I", "Episode 1"
+  title?: string
+  description?: string
+  order: number
+  completed?: boolean
+  content?: string
+}
+
+export interface StoryStructureNodeData extends BaseNodeData {
+  nodeType: 'story-structure'
+  format: StoryFormat
+  storyId?: string
+  items: StoryStructureItem[] // The structural items (chapters, scenes, etc.)
+  activeLevel: number // Which hierarchy level is currently being displayed (1 = top level)
+}
+
+export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData | ClusterNodeData | StoryStructureNodeData
 
 export interface Story {
   id: string

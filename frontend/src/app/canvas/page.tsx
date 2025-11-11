@@ -21,6 +21,7 @@ import StoryNode from '@/components/StoryNode'
 import ContextCanvas from '@/components/ContextCanvas'
 import CreateStoryNode from '@/components/nodes/CreateStoryNode'
 import StoryDraftNode from '@/components/nodes/StoryDraftNode'
+import StoryStructureNode from '@/components/nodes/StoryStructureNode'
 import ClusterNode from '@/components/ClusterNode'
 import NodeDetailsPanel from '@/components/NodeDetailsPanel'
 import NodeTypeMenu from '@/components/NodeTypeMenu'
@@ -36,6 +37,7 @@ const nodeTypes = {
   contextCanvas: ContextCanvas,
   createStoryNode: CreateStoryNode,
   storyDraftNode: StoryDraftNode,
+  storyStructureNode: StoryStructureNode,
   clusterNode: ClusterNode,
 }
 
@@ -402,82 +404,58 @@ export default function CanvasPage() {
     setIsAIDocPanelOpen(true)
   }, [])
 
-  // Handle Create Story node click - spawn new story draft
+  // Handle Create Story node click - spawn new story structure node
   const handleCreateStory = useCallback((format: StoryFormat) => {
     console.log('handleCreateStory called with format:', format)
-    // Count existing story drafts to calculate position
-    const storyNodes = nodes.filter(node => node.type === 'storyDraftNode')
-    const storyCount = storyNodes.length
     
-    // Calculate horizontal position (spread out from center with wider spacing)
-    // Pattern: 0: x=0, 1: x=-250, 2: x=250, 3: x=-500, 4: x=500, etc.
-    let xOffset: number
-    if (storyCount === 0) {
-      xOffset = 0
-    } else {
-      const index = Math.floor((storyCount + 1) / 2)
-      const isLeft = storyCount % 2 === 1
-      xOffset = (isLeft ? -1 : 1) * index * 250 // Increased spacing for rounded square nodes
-    }
-    
-    // Generate unique ID for the story
-    const storyId = `story-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    const now = new Date().toISOString()
+    // Generate unique ID for the story structure
+    const structureId = `structure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     
     // Get formatted title based on format
     const formatLabels: Record<StoryFormat, string> = {
-      'novel': 'Untitled Novel',
-      'report': 'Untitled Report',
-      'short-story': 'Untitled Short Story',
-      'article': 'Untitled Article',
-      'screenplay': 'Untitled Screenplay',
-      'essay': 'Untitled Essay'
+      'novel': 'Novel',
+      'report': 'Report',
+      'short-story': 'Short Story',
+      'article': 'Article',
+      'screenplay': 'Screenplay',
+      'essay': 'Essay',
+      'podcast': 'Podcast'
     }
-    const title = formatLabels[format] || 'Untitled Story'
+    const title = formatLabels[format] || 'Story'
     
-    // Create new story draft node
-    const newStoryNode: Node = {
-      id: storyId,
-      type: 'storyDraftNode',
+    // Create new story structure node - positioned below the Ghostwriter node
+    const newStructureNode: Node = {
+      id: structureId,
+      type: 'storyStructureNode',
       position: { 
-        x: 205 + xOffset, // Center at 205 (adjusted for 90px node width) + offset
-        y: 650 // 150px below Create node - all stories at same horizontal level
+        x: 140, // Center position (200px node width, so 140 = (460-200)/2 for alignment with 160px Ghostwriter)
+        y: 650 // Below Ghostwriter node
       },
       data: {
         label: title,
         comments: [],
-        nodeType: 'story-draft' as NodeType,
-        storyId: storyId,
-        title: title,
-        status: 'draft' as const,
+        nodeType: 'story-structure' as NodeType,
         format: format,
-        content: '',
-        createdAt: now,
-        updatedAt: now,
-        preview: ''
+        items: [], // Empty items array - will be populated when user structures the story
+        activeLevel: 1 // Start at top hierarchical level
       },
     }
     
-    // Create edge from Create node to new story with smooth curved lines
+    // Create edge from Ghostwriter node to new structure with smooth curved lines
     const newEdge: Edge = {
-      id: `context-${storyId}`,
+      id: `context-${structureId}`,
       source: 'context',
-      target: storyId,
+      target: structureId,
       animated: false,
-      style: { stroke: '#9ca3af', strokeWidth: 2 }, // Subtle edge thickness
-      type: 'default' // Default type uses smooth bezier curves
+      style: { stroke: '#9ca3af', strokeWidth: 2 },
+      type: 'default' // Smooth bezier curves
     }
     
-    setNodes([...nodes, newStoryNode])
+    setNodes([...nodes, newStructureNode])
     setEdges([...edges, newEdge])
     hasUnsavedChangesRef.current = true
     
-    // Open AI Document Panel with the new story
-    setCurrentStoryDraftId(storyId)
-    setInitialPrompt('Create a new story')
-    setIsAIDocPanelOpen(true)
-    
-    console.log('Created new story node:', storyId)
+    console.log('Created new story structure node:', structureId, 'for format:', format)
   }, [nodes, edges, setNodes, setEdges])
   
   // Handle Story Draft node click - open in AI Document Panel
