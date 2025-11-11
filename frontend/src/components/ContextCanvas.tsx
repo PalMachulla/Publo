@@ -8,11 +8,11 @@ import { CreateStoryNodeData } from '@/types/nodes'
 function ContextCanvas({ data, selected }: NodeProps<CreateStoryNodeData>) {
   return (
     <div className="relative">
-      {/* Handles on all sides for connections */}
-      <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
-      <Handle type="target" position={Position.Right} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
-      <Handle type="source" position={Position.Bottom} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
+      {/* Handles on all sides for connections - invisible but functional */}
+      <Handle type="target" position={Position.Top} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
+      <Handle type="target" position={Position.Left} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
+      <Handle type="target" position={Position.Right} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
+      <Handle type="source" position={Position.Bottom} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
       
       {/* Circular node */}
       <div

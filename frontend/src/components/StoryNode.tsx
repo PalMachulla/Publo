@@ -59,8 +59,8 @@ function StoryNode({ data, selected }: NodeProps<AnyNodeData>) {
         )}
       </div>
       
-      {/* Only bottom connector */}
-      <Handle type="source" position={Position.Bottom} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
+      {/* Only bottom connector - invisible but functional */}
+      <Handle type="source" position={Position.Bottom} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
     </div>
   )
 }

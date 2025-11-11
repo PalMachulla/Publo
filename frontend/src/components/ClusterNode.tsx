@@ -11,8 +11,8 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
   
   return (
     <div className="relative">
-      {/* Top handle for incoming connections */}
-      <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
+      {/* Top handle for incoming connections - invisible but functional */}
+      <Handle type="target" position={Position.Top} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
       
       {/* Large connector dot behind node - half covered */}
       <div 
