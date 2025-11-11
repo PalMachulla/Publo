@@ -487,11 +487,16 @@ export default function CanvasPage() {
       })
     )
     
+    // Update current structure items if this is the currently open node
+    if (nodeId === currentStoryStructureNodeId) {
+      setCurrentStructureItems(updatedItems)
+    }
+    
     // Mark as having unsaved changes
     if (!isLoadingRef.current) {
       hasUnsavedChangesRef.current = true
     }
-  }, [handleStructureItemClick])
+  }, [handleStructureItemClick, currentStoryStructureNodeId])
 
   // Handle Create Story node click - spawn new story structure node
   const handleCreateStory = useCallback((format: StoryFormat) => {
