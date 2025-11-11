@@ -244,10 +244,10 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
               {/* Expand/Collapse chevron */}
               {(itemHasChildren || canAddChild) && (
                 <button
-                  onClick={() => itemHasChildren && handleToggleExpanded(item.id)}
-                  className={`mt-0.5 flex-shrink-0 ${itemHasChildren ? 'text-gray-600 hover:text-gray-800' : 'text-gray-300 cursor-default'}`}
+                  onClick={() => handleToggleExpanded(item.id)}
+                  className="mt-0.5 flex-shrink-0 text-gray-600 hover:text-gray-800 cursor-pointer"
                 >
-                  {itemHasChildren && item.expanded ? (
+                  {item.expanded ? (
                     <ChevronDownIcon className="w-4 h-4" />
                   ) : (
                     <ChevronRightIcon className="w-4 h-4" />
