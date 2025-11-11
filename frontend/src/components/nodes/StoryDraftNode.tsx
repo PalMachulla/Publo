@@ -53,12 +53,24 @@ function StoryDraftNode({ data, selected }: NodeProps<StoryDraftNodeData>) {
       <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
       <Handle type="source" position={Position.Bottom} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
       
+      {/* Top connector dot - half covered by card */}
+      <div 
+        className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
+        style={{ pointerEvents: 'none', zIndex: 0 }}
+      />
+      
+      {/* Bottom connector dot - half covered by card */}
+      <div 
+        className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
+        style={{ pointerEvents: 'none', zIndex: 0 }}
+      />
+      
       {/* Card - matching other node styling */}
       <div
-        className={`bg-white rounded-lg shadow-lg transition-all overflow-hidden ${
+        className={`relative bg-white rounded-lg shadow-lg transition-all overflow-hidden ${
           selected ? 'ring-2 ring-yellow-400 shadow-xl' : 'shadow-md'
         }`}
-        style={{ width: 90, height: 120 }}
+        style={{ width: 90, height: 120, zIndex: 1 }}
       >
         <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center gap-2">
           {/* Format-specific icon - same size as other nodes */}

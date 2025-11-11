@@ -30,12 +30,18 @@ function StoryNode({ data, selected }: NodeProps<AnyNodeData>) {
         )}
       </div>
       
+      {/* Bottom connector dot - half covered by card */}
+      <div 
+        className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
+        style={{ pointerEvents: 'none', zIndex: 0 }}
+      />
+      
       {/* Card */}
       <div
-        className={`bg-white rounded-lg shadow-lg transition-all overflow-hidden ${
+        className={`relative bg-white rounded-lg shadow-lg transition-all overflow-hidden ${
           selected ? 'ring-2 ring-yellow-400 shadow-xl' : 'shadow-md'
         }`}
-        style={{ width: 90, height: 120 }}
+        style={{ width: 90, height: 120, zIndex: 1 }}
       >
         {image ? (
           <div className="w-full h-full">
