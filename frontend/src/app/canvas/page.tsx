@@ -644,17 +644,26 @@ export default function CanvasPage() {
 
   // Handle node update from panel
   const handleNodeUpdate = useCallback((nodeId: string, newData: any) => {
+    console.log('handleNodeUpdate called:', { nodeId, newData })
     setNodes((nds) =>
-      nds.map((node) =>
-        node.id === nodeId
-          ? { ...node, data: newData }
-          : node
-      )
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          const updatedNode = { ...node, data: { ...node.data, ...newData } }
+          console.log('Node updated - merged data:', updatedNode.data)
+          return updatedNode
+        }
+        return node
+      })
     )
     // Update selected node to reflect changes in panel
     setSelectedNode((prev) => 
-      prev?.id === nodeId ? { ...prev, data: newData } : prev
+      prev?.id === nodeId ? { ...prev, data: { ...prev.data, ...newData } } : prev
     )
+    
+    // Mark as having unsaved changes
+    if (!isLoadingRef.current) {
+      hasUnsavedChangesRef.current = true
+    }
   }, [setNodes])
 
   // Handle node deletion
