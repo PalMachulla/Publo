@@ -373,6 +373,7 @@ export default function CanvasPage() {
 
   // Manual save function (user-triggered only)
   const handleSave = useCallback(async () => {
+    console.log('🔴 handleSave called! Stack trace:', new Error().stack)
     // Don't save if we're loading or if storyId doesn't match or already saving
     if (!storyId || isLoadingRef.current || currentStoryIdRef.current !== storyId || saving) {
       console.log('Skipping save: loading, storyId mismatch, or already saving')
