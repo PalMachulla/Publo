@@ -53,14 +53,116 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
       onItemClick(item, topLevelItems, format)
     }
   }
-
-  // Calculate width based on number of items (minimum 200px for empty state)
-  const cardWidth = 240 // Width per item card
-  const cardGap = 16 // Gap between cards (4 in Tailwind = 16px)
-  const sidePadding = 24 // Equal padding on both sides
-  const nodeWidth = hasItems 
-    ? (topLevelItems.length * cardWidth) + ((topLevelItems.length - 1) * cardGap) + (sidePadding * 2)
-    : 200
+  
+  // Calculate total width including all expanded children
+  const calculateTotalWidth = (): number => {
+    const cardWidth = 240
+    const cardGap = 16
+    const sidePadding = 24
+    const columnGap = 20 // Gap between levels
+    
+    if (!hasItems) return 200
+    
+    // Count columns needed (max depth of expanded items)
+    let maxColumns = 1 // At least top level
+    
+    const countExpandedDepth = (parentId: string | undefined, currentDepth: number): number => {
+      const children = items.filter(item => item.parentId === parentId)
+      if (children.length === 0) return currentDepth
+      
+      const expandedChildren = children.filter(item => item.expanded)
+      if (expandedChildren.length === 0) return currentDepth
+      
+      let maxDepth = currentDepth + 1
+      expandedChildren.forEach(child => {
+        const childDepth = countExpandedDepth(child.id, currentDepth + 1)
+        maxDepth = Math.max(maxDepth, childDepth)
+      })
+      
+      return maxDepth
+    }
+    
+    maxColumns = countExpandedDepth(undefined, 1)
+    
+    // Calculate width: (columns * cardWidth) + (gaps between columns) + padding
+    return (maxColumns * cardWidth) + ((maxColumns - 1) * columnGap) + (sidePadding * 2)
+  }
+  
+  const nodeWidth = calculateTotalWidth()
+  
+  // Helper to get background color based on level
+  const getBackgroundColor = (level: number): string => {
+    switch (level) {
+      case 1: return 'bg-white'
+      case 2: return 'bg-gray-50'
+      case 3: return 'bg-gray-100'
+      default: return 'bg-gray-100'
+    }
+  }
+  
+  // Recursive component to render item with its children horizontally
+  const renderHorizontalTree = (item: StoryStructureItem): JSX.Element => {
+    const children = getChildren(item.id)
+    const itemHasChildren = children.length > 0
+    const canHaveChildren = item.level < 3
+    
+    return (
+      <div key={item.id} className="flex gap-5">
+        {/* Current item card */}
+        <div className="flex flex-col gap-2">
+          <div
+            className={`flex-shrink-0 ${getBackgroundColor(item.level)} rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer group relative`}
+            style={{ width: 240, minHeight: 160 }}
+          >
+            <div className="w-full h-full p-4 flex flex-col gap-2">
+              {/* Header with chevron */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1" onClick={(e) => handleItemClick(item, e)}>
+                  <div className="text-sm font-bold text-gray-900">
+                    {item.name}
+                  </div>
+                  {item.title && (
+                    <div className="text-xs text-gray-600 mt-1">
+                      {item.title}
+                    </div>
+                  )}
+                </div>
+                {(itemHasChildren || canHaveChildren) && (
+                  <button
+                    onClick={(e) => toggleExpanded(item.id, e)}
+                    className="p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                  >
+                    <ChevronRightIcon className={`w-4 h-4 text-gray-600 transition-transform ${
+                      item.expanded ? 'rotate-90' : ''
+                    }`} />
+                  </button>
+                )}
+              </div>
+              
+              {/* Description and action */}
+              <div onClick={(e) => handleItemClick(item, e)} className="flex-1 flex flex-col">
+                {item.description && (
+                  <div className="text-xs text-gray-500 line-clamp-2 mb-2">
+                    {item.description}
+                  </div>
+                )}
+                <div className="text-xs text-gray-400 mt-auto">
+                  Click to Write
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Children rendered to the right */}
+        {item.expanded && children.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {children.map((child) => renderHorizontalTree(child))}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="relative">
@@ -95,125 +197,22 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
 
         {/* Main Container - positioned in front of connector dots */}
         <div
-          className={`relative rounded-2xl transition-all overflow-hidden ${
+          className={`relative rounded-2xl transition-all overflow-visible ${
             selected ? 'bg-gray-100 shadow-2xl' : 'bg-gray-200 shadow-md'
           }`}
           style={{
             width: nodeWidth,
-            height: 200,
-            paddingLeft: `${sidePadding}px`,
-            paddingRight: `${sidePadding}px`,
+            minHeight: 200,
+            paddingLeft: '24px',
+            paddingRight: '24px',
             paddingTop: '20px',
             paddingBottom: '20px'
           }}
         >
         {hasItems ? (
-          /* Horizontal scrollable cards with hierarchical structure */
-          <div className="flex gap-4 h-full overflow-x-auto">
-            {topLevelItems.map((item) => {
-              const itemHasChildren = hasChildren(item.id)
-              const children = item.expanded ? getChildren(item.id) : []
-              
-              return (
-                <div key={item.id} className="flex-shrink-0 flex flex-col gap-2" style={{ width: 240 }}>
-                  {/* Top-level item card */}
-                  <div
-                    className="bg-white rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer group"
-                    style={{ minHeight: 160 }}
-                  >
-                    <div className="w-full p-4 flex flex-col gap-2">
-                      {/* Header with chevron */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1" onClick={(e) => handleItemClick(item, e)}>
-                          <div className="text-sm font-bold text-gray-900">
-                            {item.name}
-                          </div>
-                          {item.title && (
-                            <div className="text-xs text-gray-600 mt-1">
-                              {item.title}
-                            </div>
-                          )}
-                        </div>
-                        {itemHasChildren && (
-                          <button
-                            onClick={(e) => toggleExpanded(item.id, e)}
-                            className="p-1 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
-                          >
-                            {item.expanded ? (
-                              <ChevronDownIcon className="w-4 h-4 text-gray-600" />
-                            ) : (
-                              <ChevronRightIcon className="w-4 h-4 text-gray-600" />
-                            )}
-                          </button>
-                        )}
-                      </div>
-                      
-                      {/* Description and action */}
-                      <div onClick={(e) => handleItemClick(item, e)} className="flex-1 flex flex-col">
-                        {item.description && (
-                          <div className="text-xs text-gray-500 line-clamp-2 mb-2">
-                            {item.description}
-                          </div>
-                        )}
-                        <div className="text-xs text-gray-400 mt-auto">
-                          Click to Write
-                        </div>
-                      </div>
-                      
-                      {/* Level 2 children (only show if expanded and level < 3) */}
-                      {item.expanded && children.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">
-                          {children.map((child) => {
-                            const childHasChildren = hasChildren(child.id)
-                            const grandChildren = child.expanded ? getChildren(child.id) : []
-                            
-                            return (
-                              <div key={child.id} className="text-xs">
-                                {/* Level 2 item */}
-                                <div className="flex items-center justify-between gap-1 p-2 hover:bg-gray-50 rounded cursor-pointer group/child">
-                                  <div className="flex-1" onClick={(e) => handleItemClick(child, e)}>
-                                    <div className="font-medium text-gray-800">{child.name}</div>
-                                    {child.title && <div className="text-gray-500 text-[10px]">{child.title}</div>}
-                                  </div>
-                                  {childHasChildren && child.level < 3 && (
-                                    <button
-                                      onClick={(e) => toggleExpanded(child.id, e)}
-                                      className="p-0.5 hover:bg-gray-100 rounded"
-                                    >
-                                      {child.expanded ? (
-                                        <ChevronDownIcon className="w-3 h-3 text-gray-500" />
-                                      ) : (
-                                        <ChevronRightIcon className="w-3 h-3 text-gray-500" />
-                                      )}
-                                    </button>
-                                  )}
-                                </div>
-                                
-                                {/* Level 3 children (only show if expanded) */}
-                                {child.expanded && grandChildren.length > 0 && (
-                                  <div className="ml-3 mt-1 space-y-1 pl-2 border-l-2 border-gray-200">
-                                    {grandChildren.map((grandChild) => (
-                                      <div
-                                        key={grandChild.id}
-                                        className="p-1.5 hover:bg-gray-50 rounded cursor-pointer text-[10px]"
-                                        onClick={(e) => handleItemClick(grandChild, e)}
-                                      >
-                                        <div className="font-medium text-gray-700">{grandChild.name}</div>
-                                        {grandChild.title && <div className="text-gray-500">{grandChild.title}</div>}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+          /* Horizontal tree structure */
+          <div className="flex gap-4 h-full overflow-x-auto overflow-y-hidden">
+            {topLevelItems.map((item) => renderHorizontalTree(item))}
           </div>
         ) : (
           /* Empty state - show format icon */
