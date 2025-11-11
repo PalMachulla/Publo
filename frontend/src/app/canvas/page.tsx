@@ -29,7 +29,7 @@ import AIDocumentPanel from '@/components/AIDocumentPanel'
 import { CanvasProvider } from '@/contexts/CanvasContext'
 import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/lib/stories'
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
-import { NodeType, StoryFormat } from '@/types/nodes'
+import { NodeType, StoryFormat, StoryStructureNodeData } from '@/types/nodes'
 
 // Create a wrapper component for CreateStoryNode that injects the callback from ref
 const nodeTypes = {
@@ -424,21 +424,23 @@ export default function CanvasPage() {
     const title = formatLabels[format] || 'Story'
     
     // Create new story structure node - positioned below the Ghostwriter node
-    const newStructureNode: Node = {
+    const nodeData: StoryStructureNodeData = {
+      label: title,
+      comments: [],
+      nodeType: 'story-structure' as const,
+      format: format,
+      items: [],
+      activeLevel: 1
+    }
+    
+    const newStructureNode: Node<StoryStructureNodeData> = {
       id: structureId,
       type: 'storyStructureNode',
       position: { 
         x: 140, // Center position (200px node width, so 140 = (460-200)/2 for alignment with 160px Ghostwriter)
         y: 650 // Below Ghostwriter node
       },
-      data: {
-        label: title,
-        comments: [],
-        nodeType: 'story-structure' as NodeType,
-        format: format,
-        items: [], // Empty items array - will be populated when user structures the story
-        activeLevel: 1 // Start at top hierarchical level
-      },
+      data: nodeData,
     }
     
     // Create edge from Ghostwriter node to new structure with smooth curved lines
@@ -451,17 +453,16 @@ export default function CanvasPage() {
       type: 'default' // Smooth bezier curves
     }
     
+    console.log('Creating story structure node with data:', {
+      id: structureId,
+      type: 'storyStructureNode',
+      nodeData: nodeData,
+      fullNode: newStructureNode
+    })
+    
     setNodes([...nodes, newStructureNode])
     setEdges([...edges, newEdge])
     hasUnsavedChangesRef.current = true
-    
-    console.log('Created new story structure node:', {
-      id: structureId,
-      type: 'storyStructureNode',
-      nodeType: 'story-structure',
-      format: format,
-      fullNode: newStructureNode
-    })
   }, [nodes, edges, setNodes, setEdges])
   
   // Handle Story Draft node click - open in AI Document Panel
