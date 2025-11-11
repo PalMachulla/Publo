@@ -68,7 +68,16 @@ const nodeTypes: NodeTypeOption[] = [
     description: 'Group related nodes',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        <circle cx="12" cy="5" r="2" strokeWidth={2} fill="currentColor" />
+        <circle cx="5" cy="12" r="2" strokeWidth={2} fill="currentColor" />
+        <circle cx="19" cy="12" r="2" strokeWidth={2} fill="currentColor" />
+        <circle cx="9" cy="19" r="2" strokeWidth={2} fill="currentColor" />
+        <circle cx="15" cy="19" r="2" strokeWidth={2} fill="currentColor" />
+        <line x1="12" y1="7" x2="10" y2="10" strokeWidth={2} strokeLinecap="round" />
+        <line x1="12" y1="7" x2="14" y2="10" strokeWidth={2} strokeLinecap="round" />
+        <line x1="7" y1="12" x2="17" y2="12" strokeWidth={2} strokeLinecap="round" />
+        <line x1="7" y1="13" x2="9.5" y2="17.5" strokeWidth={2} strokeLinecap="round" />
+        <line x1="17" y1="13" x2="14.5" y2="17.5" strokeWidth={2} strokeLinecap="round" />
       </svg>
     ),
   },

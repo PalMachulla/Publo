@@ -40,9 +40,18 @@ export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelP
       {/* Header */}
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
-            <svg className="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="5" r="2" strokeWidth={2} fill="currentColor" />
+              <circle cx="5" cy="12" r="2" strokeWidth={2} fill="currentColor" />
+              <circle cx="19" cy="12" r="2" strokeWidth={2} fill="currentColor" />
+              <circle cx="9" cy="19" r="2" strokeWidth={2} fill="currentColor" />
+              <circle cx="15" cy="19" r="2" strokeWidth={2} fill="currentColor" />
+              <line x1="12" y1="7" x2="10" y2="10" strokeWidth={2} strokeLinecap="round" />
+              <line x1="12" y1="7" x2="14" y2="10" strokeWidth={2} strokeLinecap="round" />
+              <line x1="7" y1="12" x2="17" y2="12" strokeWidth={2} strokeLinecap="round" />
+              <line x1="7" y1="13" x2="9.5" y2="17.5" strokeWidth={2} strokeLinecap="round" />
+              <line x1="17" y1="13" x2="14.5" y2="17.5" strokeWidth={2} strokeLinecap="round" />
             </svg>
           </div>
           <div>
@@ -65,7 +74,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelP
             onChange={(e) => setLabel(e.target.value)}
             onBlur={handleSave}
             placeholder="Enter cluster name..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
           />
         </div>
 
@@ -80,22 +89,22 @@ export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelP
             onBlur={handleSave}
             placeholder="Describe what this cluster represents..."
             rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none"
           />
         </div>
 
         {/* Cluster Info */}
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
-            <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <h3 className="text-sm font-semibold text-orange-900">Cluster Information</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Cluster Information</h3>
           </div>
-          <p className="text-sm text-orange-800 mb-2">
+          <p className="text-sm text-gray-800 mb-2">
             This cluster currently contains <strong>{nodeCount}</strong> {nodeCount === 1 ? 'node' : 'nodes'}.
           </p>
-          <p className="text-xs text-orange-700">
+          <p className="text-xs text-gray-700">
             Connect other nodes to this cluster to organize your canvas. Clusters help you group related content and maintain a clean visual structure.
           </p>
         </div>
