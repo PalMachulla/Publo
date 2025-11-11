@@ -54,41 +54,47 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
     }
   }
   
-  // Calculate total width including all expanded children
+  // Calculate total width by counting all visible cards horizontally
   const calculateTotalWidth = (): number => {
     const cardWidth = 240
-    const cardGap = 16
+    const levelGap = 20 // Gap between hierarchy levels
     const sidePadding = 24
-    const columnGap = 20 // Gap between levels
     
     if (!hasItems) return 200
     
-    // Count columns needed (max depth of expanded items)
-    let maxColumns = 1 // At least top level
-    
-    const countExpandedDepth = (parentId: string | undefined, currentDepth: number): number => {
-      const children = items.filter(item => item.parentId === parentId)
-      if (children.length === 0) return currentDepth
+    // Count how many columns we need
+    const countColumns = (): number => {
+      let maxDepth = 0
       
-      const expandedChildren = children.filter(item => item.expanded)
-      if (expandedChildren.length === 0) return currentDepth
+      const traverse = (parentId: string | undefined, depth: number) => {
+        const children = items.filter(item => item.parentId === parentId)
+        
+        if (children.length === 0) {
+          maxDepth = Math.max(maxDepth, depth)
+          return
+        }
+        
+        children.forEach(child => {
+          if (child.expanded) {
+            traverse(child.id, depth + 1)
+          } else {
+            maxDepth = Math.max(maxDepth, depth)
+          }
+        })
+      }
       
-      let maxDepth = currentDepth + 1
-      expandedChildren.forEach(child => {
-        const childDepth = countExpandedDepth(child.id, currentDepth + 1)
-        maxDepth = Math.max(maxDepth, childDepth)
-      })
-      
+      traverse(undefined, 1)
       return maxDepth
     }
     
-    maxColumns = countExpandedDepth(undefined, 1)
+    const columns = countColumns()
     
-    // Calculate width: (columns * cardWidth) + (gaps between columns) + padding
-    return (maxColumns * cardWidth) + ((maxColumns - 1) * columnGap) + (sidePadding * 2)
+    // Width = (number of columns * card width) + (gaps between columns) + padding
+    return (columns * cardWidth) + ((columns - 1) * levelGap) + (sidePadding * 2)
   }
   
   const nodeWidth = calculateTotalWidth()
+  const sidePadding = 24
   
   // Helper to get background color based on level
   const getBackgroundColor = (level: number): string => {
@@ -107,56 +113,54 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
     const canHaveChildren = item.level < 3
     
     return (
-      <div key={item.id} className="flex gap-5">
+      <div key={item.id} className="flex gap-5 items-start transition-all duration-300 ease-in-out">
         {/* Current item card */}
-        <div className="flex flex-col gap-2">
-          <div
-            className={`flex-shrink-0 ${getBackgroundColor(item.level)} rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer group relative`}
-            style={{ width: 240, minHeight: 160 }}
-          >
-            <div className="w-full h-full p-4 flex flex-col gap-2">
-              {/* Header with chevron */}
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1" onClick={(e) => handleItemClick(item, e)}>
-                  <div className="text-sm font-bold text-gray-900">
-                    {item.name}
-                  </div>
-                  {item.title && (
-                    <div className="text-xs text-gray-600 mt-1">
-                      {item.title}
-                    </div>
-                  )}
+        <div
+          className={`flex-shrink-0 ${getBackgroundColor(item.level)} rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer group`}
+          style={{ width: 240, minHeight: 160 }}
+        >
+          <div className="w-full h-full p-4 flex flex-col gap-2">
+            {/* Header with chevron */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1" onClick={(e) => handleItemClick(item, e)}>
+                <div className="text-sm font-bold text-gray-900">
+                  {item.name}
                 </div>
-                {(itemHasChildren || canHaveChildren) && (
-                  <button
-                    onClick={(e) => toggleExpanded(item.id, e)}
-                    className="p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
-                  >
-                    <ChevronRightIcon className={`w-4 h-4 text-gray-600 transition-transform ${
-                      item.expanded ? 'rotate-90' : ''
-                    }`} />
-                  </button>
+                {item.title && (
+                  <div className="text-xs text-gray-600 mt-1">
+                    {item.title}
+                  </div>
                 )}
               </div>
-              
-              {/* Description and action */}
-              <div onClick={(e) => handleItemClick(item, e)} className="flex-1 flex flex-col">
-                {item.description && (
-                  <div className="text-xs text-gray-500 line-clamp-2 mb-2">
-                    {item.description}
-                  </div>
-                )}
-                <div className="text-xs text-gray-400 mt-auto">
-                  Click to Write
+              {(itemHasChildren || canHaveChildren) && (
+                <button
+                  onClick={(e) => toggleExpanded(item.id, e)}
+                  className="p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                >
+                  <ChevronRightIcon className={`w-4 h-4 text-gray-600 transition-transform duration-200 ${
+                    item.expanded ? 'rotate-90' : ''
+                  }`} />
+                </button>
+              )}
+            </div>
+            
+            {/* Description and action */}
+            <div onClick={(e) => handleItemClick(item, e)} className="flex-1 flex flex-col">
+              {item.description && (
+                <div className="text-xs text-gray-500 line-clamp-2 mb-2">
+                  {item.description}
                 </div>
+              )}
+              <div className="text-xs text-gray-400 mt-auto">
+                Click to Write
               </div>
             </div>
           </div>
         </div>
         
-        {/* Children rendered to the right */}
+        {/* Children rendered to the right - slide in/out */}
         {item.expanded && children.length > 0 && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 animate-in slide-in-from-left-2 duration-200">
             {children.map((child) => renderHorizontalTree(child))}
           </div>
         )}
@@ -179,12 +183,12 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
       />
 
       {/* Wrapper for tab + container with subtle selection state */}
-      <div className="relative transition-all" style={{ 
+      <div className="relative transition-all duration-300 ease-in-out" style={{ 
         borderRadius: '16px 16px 24px 24px',
         zIndex: 5
       }}>
         {/* Label above node with tab-like background - larger and with hamburger icon */}
-        <div className="flex justify-center mb-0" style={{ width: nodeWidth }}>
+        <div className="flex justify-center mb-0 transition-all duration-300 ease-in-out" style={{ width: nodeWidth }}>
           <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all ${
             selected ? 'bg-gray-100 shadow-md' : 'bg-gray-200 shadow-sm'
           }`}>
@@ -197,21 +201,21 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
 
         {/* Main Container - positioned in front of connector dots */}
         <div
-          className={`relative rounded-2xl transition-all overflow-visible ${
+          className={`relative rounded-2xl transition-all duration-300 ease-in-out ${
             selected ? 'bg-gray-100 shadow-2xl' : 'bg-gray-200 shadow-md'
           }`}
           style={{
             width: nodeWidth,
             minHeight: 200,
-            paddingLeft: '24px',
-            paddingRight: '24px',
-            paddingTop: '20px',
-            paddingBottom: '20px'
+            paddingLeft: sidePadding,
+            paddingRight: sidePadding,
+            paddingTop: 20,
+            paddingBottom: 20
           }}
         >
         {hasItems ? (
-          /* Horizontal tree structure */
-          <div className="flex gap-4 h-full overflow-x-auto overflow-y-hidden">
+          /* Horizontal tree structure - no scrolling, all cards visible */
+          <div className="flex gap-4 items-start">
             {topLevelItems.map((item) => renderHorizontalTree(item))}
           </div>
         ) : (
