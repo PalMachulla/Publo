@@ -269,7 +269,10 @@ export const DOCUMENT_HIERARCHY: DocumentHierarchy = {
  * Helper function to get hierarchy for a specific document type
  */
 export function getDocumentHierarchy(documentType: string): HierarchyLevel[] | null {
-  const type = DOCUMENT_HIERARCHY.document_types[documentType.toLowerCase()]
+  if (!documentType) return null
+  // Convert hyphens to underscores to match object keys (e.g., 'short-story' -> 'short_story')
+  const normalizedType = documentType.toLowerCase().replace(/-/g, '_')
+  const type = DOCUMENT_HIERARCHY.document_types[normalizedType]
   return type ? type.hierarchy : null
 }
 
@@ -278,6 +281,7 @@ export function getDocumentHierarchy(documentType: string): HierarchyLevel[] | n
  * (e.g., "Chapter" for novels, "Scene" for screenplays, "Episode" for podcasts)
  */
 export function getPrimaryStructuralLevel(documentType: string): string | null {
+  if (!documentType) return null
   const hierarchy = getDocumentHierarchy(documentType)
   if (!hierarchy) return null
   
