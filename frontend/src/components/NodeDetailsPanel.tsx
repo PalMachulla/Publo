@@ -8,6 +8,7 @@ import StoryBookPanel from './panels/StoryBookPanel'
 import CharacterPanel from './panels/CharacterPanel'
 import ResearchPanel from './panels/ResearchPanel'
 import ClusterPanel from './panels/ClusterPanel'
+import CreateStoryPanel from './panels/CreateStoryPanel'
 
 interface NodeDetailsPanelProps {
   node: Node<AnyNodeData> | null
@@ -15,6 +16,7 @@ interface NodeDetailsPanelProps {
   onClose: () => void
   onUpdate: (nodeId: string, data: any) => void
   onDelete: (nodeId: string) => void
+  onCreateStory?: (format: any) => void
 }
 
 export default function NodeDetailsPanel({
@@ -22,7 +24,8 @@ export default function NodeDetailsPanel({
   isOpen,
   onClose,
   onUpdate,
-  onDelete
+  onDelete,
+  onCreateStory
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
   const [commentText, setCommentText] = useState('')
@@ -32,8 +35,8 @@ export default function NodeDetailsPanel({
   const nodeData = node.data as any
   const nodeType = nodeData.nodeType || 'story'
   
-  // Don't show panel for create-story or story-draft nodes - they have their own interactions
-  if (nodeType === 'create-story' || nodeType === 'story-draft') {
+  // Don't show panel for story-draft nodes - they open the AI Document Panel
+  if (nodeType === 'story-draft') {
     return null
   }
 
@@ -84,7 +87,7 @@ export default function NodeDetailsPanel({
       >
         <div className="h-full flex flex-col rounded-3xl overflow-hidden">
           {/* Header for generic panel */}
-          {nodeType !== 'story' && nodeType !== 'character' && nodeType !== 'research' && nodeType !== 'cluster' && (
+          {nodeType !== 'story' && nodeType !== 'character' && nodeType !== 'research' && nodeType !== 'cluster' && nodeType !== 'create-story' && (
             <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white">
               <h2 className="text-xl font-semibold text-gray-900">Node Details</h2>
             </div>
@@ -99,6 +102,12 @@ export default function NodeDetailsPanel({
             <ResearchPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
           ) : nodeType === 'cluster' ? (
             <ClusterPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
+          ) : nodeType === 'create-story' ? (
+            <CreateStoryPanel 
+              node={node as any} 
+              onCreateStory={onCreateStory || (() => console.warn('onCreateStory not provided'))} 
+              onClose={onClose}
+            />
           ) : (
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Node Type Badge */}

@@ -3,22 +3,8 @@
 import { memo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { CreateStoryNodeData } from '@/types/nodes'
-import StoryFormatMenu, { StoryFormat } from '@/components/StoryFormatMenu'
 
-interface CreateStoryNodeInternalData extends CreateStoryNodeData {
-  onCreateStory?: (format: StoryFormat) => void
-}
-
-function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeInternalData>) {
-  const handleFormatSelect = (format: StoryFormat) => {
-    console.log('StoryFormatMenu selected format:', format)
-    if (data.onCreateStory) {
-      data.onCreateStory(format)
-    } else {
-      console.error('onCreateStory callback not found in node data')
-    }
-  }
-
+function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
   return (
     <div className="relative">
       {/* Handles on all sides for connections - invisible but functional */}
@@ -39,9 +25,21 @@ function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeInternalDa
         style={{ pointerEvents: 'none', zIndex: 0 }}
       />
       
-      {/* Story Format Menu */}
+      {/* Create Story Button */}
       <div className="relative" style={{ zIndex: 1 }}>
-        <StoryFormatMenu onSelectFormat={handleFormatSelect} />
+        <div className="bg-white rounded-3xl shadow-lg border border-gray-200 overflow-hidden">
+          <div className="flex items-center gap-2 p-2 cursor-pointer hover:bg-gray-50 transition-colors">
+            {/* Small round button with yellow border */}
+            <div className={`w-8 h-8 rounded-full border-2 ${selected ? 'border-yellow-500 bg-yellow-50' : 'border-yellow-400 bg-white'} flex items-center justify-center flex-shrink-0`}>
+              <svg className="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </div>
+
+            {/* Text */}
+            <div className="text-xs font-semibold text-gray-700 pr-2 whitespace-nowrap">Create Story</div>
+          </div>
+        </div>
       </div>
     </div>
   )

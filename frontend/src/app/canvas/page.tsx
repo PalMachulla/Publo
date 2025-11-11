@@ -31,20 +31,10 @@ import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sh
 import { NodeType, StoryFormat } from '@/types/nodes'
 
 // Create a wrapper component for CreateStoryNode that injects the callback from ref
-const CreateStoryNodeWrapper = (props: any) => {
-  // Get the ref from the parent scope
-  const callbackRef = (window as any).__handleCreateStoryRef
-  const enhancedData = {
-    ...props.data,
-    onCreateStory: callbackRef?.current || props.data.onCreateStory
-  }
-  return <CreateStoryNode {...props} data={enhancedData} />
-}
-
 const nodeTypes = {
   storyNode: StoryNode,
   contextCanvas: ContextCanvas,
-  createStoryNode: CreateStoryNodeWrapper,
+  createStoryNode: CreateStoryNode,
   storyDraftNode: StoryDraftNode,
   clusterNode: ClusterNode,
 }
@@ -141,7 +131,6 @@ export default function CanvasPage() {
   const [emailInput, setEmailInput] = useState('')
   const [sendingInvite, setSendingInvite] = useState(false)
   const sharingDropdownRef = useRef<HTMLDivElement>(null)
-  const handleCreateStoryRef = useRef<((format: StoryFormat) => void) | null>(null)
 
   // Check access control
   useEffect(() => {
@@ -491,11 +480,6 @@ export default function CanvasPage() {
     console.log('Created new story node:', storyId)
   }, [nodes, edges, setNodes, setEdges])
   
-  // Store the callback in a ref so it can be accessed by nodes without causing re-renders
-  handleCreateStoryRef.current = handleCreateStory
-  // Also store on window for the wrapper component to access
-  ;(window as any).__handleCreateStoryRef = handleCreateStoryRef
-  
   // Handle Story Draft node click - open in AI Document Panel
   const handleStoryDraftClick = useCallback((node: Node) => {
     const storyData = node.data as any
@@ -659,12 +643,6 @@ export default function CanvasPage() {
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     console.log('Node clicked:', { id: node.id, type: node.type, nodeType: node.data?.nodeType })
     
-    // Create Story node has its own menu - don't handle click here
-    if (node.type === 'createStoryNode' || node.id === 'context') {
-      // The StoryFormatMenu handles the interaction
-      return
-    }
-    
     // Handle Story Draft node - open in AI Document Panel
     if (node.type === 'storyDraftNode') {
       console.log('Story Draft node clicked - opening in AI panel')
@@ -673,8 +651,8 @@ export default function CanvasPage() {
       return
     }
     
-    // For other node types, open details panel
-    console.log('Regular node clicked - opening details panel')
+    // For all other node types (including Create Story), open details panel
+    console.log('Node clicked - opening details panel')
     setSelectedNode(node)
     setIsPanelOpen(true)
   }, [handleStoryDraftClick])
@@ -1227,6 +1205,7 @@ export default function CanvasPage() {
           onClose={() => setIsPanelOpen(false)}
           onUpdate={handleNodeUpdate}
           onDelete={handleNodeDelete}
+          onCreateStory={handleCreateStory}
         />
 
         {/* Loading Indicator */}
