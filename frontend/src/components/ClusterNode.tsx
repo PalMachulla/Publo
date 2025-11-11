@@ -16,7 +16,7 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
       
       {/* Large connector dot behind node - half covered */}
       <div 
-        className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-gray-400 shadow-lg"
+        className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
         style={{ pointerEvents: 'none', zIndex: 0 }}
       />
       
