@@ -38,24 +38,21 @@ function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
           className="absolute inset-0"
           style={{ filter: selected ? 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))' : 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))' }}
         >
-          {/* Hexagon path with rounded corners - gray background with gray outline */}
+          {/* Hexagon path with rounded corners - solid gray background and outline */}
           <path
             d="M 80 0 L 132 30 Q 140 35 140 44 L 140 116 Q 140 125 132 130 L 80 160 Q 80 160 80 160 L 28 130 Q 20 125 20 116 L 20 44 Q 20 35 28 30 L 80 0 Z"
-            fill="#f3f4f6"
+            fill="#9ca3af"
             stroke="#9ca3af"
             strokeWidth="2"
           />
         </svg>
         
         {/* Content centered over hexagon */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 pointer-events-none">
-          {/* Magical wand icon - yellow */}
-          <svg className="w-10 h-10 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          {/* Magical wand icon - white, enlarged */}
+          <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
           </svg>
-          <div className="text-xs font-bold text-gray-500 tracking-wide">
-            GHOSTWRITER
-          </div>
         </div>
       </div>
     </div>
