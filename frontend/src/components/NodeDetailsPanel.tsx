@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import StoryBookPanel from './panels/StoryBookPanel'
 import CharacterPanel from './panels/CharacterPanel'
 import ResearchPanel from './panels/ResearchPanel'
+import ClusterPanel from './panels/ClusterPanel'
 
 interface NodeDetailsPanelProps {
   node: Node<AnyNodeData> | null
@@ -83,7 +84,7 @@ export default function NodeDetailsPanel({
       >
         <div className="h-full flex flex-col rounded-3xl overflow-hidden">
           {/* Header for generic panel */}
-          {nodeType !== 'story' && nodeType !== 'character' && nodeType !== 'research' && (
+          {nodeType !== 'story' && nodeType !== 'character' && nodeType !== 'research' && nodeType !== 'cluster' && (
             <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white">
               <h2 className="text-xl font-semibold text-gray-900">Node Details</h2>
             </div>
@@ -96,6 +97,8 @@ export default function NodeDetailsPanel({
             <CharacterPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
           ) : nodeType === 'research' ? (
             <ResearchPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
+          ) : nodeType === 'cluster' ? (
+            <ClusterPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
           ) : (
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Node Type Badge */}

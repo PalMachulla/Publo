@@ -6,7 +6,7 @@ export interface Comment {
   created_at: string
 }
 
-export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'research' | 'context' | 'create-story' | 'story-draft'
+export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'research' | 'context' | 'create-story' | 'story-draft' | 'cluster'
 
 export interface BaseNodeData {
   label: string
@@ -124,7 +124,12 @@ export interface StoryDraftNodeData extends BaseNodeData {
   preview?: string
 }
 
-export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData
+export interface ClusterNodeData extends BaseNodeData {
+  nodeType: 'cluster'
+  clusterNodes?: string[] // IDs of nodes in this cluster
+}
+
+export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData | ClusterNodeData
 
 export interface Story {
   id: string

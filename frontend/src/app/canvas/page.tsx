@@ -21,6 +21,7 @@ import StoryNode from '@/components/StoryNode'
 import ContextCanvas from '@/components/ContextCanvas'
 import CreateStoryNode from '@/components/nodes/CreateStoryNode'
 import StoryDraftNode from '@/components/nodes/StoryDraftNode'
+import ClusterNode from '@/components/ClusterNode'
 import NodeDetailsPanel from '@/components/NodeDetailsPanel'
 import NodeTypeMenu from '@/components/NodeTypeMenu'
 import AIDocumentPanel from '@/components/AIDocumentPanel'
@@ -45,6 +46,7 @@ const nodeTypes = {
   contextCanvas: ContextCanvas,
   createStoryNode: CreateStoryNodeWrapper,
   storyDraftNode: StoryDraftNode,
+  clusterNode: ClusterNode,
 }
 
 // Only Create Story node on fresh canvas
@@ -744,11 +746,19 @@ export default function CanvasPage() {
         nodeData.queries = []
         nodeData.results = []
         break
+      case 'cluster':
+        nodeData.label = 'NODE CLUSTER'
+        nodeData.description = 'Group related nodes'
+        nodeData.clusterNodes = []
+        break
     }
+    
+    // Determine the node type for rendering
+    const nodeRenderType = nodeType === 'cluster' ? 'clusterNode' : 'storyNode'
     
     const newNode: Node = {
       id: newNodeId,
-      type: 'storyNode',
+      type: nodeRenderType,
       position: { x: Math.random() * 500 + 100, y: Math.random() * 300 + 100 },
       data: nodeData,
     }
