@@ -9,6 +9,7 @@ import CharacterPanel from './panels/CharacterPanel'
 import ResearchPanel from './panels/ResearchPanel'
 import ClusterPanel from './panels/ClusterPanel'
 import CreateStoryPanel from './panels/CreateStoryPanel'
+import StoryStructurePanel from './panels/StoryStructurePanel'
 
 interface NodeDetailsPanelProps {
   node: Node<AnyNodeData> | null
@@ -87,7 +88,7 @@ export default function NodeDetailsPanel({
       >
         <div className="h-full flex flex-col rounded-3xl overflow-hidden">
           {/* Header for generic panel */}
-          {nodeType !== 'story' && nodeType !== 'character' && nodeType !== 'research' && nodeType !== 'cluster' && nodeType !== 'create-story' && (
+          {nodeType !== 'story' && nodeType !== 'character' && nodeType !== 'research' && nodeType !== 'cluster' && nodeType !== 'create-story' && nodeType !== 'story-structure' && (
             <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white">
               <h2 className="text-xl font-semibold text-gray-900">Node Details</h2>
             </div>
@@ -108,6 +109,8 @@ export default function NodeDetailsPanel({
               onCreateStory={onCreateStory || (() => console.warn('onCreateStory not provided'))} 
               onClose={onClose}
             />
+          ) : nodeType === 'story-structure' ? (
+            <StoryStructurePanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
           ) : (
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Node Type Badge */}
