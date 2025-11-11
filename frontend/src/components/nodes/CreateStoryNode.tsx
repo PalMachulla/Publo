@@ -38,10 +38,10 @@ function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
           className="absolute inset-0"
           style={{ filter: selected ? 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))' : 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))' }}
         >
-          {/* Hexagon path with rounded corners - white background with gray outline */}
+          {/* Hexagon path with rounded corners - gray background with gray outline */}
           <path
             d="M 80 8 L 132 38 Q 140 43 140 52 L 140 108 Q 140 117 132 122 L 80 152 Q 80 152 80 152 L 28 122 Q 20 117 20 108 L 20 52 Q 20 43 28 38 L 80 8 Z"
-            fill="#ffffff"
+            fill="#f3f4f6"
             stroke="#9ca3af"
             strokeWidth="2"
           />
