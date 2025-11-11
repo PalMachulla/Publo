@@ -27,23 +27,25 @@ function StoryStructureNode({ data, selected }: NodeProps<StoryStructureNodeData
 
   return (
     <div className="relative">
-      {/* Label above node */}
-      <div className="flex flex-col justify-end mb-2" style={{ width: nodeWidth, minHeight: 30 }}>
-        <div className="text-[10px] text-gray-500 uppercase tracking-widest font-sans text-center break-words leading-tight w-full">
-          {label || (format ? format.toUpperCase() : 'STORY')}
+      {/* Label above node with tab-like background */}
+      <div className="flex justify-center mb-0" style={{ width: nodeWidth }}>
+        <div className="bg-gray-200 px-6 py-2 rounded-t-xl">
+          <div className="text-[10px] text-gray-600 uppercase tracking-widest font-sans text-center font-semibold">
+            {label || (format ? format.toUpperCase() : 'STORY')}
+          </div>
         </div>
       </div>
 
-      {/* Top connector dot - positioned to be 50% covered by container */}
+      {/* Top connector dot - edges connect directly to center */}
       <div
         className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
-        style={{ top: '5px', pointerEvents: 'none', zIndex: 0 }}
+        style={{ top: '-10px', pointerEvents: 'none', zIndex: 10 }}
       />
 
-      {/* Bottom connector dot - positioned to be 50% covered by container */}
+      {/* Bottom connector dot - edges connect directly to center */}
       <div
         className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
-        style={{ bottom: '5px', pointerEvents: 'none', zIndex: 0 }}
+        style={{ bottom: '-10px', pointerEvents: 'none', zIndex: 10 }}
       />
 
       {/* Main Container - overlaps connector dots by 50% */}
