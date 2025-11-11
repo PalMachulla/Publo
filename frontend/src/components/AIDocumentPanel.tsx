@@ -70,11 +70,29 @@ export default function AIDocumentPanel({
     updateSection,
     getSectionByStructureItemId,
     initializeSections,
+    refreshSections,
   } = useDocumentSections({
     storyStructureNodeId,
     structureItems,
     enabled: isOpen && !!storyStructureNodeId,
   })
+
+  // Re-initialize sections when structure items change
+  useEffect(() => {
+    if (isOpen && storyStructureNodeId && structureItems.length > 0 && sections.length > 0) {
+      // Check if structure items have changed (added/removed)
+      const structureItemIds = new Set(structureItems.map(item => item.id))
+      const sectionItemIds = new Set(sections.map(s => s.structure_item_id))
+      
+      const hasNewItems = structureItems.some(item => !sectionItemIds.has(item.id))
+      const hasRemovedItems = sections.some(s => !structureItemIds.has(s.structure_item_id))
+      
+      if (hasNewItems || hasRemovedItems) {
+        console.log('Structure items changed, re-syncing sections...')
+        initializeSections()
+      }
+    }
+  }, [isOpen, storyStructureNodeId, structureItems, sections, initializeSections])
 
   // Get the active section
   const activeSection = activeSectionId
