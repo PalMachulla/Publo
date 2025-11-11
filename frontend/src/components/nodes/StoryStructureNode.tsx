@@ -51,27 +51,32 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         style={{ bottom: '-10px', pointerEvents: 'none', zIndex: 0 }}
       />
 
-      {/* Wrapper for tab + container to get unified selection ring */}
-      <div className={`relative transition-all ${
-        selected ? 'ring-2 ring-yellow-400' : ''
-      }`} style={{ 
+      {/* Wrapper for tab + container with soft glow when selected */}
+      <div className="relative transition-all" style={{ 
         borderRadius: '16px 16px 24px 24px',
-        zIndex: 5
+        zIndex: 5,
+        filter: selected ? 'drop-shadow(0 0 20px rgba(250, 204, 21, 0.4))' : 'none'
       }}>
         {/* Label above node with tab-like background - larger and with hamburger icon */}
         <div className="flex justify-center mb-0" style={{ width: nodeWidth }}>
-          <div className="bg-gray-200 px-8 py-3 rounded-t-xl flex items-center gap-2 shadow-sm">
-            <div className="text-xs text-gray-700 uppercase tracking-widest font-sans font-bold">
+          <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 shadow-sm transition-all ${
+            selected ? 'bg-yellow-50' : 'bg-gray-200'
+          }`}>
+            <div className={`text-xs uppercase tracking-widest font-sans font-bold transition-colors ${
+              selected ? 'text-yellow-700' : 'text-gray-700'
+            }`}>
               {label || (format ? format.toUpperCase() : 'STORY')}
             </div>
-            <Bars3Icon className="w-5 h-5 text-gray-600" />
+            <Bars3Icon className={`w-5 h-5 transition-colors ${
+              selected ? 'text-yellow-600' : 'text-gray-600'
+            }`} />
           </div>
         </div>
 
         {/* Main Container - positioned in front of connector dots */}
         <div
-          className={`relative bg-gray-200 rounded-2xl shadow-lg transition-all overflow-hidden ${
-            selected ? 'shadow-xl' : 'shadow-md'
+          className={`relative rounded-2xl shadow-lg transition-all overflow-hidden ${
+            selected ? 'bg-yellow-50 shadow-xl' : 'bg-gray-200 shadow-md'
           }`}
           style={{
             width: nodeWidth,
