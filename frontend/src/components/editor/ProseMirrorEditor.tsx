@@ -8,6 +8,7 @@ export interface ProseMirrorEditorProps {
   content: string
   onChange?: (content: string, editor: Editor) => void
   onUpdate?: (editor: Editor) => void
+  onEditorReady?: (editor: Editor | null) => void
   editable?: boolean
   placeholder?: string
   autofocus?: boolean
@@ -29,6 +30,7 @@ const ProseMirrorEditor = forwardRef<ProseMirrorEditorRef, ProseMirrorEditorProp
       content,
       onChange,
       onUpdate,
+      onEditorReady,
       editable = true,
       placeholder = 'Start writing...',
       autofocus = false,
@@ -63,6 +65,13 @@ const ProseMirrorEditor = forwardRef<ProseMirrorEditorRef, ProseMirrorEditorProp
         editor.commands.setContent(content)
       }
     }, [content, editor])
+
+    // Notify parent when editor is ready
+    useEffect(() => {
+      if (onEditorReady) {
+        onEditorReady(editor)
+      }
+    }, [editor, onEditorReady])
 
     // Update editable state
     useEffect(() => {

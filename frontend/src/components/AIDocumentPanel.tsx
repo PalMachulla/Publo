@@ -8,11 +8,15 @@ import EditorToolbar from './editor/EditorToolbar'
 import type { StoryStructureItem } from '@/types/nodes'
 import type { Editor } from '@tiptap/react'
 import type { DocumentSection } from '@/types/document'
+import type { ProseMirrorEditorProps, ProseMirrorEditorRef } from './editor/ProseMirrorEditor'
 
 // Dynamically import ProseMirrorEditor to avoid SSR issues
-const ProseMirrorEditor = dynamic(
+const ProseMirrorEditor = dynamic<ProseMirrorEditorProps>(
   () => import('./editor/ProseMirrorEditor'),
-  { ssr: false, loading: () => <div className="flex items-center justify-center h-full"><div className="text-gray-400">Loading editor...</div></div> }
+  { 
+    ssr: false, 
+    loading: () => <div className="flex items-center justify-center h-full"><div className="text-gray-400">Loading editor...</div></div>
+  }
 )
 
 interface Task {
@@ -55,7 +59,7 @@ export default function AIDocumentPanel({
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const editorRef = useRef<any>(null)
+  const [editor, setEditor] = useState<Editor | null>(null)
   const hasProcessedInitialPrompt = useRef(false)
 
   // Fetch and manage document sections
@@ -258,15 +262,18 @@ export default function AIDocumentPanel({
 
   // Scroll to initial section
   useEffect(() => {
-    if (isOpen && initialSectionId && editorRef.current && sections.length > 0) {
+    if (isOpen && initialSectionId && editor && sections.length > 0) {
       setTimeout(() => {
         const structureItem = structureItems.find(item => item.id === initialSectionId)
         if (structureItem) {
-          editorRef.current?.scrollToSection(initialSectionId)
+          const element = editor.view.dom.querySelector(`[data-section-id="${initialSectionId}"]`)
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
         }
       }, 500)
     }
-  }, [isOpen, initialSectionId, structureItems, sections])
+  }, [isOpen, initialSectionId, editor, structureItems, sections])
 
   // Handle mouse drag for resizing
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -383,7 +390,12 @@ export default function AIDocumentPanel({
   // Handle section click
   const handleSectionClick = (section: DocumentSection) => {
     setActiveSectionId(section.id)
-    editorRef.current?.scrollToSection(section.structure_item_id)
+    if (editor) {
+      const element = editor.view.dom.querySelector(`[data-section-id="${section.structure_item_id}"]`)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
   }
 
   // Render section navigation
@@ -554,13 +566,13 @@ export default function AIDocumentPanel({
               {/* Editor Area */}
               <div className="flex-1 flex flex-col">
                 {/* Toolbar */}
-                <EditorToolbar editor={editorRef.current?.getEditor() || null} />
+                <EditorToolbar editor={editor} />
 
                 {/* Editor */}
                 <ProseMirrorEditor
-                  ref={editorRef}
                   content={content}
                   onUpdate={handleEditorUpdate}
+                  onEditorReady={setEditor}
                   placeholder="Start writing..."
                   className="flex-1"
                 />
