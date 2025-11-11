@@ -97,12 +97,19 @@ export function useDocumentSections({
         return
       }
 
+      console.log('Creating sections:', newSections)
+      
       const { data, error: createError } = await supabase
         .from('document_sections')
         .insert(newSections)
         .select()
 
-      if (createError) throw createError
+      if (createError) {
+        console.error('Supabase error creating sections:', createError)
+        throw createError
+      }
+      
+      console.log('Sections created successfully:', data)
 
       // Merge with existing sections
       setSections(prev => [...prev, ...(data || [])].sort((a, b) => a.order_index - b.order_index))
