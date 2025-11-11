@@ -13,16 +13,16 @@ function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
       <Handle type="target" position={Position.Right} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
       <Handle type="source" position={Position.Bottom} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
       
-      {/* Top connector dot - yellow theme */}
+      {/* Top connector dot - centered at hexagon top vertex */}
       <div 
-        className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-yellow-400 shadow-lg"
-        style={{ pointerEvents: 'none', zIndex: 0 }}
+        className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-yellow-400 shadow-lg"
+        style={{ top: '-2px', pointerEvents: 'none', zIndex: 0 }}
       />
       
-      {/* Bottom connector dot - yellow theme */}
+      {/* Bottom connector dot - centered at hexagon bottom vertex */}
       <div 
-        className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-yellow-400 shadow-lg"
-        style={{ pointerEvents: 'none', zIndex: 0 }}
+        className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-yellow-400 shadow-lg"
+        style={{ top: '152px', pointerEvents: 'none', zIndex: 0 }}
       />
       
       {/* Hexagon Ghostwriter Node */}
@@ -48,12 +48,12 @@ function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
         </svg>
         
         {/* Content centered over hexagon */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 pointer-events-none">
           {/* Magical wand icon */}
-          <svg className="w-14 h-14 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
           </svg>
-          <div className="text-sm font-bold text-white tracking-wide">
+          <div className="text-xs font-bold text-white tracking-wide">
             GHOSTWRITER
           </div>
         </div>
