@@ -105,8 +105,9 @@ export function useDocumentEditor({
           clearTimeout(saveTimerRef.current)
         }
 
-        // Set new timer for auto-save
-        if (enabled && onSave) {
+        // Only set auto-save timer if autoSaveDelay is reasonable (< 60 seconds)
+        // This allows parent to effectively disable auto-save by setting a very high value
+        if (enabled && onSave && autoSaveDelay < 60000) {
           saveTimerRef.current = setTimeout(() => {
             save(newContent)
           }, autoSaveDelay)

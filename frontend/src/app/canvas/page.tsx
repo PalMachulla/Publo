@@ -433,10 +433,23 @@ export default function CanvasPage() {
   ) => {
     console.log('Structure item clicked:', { clickedItem, allItems, format, nodeId })
     
-    // Auto-save canvas before opening AI Document Panel
-    // This ensures the story structure node exists in the database for RLS policy
-    console.log('Auto-saving canvas before opening AI Document Panel...')
-    await handleSave()
+    // Check if node exists in database, only save if it doesn't
+    // This ensures the story structure node exists for RLS policy without unnecessary saves
+    const supabase = createClient()
+    const { data: nodeExists } = await supabase
+      .from('nodes')
+      .select('id')
+      .eq('id', nodeId)
+      .single()
+    
+    if (!nodeExists) {
+      console.log('Node not in database, auto-saving canvas...')
+      setSaving(true)
+      await handleSave()
+      setSaving(false)
+    } else {
+      console.log('Node already exists in database, skipping save')
+    }
     
     // Set initial prompt
     setInitialPrompt(`Write content for ${clickedItem.name}${clickedItem.title ? `: ${clickedItem.title}` : ''}`)
