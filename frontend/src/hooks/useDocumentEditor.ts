@@ -51,6 +51,7 @@ export function useDocumentEditor({
   // Save function
   const save = useCallback(
     async (contentToSave: string) => {
+      console.log('💾 save() called! Stack:', new Error().stack)
       if (!onSave || !enabled) return
 
       try {
@@ -108,9 +109,12 @@ export function useDocumentEditor({
         // Only set auto-save timer if autoSaveDelay is reasonable (< 60 seconds)
         // This allows parent to effectively disable auto-save by setting a very high value
         if (enabled && onSave && autoSaveDelay < 60000) {
+          console.log('⏰ Setting auto-save timer for', autoSaveDelay, 'ms')
           saveTimerRef.current = setTimeout(() => {
             save(newContent)
           }, autoSaveDelay)
+        } else {
+          console.log('⏰ Auto-save disabled. autoSaveDelay:', autoSaveDelay, 'enabled:', enabled, 'onSave:', !!onSave)
         }
       }
     },
@@ -126,15 +130,16 @@ export function useDocumentEditor({
     }
   }, [])
 
-  // Save on unmount if dirty
-  useEffect(() => {
-    return () => {
-      if (isDirty && content !== lastSavedContentRef.current && onSave) {
-        // This is best effort - may not complete if page unloads
-        onSave(content, calculateWordCount(content))
-      }
-    }
-  }, [isDirty, content, onSave])
+  // Save on unmount if dirty (disabled - causes auto-save on every keystroke)
+  // The cleanup function was running on every content/isDirty change, not just unmount
+  // useEffect(() => {
+  //   return () => {
+  //     if (isDirty && content !== lastSavedContentRef.current && onSave) {
+  //       // This is best effort - may not complete if page unloads
+  //       onSave(content, calculateWordCount(content))
+  //     }
+  //   }
+  // }, [isDirty, content, onSave])
 
   return {
     content,
