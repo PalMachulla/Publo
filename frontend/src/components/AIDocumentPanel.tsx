@@ -61,6 +61,7 @@ export default function AIDocumentPanel({
   const [showAddSectionModal, setShowAddSectionModal] = useState(false)
   const [newSectionName, setNewSectionName] = useState('')
   const [newSectionTitle, setNewSectionTitle] = useState('')
+  const [newSectionParentId, setNewSectionParentId] = useState<string | null>(null)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -450,17 +451,35 @@ export default function AIDocumentPanel({
   const handleAddSection = () => {
     if (!newSectionName.trim() || !storyStructureNodeId) return
 
+    // Determine level based on parent
+    let level = 1
+    let parentId = newSectionParentId
+    
+    if (parentId) {
+      const parent = structureItems.find(item => item.id === parentId)
+      if (parent) {
+        level = parent.level + 1
+      }
+    }
+
+    // Calculate order (add after siblings or at end)
+    const siblings = structureItems.filter(item => item.parentId === parentId)
+    const order = siblings.length > 0 
+      ? Math.max(...siblings.map(s => s.order)) + 1 
+      : structureItems.length
+
     // Create new structure item
     const newItemId = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const newItem: StoryStructureItem = {
       id: newItemId,
-      level: 1, // Top level by default
+      level,
       name: newSectionName.trim(),
       title: newSectionTitle.trim() || undefined,
       description: '',
-      order: structureItems.length, // Add at end
+      order,
       completed: false,
       content: '',
+      parentId: parentId || undefined,
     }
 
     // Update structure items in parent
@@ -474,6 +493,18 @@ export default function AIDocumentPanel({
     setShowAddSectionModal(false)
     setNewSectionName('')
     setNewSectionTitle('')
+    setNewSectionParentId(null)
+  }
+
+  // Open add section modal with default parent (Cover if exists)
+  const openAddSectionModal = () => {
+    // Find Cover section (default parent)
+    const coverItem = structureItems.find(item => 
+      item.name.toLowerCase() === 'cover' || item.level === 1
+    )
+    
+    setNewSectionParentId(coverItem?.id || null)
+    setShowAddSectionModal(true)
   }
 
   // Render enhanced section tree with add/edit capabilities
@@ -598,7 +629,7 @@ export default function AIDocumentPanel({
         <div className="p-8 text-center">
           <div className="text-gray-400 text-sm mb-4">No sections yet</div>
           <button
-            onClick={() => setShowAddSectionModal(true)}
+            onClick={openAddSectionModal}
             className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-lg text-sm font-medium transition-colors"
           >
             + Add First Section
@@ -613,7 +644,7 @@ export default function AIDocumentPanel({
         
         {/* Add Section Button at bottom */}
         <button
-          onClick={() => setShowAddSectionModal(true)}
+          onClick={openAddSectionModal}
           className="w-full mt-2 mx-2 p-2.5 border-2 border-dashed border-gray-300 hover:border-yellow-400 hover:bg-yellow-50 rounded-md text-sm text-gray-500 hover:text-yellow-900 transition-all"
         >
           <div className="flex items-center justify-center gap-2">
@@ -631,12 +662,40 @@ export default function AIDocumentPanel({
   const renderAddSectionModal = () => {
     if (!showAddSectionModal) return null
 
+    // Get parent section display name
+    const getParentDisplayName = (parentId: string | null) => {
+      if (!parentId) return 'Top Level'
+      const parent = structureItems.find(item => item.id === parentId)
+      return parent ? parent.name : 'Top Level'
+    }
+
     return (
       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowAddSectionModal(false)}>
         <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Section</h3>
           
           <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Parent Section
+              </label>
+              <select
+                value={newSectionParentId || ''}
+                onChange={(e) => setNewSectionParentId(e.target.value || null)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm"
+              >
+                <option value="">Top Level (No Parent)</option>
+                {structureItems.map(item => (
+                  <option key={item.id} value={item.id}>
+                    {'  '.repeat(item.level - 1)}└─ {item.name}
+                  </option>
+                ))}
+              </select>
+              <div className="text-xs text-gray-500 mt-1">
+                Will be added under: <span className="font-medium">{getParentDisplayName(newSectionParentId)}</span>
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Section Name <span className="text-red-500">*</span>
@@ -681,6 +740,7 @@ export default function AIDocumentPanel({
                 setShowAddSectionModal(false)
                 setNewSectionName('')
                 setNewSectionTitle('')
+                setNewSectionParentId(null)
               }}
               className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
             >
