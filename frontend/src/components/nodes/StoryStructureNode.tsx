@@ -62,39 +62,47 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
     
     if (!hasItems) return 200
     
-    // Count the maximum depth of expanded items
-    const countMaxDepth = (): number => {
-      let maxDepth = 0
+    // Count total horizontal cards in linear flow
+    const countHorizontalCards = (): number => {
+      let totalCards = 0
       
-      const traverse = (parentId: string | undefined, depth: number) => {
+      const traverse = (parentId: string | undefined): number => {
         const children = items.filter(item => item.parentId === parentId)
         
         if (children.length === 0) {
-          maxDepth = Math.max(maxDepth, depth)
-          return
+          return 0
         }
         
-        // Check if any child is expanded
-        const hasExpandedChild = children.some(child => child.expanded)
+        let horizontalSum = 0
         
-        if (hasExpandedChild) {
-          // At least one child is expanded, traverse into them
-          children.forEach(child => {
-            if (child.expanded) {
-              traverse(child.id, depth + 1)
-            }
-          })
-        } else {
-          // No children expanded, this is the deepest we go
-          maxDepth = Math.max(maxDepth, depth + 1)
-        }
+        children.forEach(child => {
+          // Count this child
+          horizontalSum += 1
+          
+          // If expanded, add its children horizontally
+          if (child.expanded) {
+            const childWidth = traverse(child.id)
+            horizontalSum += childWidth
+          }
+        })
+        
+        return horizontalSum
       }
       
-      traverse(undefined, 0)
-      return maxDepth
+      // Count top level items
+      totalCards = topLevelItems.length
+      
+      // Add all expanded children
+      topLevelItems.forEach(item => {
+        if (item.expanded) {
+          totalCards += traverse(item.id)
+        }
+      })
+      
+      return totalCards
     }
     
-    const columns = countMaxDepth()
+    const columns = countHorizontalCards()
     
     // Width = (number of columns * card width) + (gaps between columns) + padding
     return (columns * cardWidth) + ((columns - 1) * levelGap) + (sidePadding * 2)
@@ -176,9 +184,9 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         
         {/* Children rendered to the right - slide in/out */}
         {item.expanded && (
-          <div className="flex flex-col gap-2 flex-shrink-0 animate-in slide-in-from-left-2 duration-200">
+          <div className="flex flex-row flex-nowrap gap-5 flex-shrink-0 items-start animate-in slide-in-from-left-2 duration-200">
             {itemHasChildren ? (
-              // Render existing children
+              // Render existing children horizontally
               children.map((child) => renderHorizontalTree(child))
             ) : canHaveChildren ? (
               // Show placeholder to add first child
