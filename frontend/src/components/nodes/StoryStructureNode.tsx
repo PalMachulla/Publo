@@ -46,11 +46,11 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
   // Handle item click
   const handleItemClick = (item: StoryStructureItem, event: React.MouseEvent) => {
     event.stopPropagation()
-    console.log('Story structure item clicked:', { item, nodeId: id, allItems: topLevelItems })
+    console.log('Story structure item clicked:', { item, nodeId: id, allItems: items })
     
     // Call the callback if provided
     if (onItemClick) {
-      onItemClick(item, topLevelItems, format)
+      onItemClick(item, items, format, id) // Pass node ID as 4th parameter
     }
   }
   

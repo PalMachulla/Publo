@@ -1,6 +1,19 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import dynamic from 'next/dynamic'
+import { useDocumentSections } from '@/hooks/useDocumentSections'
+import { useDocumentEditor } from '@/hooks/useDocumentEditor'
+import EditorToolbar from './editor/EditorToolbar'
+import type { StoryStructureItem } from '@/types/nodes'
+import type { Editor } from '@tiptap/react'
+import type { DocumentSection } from '@/types/document'
+
+// Dynamically import ProseMirrorEditor to avoid SSR issues
+const ProseMirrorEditor = dynamic(
+  () => import('./editor/ProseMirrorEditor'),
+  { ssr: false, loading: () => <div className="flex items-center justify-center h-full"><div className="text-gray-400">Loading editor...</div></div> }
+)
 
 interface Task {
   id: string
@@ -20,34 +33,73 @@ interface AIDocumentPanelProps {
   isOpen: boolean
   onClose: () => void
   initialPrompt?: string
-  storyId?: string
-  initialContent?: string
-  onSave?: (storyId: string, content: string) => void
+  storyStructureNodeId?: string | null
+  structureItems?: StoryStructureItem[]
+  initialSectionId?: string | null
 }
 
-export default function AIDocumentPanel({ 
-  isOpen, 
-  onClose, 
+export default function AIDocumentPanel({
+  isOpen,
+  onClose,
   initialPrompt,
-  storyId,
-  initialContent,
-  onSave
+  storyStructureNodeId = null,
+  structureItems = [],
+  initialSectionId = null,
 }: AIDocumentPanelProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
-  const [documentContent, setDocumentContent] = useState('')
-  const [leftPanelWidth, setLeftPanelWidth] = useState(50) // Percentage
+  const [leftPanelWidth, setLeftPanelWidth] = useState(40) // Percentage
   const [isDragging, setIsDragging] = useState(false)
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(initialSectionId)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const editorRef = useRef<any>(null)
   const hasProcessedInitialPrompt = useRef(false)
-  
-  // Load initial content when storyId changes
-  useEffect(() => {
-    if (initialContent) {
-      setDocumentContent(initialContent)
-    }
-  }, [initialContent])
+
+  // Fetch and manage document sections
+  const {
+    sections,
+    loading: sectionsLoading,
+    error: sectionsError,
+    updateSection,
+    getSectionByStructureItemId,
+    initializeSections,
+  } = useDocumentSections({
+    storyStructureNodeId,
+    structureItems,
+    enabled: isOpen && !!storyStructureNodeId,
+  })
+
+  // Get the active section
+  const activeSection = activeSectionId
+    ? sections.find(s => s.id === activeSectionId)
+    : sections[0]
+
+  // Document editor with auto-save
+  const {
+    content,
+    wordCount,
+    saveStatus,
+    lastSaved,
+    saveError,
+    handleEditorUpdate,
+    isDirty,
+  } = useDocumentEditor({
+    initialContent: activeSection?.content || '',
+    onSave: async (newContent, words) => {
+      if (activeSection) {
+        await updateSection(activeSection.id, {
+          content: newContent,
+          word_count: words,
+          status: 'in_progress',
+        })
+      }
+    },
+    autoSaveDelay: 2000,
+    enabled: !!activeSection,
+  })
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -57,150 +109,144 @@ export default function AIDocumentPanel({
     scrollToBottom()
   }, [messages])
 
-  // Auto-collapse thinking box when all tasks are completed (only once)
+  // Auto-collapse thinking box when all tasks are completed
   useEffect(() => {
     messages.forEach((msg, idx) => {
       if (msg.role === 'assistant' && msg.tasks && !msg.isThinkingCollapsed && !msg.hasAutoCollapsed) {
         const allCompleted = msg.tasks.every(task => task.status === 'completed')
         if (allCompleted) {
           setTimeout(() => {
-            setMessages(prev => prev.map((m, i) => 
-              i === idx ? { ...m, isThinkingCollapsed: true, hasAutoCollapsed: true } : m
-            ))
-          }, 1000) // Wait 1 second before collapsing
+            setMessages(prev =>
+              prev.map((m, i) =>
+                i === idx ? { ...m, isThinkingCollapsed: true, hasAutoCollapsed: true } : m
+              )
+            )
+          }, 1000)
         }
       }
     })
   }, [messages])
 
   const toggleThinkingCollapse = (messageIndex: number) => {
-    setMessages(prev => prev.map((msg, idx) => 
-      idx === messageIndex ? { 
-        ...msg, 
-        isThinkingCollapsed: !msg.isThinkingCollapsed
-        // Keep hasAutoCollapsed as is - once auto-collapsed, never auto-collapse again
-      } : msg
-    ))
+    setMessages(prev =>
+      prev.map((msg, idx) =>
+        idx === messageIndex
+          ? {
+              ...msg,
+              isThinkingCollapsed: !msg.isThinkingCollapsed,
+            }
+          : msg
+      )
+    )
   }
 
   // Handle initial prompt when panel opens
   useEffect(() => {
     if (isOpen && initialPrompt && !hasProcessedInitialPrompt.current) {
       hasProcessedInitialPrompt.current = true
-      // Add user message with initial prompt
       setMessages([{ role: 'user', content: initialPrompt }])
-      
-      // Simulate AI planning and reasoning
+
+      // Simulate AI planning (would be real AI later)
       setTimeout(() => {
         const aiResponse: Message = {
           role: 'assistant',
-          content: 'I\'ll help you with that. Here\'s my reasoning process:',
+          content: "I'll help you with that. Here's my reasoning process:",
           isThinkingCollapsed: false,
           hasAutoCollapsed: false,
           tasks: [
             { id: '1', text: 'Understanding the prompt and extracting key requirements', status: 'in_progress' },
             { id: '2', text: 'Breaking down the task into logical components', status: 'pending' },
             { id: '3', text: 'Identifying the narrative structure and tone', status: 'pending' },
-            { id: '4', text: 'Researching relevant themes and context', status: 'pending' },
-            { id: '5', text: 'Outlining the document structure', status: 'pending' },
-            { id: '6', text: 'Drafting initial content with key points', status: 'pending' },
-            { id: '7', text: 'Refining language and ensuring coherence', status: 'pending' },
-          ]
+            { id: '4', text: 'Drafting initial content with key points', status: 'pending' },
+          ],
         }
         setMessages(prev => [...prev, aiResponse])
-        
-        // Simulate realistic task progression
+
+        // Simulate task progression
         setTimeout(() => {
-          setMessages(prev => prev.map((msg, idx) => 
-            idx === prev.length - 1 && msg.tasks ? {
-              ...msg,
-              tasks: msg.tasks.map(task => 
-                task.id === '1' ? { ...task, status: 'completed' } : 
-                task.id === '2' ? { ...task, status: 'in_progress' } : task
-              )
-            } : msg
-          ))
+          setMessages(prev =>
+            prev.map((msg, idx) =>
+              idx === prev.length - 1 && msg.tasks
+                ? {
+                    ...msg,
+                    tasks: msg.tasks.map(task =>
+                      task.id === '1' ? { ...task, status: 'completed' } : task.id === '2' ? { ...task, status: 'in_progress' } : task
+                    ),
+                  }
+                : msg
+            )
+          )
         }, 1200)
-        
+
         setTimeout(() => {
-          setMessages(prev => prev.map((msg, idx) => 
-            idx === prev.length - 1 && msg.tasks ? {
-              ...msg,
-              tasks: msg.tasks.map(task => 
-                task.id === '2' ? { ...task, status: 'completed' } : 
-                task.id === '3' ? { ...task, status: 'in_progress' } : task
-              )
-            } : msg
-          ))
+          setMessages(prev =>
+            prev.map((msg, idx) =>
+              idx === prev.length - 1 && msg.tasks
+                ? {
+                    ...msg,
+                    tasks: msg.tasks.map(task =>
+                      task.id === '2' ? { ...task, status: 'completed' } : task.id === '3' ? { ...task, status: 'in_progress' } : task
+                    ),
+                  }
+                : msg
+            )
+          )
         }, 2400)
-        
+
         setTimeout(() => {
-          setMessages(prev => prev.map((msg, idx) => 
-            idx === prev.length - 1 && msg.tasks ? {
-              ...msg,
-              tasks: msg.tasks.map(task => 
-                task.id === '3' ? { ...task, status: 'completed' } : 
-                task.id === '4' ? { ...task, status: 'in_progress' } : task
-              )
-            } : msg
-          ))
-        }, 3800)
-        
+          setMessages(prev =>
+            prev.map((msg, idx) =>
+              idx === prev.length - 1 && msg.tasks
+                ? {
+                    ...msg,
+                    tasks: msg.tasks.map(task =>
+                      task.id === '3' ? { ...task, status: 'completed' } : task.id === '4' ? { ...task, status: 'in_progress' } : task
+                    ),
+                  }
+                : msg
+            )
+          )
+        }, 3600)
+
         setTimeout(() => {
-          setMessages(prev => prev.map((msg, idx) => 
-            idx === prev.length - 1 && msg.tasks ? {
-              ...msg,
-              tasks: msg.tasks.map(task => 
-                task.id === '4' ? { ...task, status: 'completed' } : 
-                task.id === '5' ? { ...task, status: 'in_progress' } : task
-              )
-            } : msg
-          ))
-        }, 5200)
-        
-        setTimeout(() => {
-          setMessages(prev => prev.map((msg, idx) => 
-            idx === prev.length - 1 && msg.tasks ? {
-              ...msg,
-              tasks: msg.tasks.map(task => 
-                task.id === '5' ? { ...task, status: 'completed' } : 
-                task.id === '6' ? { ...task, status: 'in_progress' } : task
-              )
-            } : msg
-          ))
-        }, 6600)
-        
-        setTimeout(() => {
-          setMessages(prev => prev.map((msg, idx) => 
-            idx === prev.length - 1 && msg.tasks ? {
-              ...msg,
-              tasks: msg.tasks.map(task => 
-                task.id === '6' ? { ...task, status: 'completed' } : 
-                task.id === '7' ? { ...task, status: 'in_progress' } : task
-              )
-            } : msg
-          ))
-        }, 8200)
-        
-        setTimeout(() => {
-          setMessages(prev => prev.map((msg, idx) => 
-            idx === prev.length - 1 && msg.tasks ? {
-              ...msg,
-              tasks: msg.tasks.map(task => 
-                task.id === '7' ? { ...task, status: 'completed' } : task
-              )
-            } : msg
-          ))
-        }, 9800)
+          setMessages(prev =>
+            prev.map((msg, idx) =>
+              idx === prev.length - 1 && msg.tasks
+                ? {
+                    ...msg,
+                    tasks: msg.tasks.map(task => (task.id === '4' ? { ...task, status: 'completed' } : task)),
+                  }
+                : msg
+            )
+          )
+        }, 4800)
       }, 800)
     }
-    
-    // Reset the flag when panel closes
+
     if (!isOpen) {
       hasProcessedInitialPrompt.current = false
-      setMessages([]) // Clear messages when panel closes
+      setMessages([])
     }
   }, [isOpen, initialPrompt])
+
+  // Initialize sections when panel opens
+  useEffect(() => {
+    if (isOpen && storyStructureNodeId && structureItems.length > 0 && !sectionsLoading) {
+      initializeSections()
+    }
+  }, [isOpen, storyStructureNodeId, structureItems, sectionsLoading, initializeSections])
+
+  // Scroll to initial section
+  useEffect(() => {
+    if (isOpen && initialSectionId && editorRef.current) {
+      setTimeout(() => {
+        const structureItem = structureItems.find(item => item.id === initialSectionId)
+        if (structureItem) {
+          editorRef.current?.scrollToSection(initialSectionId)
+        }
+      }, 500)
+    }
+  }, [isOpen, initialSectionId, structureItems])
 
   // Handle mouse drag for resizing
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -210,12 +256,12 @@ export default function AIDocumentPanel({
 
   const handleMouseMove = (e: MouseEvent) => {
     if (!isDragging || !containerRef.current) return
-    
+
     const containerRect = containerRef.current.getBoundingClientRect()
     const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100
-    
-    // Constrain between 30% and 70%
-    if (newWidth >= 30 && newWidth <= 70) {
+
+    // Constrain between 25% and 60%
+    if (newWidth >= 25 && newWidth <= 60) {
       setLeftPanelWidth(newWidth)
     }
   }
@@ -230,7 +276,7 @@ export default function AIDocumentPanel({
       document.addEventListener('mouseup', handleMouseUp)
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
-      
+
       return () => {
         document.removeEventListener('mousemove', handleMouseMove)
         document.removeEventListener('mouseup', handleMouseUp)
@@ -244,12 +290,11 @@ export default function AIDocumentPanel({
     e.preventDefault()
     if (!input.trim()) return
 
-    // Add user message
     const userMessage = input
     setMessages(prev => [...prev, { role: 'user', content: userMessage }])
     setInput('')
-    
-    // Simulate AI response with reasoning tasks
+
+    // Simulate AI response (would be real AI later)
     setTimeout(() => {
       const timestamp = Date.now()
       const aiResponse: Message = {
@@ -260,79 +305,185 @@ export default function AIDocumentPanel({
         tasks: [
           { id: `${timestamp}-1`, text: 'Analyzing the context of your input', status: 'in_progress' },
           { id: `${timestamp}-2`, text: 'Determining the best approach for this task', status: 'pending' },
-          { id: `${timestamp}-3`, text: 'Gathering relevant information and examples', status: 'pending' },
-          { id: `${timestamp}-4`, text: 'Structuring the response for clarity', status: 'pending' },
-          { id: `${timestamp}-5`, text: 'Composing and refining the output', status: 'pending' },
-        ]
+          { id: `${timestamp}-3`, text: 'Composing and refining the output', status: 'pending' },
+        ],
       }
       setMessages(prev => [...prev, aiResponse])
-      
-      // Simulate realistic task progression
+
+      // Simulate task progression
       setTimeout(() => {
-        setMessages(prev => prev.map((msg, idx) => 
-          idx === prev.length - 1 && msg.tasks ? {
-            ...msg,
-            tasks: msg.tasks.map(task => 
-              task.id === `${timestamp}-1` ? { ...task, status: 'completed' } : 
-              task.id === `${timestamp}-2` ? { ...task, status: 'in_progress' } : task
-            )
-          } : msg
-        ))
+        setMessages(prev =>
+          prev.map((msg, idx) =>
+            idx === prev.length - 1 && msg.tasks
+              ? {
+                  ...msg,
+                  tasks: msg.tasks.map(task =>
+                    task.id === `${timestamp}-1` ? { ...task, status: 'completed' } : task.id === `${timestamp}-2` ? { ...task, status: 'in_progress' } : task
+                  ),
+                }
+              : msg
+          )
+        )
       }, 1000)
-      
+
       setTimeout(() => {
-        setMessages(prev => prev.map((msg, idx) => 
-          idx === prev.length - 1 && msg.tasks ? {
-            ...msg,
-            tasks: msg.tasks.map(task => 
-              task.id === `${timestamp}-2` ? { ...task, status: 'completed' } : 
-              task.id === `${timestamp}-3` ? { ...task, status: 'in_progress' } : task
-            )
-          } : msg
-        ))
+        setMessages(prev =>
+          prev.map((msg, idx) =>
+            idx === prev.length - 1 && msg.tasks
+              ? {
+                  ...msg,
+                  tasks: msg.tasks.map(task =>
+                    task.id === `${timestamp}-2` ? { ...task, status: 'completed' } : task.id === `${timestamp}-3` ? { ...task, status: 'in_progress' } : task
+                  ),
+                }
+              : msg
+          )
+        )
       }, 2200)
-      
+
       setTimeout(() => {
-        setMessages(prev => prev.map((msg, idx) => 
-          idx === prev.length - 1 && msg.tasks ? {
-            ...msg,
-            tasks: msg.tasks.map(task => 
-              task.id === `${timestamp}-3` ? { ...task, status: 'completed' } : 
-              task.id === `${timestamp}-4` ? { ...task, status: 'in_progress' } : task
-            )
-          } : msg
-        ))
-      }, 3600)
-      
-      setTimeout(() => {
-        setMessages(prev => prev.map((msg, idx) => 
-          idx === prev.length - 1 && msg.tasks ? {
-            ...msg,
-            tasks: msg.tasks.map(task => 
-              task.id === `${timestamp}-4` ? { ...task, status: 'completed' } : 
-              task.id === `${timestamp}-5` ? { ...task, status: 'in_progress' } : task
-            )
-          } : msg
-        ))
-      }, 5000)
-      
-      setTimeout(() => {
-        setMessages(prev => prev.map((msg, idx) => 
-          idx === prev.length - 1 && msg.tasks ? {
-            ...msg,
-            tasks: msg.tasks.map(task => 
-              task.id === `${timestamp}-5` ? { ...task, status: 'completed' } : task
-            )
-          } : msg
-        ))
-      }, 6500)
+        setMessages(prev =>
+          prev.map((msg, idx) =>
+            idx === prev.length - 1 && msg.tasks
+              ? {
+                  ...msg,
+                  tasks: msg.tasks.map(task => (task.id === `${timestamp}-3` ? { ...task, status: 'completed' } : task)),
+                }
+              : msg
+          )
+        )
+      }, 3400)
     }, 500)
+  }
+
+  // Handle section click
+  const handleSectionClick = (section: DocumentSection) => {
+    setActiveSectionId(section.id)
+    editorRef.current?.scrollToSection(section.structure_item_id)
+  }
+
+  // Render section navigation
+  const renderSectionNav = () => {
+    if (sectionsLoading) {
+      return (
+        <div className="flex items-center justify-center p-4">
+          <div className="text-sm text-gray-400">Loading sections...</div>
+        </div>
+      )
+    }
+
+    if (sectionsError) {
+      return (
+        <div className="p-4">
+          <div className="text-sm text-red-600">Error: {sectionsError}</div>
+        </div>
+      )
+    }
+
+    if (sections.length === 0) {
+      return (
+        <div className="p-4">
+          <div className="text-sm text-gray-400">No sections yet</div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-1">
+        {sections.map(section => {
+          const item = structureItems.find(i => i.id === section.structure_item_id)
+          if (!item) return null
+
+          return (
+            <button
+              key={section.id}
+              onClick={() => handleSectionClick(section)}
+              className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                section.id === activeSectionId
+                  ? 'bg-yellow-100 text-yellow-900 border-l-2 border-yellow-500'
+                  : 'hover:bg-gray-100 text-gray-700'
+              }`}
+              style={{ paddingLeft: `${item.level * 12 + 16}px` }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{item.name}</div>
+                  {item.title && <div className="text-xs text-gray-500 truncate">{item.title}</div>}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Status indicator */}
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      section.status === 'completed'
+                        ? 'bg-green-500'
+                        : section.status === 'in_progress'
+                        ? 'bg-yellow-500'
+                        : 'bg-gray-300'
+                    }`}
+                    title={section.status}
+                  />
+                  {/* Word count */}
+                  <div className="text-xs text-gray-400">{section.word_count}w</div>
+                </div>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // Save status indicator
+  const renderSaveStatus = () => {
+    if (saveStatus === 'saving') {
+      return (
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          <span>Saving...</span>
+        </div>
+      )
+    }
+
+    if (saveStatus === 'saved') {
+      return (
+        <div className="flex items-center gap-2 text-sm text-green-600">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span>Saved {lastSaved && `at ${lastSaved.toLocaleTimeString()}`}</span>
+        </div>
+      )
+    }
+
+    if (saveStatus === 'error') {
+      return (
+        <div className="flex items-center gap-2 text-sm text-red-600">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          <span>Error: {saveError || 'Failed to save'}</span>
+        </div>
+      )
+    }
+
+    if (isDirty) {
+      return <div className="text-sm text-gray-400">Unsaved changes</div>
+    }
+
+    return null
   }
 
   return (
     <>
       {/* Backdrop */}
-      <div 
+      <div
         className={`fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity duration-300 ${
           isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
@@ -340,14 +491,18 @@ export default function AIDocumentPanel({
       />
 
       {/* Split Panel */}
-      <div 
+      <div
         className={`fixed inset-y-0 right-0 w-full bg-white shadow-2xl z-50 transform transition-transform duration-500 ease-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
         {/* Header */}
         <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white">
-          <h2 className="text-lg font-semibold text-gray-900">AI Document Assistant</h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-lg font-semibold text-gray-900">AI Document Assistant</h2>
+            {renderSaveStatus()}
+            <div className="text-sm text-gray-500">{wordCount} words</div>
+          </div>
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -362,28 +517,37 @@ export default function AIDocumentPanel({
         {/* Split Content */}
         <div className="flex h-[calc(100vh-4rem)]" ref={containerRef}>
           {/* Left Side - AI Chat */}
-          <div 
-            className="border-r border-gray-200 flex flex-col bg-gray-50 relative overflow-hidden" 
+          <div
+            className="border-r border-gray-200 flex flex-col bg-gray-50 relative overflow-hidden"
             style={{ width: `${leftPanelWidth}%` }}
           >
             {/* Grid background */}
-            <div className="absolute inset-0 z-0" style={{
-              backgroundImage: `
+            <div
+              className="absolute inset-0 z-0"
+              style={{
+                backgroundImage: `
                 linear-gradient(to right, #e5e7eb 1px, transparent 1px),
                 linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
               `,
-              backgroundSize: '24px 24px'
-            }} />
-            
+                backgroundSize: '24px 24px',
+              }}
+            />
+
             {/* Chat Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6 relative z-10">
               {messages.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-gray-400">
                   <div className="text-center">
                     <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                      />
                     </svg>
-                    <p className="text-sm">Start a conversation to build your document</p>
+                    <p className="text-sm">Chat with AI to build your document</p>
+                    <p className="text-xs mt-2 text-gray-300">(AI integration coming soon)</p>
                   </div>
                 </div>
               ) : (
@@ -397,7 +561,7 @@ export default function AIDocumentPanel({
                       ) : (
                         <div className="space-y-2">
                           <p className="text-sm text-gray-700 mb-3">{message.content}</p>
-                          
+
                           {/* Thinking Process Box */}
                           {message.tasks && message.tasks.length > 0 && (
                             <div className="bg-gray-100 rounded-lg border border-gray-200 overflow-hidden">
@@ -406,39 +570,43 @@ export default function AIDocumentPanel({
                                 onClick={() => toggleThinkingCollapse(index)}
                                 className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-200 transition-colors"
                               >
-                                <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
-                                  Thinking Process
-                                </span>
-                                <svg 
+                                <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Thinking Process</span>
+                                <svg
                                   className={`w-4 h-4 text-gray-500 transition-transform ${
                                     message.isThinkingCollapsed ? 'rotate-0' : 'rotate-180'
-                                  }`} 
-                                  fill="none" 
-                                  stroke="currentColor" 
+                                  }`}
+                                  fill="none"
+                                  stroke="currentColor"
                                   viewBox="0 0 24 24"
                                 >
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                 </svg>
                               </button>
-                              
+
                               {/* Task List */}
                               {!message.isThinkingCollapsed && (
                                 <div className="px-4 pb-3 space-y-2">
-                                  {message.tasks.map((task) => (
-                                    <div 
-                                      key={task.id} 
-                                      className="flex items-center gap-3 group"
-                                    >
+                                  {message.tasks.map(task => (
+                                    <div key={task.id} className="flex items-center gap-3 group">
                                       {/* Status Icon */}
                                       <div className="flex-shrink-0 w-5 h-5">
                                         {task.status === 'completed' ? (
                                           <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2.5}
+                                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                            />
                                           </svg>
                                         ) : task.status === 'in_progress' ? (
                                           <svg className="w-5 h-5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            <path
+                                              className="opacity-75"
+                                              fill="currentColor"
+                                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                            ></path>
                                           </svg>
                                         ) : (
                                           <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -446,13 +614,17 @@ export default function AIDocumentPanel({
                                           </svg>
                                         )}
                                       </div>
-                                      
+
                                       {/* Task Text */}
-                                      <p className={`text-sm flex-1 px-3 py-1.5 rounded bg-white/20 backdrop-blur-sm ${
-                                        task.status === 'completed' ? 'text-gray-600 line-through' : 
-                                        task.status === 'in_progress' ? 'text-gray-900 font-medium' : 
-                                        'text-gray-500'
-                                      }`}>
+                                      <p
+                                        className={`text-sm flex-1 px-3 py-1.5 rounded bg-white/20 backdrop-blur-sm ${
+                                          task.status === 'completed'
+                                            ? 'text-gray-600 line-through'
+                                            : task.status === 'in_progress'
+                                            ? 'text-gray-900 font-medium'
+                                            : 'text-gray-500'
+                                        }`}
+                                      >
                                         {task.text}
                                       </p>
                                     </div>
@@ -476,7 +648,7 @@ export default function AIDocumentPanel({
                 <input
                   type="text"
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={e => setInput(e.target.value)}
                   placeholder="What's your story, Morning Glory?"
                   className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm placeholder:text-gray-400"
                 />
@@ -495,7 +667,7 @@ export default function AIDocumentPanel({
           </div>
 
           {/* Resize Handle */}
-          <div 
+          <div
             className={`relative w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors group ${
               isDragging ? 'bg-blue-500' : ''
             }`}
@@ -509,48 +681,53 @@ export default function AIDocumentPanel({
             </div>
           </div>
 
-          {/* Right Side - Document Editor */}
+          {/* Right Side - Document Editor + Section Nav */}
           <div className="flex flex-col bg-white" style={{ width: `${100 - leftPanelWidth}%` }}>
-            {/* Editor Toolbar */}
-            <div className="h-12 border-b border-gray-200 flex items-center px-4 gap-2 bg-gray-50">
-              <button className="p-1.5 hover:bg-gray-200 rounded transition-colors" title="Bold">
-                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 12h9a4 4 0 014 4 4 4 0 01-4 4H6z" />
-                </svg>
-              </button>
-              <button className="p-1.5 hover:bg-gray-200 rounded transition-colors" title="Italic">
-                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20h4M8 4h8m-4 0v16" />
-                </svg>
-              </button>
-              <div className="w-px h-6 bg-gray-300 mx-1" />
-              <button className="p-1.5 hover:bg-gray-200 rounded transition-colors" title="Heading 1">
-                <span className="text-sm font-bold text-gray-700">H1</span>
-              </button>
-              <button className="p-1.5 hover:bg-gray-200 rounded transition-colors" title="Heading 2">
-                <span className="text-sm font-bold text-gray-700">H2</span>
-              </button>
-            </div>
-
-            {/* Document Content */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="max-w-3xl mx-auto px-12 py-8">
-                {documentContent ? (
-                  <div 
-                    className="prose prose-lg max-w-none"
-                    dangerouslySetInnerHTML={{ __html: documentContent }}
-                  />
-                ) : (
-                  <div className="h-full flex items-center justify-center text-gray-400">
-                    <div className="text-center">
-                      <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <div className="flex h-full">
+              {/* Section Navigation Sidebar */}
+              {!isSidebarCollapsed && (
+                <div className="w-64 border-r border-gray-200 bg-gray-50 flex flex-col">
+                  <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900">Sections</h3>
+                    <button
+                      onClick={() => setIsSidebarCollapsed(true)}
+                      className="p-1 hover:bg-gray-200 rounded transition-colors"
+                      title="Collapse sidebar"
+                    >
+                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                       </svg>
-                      <p className="text-sm">Your document will appear here</p>
-                      <p className="text-xs mt-2 text-gray-300">Chat with AI to generate content</p>
-                    </div>
+                    </button>
                   </div>
+                  <div className="flex-1 overflow-y-auto">{renderSectionNav()}</div>
+                </div>
+              )}
+
+              {/* Editor Area */}
+              <div className="flex-1 flex flex-col">
+                {/* Toolbar */}
+                <EditorToolbar editor={editorRef.current?.getEditor() || null} />
+
+                {/* Editor */}
+                <ProseMirrorEditor
+                  ref={editorRef}
+                  content={content}
+                  onUpdate={handleEditorUpdate}
+                  placeholder="Start writing..."
+                  className="flex-1"
+                />
+
+                {/* Sidebar Expand Button (when collapsed) */}
+                {isSidebarCollapsed && (
+                  <button
+                    onClick={() => setIsSidebarCollapsed(false)}
+                    className="absolute top-20 left-0 p-2 bg-white border border-gray-200 rounded-r-lg hover:bg-gray-50 transition-colors shadow-sm"
+                    title="Show sections"
+                  >
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
                 )}
               </div>
             </div>
@@ -560,4 +737,3 @@ export default function AIDocumentPanel({
     </>
   )
 }
-

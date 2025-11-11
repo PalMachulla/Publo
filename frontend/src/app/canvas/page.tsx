@@ -113,6 +113,10 @@ export default function CanvasPage() {
   const [initialPrompt, setInitialPrompt] = useState('')
   const [currentStoryDraftId, setCurrentStoryDraftId] = useState<string | null>(null)
   const [initialDocumentContent, setInitialDocumentContent] = useState('')
+  const [currentStoryStructureNodeId, setCurrentStoryStructureNodeId] = useState<string | null>(null)
+  const [currentStructureItems, setCurrentStructureItems] = useState<any[]>([])
+  const [currentStructureFormat, setCurrentStructureFormat] = useState<StoryFormat | undefined>(undefined)
+  const [initialSectionId, setInitialSectionId] = useState<string | null>(null)
   
   // TEMPORARY: Force admin for your email while debugging
   const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
@@ -424,30 +428,24 @@ export default function CanvasPage() {
   const handleStructureItemClick = useCallback((
     clickedItem: any,
     allItems: any[],
-    format: StoryFormat
+    format: StoryFormat,
+    nodeId: string
   ) => {
-    console.log('Structure item clicked:', { clickedItem, allItems, format })
+    console.log('Structure item clicked:', { clickedItem, allItems, format, nodeId })
     
-    // Build initial content with all structural items as sections
-    const structuredContent = allItems.map((item, index) => {
-      const isClickedItem = item.id === clickedItem.id
-      return `## ${item.name}${item.title ? `: ${item.title}` : ''}
-
-${item.description || ''}
-
-${isClickedItem ? '\n[Start writing here...]\n' : ''}
-
----
-`
-    }).join('\n')
-    
-    // Set initial document content and prompt
-    setInitialDocumentContent(structuredContent)
+    // Set initial prompt
     setInitialPrompt(`Write content for ${clickedItem.name}${clickedItem.title ? `: ${clickedItem.title}` : ''}`)
-    setCurrentStoryDraftId(clickedItem.id)
+    
+    // Store the structure details for AI Document Panel
+    setCurrentStoryStructureNodeId(nodeId)
+    setCurrentStructureItems(allItems)
+    setCurrentStructureFormat(format)
+    setInitialSectionId(clickedItem.id)
+    
+    // Open AI Document Panel
     setIsAIDocPanelOpen(true)
     
-    console.log('Opening AI Document Panel with structure:', structuredContent)
+    console.log('Opening AI Document Panel with nodeId:', nodeId, 'clickedItem:', clickedItem.id)
   }, [])
   
   // Handle story structure items update (e.g., expanded state changes)
@@ -1323,16 +1321,15 @@ ${isClickedItem ? '\n[Start writing here...]\n' : ''}
             setInitialPrompt('')
             setCurrentStoryDraftId(null)
             setInitialDocumentContent('')
+            setCurrentStoryStructureNodeId(null)
+            setCurrentStructureItems([])
+            setCurrentStructureFormat(undefined)
+            setInitialSectionId(null)
           }}
           initialPrompt={initialPrompt}
-          storyId={currentStoryDraftId || undefined}
-          initialContent={
-            initialDocumentContent || 
-            (currentStoryDraftId 
-              ? nodes.find(n => n.id === currentStoryDraftId)?.data?.content || ''
-              : '')
-          }
-          onSave={handleSaveStoryDraft}
+          storyStructureNodeId={currentStoryStructureNodeId}
+          structureItems={currentStructureItems}
+          initialSectionId={initialSectionId}
         />
       </div>
     </div>
