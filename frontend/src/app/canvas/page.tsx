@@ -763,23 +763,14 @@ export default function CanvasPage() {
       data: nodeData,
     }
     
-    // Automatically connect new node to the context canvas
-    const newEdge: Edge = {
-      id: `${newNodeId}-context`,
-      source: newNodeId,
-      target: 'context',
-      animated: false,
-      style: { stroke: '#9ca3af', strokeWidth: 2 }, // Subtle edge thickness
-      type: 'default' // Default type uses smooth bezier curves
-    }
+    // Don't automatically connect new nodes - let user choose connections manually
     
     // Prepare updated arrays BEFORE setState
     const updatedNodes = [...nodes, newNode]
-    const updatedEdges = [...edges, newEdge]
+    const updatedEdges = edges // No new edges, keep existing edges
     
-    // Update both nodes and edges
+    // Update nodes only
     setNodes(updatedNodes)
-    setEdges(updatedEdges)
     
     // Immediate save after adding node with correct values
     if (storyId) {
