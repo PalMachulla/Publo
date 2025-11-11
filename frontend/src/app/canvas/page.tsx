@@ -112,6 +112,7 @@ export default function CanvasPage() {
   const [isAIDocPanelOpen, setIsAIDocPanelOpen] = useState(false)
   const [initialPrompt, setInitialPrompt] = useState('')
   const [currentStoryDraftId, setCurrentStoryDraftId] = useState<string | null>(null)
+  const [initialDocumentContent, setInitialDocumentContent] = useState('')
   
   // TEMPORARY: Force admin for your email while debugging
   const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
@@ -310,6 +311,20 @@ export default function CanvasPage() {
         finalNodes = [...loadedNodes, contextNode]
       }
       
+      // Inject callbacks into story structure nodes
+      finalNodes = finalNodes.map(node => {
+        if (node.type === 'storyStructureNode' || node.data?.nodeType === 'story-structure') {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              onItemClick: handleStructureItemClick
+            }
+          }
+        }
+        return node
+      })
+      
       // Upgrade all edges to use bezier for smooth curved lines
       const upgradedEdges = loadedEdges.map((edge: Edge) => ({
         ...edge,
@@ -404,6 +419,36 @@ export default function CanvasPage() {
     setIsAIDocPanelOpen(true)
   }, [])
 
+  // Handle story structure item click - open AI Document Panel with structure context
+  const handleStructureItemClick = useCallback((
+    clickedItem: any,
+    allItems: any[],
+    format: StoryFormat
+  ) => {
+    console.log('Structure item clicked:', { clickedItem, allItems, format })
+    
+    // Build initial content with all structural items as sections
+    const structuredContent = allItems.map((item, index) => {
+      const isClickedItem = item.id === clickedItem.id
+      return `## ${item.name}${item.title ? `: ${item.title}` : ''}
+
+${item.description || ''}
+
+${isClickedItem ? '\n[Start writing here...]\n' : ''}
+
+---
+`
+    }).join('\n')
+    
+    // Set initial document content and prompt
+    setInitialDocumentContent(structuredContent)
+    setInitialPrompt(`Write content for ${clickedItem.name}${clickedItem.title ? `: ${clickedItem.title}` : ''}`)
+    setCurrentStoryDraftId(clickedItem.id)
+    setIsAIDocPanelOpen(true)
+    
+    console.log('Opening AI Document Panel with structure:', structuredContent)
+  }, [])
+
   // Handle Create Story node click - spawn new story structure node
   const handleCreateStory = useCallback((format: StoryFormat) => {
     console.log('handleCreateStory called with format:', format)
@@ -430,7 +475,8 @@ export default function CanvasPage() {
       nodeType: 'story-structure' as const,
       format: format,
       items: [],
-      activeLevel: 1
+      activeLevel: 1,
+      onItemClick: handleStructureItemClick
     }
     
     const newStructureNode: Node<StoryStructureNodeData> = {
@@ -648,7 +694,14 @@ export default function CanvasPage() {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
-          const updatedNode = { ...node, data: { ...node.data, ...newData } }
+          const mergedData = { ...node.data, ...newData }
+          
+          // Inject onItemClick callback for story structure nodes
+          if (mergedData.nodeType === 'story-structure' || node.type === 'storyStructureNode') {
+            mergedData.onItemClick = handleStructureItemClick
+          }
+          
+          const updatedNode = { ...node, data: mergedData }
           console.log('Node updated - merged data:', updatedNode.data)
           return updatedNode
         }
@@ -656,15 +709,25 @@ export default function CanvasPage() {
       })
     )
     // Update selected node to reflect changes in panel
-    setSelectedNode((prev) => 
-      prev?.id === nodeId ? { ...prev, data: { ...prev.data, ...newData } } : prev
-    )
+    setSelectedNode((prev) => {
+      if (prev?.id === nodeId) {
+        const mergedData = { ...prev.data, ...newData }
+        
+        // Inject onItemClick callback for story structure nodes
+        if (mergedData.nodeType === 'story-structure' || prev.type === 'storyStructureNode') {
+          mergedData.onItemClick = handleStructureItemClick
+        }
+        
+        return { ...prev, data: mergedData }
+      }
+      return prev
+    })
     
     // Mark as having unsaved changes
     if (!isLoadingRef.current) {
       hasUnsavedChangesRef.current = true
     }
-  }, [setNodes])
+  }, [setNodes, handleStructureItemClick])
 
   // Handle node deletion
   const handleNodeDelete = useCallback((nodeId: string) => {
@@ -1228,13 +1291,15 @@ export default function CanvasPage() {
             setIsAIDocPanelOpen(false)
             setInitialPrompt('')
             setCurrentStoryDraftId(null)
+            setInitialDocumentContent('')
           }}
           initialPrompt={initialPrompt}
           storyId={currentStoryDraftId || undefined}
           initialContent={
-            currentStoryDraftId 
+            initialDocumentContent || 
+            (currentStoryDraftId 
               ? nodes.find(n => n.id === currentStoryDraftId)?.data?.content || ''
-              : ''
+              : '')
           }
           onSave={handleSaveStoryDraft}
         />

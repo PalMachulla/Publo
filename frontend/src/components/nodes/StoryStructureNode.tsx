@@ -6,8 +6,8 @@ import { StoryStructureNodeData } from '@/types/nodes'
 import { getFormatIcon } from '@/components/StoryFormatMenu'
 import { getPrimaryStructuralLevel } from '@/lib/documentHierarchy'
 
-function StoryStructureNode({ data, selected }: NodeProps<StoryStructureNodeData>) {
-  const { format, items, label } = data
+function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNodeData>) {
+  const { format, items, label, onItemClick } = data
   const primaryLevel = format ? (getPrimaryStructuralLevel(format) || 'Item') : 'Item'
   
   // Get only top-level items (level 1)
@@ -16,6 +16,17 @@ function StoryStructureNode({ data, selected }: NodeProps<StoryStructureNodeData
 
   // Get format-specific icon
   const formatIcon = getFormatIcon(format)
+  
+  // Handle item click
+  const handleItemClick = (item: typeof topLevelItems[0], event: React.MouseEvent) => {
+    event.stopPropagation()
+    console.log('Story structure item clicked:', { item, nodeId: id, allItems: topLevelItems })
+    
+    // Call the callback if provided
+    if (onItemClick) {
+      onItemClick(item, topLevelItems, format)
+    }
+  }
 
   // Calculate width based on number of items (minimum 200px for empty state)
   const cardWidth = 240 // Width per item card
@@ -71,11 +82,7 @@ function StoryStructureNode({ data, selected }: NodeProps<StoryStructureNodeData
                 key={item.id}
                 className="flex-shrink-0 bg-white rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer group"
                 style={{ width: 240, height: 160 }}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  // This will be handled by the canvas to open AI Document Panel
-                  console.log('Item clicked:', item)
-                }}
+                onClick={(e) => handleItemClick(item, e)}
               >
                 <div className="w-full h-full p-4 flex flex-col items-center justify-center gap-2">
                   <div className="text-sm font-bold text-gray-900 text-center">
