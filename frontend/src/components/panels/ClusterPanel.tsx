@@ -107,8 +107,12 @@ export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelP
               type="color"
               value={color}
               onChange={(e) => {
-                setColor(e.target.value)
-                handleSave()
+                const newColor = e.target.value
+                setColor(newColor)
+                onUpdate(node.id, {
+                  ...node.data,
+                  color: newColor,
+                })
               }}
               className="w-12 h-12 rounded-lg border border-gray-300 cursor-pointer"
             />
@@ -117,7 +121,12 @@ export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelP
                 type="text"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
-                onBlur={handleSave}
+                onBlur={(e) => {
+                  onUpdate(node.id, {
+                    ...node.data,
+                    color: e.target.value,
+                  })
+                }}
                 placeholder="#9ca3af"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent font-mono text-sm"
               />
