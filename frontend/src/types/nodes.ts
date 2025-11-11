@@ -152,6 +152,8 @@ export interface StoryStructureNodeData extends BaseNodeData {
   activeLevel: number // Which hierarchy level is currently being displayed (1 = top level)
   onItemClick?: (item: StoryStructureItem, allItems: StoryStructureItem[], format: StoryFormat, nodeId: string) => void // Callback when item is clicked
   onItemsUpdate?: (items: StoryStructureItem[]) => void // Callback when items are updated (e.g., expanded state)
+  template?: string // The selected template ID
+  isLoading?: boolean // Whether the node is still being prepared
 }
 
 export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData | ClusterNodeData | StoryStructureNodeData

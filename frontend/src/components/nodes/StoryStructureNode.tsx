@@ -8,7 +8,7 @@ import { getPrimaryStructuralLevel, getDocumentHierarchy } from '@/lib/documentH
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 
 function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNodeData>) {
-  const { format, items = [], label, onItemClick, onItemsUpdate } = data
+  const { format, items = [], label, onItemClick, onItemsUpdate, isLoading = false } = data
   const primaryLevel = format ? (getPrimaryStructuralLevel(format) || 'Item') : 'Item'
   
   // Get only top-level items (level 1)
@@ -147,8 +147,33 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             {/* Header with chevron */}
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1" onClick={(e) => handleItemClick(item, e)}>
-                <div className="text-sm font-bold text-gray-900">
-                  {item.name}
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-bold text-gray-900 flex-1">
+                    {item.name}
+                  </div>
+                  {/* Show spinner on Cover card when loading */}
+                  {isLoading && item.name.toLowerCase() === 'cover' && (
+                    <svg
+                      className="animate-spin h-4 w-4 text-yellow-600"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                  )}
                 </div>
                 {item.title && (
                   <div className="text-xs text-gray-600 mt-1">

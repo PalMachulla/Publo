@@ -6,8 +6,61 @@ import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
 
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
-  onCreateStory: (format: StoryFormat) => void
+  onCreateStory: (format: StoryFormat, template?: string) => void
   onClose: () => void
+}
+
+interface Template {
+  id: string
+  name: string
+  description: string
+}
+
+const templates: Record<StoryFormat, Template[]> = {
+  'novel': [
+    { id: 'three-act', name: 'Three-Act Structure', description: 'Classic beginning, middle, and end' },
+    { id: 'heros-journey', name: "Hero's Journey", description: 'Archetypal adventure narrative' },
+    { id: 'freytag', name: 'Freytag\'s Pyramid', description: 'Rising action, climax, falling action' },
+    { id: 'save-the-cat', name: 'Save The Cat', description: 'Modern screenplay structure adapted for novels' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
+  'short-story': [
+    { id: 'classic', name: 'Classic Short Story', description: 'Single plot, few characters, brief timespan' },
+    { id: 'flash-fiction', name: 'Flash Fiction', description: 'Ultra-short 500-1000 words' },
+    { id: 'twist-ending', name: 'Twist Ending', description: 'Surprise revelation structure' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
+  'report': [
+    { id: 'business', name: 'Business Report', description: 'Executive summary, findings, recommendations' },
+    { id: 'research', name: 'Research Report', description: 'Literature review, methodology, results' },
+    { id: 'technical', name: 'Technical Report', description: 'Specifications, analysis, documentation' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
+  'article': [
+    { id: 'how-to', name: 'How-To Guide', description: 'Step-by-step instructional' },
+    { id: 'listicle', name: 'Listicle', description: 'Numbered or bulleted list format' },
+    { id: 'opinion', name: 'Opinion Piece', description: 'Editorial or commentary' },
+    { id: 'feature', name: 'Feature Article', description: 'In-depth exploration of topic' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
+  'screenplay': [
+    { id: 'feature', name: 'Feature Film', description: '90-120 pages, three acts' },
+    { id: 'tv-pilot', name: 'TV Pilot', description: '30 or 60-minute episode' },
+    { id: 'short-film', name: 'Short Film', description: '5-30 pages' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
+  'essay': [
+    { id: 'argumentative', name: 'Argumentative', description: 'Claim, evidence, counterarguments' },
+    { id: 'narrative', name: 'Narrative Essay', description: 'Personal story with reflection' },
+    { id: 'compare-contrast', name: 'Compare & Contrast', description: 'Analyze similarities and differences' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
+  'podcast': [
+    { id: 'interview', name: 'Interview Format', description: 'Host interviews guests' },
+    { id: 'co-hosted', name: 'Co-Hosted', description: 'Multiple hosts in conversation' },
+    { id: 'storytelling', name: 'Storytelling', description: 'Narrative-driven episodes' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ]
 }
 
 const storyFormats: Array<{ type: StoryFormat; label: string; description: string; icon: JSX.Element }> = [
@@ -85,11 +138,29 @@ const storyFormats: Array<{ type: StoryFormat; label: string; description: strin
 
 export default function CreateStoryPanel({ node, onCreateStory, onClose }: CreateStoryPanelProps) {
   const [selectedFormat, setSelectedFormat] = useState<StoryFormat | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
+
+  const handleFormatClick = (format: StoryFormat) => {
+    if (selectedFormat === format) {
+      // Collapse if clicking the same format
+      setSelectedFormat(null)
+      setSelectedTemplate(null)
+    } else {
+      // Expand new format
+      setSelectedFormat(format)
+      setSelectedTemplate(null)
+    }
+  }
+
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplate(templateId)
+  }
 
   const handleCreateStory = () => {
-    if (selectedFormat) {
-      onCreateStory(selectedFormat)
+    if (selectedFormat && selectedTemplate) {
+      onCreateStory(selectedFormat, selectedTemplate)
       setSelectedFormat(null) // Reset selection after creating
+      setSelectedTemplate(null)
       onClose() // Close the panel after creating
     }
   }
@@ -113,37 +184,89 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="space-y-3">
-          {storyFormats.map((format) => (
-            <button
-              key={format.type}
-              onClick={() => setSelectedFormat(format.type)}
-              className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                selectedFormat === format.type
-                  ? 'border-yellow-400 bg-yellow-50'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                <div className={`mt-0.5 ${selectedFormat === format.type ? 'text-yellow-600' : 'text-gray-500'}`}>
-                  {format.icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className={`text-sm font-medium ${selectedFormat === format.type ? 'text-yellow-900' : 'text-gray-900'}`}>
-                    {format.label}
+        <div className="space-y-2">
+          {storyFormats.map((format) => {
+            const isExpanded = selectedFormat === format.type
+            const formatTemplates = templates[format.type]
+
+            return (
+              <div key={format.type} className="border border-gray-200 rounded-lg overflow-hidden">
+                {/* Format Header (Accordion Trigger) */}
+                <button
+                  onClick={() => handleFormatClick(format.type)}
+                  className={`w-full p-4 transition-all text-left ${
+                    isExpanded
+                      ? 'bg-yellow-50 border-b border-yellow-100'
+                      : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {/* Chevron */}
+                    <svg
+                      className={`w-5 h-5 text-gray-500 transition-transform flex-shrink-0 mt-0.5 ${
+                        isExpanded ? 'rotate-90' : ''
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+
+                    {/* Icon */}
+                    <div className={`mt-0.5 ${isExpanded ? 'text-yellow-600' : 'text-gray-500'}`}>
+                      {format.icon}
+                    </div>
+
+                    {/* Text */}
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-sm font-medium ${isExpanded ? 'text-yellow-900' : 'text-gray-900'}`}>
+                        {format.label}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {format.description}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {format.description}
+                </button>
+
+                {/* Templates (Accordion Content) */}
+                {isExpanded && (
+                  <div className="bg-white p-3 space-y-2">
+                    {formatTemplates.map((template) => (
+                      <button
+                        key={template.id}
+                        onClick={() => handleTemplateSelect(template.id)}
+                        className={`w-full p-3 rounded-md border transition-all text-left ${
+                          selectedTemplate === template.id
+                            ? 'border-yellow-400 bg-yellow-50'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className={`text-sm font-medium ${
+                              selectedTemplate === template.id ? 'text-yellow-900' : 'text-gray-900'
+                            }`}>
+                              {template.name}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {template.description}
+                            </div>
+                          </div>
+                          {selectedTemplate === template.id && (
+                            <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                </div>
-                {selectedFormat === format.type && (
-                  <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
                 )}
               </div>
-            </button>
-          ))}
+            )
+          })}
         </div>
       </div>
 
@@ -151,14 +274,18 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
       <div className="p-6 border-t border-gray-200">
         <button
           onClick={handleCreateStory}
-          disabled={!selectedFormat}
+          disabled={!selectedFormat || !selectedTemplate}
           className={`w-full px-4 py-3 rounded-lg font-medium text-white transition-colors ${
-            selectedFormat
+            selectedFormat && selectedTemplate
               ? 'bg-yellow-500 hover:bg-yellow-600'
               : 'bg-gray-300 cursor-not-allowed'
           }`}
         >
-          {selectedFormat ? `Create ${storyFormats.find(f => f.type === selectedFormat)?.label}` : 'Select a Format'}
+          {selectedFormat && selectedTemplate
+            ? `Create ${storyFormats.find(f => f.type === selectedFormat)?.label}`
+            : selectedFormat
+            ? 'Select a Template'
+            : 'Select a Format'}
         </button>
       </div>
     </div>

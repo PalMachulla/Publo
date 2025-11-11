@@ -499,8 +499,8 @@ export default function CanvasPage() {
   }, [handleStructureItemClick, currentStoryStructureNodeId])
 
   // Handle Create Story node click - spawn new story structure node
-  const handleCreateStory = useCallback((format: StoryFormat) => {
-    console.log('handleCreateStory called with format:', format)
+  const handleCreateStory = useCallback((format: StoryFormat, template?: string) => {
+    console.log('handleCreateStory called with format:', format, 'template:', template)
     
     // Generate unique ID for the story structure
     const structureId = `structure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -538,6 +538,8 @@ export default function CanvasPage() {
       format: format,
       items: [defaultCoverItem], // Start with Cover item
       activeLevel: 1,
+      template: template,
+      isLoading: true, // Start as loading
       onItemClick: handleStructureItemClick,
       onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(structureId, items)
     }
@@ -572,6 +574,17 @@ export default function CanvasPage() {
     setNodes([...nodes, newStructureNode])
     setEdges([...edges, newEdge])
     hasUnsavedChangesRef.current = true
+
+    // Remove loading state after 2 seconds (simulate preparation time)
+    setTimeout(() => {
+      setNodes((currentNodes) =>
+        currentNodes.map((node) =>
+          node.id === structureId
+            ? { ...node, data: { ...node.data, isLoading: false } }
+            : node
+        )
+      )
+    }, 2000)
   }, [nodes, edges, setNodes, setEdges])
   
   // Handle Story Draft node click - open in AI Document Panel
