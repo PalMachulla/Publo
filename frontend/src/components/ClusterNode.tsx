@@ -14,11 +14,15 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
       {/* Top handle for incoming connections */}
       <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
       
-      {/* Distinct connector dot at top - more visible */}
+      {/* Large connector dot with plus sign */}
       <div 
-        className="absolute -top-3 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-gray-400 border-2 border-white shadow-md z-10"
+        className="absolute -top-8 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-gray-400 border-2 border-white shadow-lg z-10 flex items-center justify-center"
         style={{ pointerEvents: 'none' }}
-      />
+      >
+        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+        </svg>
+      </div>
       
       {/* Circular node */}
       <div
