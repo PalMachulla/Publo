@@ -5,7 +5,7 @@ import { Handle, Position, NodeProps } from 'reactflow'
 import { StoryStructureNodeData, StoryStructureItem } from '@/types/nodes'
 import { getFormatIcon } from '@/components/StoryFormatMenu'
 import { getPrimaryStructuralLevel, getDocumentHierarchy } from '@/lib/documentHierarchy'
-import { Bars3Icon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
+import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 
 function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNodeData>) {
   const { format, items = [], label, onItemClick, onItemsUpdate } = data
@@ -238,7 +238,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         zIndex: 5,
         width: nodeWidth
       }}>
-        {/* Label above node with tab-like background - larger and with hamburger icon */}
+        {/* Label above node with tab-like background */}
         <div className="flex justify-center mb-0 transition-all duration-300 ease-in-out" style={{ width: nodeWidth }}>
           <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all ${
             selected ? 'bg-gray-100 shadow-md' : 'bg-gray-200 shadow-sm'
@@ -246,7 +246,6 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             <div className="text-xs text-gray-700 uppercase tracking-widest font-sans font-bold">
               {label || (format ? format.toUpperCase() : 'STORY')}
             </div>
-            <Bars3Icon className="w-5 h-5 text-gray-600" />
           </div>
         </div>
 
