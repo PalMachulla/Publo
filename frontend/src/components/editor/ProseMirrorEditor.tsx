@@ -41,6 +41,7 @@ const ProseMirrorEditor = forwardRef<ProseMirrorEditorRef, ProseMirrorEditorProp
       content,
       editable,
       autofocus,
+      immediatelyRender: false, // Disable immediate render for SSR compatibility
       editorProps: {
         attributes: {
           class: editorProseClasses,
