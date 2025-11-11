@@ -28,38 +28,32 @@ function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
       {/* Hexagon Ghostwriter Node */}
       <div
         className="relative cursor-pointer transition-all"
-        style={{ width: 140, height: 140, zIndex: 1 }}
+        style={{ width: 160, height: 160, zIndex: 1 }}
       >
         {/* SVG Hexagon with rounded corners */}
         <svg
-          width="140"
-          height="140"
-          viewBox="0 0 140 140"
+          width="160"
+          height="160"
+          viewBox="0 0 160 160"
           className="absolute inset-0"
           style={{ filter: selected ? 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))' : 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))' }}
         >
-          <defs>
-            <linearGradient id="yellowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#fde047" />
-              <stop offset="100%" stopColor="#eab308" />
-            </linearGradient>
-          </defs>
-          {/* Hexagon path with rounded corners */}
+          {/* Hexagon path with rounded corners - flat yellow color */}
           <path
-            d="M 70 5 L 115 32.5 Q 122 37 122 45 L 122 95 Q 122 103 115 107.5 L 70 135 Q 70 135 70 135 L 25 107.5 Q 18 103 18 95 L 18 45 Q 18 37 25 32.5 L 70 5 Z"
-            fill="url(#yellowGradient)"
+            d="M 80 8 L 132 38 Q 140 43 140 52 L 140 108 Q 140 117 132 122 L 80 152 Q 80 152 80 152 L 28 122 Q 20 117 20 108 L 20 52 Q 20 43 28 38 L 80 8 Z"
+            fill="#fbbf24"
             stroke={selected ? '#facc15' : 'none'}
             strokeWidth={selected ? '3' : '0'}
           />
         </svg>
         
         {/* Content centered over hexagon */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
           {/* Magical wand icon */}
-          <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-14 h-14 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
           </svg>
-          <div className="text-xs font-bold text-white tracking-wide">
+          <div className="text-sm font-bold text-white tracking-wide">
             GHOSTWRITER
           </div>
         </div>
