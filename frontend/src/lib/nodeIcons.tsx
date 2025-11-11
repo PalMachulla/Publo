@@ -54,16 +54,16 @@ export function getNodeIcon(nodeType: NodeType): JSX.Element {
     case 'cluster':
       return (
         <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <circle cx="12" cy="5" r="2" strokeWidth={2} fill="currentColor" />
-          <circle cx="5" cy="12" r="2" strokeWidth={2} fill="currentColor" />
-          <circle cx="19" cy="12" r="2" strokeWidth={2} fill="currentColor" />
-          <circle cx="9" cy="19" r="2" strokeWidth={2} fill="currentColor" />
-          <circle cx="15" cy="19" r="2" strokeWidth={2} fill="currentColor" />
-          <line x1="12" y1="7" x2="10" y2="10" strokeWidth={2} strokeLinecap="round" />
-          <line x1="12" y1="7" x2="14" y2="10" strokeWidth={2} strokeLinecap="round" />
-          <line x1="7" y1="12" x2="17" y2="12" strokeWidth={2} strokeLinecap="round" />
-          <line x1="7" y1="13" x2="9.5" y2="17.5" strokeWidth={2} strokeLinecap="round" />
-          <line x1="17" y1="13" x2="14.5" y2="17.5" strokeWidth={2} strokeLinecap="round" />
+          {/* Three dots on top */}
+          <circle cx="8" cy="6" r="2" strokeWidth={2} fill="currentColor" />
+          <circle cx="12" cy="6" r="2" strokeWidth={2} fill="currentColor" />
+          <circle cx="16" cy="6" r="2" strokeWidth={2} fill="currentColor" />
+          {/* One dot at bottom */}
+          <circle cx="12" cy="18" r="2" strokeWidth={2} fill="currentColor" />
+          {/* Connecting lines */}
+          <line x1="8" y1="8" x2="12" y2="16" strokeWidth={2} strokeLinecap="round" />
+          <line x1="12" y1="8" x2="12" y2="16" strokeWidth={2} strokeLinecap="round" />
+          <line x1="16" y1="8" x2="12" y2="16" strokeWidth={2} strokeLinecap="round" />
         </svg>
       )
     default:

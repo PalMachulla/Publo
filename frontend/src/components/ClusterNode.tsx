@@ -21,9 +21,12 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
         }`}
         style={{ width: 100, height: 100 }}
       >
-        <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center gap-1">
           <div className={`w-12 h-12 ${colorClass}`}>
             {icon}
+          </div>
+          <div className="text-[9px] text-gray-500 font-medium tracking-wider">
+            CLUSTER
           </div>
         </div>
       </div>
