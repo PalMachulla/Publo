@@ -14,6 +14,17 @@ interface StoryStructurePanelProps {
 
 export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryStructurePanelProps) {
   const { format, items, activeLevel } = node.data
+  
+  // Debug logging
+  console.log('StoryStructurePanel rendered with:', {
+    nodeId: node.id,
+    nodeType: node.data.nodeType,
+    format: format,
+    items: items,
+    activeLevel: activeLevel,
+    fullData: node.data
+  })
+  
   const hierarchy = getDocumentHierarchy(format)
   
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
