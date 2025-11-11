@@ -42,13 +42,14 @@ export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelP
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
             <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <circle cx="8" cy="6" r="2" strokeWidth={2} fill="currentColor" />
-              <circle cx="12" cy="6" r="2" strokeWidth={2} fill="currentColor" />
-              <circle cx="16" cy="6" r="2" strokeWidth={2} fill="currentColor" />
-              <circle cx="12" cy="18" r="2" strokeWidth={2} fill="currentColor" />
-              <line x1="8" y1="8" x2="12" y2="16" strokeWidth={2} strokeLinecap="round" />
-              <line x1="12" y1="8" x2="12" y2="16" strokeWidth={2} strokeLinecap="round" />
-              <line x1="16" y1="8" x2="12" y2="16" strokeWidth={2} strokeLinecap="round" />
+              <circle cx="6" cy="5" r="1.5" strokeWidth={0} fill="currentColor" />
+              <circle cx="12" cy="5" r="1.5" strokeWidth={0} fill="currentColor" />
+              <circle cx="18" cy="5" r="1.5" strokeWidth={0} fill="currentColor" />
+              <circle cx="12" cy="19" r="2" strokeWidth={0} fill="currentColor" />
+              <line x1="12" y1="17" x2="12" y2="11" strokeWidth={2} strokeLinecap="round" />
+              <line x1="12" y1="11" x2="6" y2="6.5" strokeWidth={2} strokeLinecap="round" />
+              <line x1="12" y1="11" x2="12" y2="6.5" strokeWidth={2} strokeLinecap="round" />
+              <line x1="12" y1="11" x2="18" y2="6.5" strokeWidth={2} strokeLinecap="round" />
             </svg>
           </div>
           <div>

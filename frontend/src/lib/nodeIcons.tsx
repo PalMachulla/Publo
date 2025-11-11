@@ -54,16 +54,18 @@ export function getNodeIcon(nodeType: NodeType): JSX.Element {
     case 'cluster':
       return (
         <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          {/* Three dots on top */}
-          <circle cx="8" cy="6" r="2" strokeWidth={2} fill="currentColor" />
-          <circle cx="12" cy="6" r="2" strokeWidth={2} fill="currentColor" />
-          <circle cx="16" cy="6" r="2" strokeWidth={2} fill="currentColor" />
-          {/* One dot at bottom */}
-          <circle cx="12" cy="18" r="2" strokeWidth={2} fill="currentColor" />
-          {/* Connecting lines */}
-          <line x1="8" y1="8" x2="12" y2="16" strokeWidth={2} strokeLinecap="round" />
-          <line x1="12" y1="8" x2="12" y2="16" strokeWidth={2} strokeLinecap="round" />
-          <line x1="16" y1="8" x2="12" y2="16" strokeWidth={2} strokeLinecap="round" />
+          {/* Three dots on top - better spacing */}
+          <circle cx="6" cy="5" r="1.5" strokeWidth={0} fill="currentColor" />
+          <circle cx="12" cy="5" r="1.5" strokeWidth={0} fill="currentColor" />
+          <circle cx="18" cy="5" r="1.5" strokeWidth={0} fill="currentColor" />
+          {/* Center dot at bottom */}
+          <circle cx="12" cy="19" r="2" strokeWidth={0} fill="currentColor" />
+          {/* Main vertical line */}
+          <line x1="12" y1="17" x2="12" y2="11" strokeWidth={2} strokeLinecap="round" />
+          {/* Y-shaped branches */}
+          <line x1="12" y1="11" x2="6" y2="6.5" strokeWidth={2} strokeLinecap="round" />
+          <line x1="12" y1="11" x2="12" y2="6.5" strokeWidth={2} strokeLinecap="round" />
+          <line x1="12" y1="11" x2="18" y2="6.5" strokeWidth={2} strokeLinecap="round" />
         </svg>
       )
     default:
