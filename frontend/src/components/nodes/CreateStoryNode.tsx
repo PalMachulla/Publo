@@ -40,7 +40,7 @@ function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
         >
           {/* Hexagon path with rounded corners - gray background with gray outline */}
           <path
-            d="M 80 8 L 132 38 Q 140 43 140 52 L 140 108 Q 140 117 132 122 L 80 152 Q 80 152 80 152 L 28 122 Q 20 117 20 108 L 20 52 Q 20 43 28 38 L 80 8 Z"
+            d="M 80 0 L 132 30 Q 140 35 140 44 L 140 116 Q 140 125 132 130 L 80 160 Q 80 160 80 160 L 28 130 Q 20 125 20 116 L 20 44 Q 20 35 28 30 L 80 0 Z"
             fill="#f3f4f6"
             stroke="#9ca3af"
             strokeWidth="2"
