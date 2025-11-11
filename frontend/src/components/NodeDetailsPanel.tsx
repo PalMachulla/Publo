@@ -120,23 +120,112 @@ export default function NodeDetailsPanel({
               onClose={onClose}
             />
           ) : nodeType === 'story-structure' ? (
-            // Story Structure Panel disabled - structure is now managed in AI Document Panel
-            <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-              <div className="text-gray-400 mb-2">
-                <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
+            // Story Structure Metadata Panel
+            <div className="h-full flex flex-col">
+              {/* Header */}
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">{nodeData.label || 'Story Structure'}</h2>
+                    <p className="text-sm text-gray-500 capitalize">{nodeData.format?.replace('-', ' ') || 'Document'}</p>
+                  </div>
+                </div>
               </div>
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">Story Structure</h3>
-              <p className="text-sm text-gray-500 mb-6 max-w-sm">
-                Click on any section card to start writing. Manage your structure directly in the AI Document Panel's sidebar.
-              </p>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
-              >
-                Close
-              </button>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Metadata Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Metadata</h3>
+                  <div className="space-y-3">
+                    {/* Created Date */}
+                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                      <span className="text-sm text-gray-600">Created</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                    </div>
+
+                    {/* Number of Sections */}
+                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                      <span className="text-sm text-gray-600">Sections</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {nodeData.items?.length || 1}
+                      </span>
+                    </div>
+
+                    {/* Pages (dummy) */}
+                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                      <span className="text-sm text-gray-600">Pages</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {Math.max(1, Math.floor((nodeData.items?.length || 1) * 2.5))}
+                      </span>
+                    </div>
+
+                    {/* Word Count (dummy) */}
+                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                      <span className="text-sm text-gray-600">Word Count</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {(Math.floor(Math.random() * 5000) + 1000).toLocaleString()}
+                      </span>
+                    </div>
+
+                    {/* Template (if available) */}
+                    {nodeData.template && (
+                      <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                        <span className="text-sm text-gray-600">Template</span>
+                        <span className="text-sm font-medium text-gray-900 capitalize">
+                          {nodeData.template.replace(/-/g, ' ')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Info Box */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex gap-3">
+                    <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm text-blue-900 font-medium mb-1">Writing Tip</p>
+                      <p className="text-xs text-blue-700">
+                        Click on any section card to start writing. Manage your structure directly in the AI Document Panel's sidebar.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="p-6 border-t border-gray-200 space-y-3">
+                <button
+                  onClick={onClose}
+                  className="w-full px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm('Are you sure you want to delete this story structure? This action cannot be undone.')) {
+                      onDelete(node.id)
+                      onClose()
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete Structure
+                </button>
+              </div>
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
