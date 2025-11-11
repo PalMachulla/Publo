@@ -425,13 +425,18 @@ export default function CanvasPage() {
   }, [])
 
   // Handle story structure item click - open AI Document Panel with structure context
-  const handleStructureItemClick = useCallback((
+  const handleStructureItemClick = useCallback(async (
     clickedItem: any,
     allItems: any[],
     format: StoryFormat,
     nodeId: string
   ) => {
     console.log('Structure item clicked:', { clickedItem, allItems, format, nodeId })
+    
+    // Auto-save canvas before opening AI Document Panel
+    // This ensures the story structure node exists in the database for RLS policy
+    console.log('Auto-saving canvas before opening AI Document Panel...')
+    await handleSave()
     
     // Set initial prompt
     setInitialPrompt(`Write content for ${clickedItem.name}${clickedItem.title ? `: ${clickedItem.title}` : ''}`)
@@ -446,7 +451,7 @@ export default function CanvasPage() {
     setIsAIDocPanelOpen(true)
     
     console.log('Opening AI Document Panel with nodeId:', nodeId, 'clickedItem:', clickedItem.id)
-  }, [])
+  }, [handleSave])
   
   // Handle story structure items update (e.g., expanded state changes)
   const handleStructureItemsUpdate = useCallback((nodeId: string, updatedItems: any[]) => {
