@@ -46,9 +46,6 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
           </div>
         </div>
       </div>
-      
-      {/* Bottom handle for outgoing connections */}
-      <Handle type="source" position={Position.Bottom} className="!bg-orange-400 !w-2 !h-2 !border-2 !border-white" />
     </div>
   )
 }
