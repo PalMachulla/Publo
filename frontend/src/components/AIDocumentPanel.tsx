@@ -48,7 +48,7 @@ export default function AIDocumentPanel({
 }: AIDocumentPanelProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
-  const [leftPanelWidth, setLeftPanelWidth] = useState(40) // Percentage
+  const [leftPanelWidth, setLeftPanelWidth] = useState(35) // Percentage (for right-side chat, editor gets 100 - this)
   const [isDragging, setIsDragging] = useState(false)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(initialSectionId)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -258,11 +258,15 @@ export default function AIDocumentPanel({
     if (!isDragging || !containerRef.current) return
 
     const containerRect = containerRef.current.getBoundingClientRect()
-    const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100
+    const mousePercent = ((e.clientX - containerRect.left) / containerRect.width) * 100
+    
+    // Since editor is on left and chat on right, leftPanelWidth represents right chat width
+    // So we need to invert: if mouse is at 60%, chat width should be 40%
+    const newChatWidth = 100 - mousePercent
 
-    // Constrain between 25% and 60%
-    if (newWidth >= 25 && newWidth <= 60) {
-      setLeftPanelWidth(newWidth)
+    // Constrain chat between 25% and 50% (editor gets 50% to 75%)
+    if (newChatWidth >= 25 && newChatWidth <= 50) {
+      setLeftPanelWidth(newChatWidth)
     }
   }
 
@@ -516,9 +520,76 @@ export default function AIDocumentPanel({
 
         {/* Split Content */}
         <div className="flex h-[calc(100vh-4rem)]" ref={containerRef}>
-          {/* Left Side - AI Chat */}
+          {/* Left Side - Document Editor + Section Nav */}
+          <div className="flex flex-col bg-white" style={{ width: `${100 - leftPanelWidth}%` }}>
+            <div className="flex h-full">
+              {/* Section Navigation Sidebar */}
+              {!isSidebarCollapsed && (
+                <div className="w-64 border-r border-gray-200 bg-gray-50 flex flex-col">
+                  <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900">Sections</h3>
+                    <button
+                      onClick={() => setIsSidebarCollapsed(true)}
+                      className="p-1 hover:bg-gray-200 rounded transition-colors"
+                      title="Collapse sidebar"
+                    >
+                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">{renderSectionNav()}</div>
+                </div>
+              )}
+
+              {/* Editor Area */}
+              <div className="flex-1 flex flex-col">
+                {/* Toolbar */}
+                <EditorToolbar editor={editorRef.current?.getEditor() || null} />
+
+                {/* Editor */}
+                <ProseMirrorEditor
+                  ref={editorRef}
+                  content={content}
+                  onUpdate={handleEditorUpdate}
+                  placeholder="Start writing..."
+                  className="flex-1"
+                />
+
+                {/* Sidebar Expand Button (when collapsed) */}
+                {isSidebarCollapsed && (
+                  <button
+                    onClick={() => setIsSidebarCollapsed(false)}
+                    className="absolute top-20 left-0 p-2 bg-white border border-gray-200 rounded-r-lg hover:bg-gray-50 transition-colors shadow-sm"
+                    title="Show sections"
+                  >
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Resize Handle */}
           <div
-            className="border-r border-gray-200 flex flex-col bg-gray-50 relative overflow-hidden"
+            className={`relative w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors group ${
+              isDragging ? 'bg-blue-500' : ''
+            }`}
+            onMouseDown={handleMouseDown}
+          >
+            {/* Center Handle Bar */}
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-6 h-12 bg-gray-300 group-hover:bg-blue-500 rounded-full flex items-center justify-center shadow-md transition-colors">
+              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Right Side - AI Chat */}
+          <div
+            className="border-l border-gray-200 flex flex-col bg-gray-50 relative overflow-hidden"
             style={{ width: `${leftPanelWidth}%` }}
           >
             {/* Grid background */}
@@ -663,73 +734,6 @@ export default function AIDocumentPanel({
                   </svg>
                 </button>
               </form>
-            </div>
-          </div>
-
-          {/* Resize Handle */}
-          <div
-            className={`relative w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors group ${
-              isDragging ? 'bg-blue-500' : ''
-            }`}
-            onMouseDown={handleMouseDown}
-          >
-            {/* Center Handle Bar */}
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-6 h-12 bg-gray-300 group-hover:bg-blue-500 rounded-full flex items-center justify-center shadow-md transition-colors">
-              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-              </svg>
-            </div>
-          </div>
-
-          {/* Right Side - Document Editor + Section Nav */}
-          <div className="flex flex-col bg-white" style={{ width: `${100 - leftPanelWidth}%` }}>
-            <div className="flex h-full">
-              {/* Section Navigation Sidebar */}
-              {!isSidebarCollapsed && (
-                <div className="w-64 border-r border-gray-200 bg-gray-50 flex flex-col">
-                  <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-                    <h3 className="font-semibold text-gray-900">Sections</h3>
-                    <button
-                      onClick={() => setIsSidebarCollapsed(true)}
-                      className="p-1 hover:bg-gray-200 rounded transition-colors"
-                      title="Collapse sidebar"
-                    >
-                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto">{renderSectionNav()}</div>
-                </div>
-              )}
-
-              {/* Editor Area */}
-              <div className="flex-1 flex flex-col">
-                {/* Toolbar */}
-                <EditorToolbar editor={editorRef.current?.getEditor() || null} />
-
-                {/* Editor */}
-                <ProseMirrorEditor
-                  ref={editorRef}
-                  content={content}
-                  onUpdate={handleEditorUpdate}
-                  placeholder="Start writing..."
-                  className="flex-1"
-                />
-
-                {/* Sidebar Expand Button (when collapsed) */}
-                {isSidebarCollapsed && (
-                  <button
-                    onClick={() => setIsSidebarCollapsed(false)}
-                    className="absolute top-20 left-0 p-2 bg-white border border-gray-200 rounded-r-lg hover:bg-gray-50 transition-colors shadow-sm"
-                    title="Show sections"
-                  >
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                )}
-              </div>
             </div>
           </div>
         </div>
