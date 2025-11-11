@@ -18,9 +18,12 @@ function StoryStructureNode({ data, selected }: NodeProps<StoryStructureNodeData
   const formatIcon = getFormatIcon(format)
 
   // Calculate width based on number of items (minimum 200px for empty state)
-  const cardWidth = 260 // Width per item card
-  const cardPadding = 20 // Padding on sides
-  const nodeWidth = hasItems ? (topLevelItems.length * cardWidth) + (cardPadding * 2) : 200
+  const cardWidth = 240 // Width per item card
+  const cardGap = 16 // Gap between cards (4 in Tailwind = 16px)
+  const sidePadding = 24 // Equal padding on both sides
+  const nodeWidth = hasItems 
+    ? (topLevelItems.length * cardWidth) + ((topLevelItems.length - 1) * cardGap) + (sidePadding * 2)
+    : 200
 
   return (
     <div className="relative">
@@ -31,24 +34,32 @@ function StoryStructureNode({ data, selected }: NodeProps<StoryStructureNodeData
         </div>
       </div>
 
-      {/* Top connector dot */}
+      {/* Top connector dot - positioned to be 50% covered by container */}
       <div
-        className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
-        style={{ pointerEvents: 'none', zIndex: 0 }}
+        className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
+        style={{ top: '5px', pointerEvents: 'none', zIndex: 0 }}
       />
 
-      {/* Bottom connector dot */}
+      {/* Bottom connector dot - positioned to be 50% covered by container */}
       <div
-        className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
-        style={{ pointerEvents: 'none', zIndex: 0 }}
+        className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
+        style={{ bottom: '5px', pointerEvents: 'none', zIndex: 0 }}
       />
 
-      {/* Main Container */}
+      {/* Main Container - overlaps connector dots by 50% */}
       <div
-        className={`relative bg-gray-200 rounded-2xl shadow-lg transition-all overflow-visible ${
+        className={`relative bg-gray-200 rounded-2xl shadow-lg transition-all overflow-hidden ${
           selected ? 'ring-2 ring-yellow-400 shadow-xl' : 'shadow-md'
         }`}
-        style={{ width: nodeWidth, height: 200, zIndex: 1, padding: '20px' }}
+        style={{ 
+          width: nodeWidth, 
+          height: 200, 
+          zIndex: 1, 
+          paddingLeft: `${sidePadding}px`,
+          paddingRight: `${sidePadding}px`,
+          paddingTop: '20px',
+          paddingBottom: '20px'
+        }}
       >
         {hasItems ? (
           /* Horizontal scrollable cards */
