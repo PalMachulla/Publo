@@ -481,47 +481,61 @@ export default function AIDocumentPanel({
         .sort((a, b) => a.order - b.order)
     }
 
-    const renderTreeLevel = (items: typeof structureItems, level: number = 1) => {
-      return items.map(item => {
+    // Get level label
+    const getLevelLabel = (level: number): string => {
+      const labels = ['Section', 'Subsection', 'Sub-subsection']
+      return labels[Math.min(level - 1, labels.length - 1)] || 'Section'
+    }
+
+    const renderTreeLevel = (items: typeof structureItems, level: number = 1, isFirstOfLevel: boolean = true) => {
+      return items.map((item, index) => {
         const section = sections.find(s => s.structure_item_id === item.id)
         const children = buildTree(structureItems, item.id)
         const hasChildren = children.length > 0
+        const isFirst = index === 0 && isFirstOfLevel
 
         return (
           <div key={item.id} className="group">
+            {/* Discreet Level Label (only for first item at each level) */}
+            {isFirst && (
+              <div 
+                className="text-[10px] uppercase tracking-wider text-gray-400 font-medium mb-1.5 px-3"
+                style={{ marginLeft: `${(level - 1) * 20}px` }}
+              >
+                {getLevelLabel(level)}
+              </div>
+            )}
+
             {/* Section Item */}
             <button
               onClick={() => section && handleSectionClick(section)}
-              className={`w-full text-left px-3 py-2.5 text-sm transition-all rounded-lg mb-1 ${
+              className={`w-full text-left px-3 py-2.5 text-sm transition-all rounded-lg mb-1 relative ${
                 section?.id === activeSectionId
                   ? 'bg-yellow-50 text-yellow-900 ring-2 ring-yellow-400 shadow-sm'
                   : 'hover:bg-gray-50 text-gray-700'
               }`}
               style={{ marginLeft: `${(level - 1) * 20}px` }}
             >
-              <div className="flex items-center gap-2">
-                {/* Tree connector line for children */}
+              <div className="flex items-center gap-2.5">
+                {/* Level indicator dot (subtle) */}
                 {level > 1 && (
-                  <div className="absolute left-0 top-0 bottom-0 w-px bg-gray-200" style={{ marginLeft: `${(level - 2) * 20 + 12}px` }} />
-                )}
-                
-                {/* Level indicator dot */}
-                {level > 1 && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
+                  <div className={`w-1 h-1 rounded-full flex-shrink-0 ${
+                    section?.id === activeSectionId ? 'bg-yellow-400' : 'bg-gray-300'
+                  }`} />
                 )}
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium truncate">{item.name}</span>
-                    {item.title && <span className="text-xs text-gray-500 truncate">• {item.title}</span>}
+                    {item.title && <span className="text-xs text-gray-400 truncate">• {item.title}</span>}
                   </div>
                 </div>
 
                 {/* Status & Word Count */}
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <div
-                    className={`w-2 h-2 rounded-full ${
+                    className={`w-1.5 h-1.5 rounded-full ${
                       section?.status === 'completed'
                         ? 'bg-green-500'
                         : section?.status === 'in_progress'
@@ -537,8 +551,18 @@ export default function AIDocumentPanel({
 
             {/* Render children recursively */}
             {hasChildren && (
-              <div className="ml-4">
-                {renderTreeLevel(children, level + 1)}
+              <div className="mt-1">
+                {renderTreeLevel(children, level + 1, true)}
+              </div>
+            )}
+
+            {/* Discreet level label after last child (if no children) */}
+            {!hasChildren && index === items.length - 1 && (
+              <div 
+                className="text-[10px] uppercase tracking-wider text-gray-300 font-medium mt-2 mb-1 px-3"
+                style={{ marginLeft: `${level * 20}px` }}
+              >
+                {getLevelLabel(level + 1)}
               </div>
             )}
           </div>
@@ -563,8 +587,8 @@ export default function AIDocumentPanel({
     }
 
     return (
-      <div className="p-2 space-y-1">
-        {renderTreeLevel(rootItems)}
+      <div className="p-2 space-y-0.5">
+        {renderTreeLevel(rootItems, 1, true)}
         
         {/* Add Section Button at bottom */}
         <button
