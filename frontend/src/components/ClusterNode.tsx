@@ -14,6 +14,12 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
       {/* Top handle for incoming connections */}
       <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
       
+      {/* Distinct connector dot at top - more visible */}
+      <div 
+        className="absolute -top-3 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-gray-400 border-2 border-white shadow-md z-10"
+        style={{ pointerEvents: 'none' }}
+      />
+      
       {/* Circular node */}
       <div
         className={`bg-white rounded-full shadow-lg transition-all overflow-hidden ${
