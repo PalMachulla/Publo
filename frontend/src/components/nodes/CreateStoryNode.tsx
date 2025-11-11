@@ -13,16 +13,16 @@ function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
       <Handle type="target" position={Position.Right} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
       <Handle type="source" position={Position.Bottom} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
       
-      {/* Top connector dot - centered at hexagon top vertex */}
+      {/* Top connector dot - centered at handle connection point */}
       <div 
         className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
-        style={{ top: '-2px', pointerEvents: 'none', zIndex: 0 }}
+        style={{ top: '-10px', pointerEvents: 'none', zIndex: 0 }}
       />
       
-      {/* Bottom connector dot - centered at hexagon bottom vertex */}
+      {/* Bottom connector dot - centered at handle connection point */}
       <div 
         className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
-        style={{ top: '152px', pointerEvents: 'none', zIndex: 0 }}
+        style={{ top: '150px', pointerEvents: 'none', zIndex: 0 }}
       />
       
       {/* Hexagon Ghostwriter Node */}
