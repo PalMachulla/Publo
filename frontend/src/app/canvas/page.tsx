@@ -1361,6 +1361,7 @@ export default function CanvasPage() {
           storyStructureNodeId={currentStoryStructureNodeId}
           structureItems={currentStructureItems}
           initialSectionId={initialSectionId}
+          onUpdateStructure={handleStructureItemsUpdate}
         />
       </div>
     </div>

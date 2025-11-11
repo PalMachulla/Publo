@@ -40,6 +40,7 @@ interface AIDocumentPanelProps {
   storyStructureNodeId?: string | null
   structureItems?: StoryStructureItem[]
   initialSectionId?: string | null
+  onUpdateStructure?: (nodeId: string, updatedItems: StoryStructureItem[]) => void
 }
 
 export default function AIDocumentPanel({
@@ -49,6 +50,7 @@ export default function AIDocumentPanel({
   storyStructureNodeId = null,
   structureItems = [],
   initialSectionId = null,
+  onUpdateStructure,
 }: AIDocumentPanelProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -56,6 +58,9 @@ export default function AIDocumentPanel({
   const [isDragging, setIsDragging] = useState(false)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(initialSectionId)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [showAddSectionModal, setShowAddSectionModal] = useState(false)
+  const [newSectionName, setNewSectionName] = useState('')
+  const [newSectionTitle, setNewSectionTitle] = useState('')
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -419,6 +424,36 @@ export default function AIDocumentPanel({
     }
   }
 
+  // Handle adding a new section
+  const handleAddSection = () => {
+    if (!newSectionName.trim() || !storyStructureNodeId) return
+
+    // Create new structure item
+    const newItemId = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const newItem: StoryStructureItem = {
+      id: newItemId,
+      level: 1, // Top level by default
+      name: newSectionName.trim(),
+      title: newSectionTitle.trim() || undefined,
+      description: '',
+      order: structureItems.length, // Add at end
+      completed: false,
+      content: '',
+    }
+
+    // Update structure items in parent
+    const updatedItems = [...structureItems, newItem]
+    
+    if (onUpdateStructure && storyStructureNodeId) {
+      onUpdateStructure(storyStructureNodeId, updatedItems)
+    }
+    
+    // Close modal and reset form
+    setShowAddSectionModal(false)
+    setNewSectionName('')
+    setNewSectionTitle('')
+  }
+
   // Render enhanced section tree with add/edit capabilities
   const renderSectionTree = () => {
     if (sectionsLoading) {
@@ -518,7 +553,7 @@ export default function AIDocumentPanel({
         <div className="p-8 text-center">
           <div className="text-gray-400 text-sm mb-4">No sections yet</div>
           <button
-            onClick={() => {/* TODO: Add first section */}}
+            onClick={() => setShowAddSectionModal(true)}
             className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-lg text-sm font-medium transition-colors"
           >
             + Add First Section
@@ -533,7 +568,7 @@ export default function AIDocumentPanel({
         
         {/* Add Section Button at bottom */}
         <button
-          onClick={() => {/* TODO: Add new section */}}
+          onClick={() => setShowAddSectionModal(true)}
           className="w-full mt-4 p-3 border-2 border-dashed border-gray-300 hover:border-yellow-400 hover:bg-yellow-50 rounded-lg text-sm text-gray-500 hover:text-yellow-900 transition-all group"
         >
           <div className="flex items-center justify-center gap-2">
@@ -543,6 +578,78 @@ export default function AIDocumentPanel({
             <span className="font-medium">Add Section</span>
           </div>
         </button>
+      </div>
+    )
+  }
+
+  // Render Add Section Modal
+  const renderAddSectionModal = () => {
+    if (!showAddSectionModal) return null
+
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowAddSectionModal(false)}>
+        <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Section</h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Section Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={newSectionName}
+                onChange={(e) => setNewSectionName(e.target.value)}
+                placeholder="e.g., Introduction, Chapter 1, Act 1"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newSectionName.trim()) {
+                    handleAddSection()
+                  }
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Title (optional)
+              </label>
+              <input
+                type="text"
+                value={newSectionTitle}
+                onChange={(e) => setNewSectionTitle(e.target.value)}
+                placeholder="e.g., The Beginning, Once Upon a Time"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newSectionName.trim()) {
+                    handleAddSection()
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={() => {
+                setShowAddSectionModal(false)
+                setNewSectionName('')
+                setNewSectionTitle('')
+              }}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAddSection}
+              disabled={!newSectionName.trim()}
+              className="flex-1 px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Add Section
+            </button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -837,6 +944,9 @@ export default function AIDocumentPanel({
           </div>
         </div>
       </div>
+
+      {/* Add Section Modal */}
+      {renderAddSectionModal()}
     </>
   )
 }
