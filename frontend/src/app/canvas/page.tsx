@@ -371,7 +371,7 @@ export default function CanvasPage() {
     }
   }
 
-  // Auto-save canvas on changes (debounced)
+  // Manual save function (user-triggered only)
   const handleSave = useCallback(async () => {
     // Don't save if we're loading or if storyId doesn't match or already saving
     if (!storyId || isLoadingRef.current || currentStoryIdRef.current !== storyId || saving) {
