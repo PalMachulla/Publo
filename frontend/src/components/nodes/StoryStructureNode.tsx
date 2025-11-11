@@ -51,32 +51,27 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         style={{ bottom: '-10px', pointerEvents: 'none', zIndex: 0 }}
       />
 
-      {/* Wrapper for tab + container with soft glow when selected */}
+      {/* Wrapper for tab + container with subtle selection state */}
       <div className="relative transition-all" style={{ 
         borderRadius: '16px 16px 24px 24px',
-        zIndex: 5,
-        filter: selected ? 'drop-shadow(0 0 20px rgba(250, 204, 21, 0.4))' : 'none'
+        zIndex: 5
       }}>
         {/* Label above node with tab-like background - larger and with hamburger icon */}
         <div className="flex justify-center mb-0" style={{ width: nodeWidth }}>
-          <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 shadow-sm transition-all ${
-            selected ? 'bg-yellow-50' : 'bg-gray-200'
+          <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all ${
+            selected ? 'bg-gray-100 shadow-md' : 'bg-gray-200 shadow-sm'
           }`}>
-            <div className={`text-xs uppercase tracking-widest font-sans font-bold transition-colors ${
-              selected ? 'text-yellow-700' : 'text-gray-700'
-            }`}>
+            <div className="text-xs text-gray-700 uppercase tracking-widest font-sans font-bold">
               {label || (format ? format.toUpperCase() : 'STORY')}
             </div>
-            <Bars3Icon className={`w-5 h-5 transition-colors ${
-              selected ? 'text-yellow-600' : 'text-gray-600'
-            }`} />
+            <Bars3Icon className="w-5 h-5 text-gray-600" />
           </div>
         </div>
 
         {/* Main Container - positioned in front of connector dots */}
         <div
-          className={`relative rounded-2xl shadow-lg transition-all overflow-hidden ${
-            selected ? 'bg-yellow-50 shadow-xl' : 'bg-gray-200 shadow-md'
+          className={`relative rounded-2xl transition-all overflow-hidden ${
+            selected ? 'bg-gray-100 shadow-2xl' : 'bg-gray-200 shadow-md'
           }`}
           style={{
             width: nodeWidth,
