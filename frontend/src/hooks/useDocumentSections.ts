@@ -84,6 +84,10 @@ export function useDocumentSections({
       setError(null)
 
       console.log('Initializing sections for node:', storyStructureNodeId)
+      
+      // Debug: Check current user
+      const { data: { user } } = await supabase.auth.getUser()
+      console.log('Current user:', user?.id, user?.email)
 
       // Check which sections already exist
       const existingSectionIds = new Set(
@@ -109,6 +113,15 @@ export function useDocumentSections({
       }
 
       console.log('Creating sections:', newSections)
+      
+      // Debug: Check if node exists and user owns story
+      const { data: nodeCheck, error: nodeError } = await supabase
+        .from('nodes')
+        .select('id, story_id, stories(user_id)')
+        .eq('id', storyStructureNodeId)
+        .single()
+      
+      console.log('Node ownership check:', { nodeCheck, nodeError })
       
       // Use ignoreDuplicates to handle race conditions
       const { data, error: createError } = await supabase
