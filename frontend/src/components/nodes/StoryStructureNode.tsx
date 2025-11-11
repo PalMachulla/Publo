@@ -5,6 +5,7 @@ import { Handle, Position, NodeProps } from 'reactflow'
 import { StoryStructureNodeData } from '@/types/nodes'
 import { getFormatIcon } from '@/components/StoryFormatMenu'
 import { getPrimaryStructuralLevel } from '@/lib/documentHierarchy'
+import { PencilIcon } from '@heroicons/react/24/outline'
 
 function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNodeData>) {
   const { format, items, label, onItemClick } = data
@@ -38,36 +39,37 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
 
   return (
     <div className="relative">
-      {/* Label above node with tab-like background */}
-      <div className="flex justify-center mb-0" style={{ width: nodeWidth }}>
-        <div className="bg-gray-200 px-6 py-2 rounded-t-xl">
-          <div className="text-[10px] text-gray-600 uppercase tracking-widest font-sans text-center font-semibold">
+      {/* Top connector dot - positioned behind the shape */}
+      <div
+        className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
+        style={{ top: '-10px', pointerEvents: 'none', zIndex: 0 }}
+      />
+
+      {/* Label above node with tab-like background - larger and with edit icon */}
+      <div className="flex justify-center mb-0 relative z-10" style={{ width: nodeWidth }}>
+        <div className="bg-gray-200 px-8 py-3 rounded-t-xl flex items-center gap-2 shadow-sm">
+          <div className="text-xs text-gray-700 uppercase tracking-widest font-sans font-bold">
             {label || (format ? format.toUpperCase() : 'STORY')}
           </div>
+          <PencilIcon className="w-4 h-4 text-gray-500" />
         </div>
       </div>
 
-      {/* Top connector dot - edges connect directly to center */}
+      {/* Bottom connector dot - positioned behind the shape */}
       <div
         className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
-        style={{ top: '-10px', pointerEvents: 'none', zIndex: 10 }}
+        style={{ bottom: '-10px', pointerEvents: 'none', zIndex: 0 }}
       />
 
-      {/* Bottom connector dot - edges connect directly to center */}
-      <div
-        className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
-        style={{ bottom: '-10px', pointerEvents: 'none', zIndex: 10 }}
-      />
-
-      {/* Main Container - overlaps connector dots by 50% */}
+      {/* Main Container - positioned in front of connector dots */}
       <div
         className={`relative bg-gray-200 rounded-2xl shadow-lg transition-all overflow-hidden ${
           selected ? 'ring-2 ring-yellow-400 shadow-xl' : 'shadow-md'
         }`}
-        style={{ 
-          width: nodeWidth, 
-          height: 200, 
-          zIndex: 1, 
+        style={{
+          width: nodeWidth,
+          height: 200,
+          zIndex: 5,
           paddingLeft: `${sidePadding}px`,
           paddingRight: `${sidePadding}px`,
           paddingTop: '20px',
