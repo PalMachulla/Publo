@@ -61,6 +61,7 @@ export default function AIDocumentPanel({
   const [showAddSectionModal, setShowAddSectionModal] = useState(false)
   const [newSectionName, setNewSectionName] = useState('')
   const [newSectionTitle, setNewSectionTitle] = useState('')
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -81,6 +82,14 @@ export default function AIDocumentPanel({
     structureItems,
     enabled: isOpen && !!storyStructureNodeId,
   })
+
+  // Auto-expand all sections by default
+  useEffect(() => {
+    if (structureItems.length > 0) {
+      const allItemIds = new Set(structureItems.map(item => item.id))
+      setExpandedSections(allItemIds)
+    }
+  }, [structureItems])
 
   // Re-initialize sections when structure items change
   useEffect(() => {
@@ -424,6 +433,19 @@ export default function AIDocumentPanel({
     }
   }
 
+  // Toggle section expansion
+  const toggleSectionExpansion = (itemId: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId)
+      } else {
+        newSet.add(itemId)
+      }
+      return newSet
+    })
+  }
+
   // Handle adding a new section
   const handleAddSection = () => {
     if (!newSectionName.trim() || !storyStructureNodeId) return
@@ -481,88 +503,87 @@ export default function AIDocumentPanel({
         .sort((a, b) => a.order - b.order)
     }
 
-    // Get level label
-    const getLevelLabel = (level: number): string => {
-      const labels = ['Section', 'Subsection', 'Sub-subsection']
-      return labels[Math.min(level - 1, labels.length - 1)] || 'Section'
-    }
-
-    const renderTreeLevel = (items: typeof structureItems, level: number = 1, isFirstOfLevel: boolean = true) => {
-      return items.map((item, index) => {
+    const renderTreeLevel = (items: typeof structureItems, level: number = 0) => {
+      return items.map((item) => {
         const section = sections.find(s => s.structure_item_id === item.id)
         const children = buildTree(structureItems, item.id)
         const hasChildren = children.length > 0
-        const isFirst = index === 0 && isFirstOfLevel
+        const isExpanded = expandedSections.has(item.id)
+        const isActive = section?.id === activeSectionId
 
         return (
-          <div key={item.id} className="group">
-            {/* Discreet Level Label (only for first item at each level) */}
-            {isFirst && (
-              <div 
-                className="text-[10px] uppercase tracking-wider text-gray-400 font-medium mb-1.5 px-3"
-                style={{ marginLeft: `${(level - 1) * 20}px` }}
-              >
-                {getLevelLabel(level)}
-              </div>
-            )}
-
-            {/* Section Item */}
-            <button
-              onClick={() => section && handleSectionClick(section)}
-              className={`w-full text-left px-3 py-2.5 text-sm transition-all rounded-lg mb-1 relative ${
-                section?.id === activeSectionId
-                  ? 'bg-yellow-50 text-yellow-900 ring-2 ring-yellow-400 shadow-sm'
-                  : 'hover:bg-gray-50 text-gray-700'
+          <div key={item.id}>
+            {/* Section Item Row */}
+            <div
+              className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors cursor-pointer group ${
+                isActive
+                  ? 'bg-yellow-50 text-yellow-900'
+                  : 'hover:bg-gray-100 text-gray-700'
               }`}
-              style={{ marginLeft: `${(level - 1) * 20}px` }}
+              style={{ paddingLeft: `${level * 16 + 8}px` }}
             >
-              <div className="flex items-center gap-2.5">
-                {/* Level indicator dot (subtle) */}
-                {level > 1 && (
-                  <div className={`w-1 h-1 rounded-full flex-shrink-0 ${
-                    section?.id === activeSectionId ? 'bg-yellow-400' : 'bg-gray-300'
-                  }`} />
-                )}
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium truncate">{item.name}</span>
-                    {item.title && <span className="text-xs text-gray-400 truncate">• {item.title}</span>}
-                  </div>
-                </div>
-
-                {/* Status & Word Count */}
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      section?.status === 'completed'
-                        ? 'bg-green-500'
-                        : section?.status === 'in_progress'
-                        ? 'bg-yellow-500'
-                        : 'bg-gray-300'
+              {/* Chevron (if has children) */}
+              {hasChildren ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    toggleSectionExpansion(item.id)
+                  }}
+                  className="flex-shrink-0 w-4 h-4 flex items-center justify-center hover:bg-gray-200 rounded transition-colors"
+                >
+                  <svg
+                    className={`w-3 h-3 text-gray-500 transition-transform ${
+                      isExpanded ? 'rotate-90' : ''
                     }`}
-                    title={section?.status || 'draft'}
-                  />
-                  <div className="text-xs text-gray-400 font-mono">{section?.word_count || 0}w</div>
-                </div>
-              </div>
-            </button>
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              ) : (
+                <div className="w-4 h-4 flex-shrink-0" />
+              )}
 
-            {/* Render children recursively */}
-            {hasChildren && (
-              <div className="mt-1">
-                {renderTreeLevel(children, level + 1, true)}
-              </div>
-            )}
+              {/* Document Icon */}
+              <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
 
-            {/* Discreet level label after last child (if no children) */}
-            {!hasChildren && index === items.length - 1 && (
-              <div 
-                className="text-[10px] uppercase tracking-wider text-gray-300 font-medium mt-2 mb-1 px-3"
-                style={{ marginLeft: `${level * 20}px` }}
+              {/* Section Name & Title */}
+              <button
+                onClick={() => section && handleSectionClick(section)}
+                className="flex-1 text-left text-sm truncate min-w-0 px-1"
               >
-                {getLevelLabel(level + 1)}
+                <span className="font-normal">{item.name}</span>
+                {item.title && (
+                  <span className="text-xs text-gray-400 ml-1">• {item.title}</span>
+                )}
+              </button>
+
+              {/* Word Count */}
+              <div className="flex-shrink-0 text-xs text-gray-400 font-mono pr-1">
+                {section?.word_count || 0}w
+              </div>
+
+              {/* Status Indicator */}
+              <div
+                className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${
+                  section?.status === 'completed'
+                    ? 'bg-green-500'
+                    : section?.status === 'in_progress'
+                    ? 'bg-yellow-500'
+                    : 'bg-gray-300'
+                }`}
+                title={section?.status || 'draft'}
+              />
+            </div>
+
+            {/* Render children (if expanded) */}
+            {hasChildren && isExpanded && (
+              <div>
+                {renderTreeLevel(children, level + 1)}
               </div>
             )}
           </div>
@@ -587,13 +608,13 @@ export default function AIDocumentPanel({
     }
 
     return (
-      <div className="p-2 space-y-0.5">
-        {renderTreeLevel(rootItems, 1, true)}
+      <div className="py-1">
+        {renderTreeLevel(rootItems, 0)}
         
         {/* Add Section Button at bottom */}
         <button
           onClick={() => setShowAddSectionModal(true)}
-          className="w-full mt-4 p-3 border-2 border-dashed border-gray-300 hover:border-yellow-400 hover:bg-yellow-50 rounded-lg text-sm text-gray-500 hover:text-yellow-900 transition-all group"
+          className="w-full mt-2 mx-2 p-2.5 border-2 border-dashed border-gray-300 hover:border-yellow-400 hover:bg-yellow-50 rounded-md text-sm text-gray-500 hover:text-yellow-900 transition-all"
         >
           <div className="flex items-center justify-center gap-2">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
