@@ -3,11 +3,28 @@
 import { memo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { ClusterNodeData } from '@/types/nodes'
-import { getNodeIcon, getNodeColor } from '@/lib/nodeIcons'
+import { getNodeIcon } from '@/lib/nodeIcons'
+
+// Helper function to determine if a color is light or dark
+function isLightColor(color: string): boolean {
+  // Convert hex to RGB
+  const hex = color.replace('#', '')
+  const r = parseInt(hex.substr(0, 2), 16)
+  const g = parseInt(hex.substr(2, 2), 16)
+  const b = parseInt(hex.substr(4, 2), 16)
+  
+  // Calculate luminance
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.5
+}
 
 function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
   const icon = getNodeIcon('cluster')
-  const colorClass = getNodeColor('cluster')
+  const bgColor = data.color || '#9ca3af'
+  const isLight = isLightColor(bgColor)
+  const textColor = isLight ? '#374151' : '#ffffff'
+  const label = data.label || 'CLUSTER'
+  const isActive = data.isActive ?? true
   
   return (
     <div className="relative">
@@ -16,8 +33,8 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
       
       {/* Large connector dot behind node - half covered */}
       <div 
-        className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
-        style={{ pointerEvents: 'none', zIndex: 0 }}
+        className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full shadow-lg"
+        style={{ pointerEvents: 'none', zIndex: 0, backgroundColor: bgColor }}
       />
       
       {/* Circular node */}
@@ -27,12 +44,33 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
         }`}
         style={{ width: 100, height: 100, zIndex: 1 }}
       >
-        <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center gap-1">
-          <div className={`w-12 h-12 ${colorClass}`}>
+        <div 
+          className="w-full h-full flex flex-col items-center justify-center gap-1"
+          style={{ backgroundColor: bgColor }}
+        >
+          <div className="w-12 h-12" style={{ color: textColor }}>
             {icon}
           </div>
-          <div className="text-[9px] text-gray-500 font-medium tracking-wider">
+          <div className="text-[9px] font-medium tracking-wider" style={{ color: textColor }}>
             CLUSTER
+          </div>
+        </div>
+      </div>
+      
+      {/* Label below node */}
+      <div className="flex flex-col items-center mt-2" style={{ width: 100 }}>
+        <div className="text-[10px] text-gray-500 uppercase tracking-widest font-sans text-center break-words leading-tight w-full">
+          {label}
+        </div>
+        {/* Status badge */}
+        <div className="mt-1 inline-block">
+          <div 
+            className={`text-white text-[8px] font-semibold uppercase tracking-wide px-2 rounded-full ${
+              isActive ? 'bg-green-500' : 'bg-gray-500'
+            }`} 
+            style={{ paddingTop: '1px', paddingBottom: '1px' }}
+          >
+            {isActive ? 'ACTIVE' : 'PASSIVE'}
           </div>
         </div>
       </div>

@@ -127,6 +127,8 @@ export interface StoryDraftNodeData extends BaseNodeData {
 export interface ClusterNodeData extends BaseNodeData {
   nodeType: 'cluster'
   clusterNodes?: string[] // IDs of nodes in this cluster
+  color?: string // Background color for the cluster node
+  isActive?: boolean // Active or passive status
 }
 
 export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData | ClusterNodeData

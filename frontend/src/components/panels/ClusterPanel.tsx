@@ -13,18 +13,24 @@ interface ClusterPanelProps {
 export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelProps) {
   const [label, setLabel] = useState(node.data.label || '')
   const [description, setDescription] = useState(node.data.description || '')
+  const [color, setColor] = useState(node.data.color || '#9ca3af')
+  const [isActive, setIsActive] = useState(node.data.isActive ?? true)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   // Update local state when node changes
   useEffect(() => {
     setLabel(node.data.label || '')
     setDescription(node.data.description || '')
-  }, [node.data.label, node.data.description])
+    setColor(node.data.color || '#9ca3af')
+    setIsActive(node.data.isActive ?? true)
+  }, [node.data.label, node.data.description, node.data.color, node.data.isActive])
 
   const handleSave = () => {
     onUpdate(node.id, {
       label,
       description,
+      color,
+      isActive,
     })
   }
 
@@ -89,6 +95,69 @@ export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelP
             rows={4}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none"
           />
+        </div>
+
+        {/* Color Picker */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Cluster Color
+          </label>
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => {
+                setColor(e.target.value)
+                handleSave()
+              }}
+              className="w-12 h-12 rounded-lg border border-gray-300 cursor-pointer"
+            />
+            <div className="flex-1">
+              <input
+                type="text"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                onBlur={handleSave}
+                placeholder="#9ca3af"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent font-mono text-sm"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Status Toggle */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Cluster Status
+          </label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setIsActive(true)
+                onUpdate(node.id, { ...node.data, isActive: true })
+              }}
+              className={`flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                isActive
+                  ? 'bg-green-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Active
+            </button>
+            <button
+              onClick={() => {
+                setIsActive(false)
+                onUpdate(node.id, { ...node.data, isActive: false })
+              }}
+              className={`flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                !isActive
+                  ? 'bg-gray-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Passive
+            </button>
+          </div>
         </div>
 
         {/* Cluster Info */}

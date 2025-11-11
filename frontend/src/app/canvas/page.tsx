@@ -750,6 +750,8 @@ export default function CanvasPage() {
         nodeData.label = 'NODE CLUSTER'
         nodeData.description = 'Group related nodes'
         nodeData.clusterNodes = []
+        nodeData.color = '#9ca3af'
+        nodeData.isActive = true
         break
     }
     
