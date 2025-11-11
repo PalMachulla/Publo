@@ -109,10 +109,13 @@ export default function AIDocumentPanel({
 
   // Update content when active section changes (without remounting editor)
   useEffect(() => {
-    if (activeSection && activeSection.content !== content) {
+    if (activeSection) {
       setContent(activeSection.content)
     }
-  }, [activeSection?.id, activeSection?.content, content, setContent])
+  }, [activeSection?.id, setContent])
+  
+  // Note: We deliberately don't include 'content' or 'activeSection.content' in deps
+  // to avoid resetting the editor while the user is typing
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })

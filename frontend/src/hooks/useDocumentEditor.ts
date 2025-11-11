@@ -39,15 +39,14 @@ export function useDocumentEditor({
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const lastSavedContentRef = useRef<string>(initialContent)
 
-  // Update content when initialContent changes
+  // Update content when initialContent changes (from parent/database)
+  // Note: We don't include 'content' in deps to avoid resetting while user is typing
   useEffect(() => {
-    if (initialContent !== content) {
-      setContent(initialContent)
-      lastSavedContentRef.current = initialContent
-      setWordCount(calculateWordCount(initialContent))
-      setIsDirty(false) // Reset dirty state when content is set externally
-    }
-  }, [initialContent, content])
+    setContent(initialContent)
+    lastSavedContentRef.current = initialContent
+    setWordCount(calculateWordCount(initialContent))
+    setIsDirty(false) // Reset dirty state when content is set externally
+  }, [initialContent])
 
   // Save function
   const save = useCallback(
