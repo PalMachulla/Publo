@@ -257,17 +257,18 @@ export function useDocumentSections({
   }, [fetchSections])
 
   // Auto-initialize sections when structure items change
-  useEffect(() => {
-    if (
-      storyStructureNodeId &&
-      enabled &&
-      !loading &&
-      structureItems.length > 0 &&
-      sections.length < structureItems.length
-    ) {
-      initializeSections()
-    }
-  }, [storyStructureNodeId, enabled, loading, structureItems, sections.length, initializeSections])
+  // Disabled to prevent race conditions - sections are created on-demand when panel opens
+  // useEffect(() => {
+  //   if (
+  //     storyStructureNodeId &&
+  //     enabled &&
+  //     !loading &&
+  //     structureItems.length > 0 &&
+  //     sections.length < structureItems.length
+  //   ) {
+  //     initializeSections()
+  //   }
+  // }, [storyStructureNodeId, enabled, loading, structureItems, sections.length, initializeSections])
 
   return {
     sections,
