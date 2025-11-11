@@ -61,11 +61,13 @@ export function getNodeIcon(nodeType: NodeType): JSX.Element {
           {/* Center dot at bottom */}
           <circle cx="12" cy="19" r="2" strokeWidth={0} fill="currentColor" />
           {/* Main vertical line */}
-          <line x1="12" y1="17" x2="12" y2="11" strokeWidth={2} strokeLinecap="round" />
-          {/* Y-shaped branches */}
-          <line x1="12" y1="11" x2="6" y2="6.5" strokeWidth={2} strokeLinecap="round" />
-          <line x1="12" y1="11" x2="12" y2="6.5" strokeWidth={2} strokeLinecap="round" />
-          <line x1="12" y1="11" x2="18" y2="6.5" strokeWidth={2} strokeLinecap="round" />
+          <line x1="12" y1="17" x2="12" y2="9" strokeWidth={2} strokeLinecap="round" />
+          {/* Horizontal line at junction */}
+          <line x1="6" y1="9" x2="18" y2="9" strokeWidth={2} strokeLinecap="round" />
+          {/* Elbow connectors to top dots */}
+          <line x1="6" y1="9" x2="6" y2="6.5" strokeWidth={2} strokeLinecap="round" />
+          <line x1="12" y1="9" x2="12" y2="6.5" strokeWidth={2} strokeLinecap="round" />
+          <line x1="18" y1="9" x2="18" y2="6.5" strokeWidth={2} strokeLinecap="round" />
         </svg>
       )
     default:

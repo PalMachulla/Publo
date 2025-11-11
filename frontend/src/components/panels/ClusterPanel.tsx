@@ -52,10 +52,11 @@ export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelP
               <circle cx="12" cy="5" r="1.5" strokeWidth={0} fill="currentColor" />
               <circle cx="18" cy="5" r="1.5" strokeWidth={0} fill="currentColor" />
               <circle cx="12" cy="19" r="2" strokeWidth={0} fill="currentColor" />
-              <line x1="12" y1="17" x2="12" y2="11" strokeWidth={2} strokeLinecap="round" />
-              <line x1="12" y1="11" x2="6" y2="6.5" strokeWidth={2} strokeLinecap="round" />
-              <line x1="12" y1="11" x2="12" y2="6.5" strokeWidth={2} strokeLinecap="round" />
-              <line x1="12" y1="11" x2="18" y2="6.5" strokeWidth={2} strokeLinecap="round" />
+              <line x1="12" y1="17" x2="12" y2="9" strokeWidth={2} strokeLinecap="round" />
+              <line x1="6" y1="9" x2="18" y2="9" strokeWidth={2} strokeLinecap="round" />
+              <line x1="6" y1="9" x2="6" y2="6.5" strokeWidth={2} strokeLinecap="round" />
+              <line x1="12" y1="9" x2="12" y2="6.5" strokeWidth={2} strokeLinecap="round" />
+              <line x1="18" y1="9" x2="18" y2="6.5" strokeWidth={2} strokeLinecap="round" />
             </svg>
           </div>
           <div>
