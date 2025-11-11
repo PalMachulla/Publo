@@ -36,6 +36,16 @@ export default function NodeDetailsPanel({
   const nodeData = node.data as any
   const nodeType = nodeData.nodeType || 'story'
   
+  // Debug logging
+  console.log('NodeDetailsPanel - Node clicked:', {
+    nodeId: node.id,
+    nodeType: node.type,
+    dataNodeType: nodeData.nodeType,
+    resolvedNodeType: nodeType,
+    format: nodeData.format,
+    allData: nodeData
+  })
+  
   // Don't show panel for story-draft nodes - they open the AI Document Panel
   if (nodeType === 'story-draft') {
     return null

@@ -455,7 +455,13 @@ export default function CanvasPage() {
     setEdges([...edges, newEdge])
     hasUnsavedChangesRef.current = true
     
-    console.log('Created new story structure node:', structureId, 'for format:', format)
+    console.log('Created new story structure node:', {
+      id: structureId,
+      type: 'storyStructureNode',
+      nodeType: 'story-structure',
+      format: format,
+      fullNode: newStructureNode
+    })
   }, [nodes, edges, setNodes, setEdges])
   
   // Handle Story Draft node click - open in AI Document Panel
