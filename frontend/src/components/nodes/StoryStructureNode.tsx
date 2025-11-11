@@ -4,7 +4,7 @@ import { memo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { StoryStructureNodeData, StoryStructureItem } from '@/types/nodes'
 import { getFormatIcon } from '@/components/StoryFormatMenu'
-import { getPrimaryStructuralLevel } from '@/lib/documentHierarchy'
+import { getPrimaryStructuralLevel, getDocumentHierarchy } from '@/lib/documentHierarchy'
 import { Bars3Icon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 
 function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNodeData>) {
@@ -106,11 +106,20 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
     }
   }
   
+  // Helper to get level name from document hierarchy
+  const getLevelName = (level: number): string => {
+    if (!format) return 'Item'
+    const hierarchy = getDocumentHierarchy(format)
+    if (!hierarchy || level > hierarchy.length) return 'Item'
+    return hierarchy[level - 1]?.name || 'Item'
+  }
+  
   // Recursive component to render item with its children horizontally
   const renderHorizontalTree = (item: StoryStructureItem): JSX.Element => {
     const children = getChildren(item.id)
     const itemHasChildren = children.length > 0
     const canHaveChildren = item.level < 3
+    const nextLevelName = canHaveChildren ? getLevelName(item.level + 1) : ''
     
     return (
       <div key={item.id} className="flex gap-5 items-start transition-all duration-300 ease-in-out">
@@ -159,9 +168,35 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         </div>
         
         {/* Children rendered to the right - slide in/out */}
-        {item.expanded && children.length > 0 && (
+        {item.expanded && (
           <div className="flex flex-col gap-2 animate-in slide-in-from-left-2 duration-200">
-            {children.map((child) => renderHorizontalTree(child))}
+            {itemHasChildren ? (
+              // Render existing children
+              children.map((child) => renderHorizontalTree(child))
+            ) : canHaveChildren ? (
+              // Show placeholder to add first child
+              <div 
+                className={`flex-shrink-0 ${getBackgroundColor(item.level + 1)} rounded-xl border-2 border-dashed border-gray-300 hover:border-yellow-400 transition-all cursor-pointer`}
+                style={{ width: 240, minHeight: 160 }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  // This will be handled by the panel - for now just show message
+                  console.log(`Add ${nextLevelName} to ${item.name}`)
+                }}
+              >
+                <div className="w-full h-full p-4 flex flex-col items-center justify-center gap-2">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <div className="text-sm font-medium text-gray-600 text-center">
+                    Add {nextLevelName}
+                  </div>
+                  <div className="text-xs text-gray-400 text-center">
+                    Click to create
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
