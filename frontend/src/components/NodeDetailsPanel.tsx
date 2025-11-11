@@ -196,7 +196,7 @@ export default function NodeDetailsPanel({
                     <div>
                       <p className="text-sm text-blue-900 font-medium mb-1">Writing Tip</p>
                       <p className="text-xs text-blue-700">
-                        Click on any section card to start writing. Manage your structure directly in the AI Document Panel's sidebar.
+                        Click on any section card to start writing. Manage your structure directly in the AI Document Panel&apos;s sidebar.
                       </p>
                     </div>
                   </div>

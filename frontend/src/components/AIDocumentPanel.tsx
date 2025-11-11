@@ -145,9 +145,9 @@ export default function AIDocumentPanel({
     if (activeSection) {
       setContent(activeSection.content)
     }
-  }, [activeSection?.id, setContent])
+  }, [activeSection?.id, activeSection?.content, setContent])
   
-  // Note: We deliberately don't include 'content' or 'activeSection.content' in deps
+  // Note: We deliberately don't include 'content' from editor state in deps
   // to avoid resetting the editor while the user is typing
 
   const scrollToBottom = () => {
@@ -351,7 +351,7 @@ export default function AIDocumentPanel({
         document.body.style.userSelect = ''
       }
     }
-  }, [isDragging])
+  }, [isDragging, handleMouseMove, handleMouseUp])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
