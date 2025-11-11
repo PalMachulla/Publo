@@ -8,10 +8,10 @@ import { getPrimaryStructuralLevel } from '@/lib/documentHierarchy'
 
 function StoryStructureNode({ data, selected }: NodeProps<StoryStructureNodeData>) {
   const { format, items, label } = data
-  const primaryLevel = getPrimaryStructuralLevel(format) || 'Item'
+  const primaryLevel = format ? (getPrimaryStructuralLevel(format) || 'Item') : 'Item'
   const itemCount = items?.length || 0
 
-  // Get format-specific icon
+  // Get format-specific icon (getFormatIcon handles undefined)
   const formatIcon = getFormatIcon(format)
 
   return (
@@ -19,7 +19,7 @@ function StoryStructureNode({ data, selected }: NodeProps<StoryStructureNodeData
       {/* Label above node */}
       <div className="flex flex-col justify-end mb-2" style={{ width: 200, minHeight: 30 }}>
         <div className="text-[10px] text-gray-500 uppercase tracking-widest font-sans text-left break-words leading-tight w-full">
-          {label || `${format.toUpperCase()}`}
+          {label || (format ? format.toUpperCase() : 'STORY')}
         </div>
         <div className="mt-1 inline-block w-fit">
           <div className="bg-yellow-400 text-black text-[8px] font-semibold uppercase tracking-wide px-2 rounded-full" style={{ paddingTop: '1px', paddingBottom: '1px' }}>
