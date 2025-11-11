@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type {
   DocumentSection,
@@ -34,6 +34,7 @@ export function useDocumentSections({
   const [sections, setSections] = useState<DocumentSection[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const initializingRef = useRef(false) // Prevent concurrent initialization
 
   const supabase = createClient()
 
@@ -71,9 +72,18 @@ export function useDocumentSections({
       return
     }
 
+    // Prevent concurrent initialization
+    if (initializingRef.current) {
+      console.log('Already initializing sections, skipping...')
+      return
+    }
+
     try {
+      initializingRef.current = true
       setLoading(true)
       setError(null)
+
+      console.log('Initializing sections for node:', storyStructureNodeId)
 
       // Check which sections already exist
       const existingSectionIds = new Set(
@@ -93,33 +103,40 @@ export function useDocumentSections({
         }))
 
       if (newSections.length === 0) {
+        console.log('No new sections to create')
         setLoading(false)
         return
       }
 
       console.log('Creating sections:', newSections)
       
+      // Use ignoreDuplicates to handle race conditions
       const { data, error: createError } = await supabase
         .from('document_sections')
         .insert(newSections)
         .select()
+        .throwOnError()
 
-      if (createError) {
-        console.error('Supabase error creating sections:', createError)
-        throw createError
-      }
-      
       console.log('Sections created successfully:', data)
 
       // Merge with existing sections
-      setSections(prev => [...prev, ...(data || [])].sort((a, b) => a.order_index - b.order_index))
-    } catch (err) {
-      console.error('Failed to initialize sections:', err)
-      setError(err instanceof Error ? err.message : 'Failed to initialize sections')
+      if (data && data.length > 0) {
+        setSections(prev => [...prev, ...data].sort((a, b) => a.order_index - b.order_index))
+      }
+    } catch (err: any) {
+      // If it's a duplicate key error, just fetch to get existing sections
+      if (err?.code === '23505') {
+        console.log('Duplicate sections detected, fetching existing sections...')
+        await fetchSections()
+      } else {
+        console.error('Failed to initialize sections:', err)
+        setError(err instanceof Error ? err.message : 'Failed to initialize sections')
+      }
     } finally {
       setLoading(false)
+      initializingRef.current = false
     }
-  }, [storyStructureNodeId, enabled, structureItems, sections, supabase])
+  }, [storyStructureNodeId, enabled, structureItems, sections, supabase, fetchSections])
 
   // Create a new section
   const createSection = useCallback(

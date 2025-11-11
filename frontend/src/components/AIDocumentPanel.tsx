@@ -238,12 +238,7 @@ export default function AIDocumentPanel({
     }
   }, [isOpen, initialPrompt])
 
-  // Initialize sections when panel opens
-  useEffect(() => {
-    if (isOpen && storyStructureNodeId && structureItems.length > 0 && !sectionsLoading) {
-      initializeSections()
-    }
-  }, [isOpen, storyStructureNodeId, structureItems, sectionsLoading, initializeSections])
+  // Sections are initialized automatically by the hook, no need to call here
 
   // Set active section when sections load
   useEffect(() => {
