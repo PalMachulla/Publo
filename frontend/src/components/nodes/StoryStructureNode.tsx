@@ -5,7 +5,7 @@ import { Handle, Position, NodeProps } from 'reactflow'
 import { StoryStructureNodeData } from '@/types/nodes'
 import { getFormatIcon } from '@/components/StoryFormatMenu'
 import { getPrimaryStructuralLevel } from '@/lib/documentHierarchy'
-import { PencilIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon } from '@heroicons/react/24/outline'
 
 function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNodeData>) {
   const { format, items, label, onItemClick } = data
@@ -45,37 +45,43 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         style={{ top: '-10px', pointerEvents: 'none', zIndex: 0 }}
       />
 
-      {/* Label above node with tab-like background - larger and with edit icon */}
-      <div className="flex justify-center mb-0 relative z-10" style={{ width: nodeWidth }}>
-        <div className="bg-gray-200 px-8 py-3 rounded-t-xl flex items-center gap-2 shadow-sm">
-          <div className="text-xs text-gray-700 uppercase tracking-widest font-sans font-bold">
-            {label || (format ? format.toUpperCase() : 'STORY')}
-          </div>
-          <PencilIcon className="w-4 h-4 text-gray-500" />
-        </div>
-      </div>
-
       {/* Bottom connector dot - positioned behind the shape */}
       <div
         className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
         style={{ bottom: '-10px', pointerEvents: 'none', zIndex: 0 }}
       />
 
-      {/* Main Container - positioned in front of connector dots */}
-      <div
-        className={`relative bg-gray-200 rounded-2xl shadow-lg transition-all overflow-hidden ${
-          selected ? 'ring-2 ring-yellow-400 shadow-xl' : 'shadow-md'
-        }`}
-        style={{
-          width: nodeWidth,
-          height: 200,
-          zIndex: 5,
-          paddingLeft: `${sidePadding}px`,
-          paddingRight: `${sidePadding}px`,
-          paddingTop: '20px',
-          paddingBottom: '20px'
-        }}
-      >
+      {/* Wrapper for tab + container to get unified selection ring */}
+      <div className={`relative transition-all ${
+        selected ? 'ring-2 ring-yellow-400' : ''
+      }`} style={{ 
+        borderRadius: '16px 16px 24px 24px',
+        zIndex: 5
+      }}>
+        {/* Label above node with tab-like background - larger and with hamburger icon */}
+        <div className="flex justify-center mb-0" style={{ width: nodeWidth }}>
+          <div className="bg-gray-200 px-8 py-3 rounded-t-xl flex items-center gap-2 shadow-sm">
+            <div className="text-xs text-gray-700 uppercase tracking-widest font-sans font-bold">
+              {label || (format ? format.toUpperCase() : 'STORY')}
+            </div>
+            <Bars3Icon className="w-5 h-5 text-gray-600" />
+          </div>
+        </div>
+
+        {/* Main Container - positioned in front of connector dots */}
+        <div
+          className={`relative bg-gray-200 rounded-2xl shadow-lg transition-all overflow-hidden ${
+            selected ? 'shadow-xl' : 'shadow-md'
+          }`}
+          style={{
+            width: nodeWidth,
+            height: 200,
+            paddingLeft: `${sidePadding}px`,
+            paddingRight: `${sidePadding}px`,
+            paddingTop: '20px',
+            paddingBottom: '20px'
+          }}
+        >
         {hasItems ? (
           /* Horizontal scrollable cards */
           <div className="flex gap-4 h-full overflow-x-auto">
@@ -120,6 +126,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* Handles for connections */}
