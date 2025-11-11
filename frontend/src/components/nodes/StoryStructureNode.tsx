@@ -57,13 +57,13 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
   // Calculate total width by counting all visible cards horizontally
   const calculateTotalWidth = (): number => {
     const cardWidth = 240
-    const levelGap = 20 // Gap between hierarchy levels
+    const levelGap = 20 // Gap between hierarchy levels (gap-5 = 20px)
     const sidePadding = 24
     
     if (!hasItems) return 200
     
-    // Count how many columns we need
-    const countColumns = (): number => {
+    // Count the maximum depth of expanded items
+    const countMaxDepth = (): number => {
       let maxDepth = 0
       
       const traverse = (parentId: string | undefined, depth: number) => {
@@ -74,20 +74,27 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
           return
         }
         
-        children.forEach(child => {
-          if (child.expanded) {
-            traverse(child.id, depth + 1)
-          } else {
-            maxDepth = Math.max(maxDepth, depth)
-          }
-        })
+        // Check if any child is expanded
+        const hasExpandedChild = children.some(child => child.expanded)
+        
+        if (hasExpandedChild) {
+          // At least one child is expanded, traverse into them
+          children.forEach(child => {
+            if (child.expanded) {
+              traverse(child.id, depth + 1)
+            }
+          })
+        } else {
+          // No children expanded, this is the deepest we go
+          maxDepth = Math.max(maxDepth, depth + 1)
+        }
       }
       
-      traverse(undefined, 1)
+      traverse(undefined, 0)
       return maxDepth
     }
     
-    const columns = countColumns()
+    const columns = countMaxDepth()
     
     // Width = (number of columns * card width) + (gaps between columns) + padding
     return (columns * cardWidth) + ((columns - 1) * levelGap) + (sidePadding * 2)
@@ -122,7 +129,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
     const nextLevelName = canHaveChildren ? getLevelName(item.level + 1) : ''
     
     return (
-      <div key={item.id} className="flex gap-5 items-start transition-all duration-300 ease-in-out">
+      <div key={item.id} className="flex flex-nowrap gap-5 items-start transition-all duration-300 ease-in-out flex-shrink-0">
         {/* Current item card */}
         <div
           className={`flex-shrink-0 ${getBackgroundColor(item.level)} rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer group`}
@@ -169,7 +176,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         
         {/* Children rendered to the right - slide in/out */}
         {item.expanded && (
-          <div className="flex flex-col gap-2 animate-in slide-in-from-left-2 duration-200">
+          <div className="flex flex-col gap-2 flex-shrink-0 animate-in slide-in-from-left-2 duration-200">
             {itemHasChildren ? (
               // Render existing children
               children.map((child) => renderHorizontalTree(child))
@@ -218,9 +225,10 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
       />
 
       {/* Wrapper for tab + container with subtle selection state */}
-      <div className="relative transition-all duration-300 ease-in-out" style={{ 
+      <div className="relative transition-all duration-300 ease-in-out flex-shrink-0" style={{ 
         borderRadius: '16px 16px 24px 24px',
-        zIndex: 5
+        zIndex: 5,
+        width: nodeWidth
       }}>
         {/* Label above node with tab-like background - larger and with hamburger icon */}
         <div className="flex justify-center mb-0 transition-all duration-300 ease-in-out" style={{ width: nodeWidth }}>
@@ -236,7 +244,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
 
         {/* Main Container - positioned in front of connector dots */}
         <div
-          className={`relative rounded-2xl transition-all duration-300 ease-in-out ${
+          className={`relative rounded-2xl transition-all duration-300 ease-in-out overflow-visible ${
             selected ? 'bg-gray-100 shadow-2xl' : 'bg-gray-200 shadow-md'
           }`}
           style={{
@@ -245,12 +253,13 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             paddingLeft: sidePadding,
             paddingRight: sidePadding,
             paddingTop: 20,
-            paddingBottom: 20
+            paddingBottom: 20,
+            boxSizing: 'border-box'
           }}
         >
         {hasItems ? (
           /* Horizontal tree structure - no scrolling, all cards visible */
-          <div className="flex gap-4 items-start">
+          <div className="flex flex-nowrap gap-4 items-start">
             {topLevelItems.map((item) => renderHorizontalTree(item))}
           </div>
         ) : (
