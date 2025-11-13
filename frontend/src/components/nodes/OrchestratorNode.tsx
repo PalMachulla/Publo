@@ -64,7 +64,16 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
             strokeWidth="8"
           />
           
-          {/* Yellow spinner ring (animated when orchestrating) */}
+          {/* White inner circle */}
+          <circle
+            cx="90"
+            cy="90"
+            r="85"
+            fill="white"
+            stroke="none"
+          />
+          
+          {/* Yellow spinner ring (animated when orchestrating) - rendered after white circle to be on top */}
           {isOrchestrating && (
             <circle
               cx="90"
@@ -81,15 +90,6 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
               }}
             />
           )}
-          
-          {/* White inner circle */}
-          <circle
-            cx="90"
-            cy="90"
-            r="70"
-            fill="white"
-            stroke="none"
-          />
         </svg>
         
         {/* Content centered over circle */}
