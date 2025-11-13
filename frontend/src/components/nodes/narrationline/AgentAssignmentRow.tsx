@@ -26,23 +26,9 @@ function AgentAssignmentRow({
     : null
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newAgentId = e.target.value || null
-    console.log('Agent assignment change:', {
-      itemId: item.id,
-      itemName: item.name,
-      newAgentId,
-      currentAssignment: item.assignedAgentId,
-      availableAgents: availableAgents.length
-    })
+    const newAgentId = e.target.value === '' ? null : e.target.value
     onAgentAssign(item.id, newAgentId)
   }
-
-  console.log('AgentAssignmentRow render:', {
-    itemId: item.id,
-    assignedAgentId: item.assignedAgentId,
-    assignedAgentColor: item.assignedAgentColor,
-    hasAgent
-  })
 
   return (
     <div
