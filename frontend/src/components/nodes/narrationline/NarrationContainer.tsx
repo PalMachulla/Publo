@@ -3,6 +3,7 @@
 import { memo, useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { StoryStructureItem } from '@/types/nodes'
 import { useNarrationZoom } from './useNarrationZoom'
+import { getDocumentHierarchy } from '@/lib/documentHierarchy'
 import StructureTrackLane from './StructureTrackLane'
 import NarrationRuler from './NarrationRuler'
 import ZoomControls from './ZoomControls'
@@ -15,6 +16,7 @@ export interface NarrationContainerProps {
   isLoading?: boolean
   initialWidth?: number
   onWidthChange?: (width: number) => void
+  format?: string // Story format to determine hierarchy level names
 }
 
 function NarrationContainer({
@@ -24,7 +26,8 @@ function NarrationContainer({
   unitLabel = 'Pages',
   isLoading = false,
   initialWidth = 1200,
-  onWidthChange
+  onWidthChange,
+  format
 }: NarrationContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(initialWidth)
@@ -65,6 +68,13 @@ function NarrationContainer({
   
   // Get unique levels present in items
   const levels = Array.from(new Set(items.map(i => i.level))).sort() as (1 | 2 | 3)[]
+  
+  // Get hierarchy level names based on format
+  const hierarchy = format ? getDocumentHierarchy(format) : null
+  const getLevelName = (level: number): string | undefined => {
+    if (!hierarchy || level > hierarchy.length) return undefined
+    return hierarchy[level - 1]?.name
+  }
   
   // Handle resize start - prevent node dragging
   const handleResizeStart = useCallback((e: React.MouseEvent, direction: 'left' | 'right') => {
@@ -184,6 +194,7 @@ function NarrationContainer({
                 totalUnits={totalUnits}
                 activeItemId={activeItemId}
                 onItemClick={onItemClick}
+                levelName={getLevelName(level)}
               />
             ))}
             

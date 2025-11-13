@@ -325,6 +325,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             isLoading={isLoading}
             initialWidth={customNarrationWidth}
             onWidthChange={handleNarrationWidthChange}
+            format={format}
           />
         ) : hasItems ? (
           /* Card View - Horizontal tree structure */

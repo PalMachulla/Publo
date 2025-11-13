@@ -11,6 +11,7 @@ export interface StructureTrackLaneProps {
   totalUnits: number
   activeItemId?: string
   onItemClick: (item: StoryStructureItem) => void
+  levelName?: string // e.g., "Acts", "Chapters", "Scenes"
 }
 
 function StructureTrackLane({
@@ -19,7 +20,8 @@ function StructureTrackLane({
   pixelsPerUnit,
   totalUnits,
   activeItemId,
-  onItemClick
+  onItemClick,
+  levelName
 }: StructureTrackLaneProps) {
   const trackHeight = {
     1: 40,  // Uniform height for all levels
@@ -27,11 +29,8 @@ function StructureTrackLane({
     3: 40   // Uniform height for all levels
   }
   
-  const levelLabels = {
-    1: 'L1',
-    2: 'L2',
-    3: 'L3'
-  }
+  // Use provided level name or fall back to L1, L2, L3
+  const displayLabel = levelName || `L${level}`
   
   // Calculate segment position and width based on word count
   const getSegmentMetrics = (item: StoryStructureItem, itemIndex: number) => {
@@ -56,8 +55,8 @@ function StructureTrackLane({
     >
       {/* Track label - sticky/fixed */}
       <div className="sticky left-0 w-16 h-full bg-gray-200 border-r border-gray-300 flex items-center justify-center z-10 shadow-sm flex-shrink-0">
-        <span className="text-xs text-gray-600 font-mono font-medium">
-          {levelLabels[level]}
+        <span className="text-[10px] text-gray-600 font-medium uppercase tracking-wide text-center px-1">
+          {displayLabel}
         </span>
       </div>
       
