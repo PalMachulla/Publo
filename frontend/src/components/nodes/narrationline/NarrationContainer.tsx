@@ -278,7 +278,7 @@ function NarrationContainer({
       {/* Main content container */}
       <div className="w-full">
         {/* Header with controls */}
-        <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-300">
+        <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <div className="text-xs text-gray-600 font-medium">
               Narration Line
@@ -361,7 +361,7 @@ function NarrationContainer({
               style={{ height: 32 }}
             >
               {/* Label - sticky/fixed */}
-              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-300 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
+              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-200 border-b border-gray-200 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
                 <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide truncate px-1 text-center">Carrier</span>
               </div>
               
@@ -377,7 +377,7 @@ function NarrationContainer({
               style={{ height: 32 }}
             >
               {/* Label - sticky/fixed */}
-              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-300 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
+              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-200 border-b border-gray-200 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
                 <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide truncate px-1 text-center">Sentiment</span>
               </div>
               
@@ -390,7 +390,7 @@ function NarrationContainer({
         </div>
         
         {/* Footer with controls */}
-        <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-t border-gray-300">
+        <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-t border-gray-200">
           <div className="text-xs text-gray-600 font-medium">
             {/* Placeholder for future buttons/controls */}
           </div>
