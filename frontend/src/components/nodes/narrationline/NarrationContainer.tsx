@@ -44,6 +44,7 @@ function NarrationContainer({
   const resizeStartWidth = useRef(0)
   const resizeDirection = useRef<'left' | 'right'>('right')
   const [maxVisibleLevels, setMaxVisibleLevels] = useState(3) // Default to 3 levels
+  const [focusedSegmentId, setFocusedSegmentId] = useState<string | null>(null) // Track zoomed segment
   
   // Calculate total word count from Level 1 items only
   // Level 1 represents the max extent (e.g., Season with 1000 words)
@@ -69,6 +70,7 @@ function NarrationContainer({
     pixelsPerUnit,
     totalWidth,
     fitToView,
+    zoomToSegment,
     zoomIn,
     zoomOut
   } = useNarrationZoom({ totalUnits, viewportWidth: containerWidth })
@@ -136,6 +138,43 @@ function NarrationContainer({
   const handleResizeEnd = useCallback(() => {
     setIsResizing(false)
   }, [])
+  
+  // Handle segment click - zoom to segment and focus it
+  const handleSegmentClick = useCallback((item: StoryStructureItem) => {
+    const wordCount = item.wordCount || 1000
+    const startPos = item.startPosition || 0
+    
+    // Zoom to fit this segment in the viewport
+    zoomToSegment(startPos, wordCount)
+    
+    // Set as focused segment
+    setFocusedSegmentId(item.id)
+    
+    // Center the segment in the viewport after a short delay (wait for zoom to apply)
+    setTimeout(() => {
+      if (!containerRef.current) return
+      
+      // Calculate segment position in pixels
+      const segmentPixelStart = startPos * pixelsPerUnit
+      const segmentPixelWidth = wordCount * pixelsPerUnit
+      const segmentCenter = segmentPixelStart + (segmentPixelWidth / 2)
+      
+      // Center the segment in the viewport
+      const viewportWidth = containerRef.current.offsetWidth
+      const scrollTarget = segmentCenter - (viewportWidth / 2) + 64 // Account for sticky label
+      
+      containerRef.current.scrollTo({
+        left: Math.max(0, scrollTarget),
+        behavior: 'smooth'
+      })
+    }, 50)
+  }, [zoomToSegment, pixelsPerUnit])
+  
+  // Handle edit icon click - open panel
+  const handleEditSegment = useCallback((item: StoryStructureItem, e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent triggering segment click/zoom
+    onItemClick(item) // This opens the AI Document Panel
+  }, [onItemClick])
   
   // Add/remove mouse event listeners for resize
   useEffect(() => {
@@ -237,7 +276,9 @@ function NarrationContainer({
                 pixelsPerUnit={pixelsPerUnit}
                 totalUnits={totalUnits}
                 activeItemId={activeItemId}
-                onItemClick={onItemClick}
+                focusedItemId={focusedSegmentId}
+                onItemClick={handleSegmentClick}
+                onEditItem={handleEditSegment}
                 levelName={getLevelName(level)}
                 showAgentRows={showAgentRows}
                 availableAgents={availableAgents}

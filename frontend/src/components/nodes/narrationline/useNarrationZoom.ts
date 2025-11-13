@@ -50,6 +50,19 @@ export function useNarrationZoom({
     setZoom(Math.max(0.1, Math.min(newZoom, 10)))
   }, [viewportWidth])
   
+  // Zoom to segment (fit segment to full width)
+  const zoomToSegment = useCallback((segmentStart: number, segmentWordCount: number) => {
+    if (segmentWordCount === 0) return
+    // Available width for the segment (minus sticky label and padding)
+    const availableWidth = viewportWidth - 64 - 40 // Account for sticky label and padding
+    const basePixelsPerUnit = 50
+    // Calculate zoom to make this segment fill the viewport width
+    const newZoom = availableWidth / (segmentWordCount * basePixelsPerUnit)
+    // Cap at reasonable zoom levels (0.1x to 10x)
+    setZoom(Math.max(0.1, Math.min(newZoom, 10)))
+    return newZoom
+  }, [viewportWidth])
+  
   // Zoom in (1.5x)
   const zoomIn = useCallback(() => {
     setZoom(z => Math.min(z * 1.5, 10))
@@ -72,6 +85,7 @@ export function useNarrationZoom({
     totalWidth,
     fitToView,
     zoomToRange,
+    zoomToSegment,
     zoomIn,
     zoomOut
   }

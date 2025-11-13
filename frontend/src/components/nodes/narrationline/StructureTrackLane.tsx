@@ -11,7 +11,9 @@ export interface StructureTrackLaneProps {
   pixelsPerUnit: number
   totalUnits: number
   activeItemId?: string
+  focusedItemId?: string | null // The segment that's currently zoomed/focused
   onItemClick: (item: StoryStructureItem) => void
+  onEditItem?: (item: StoryStructureItem, e: React.MouseEvent) => void
   levelName?: string // e.g., "Acts", "Chapters", "Scenes"
   showAgentRows?: boolean
   availableAgents?: AgentOption[]
@@ -24,7 +26,9 @@ function StructureTrackLane({
   pixelsPerUnit,
   totalUnits,
   activeItemId,
+  focusedItemId,
   onItemClick,
+  onEditItem,
   levelName,
   showAgentRows = false,
   availableAgents = [],
@@ -164,7 +168,9 @@ function StructureTrackLane({
                   startPosition={startPosition}
                   width={width}
                   isActive={item.id === activeItemId}
+                  isFocused={item.id === focusedItemId}
                   onClick={() => onItemClick(item)}
+                  onEdit={onEditItem ? (e) => onEditItem(item, e) : undefined}
                 />
                 {/* Translucent agent color overlay */}
                 {item.assignedAgentColor && (

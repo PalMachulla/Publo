@@ -9,7 +9,9 @@ export interface NarrationSegmentProps {
   startPosition: number  // In pixels
   width: number          // In pixels
   isActive: boolean
+  isFocused?: boolean // Whether this segment is currently zoomed/focused
   onClick: () => void
+  onEdit?: (e: React.MouseEvent) => void // Handler for edit icon click
 }
 
 function NarrationSegment({
@@ -18,7 +20,9 @@ function NarrationSegment({
   startPosition,
   width,
   isActive,
-  onClick
+  isFocused = false,
+  onClick,
+  onEdit
 }: NarrationSegmentProps) {
   // Lighter color palette for better visibility
   const levelColors: Record<number, any> = {
@@ -69,6 +73,7 @@ function NarrationSegment({
   
   const colors = levelColors[level] || levelColors[1] // Fallback to level 1 colors
   const minWidthForText = 60 // Only show text if segment is wide enough
+  const minWidthForEditIcon = 80 // Show edit icon if segment is wide enough
   
   return (
     <div
@@ -77,10 +82,12 @@ function NarrationSegment({
         ${colors.bg} ${colors.border} ${colors.text}
         ${colors.hover}
         ${isActive ? 'ring-2 ring-yellow-400 z-10' : 'border'}
+        ${isFocused ? 'ring-4 ring-yellow-500 shadow-2xl z-30' : ''}
         cursor-pointer
         transition-all duration-200
         hover:shadow-lg hover:z-20
         overflow-hidden
+        group
       `}
       style={{
         left: startPosition,
@@ -91,15 +98,42 @@ function NarrationSegment({
     >
       {/* Segment label - only show if wide enough */}
       {width >= minWidthForText && (
-        <div className="h-full px-2 flex items-center">
-          <div className="text-xs font-medium truncate">
+        <div className="h-full px-2 flex items-center justify-between gap-2">
+          <div className="text-xs font-medium truncate flex-1">
             {item.name}
           </div>
+          
+          {/* Edit icon - only show when focused AND segment is wide enough */}
+          {isFocused && width >= minWidthForEditIcon && onEdit && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit(e)
+              }}
+              className="flex-shrink-0 p-1 rounded hover:bg-yellow-400/30 transition-colors"
+              title="Edit content"
+              aria-label="Edit content"
+            >
+              <svg 
+                className="w-4 h-4 text-gray-700" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" 
+                />
+              </svg>
+            </button>
+          )}
         </div>
       )}
       
       {/* Completed indicator */}
-      {item.completed && (
+      {item.completed && !isFocused && (
         <div className="absolute top-1 right-1">
           <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
