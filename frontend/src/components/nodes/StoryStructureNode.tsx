@@ -339,6 +339,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
                 onItemClick(item, items, format, id)
               }
             }}
+            onItemsChange={onItemsUpdate}
             unitLabel="Words"
             isLoading={isLoading}
             initialWidth={customNarrationWidth}

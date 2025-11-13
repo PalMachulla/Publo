@@ -12,6 +12,7 @@ export interface NarrationContainerProps {
   items: StoryStructureItem[]
   activeItemId?: string
   onItemClick: (item: StoryStructureItem) => void
+  onItemsChange?: (items: StoryStructureItem[]) => void // Callback to update items
   unitLabel?: string
   isLoading?: boolean
   initialWidth?: number
@@ -27,6 +28,7 @@ function NarrationContainer({
   items,
   activeItemId,
   onItemClick,
+  onItemsChange,
   unitLabel = 'Pages',
   isLoading = false,
   initialWidth = 1200,
@@ -236,6 +238,83 @@ function NarrationContainer({
     onItemClick(item) // This opens the AI Document Panel
   }, [onItemClick])
   
+  // Handle color change for a segment and propagate to descendants
+  const handleColorChange = useCallback((itemId: string, color: string | null) => {
+    if (!onItemsChange) return
+    
+    // Find all descendants of this item
+    const findDescendants = (parentId: string): string[] => {
+      const children = items.filter(item => item.parentId === parentId)
+      return [
+        ...children.map(child => child.id),
+        ...children.flatMap(child => findDescendants(child.id))
+      ]
+    }
+    
+    const descendantIds = findDescendants(itemId)
+    
+    // Helper function to lighten a hex color
+    const lightenColor = (hex: string, depth: number): string => {
+      // Remove # if present
+      const cleanHex = hex.replace('#', '')
+      
+      // Parse RGB
+      const r = parseInt(cleanHex.substr(0, 2), 16)
+      const g = parseInt(cleanHex.substr(2, 2), 16)
+      const b = parseInt(cleanHex.substr(4, 2), 16)
+      
+      // Gradually lighten based on depth (blend towards white)
+      // depth 1: 70% color + 30% white
+      // depth 2: 50% color + 50% white
+      // depth 3+: 30% color + 70% white
+      const factor = depth === 1 ? 0.3 : depth === 2 ? 0.5 : 0.7
+      
+      const newR = Math.round(r + (255 - r) * factor)
+      const newG = Math.round(g + (255 - g) * factor)
+      const newB = Math.round(b + (255 - b) * factor)
+      
+      return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`
+    }
+    
+    // Calculate depth for each descendant
+    const getDepthFromAncestor = (childId: string): number => {
+      let depth = 0
+      let currentId = childId
+      
+      while (currentId !== itemId) {
+        const parent = items.find(item => item.id === currentId)
+        if (!parent || !parent.parentId) break
+        depth++
+        currentId = parent.parentId
+      }
+      
+      return depth
+    }
+    
+    // Update items with new colors
+    const updatedItems = items.map(item => {
+      if (item.id === itemId) {
+        // Update the source item's color
+        return { ...item, backgroundColor: color || undefined }
+      }
+      
+      if (descendantIds.includes(item.id) && color) {
+        // Update descendants with progressively lighter colors
+        const depth = getDepthFromAncestor(item.id)
+        return { ...item, backgroundColor: lightenColor(color, depth) }
+      }
+      
+      // If clearing color, also clear descendant colors
+      if (descendantIds.includes(item.id) && !color) {
+        return { ...item, backgroundColor: undefined }
+      }
+      
+      return item
+    })
+    
+    onItemsChange(updatedItems)
+  }, [items, onItemsChange])
+  
   // Add/remove mouse event listeners for resize
   useEffect(() => {
     if (isResizing) {
@@ -368,6 +447,7 @@ function NarrationContainer({
                 focusedItemId={focusedSegmentId}
                 onItemClick={handleSegmentClick}
                 onEditItem={handleEditSegment}
+                onColorChange={handleColorChange}
                 levelName={getLevelName(level)}
                 showAgentRows={showAgentRows}
                 availableAgents={availableAgents}

@@ -1,7 +1,19 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { StoryStructureItem } from '@/types/nodes'
+
+// Pastel color palette - soft, muted colors
+const PASTEL_COLORS = [
+  { hex: '#fde2e2', name: 'Rose' },      // Soft rose
+  { hex: '#fef3c7', name: 'Honey' },     // Soft yellow
+  { hex: '#d1fae5', name: 'Mint' },      // Soft mint
+  { hex: '#dbeafe', name: 'Sky' },       // Soft blue
+  { hex: '#e9d5ff', name: 'Lavender' },  // Soft purple
+  { hex: '#fed7aa', name: 'Peach' },     // Soft peach
+  { hex: '#fce7f3', name: 'Pink' },      // Soft pink
+  { hex: '#cffafe', name: 'Cyan' },      // Soft cyan
+]
 
 export interface NarrationSegmentProps {
   item: StoryStructureItem
@@ -13,6 +25,7 @@ export interface NarrationSegmentProps {
   agentColor?: string // Color of assigned agent (for top border)
   onClick: () => void
   onEdit?: (e: React.MouseEvent) => void // Handler for edit icon click
+  onColorChange?: (color: string | null) => void // Handler for color picker
 }
 
 function NarrationSegment({
@@ -24,8 +37,26 @@ function NarrationSegment({
   isFocused = false,
   agentColor,
   onClick,
-  onEdit
+  onEdit,
+  onColorChange
 }: NarrationSegmentProps) {
+  const [showColorPicker, setShowColorPicker] = useState(false)
+  
+  // Calculate background color with inheritance
+  // If item has backgroundColor, use it; otherwise it inherits from parent
+  // The color gets lighter/more transparent at deeper levels
+  const getBackgroundColor = () => {
+    if (isFocused) return '#fef3c7' // yellow-100 for focused state
+    
+    // If item has a custom background color
+    if (item.backgroundColor) {
+      return item.backgroundColor
+    }
+    
+    // Default gray background
+    return '#f3f4f6' // gray-100
+  }
+  
   // Lighter color palette for better visibility
   const levelColors: Record<number, any> = {
     1: {
@@ -77,14 +108,14 @@ function NarrationSegment({
   const minWidthForText = 60 // Only show text if segment is wide enough
   const minWidthForEditIcon = 80 // Show edit icon if segment is wide enough
   
+  const backgroundColor = getBackgroundColor()
+  
   return (
     <div
       className={`
         absolute top-0 h-full
-        ${isFocused ? 'bg-yellow-100' : 'bg-gray-100'} 
         border-l border-r border-b border-gray-300
         ${isFocused ? 'text-gray-800' : 'text-gray-700'}
-        ${isFocused ? '' : 'hover:bg-gray-200'}
         ${isActive ? 'ring-2 ring-yellow-400 z-10' : ''}
         ${isFocused ? 'shadow-2xl z-30' : ''}
         cursor-pointer
@@ -96,9 +127,20 @@ function NarrationSegment({
       style={{
         left: startPosition,
         width: Math.max(width, 20), // Min width 20px for visibility
+        backgroundColor,
         borderTopWidth: agentColor ? '3px' : '1px',
         borderTopColor: agentColor || '#d1d5db', // Agent color or gray-300
         borderTopStyle: 'solid',
+      }}
+      onMouseEnter={(e) => {
+        if (!isFocused && !item.backgroundColor) {
+          e.currentTarget.style.backgroundColor = '#e5e7eb' // gray-200 on hover
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isFocused) {
+          e.currentTarget.style.backgroundColor = backgroundColor
+        }
       }}
       onClick={onClick}
       title={item.name} // Tooltip for narrow segments
@@ -110,31 +152,103 @@ function NarrationSegment({
             {item.name}
           </div>
           
-          {/* Edit icon - only show when focused AND segment is wide enough */}
-          {isFocused && width >= minWidthForEditIcon && onEdit && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onEdit(e)
-              }}
-              className="flex-shrink-0 p-1 rounded hover:bg-yellow-200 transition-colors"
-              title="Edit content"
-              aria-label="Edit content"
-            >
-              <svg 
-                className="w-4 h-4 text-gray-700" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" 
-                />
-              </svg>
-            </button>
+          {/* Action buttons - only show when focused AND segment is wide enough */}
+          {isFocused && width >= minWidthForEditIcon && (
+            <div className="flex items-center gap-1 flex-shrink-0 relative">
+              {/* Color picker button */}
+              {onColorChange && (
+                <div className="relative">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowColorPicker(!showColorPicker)
+                    }}
+                    className="p-1 rounded hover:bg-yellow-200 transition-colors"
+                    title="Set color"
+                    aria-label="Set color"
+                  >
+                    <svg 
+                      className="w-4 h-4 text-gray-700" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" 
+                      />
+                    </svg>
+                  </button>
+                  
+                  {/* Color picker dropdown */}
+                  {showColorPicker && (
+                    <div 
+                      className="absolute top-full right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-2 z-50"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="grid grid-cols-4 gap-1.5 mb-2">
+                        {PASTEL_COLORS.map((color) => (
+                          <button
+                            key={color.hex}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onColorChange(color.hex)
+                              setShowColorPicker(false)
+                            }}
+                            className="w-6 h-6 rounded border border-gray-300 hover:scale-110 transition-transform"
+                            style={{ backgroundColor: color.hex }}
+                            title={color.name}
+                            aria-label={`Select ${color.name} color`}
+                          />
+                        ))}
+                      </div>
+                      {/* Clear color button */}
+                      {item.backgroundColor && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onColorChange(null)
+                            setShowColorPicker(false)
+                          }}
+                          className="w-full text-xs text-gray-600 hover:text-gray-900 px-2 py-1 hover:bg-gray-100 rounded"
+                        >
+                          Clear color
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Edit icon */}
+              {onEdit && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onEdit(e)
+                  }}
+                  className="p-1 rounded hover:bg-yellow-200 transition-colors"
+                  title="Edit content"
+                  aria-label="Edit content"
+                >
+                  <svg 
+                    className="w-4 h-4 text-gray-700" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" 
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

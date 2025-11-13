@@ -151,6 +151,7 @@ export interface StoryStructureItem {
   assignedAgentId?: string // Node ID of assigned agent/cluster
   assignedAgentNumber?: number // e.g., 6 for AG006
   assignedAgentColor?: string // Hex color from agent node for overlay
+  backgroundColor?: string // Custom background color (inherited by children with fade)
 }
 
 export interface AgentOption {
