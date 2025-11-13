@@ -68,7 +68,7 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
           <circle
             cx="90"
             cy="90"
-            r="85"
+            r="86"
             fill="white"
             stroke="none"
           />
@@ -78,10 +78,10 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
             <circle
               cx="90"
               cy="90"
-              r="75"
+              r="80"
               fill="none"
               stroke="#fbbf24"
-              strokeWidth="6"
+              strokeWidth="2"
               strokeLinecap="round"
               strokeDasharray={`${Math.PI * 75 * 0.75} ${Math.PI * 75 * 1.25}`}
               style={{
@@ -110,12 +110,10 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
             </svg>
           </div>
           
-          {/* Loading text below logo */}
-          {loadingText && (
-            <div className="text-[9px] text-gray-600 font-light text-center px-4">
-              {loadingText}
-            </div>
-          )}
+          {/* Loading text below logo - always uppercase */}
+          <div className="text-[9px] text-gray-600 font-light text-center px-4 uppercase">
+            {loadingText || 'Orchestrator'}
+          </div>
         </div>
       </div>
       </div>
