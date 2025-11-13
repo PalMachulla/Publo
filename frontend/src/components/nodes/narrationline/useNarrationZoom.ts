@@ -51,8 +51,8 @@ export function useNarrationZoom({
   }, [viewportWidth])
   
   // Zoom to segment (fit segment to full width from left to right edge)
-  const zoomToSegment = useCallback((segmentStart: number, segmentWordCount: number) => {
-    if (segmentWordCount === 0) return
+  const zoomToSegment = useCallback((segmentStart: number, segmentWordCount: number): number => {
+    if (segmentWordCount === 0) return zoom // Return current zoom if no word count
     // Calculate the actual scrollable/visible content width
     // viewportWidth includes sticky label, but scrollable area starts after it
     // Available width = viewport - sticky label (64px) - safety margin
@@ -81,7 +81,7 @@ export function useNarrationZoom({
     
     setZoom(cappedZoom)
     return cappedZoom // Return the capped value that was actually set
-  }, [viewportWidth])
+  }, [viewportWidth, zoom])
   
   // Zoom in (1.5x)
   const zoomIn = useCallback(() => {
