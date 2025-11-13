@@ -323,8 +323,18 @@ export default function CanvasPage() {
         finalNodes = [...loadedNodes, contextNode]
       }
       
-      // Inject callbacks into story structure nodes and migrate old orchestrator nodes
-      // NOTE: availableAgents will be injected reactively via handleNodeUpdate, not here
+      // Get available agents from loaded nodes
+      const loadedAgents = finalNodes
+        .filter(n => n.type === 'clusterNode')
+        .map(n => ({
+          id: n.id,
+          agentNumber: n.data.agentNumber || 0,
+          color: n.data.color || '#9ca3af',
+          label: n.data.label || 'Agent'
+        }))
+        .sort((a, b) => a.agentNumber - b.agentNumber)
+      
+      // Inject callbacks and agents into story structure nodes
       finalNodes = finalNodes.map(node => {
         if (node.type === 'storyStructureNode' || node.data?.nodeType === 'story-structure') {
           return {
@@ -334,7 +344,8 @@ export default function CanvasPage() {
               onItemClick: handleStructureItemClick,
               onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(node.id, items),
               onWidthUpdate: (width: number) => handleNodeUpdate(node.id, { customNarrationWidth: width }),
-              // availableAgents and onAgentAssign will be added below
+              availableAgents: loadedAgents,
+              onAgentAssign: handleAgentAssign
             }
           }
         }
