@@ -150,7 +150,7 @@ function NarrationContainer({
     // Set as focused segment
     setFocusedSegmentId(item.id)
     
-    // Center the segment in the viewport after a short delay (wait for zoom to apply)
+    // Scroll to position segment at left edge (x=0) after zoom applies
     setTimeout(() => {
       if (!containerRef.current || !newZoom) return
       
@@ -158,17 +158,13 @@ function NarrationContainer({
       const baseWidth = 50 // Must match the base in useNarrationZoom
       const newPixelsPerUnit = baseWidth * newZoom
       
-      // Calculate segment position in pixels with the NEW pixelsPerUnit
+      // Calculate segment start position in pixels with the NEW pixelsPerUnit
       const segmentPixelStart = startPos * newPixelsPerUnit
-      const segmentPixelWidth = wordCount * newPixelsPerUnit
-      const segmentCenter = segmentPixelStart + (segmentPixelWidth / 2)
       
-      // Center the segment in the viewport
-      const viewportWidth = containerRef.current.offsetWidth
-      const scrollTarget = segmentCenter - (viewportWidth / 2) + 64 // Account for sticky label
-      
+      // Scroll to position the segment at the left edge (accounting for sticky label)
+      // The sticky label is 64px wide, so we want the segment to start right after it
       containerRef.current.scrollTo({
-        left: Math.max(0, scrollTarget),
+        left: Math.max(0, segmentPixelStart),
         behavior: 'smooth'
       })
     }, 50)
