@@ -202,9 +202,12 @@ function NarrationContainer({
       // Calculate segment start position in pixels with the NEW pixelsPerUnit
       const segmentPixelStart = startPos * newPixelsPerUnit
       
+      // Account for track lane padding (px-1 = 4px left padding)
+      const scrollPosition = Math.max(0, segmentPixelStart - 4)
+      
       // Scroll to position the segment at the left edge
       containerRef.current.scrollTo({
-        left: Math.max(0, segmentPixelStart),
+        left: scrollPosition,
         behavior: 'smooth'
       })
     }, 50)
