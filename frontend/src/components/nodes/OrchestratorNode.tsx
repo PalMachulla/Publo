@@ -4,7 +4,7 @@ import { memo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { CreateStoryNodeData } from '@/types/nodes'
 
-function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
+function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
   const { isOrchestrating = false, orchestratorProgress = 0 } = data
   
   return (
@@ -101,5 +101,5 @@ function CreateStoryNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
   )
 }
 
-export default memo(CreateStoryNode)
+export default memo(OrchestratorNode)
 

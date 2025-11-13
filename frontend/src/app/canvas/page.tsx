@@ -18,7 +18,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 
 import UniversalNode from '@/components/canvas/UniversalNode'
-import CreateStoryNode from '@/components/nodes/CreateStoryNode'
+import OrchestratorNode from '@/components/nodes/OrchestratorNode'
 import StoryDraftNode from '@/components/nodes/StoryDraftNode'
 import StoryStructureNode from '@/components/nodes/StoryStructureNode'
 import ClusterNode from '@/components/nodes/ClusterNode'
@@ -33,7 +33,7 @@ import { NodeType, StoryFormat, StoryStructureNodeData } from '@/types/nodes'
 // Node types for React Flow
 const nodeTypes = {
   storyNode: UniversalNode,
-  createStoryNode: CreateStoryNode,
+  createStoryNode: OrchestratorNode,
   storyDraftNode: StoryDraftNode,
   storyStructureNode: StoryStructureNode,
   clusterNode: ClusterNode,
