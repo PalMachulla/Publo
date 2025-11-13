@@ -112,13 +112,13 @@ function NarrationContainer({
   
   return (
     <div 
-      className={`relative mx-auto ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+      className={`relative mx-auto rounded-2xl bg-gray-400 shadow-lg overflow-hidden ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
       style={{ width: containerWidth }}
     >
       {/* Left resize handle */}
       <div
         data-nodrag="true"
-        className={`noDrag nodrag absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors`}
+        className={`noDrag nodrag absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors rounded-l-2xl`}
         onMouseDown={(e) => handleResizeStart(e, 'left')}
         onMouseMove={(e) => e.stopPropagation()}
         onMouseUp={(e) => e.stopPropagation()}
@@ -130,8 +130,8 @@ function NarrationContainer({
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
       </div>
       
-      {/* Main content container - overflow hidden to prevent content extending beyond */}
-      <div className="overflow-hidden w-full">
+      {/* Main content container */}
+      <div className="w-full">
         {/* Header with controls */}
         <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-300">
           <div className="text-xs text-gray-600 font-medium">
@@ -185,7 +185,7 @@ function NarrationContainer({
       {/* Right resize handle */}
       <div
         data-nodrag="true"
-        className={`noDrag nodrag absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors`}
+        className={`noDrag nodrag absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors rounded-r-2xl`}
         onMouseDown={(e) => handleResizeStart(e, 'right')}
         onMouseMove={(e) => e.stopPropagation()}
         onMouseUp={(e) => e.stopPropagation()}
