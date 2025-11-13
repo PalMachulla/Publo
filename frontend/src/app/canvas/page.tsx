@@ -647,14 +647,14 @@ export default function CanvasPage() {
             data: {
               ...node.data,
               availableAgents: availableAgents,
-              onAgentAssign: handleAgentAssign
+              onAgentAssign: handleAgentAssign // This is safe - callback is stable via useCallback
             }
           }
         }
         return node
       })
     })
-  }, [availableAgents, handleAgentAssign])
+  }, [availableAgents]) // Removed handleAgentAssign from deps - it's stable via useCallback
 
   // Handle Create Story node click - spawn new story structure node
   const handleCreateStory = useCallback((format: StoryFormat, template?: string) => {
