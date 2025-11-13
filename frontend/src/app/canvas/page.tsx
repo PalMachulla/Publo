@@ -323,18 +323,8 @@ export default function CanvasPage() {
         finalNodes = [...loadedNodes, contextNode]
       }
       
-      // First pass: get available agents from loaded cluster nodes
-      const loadedAgents = finalNodes
-        .filter(n => n.type === 'clusterNode')
-        .map(n => ({
-          id: n.id,
-          agentNumber: n.data.agentNumber || 0,
-          color: n.data.color || '#9ca3af',
-          label: n.data.label || 'Agent'
-        }))
-        .sort((a, b) => a.agentNumber - b.agentNumber)
-      
       // Inject callbacks into story structure nodes and migrate old orchestrator nodes
+      // NOTE: availableAgents will be injected reactively via handleNodeUpdate, not here
       finalNodes = finalNodes.map(node => {
         if (node.type === 'storyStructureNode' || node.data?.nodeType === 'story-structure') {
           return {
@@ -344,8 +334,7 @@ export default function CanvasPage() {
               onItemClick: handleStructureItemClick,
               onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(node.id, items),
               onWidthUpdate: (width: number) => handleNodeUpdate(node.id, { customNarrationWidth: width }),
-              availableAgents: loadedAgents,
-              onAgentAssign: handleAgentAssign
+              // availableAgents and onAgentAssign will be added below
             }
           }
         }
@@ -573,6 +562,29 @@ export default function CanvasPage() {
       }))
       .sort((a, b) => a.agentNumber - b.agentNumber)
   }, [nodes])
+
+  // Reactively inject availableAgents into structure nodes when agents change
+  useEffect(() => {
+    if (isLoadingRef.current) return // Don't run during initial load
+    
+    console.log('Agents changed, updating structure nodes:', availableAgents)
+    
+    setNodes((currentNodes) => {
+      return currentNodes.map((node) => {
+        if (node.type === 'storyStructureNode') {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              availableAgents: availableAgents,
+              onAgentAssign: handleAgentAssign
+            }
+          }
+        }
+        return node
+      })
+    })
+  }, [availableAgents, handleAgentAssign])
 
   // Handle agent assignment to structure items
   const handleAgentAssign = useCallback((itemId: string, agentId: string | null) => {
