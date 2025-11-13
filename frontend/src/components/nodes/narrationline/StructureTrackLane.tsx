@@ -32,6 +32,47 @@ function StructureTrackLane({
   // Use provided level name or fall back to L1, L2, L3
   const displayLabel = levelName || `L${level}`
   
+  // Recursive function to get parent's position and width
+  const getParentMetrics = (parentId: string): { start: number; width: number } => {
+    const parent = items.find(i => i.id === parentId)
+    if (!parent) return { start: 0, width: 1000 }
+    
+    // If parent has explicit position, use it
+    if (parent.startPosition !== undefined && parent.startPosition !== null) {
+      return {
+        start: parent.startPosition,
+        width: parent.wordCount || 1000
+      }
+    }
+    
+    // If parent also has a parent, recursively get its position
+    if (parent.parentId) {
+      const grandparentMetrics = getParentMetrics(parent.parentId)
+      const parentSiblings = items
+        .filter(i => i.parentId === parent.parentId && i.level === parent.level)
+        .sort((a, b) => a.order - b.order)
+      
+      const parentIndex = parentSiblings.findIndex(s => s.id === parent.id)
+      const childWidth = grandparentMetrics.width / parentSiblings.length
+      const childStart = grandparentMetrics.start + (parentIndex * childWidth)
+      
+      return { start: childStart, width: childWidth }
+    }
+    
+    // Parent is top-level - calculate its position
+    const topLevelSiblings = items
+      .filter(i => !i.parentId && i.level === parent.level)
+      .sort((a, b) => a.order - b.order)
+    
+    let startPos = 0
+    const siblingIndex = topLevelSiblings.findIndex(s => s.id === parent.id)
+    for (let i = 0; i < siblingIndex; i++) {
+      startPos += (topLevelSiblings[i].wordCount || 1000)
+    }
+    
+    return { start: startPos, width: parent.wordCount || 1000 }
+  }
+  
   // Calculate segment position and width based on hierarchical structure
   const getSegmentMetrics = (item: StoryStructureItem, itemIndex: number) => {
     // Use actual word count if available, otherwise estimate
@@ -46,30 +87,26 @@ function StructureTrackLane({
     
     // Calculate position based on hierarchy
     let startPos = 0
+    let itemWidth = wordCount
     
     if (item.parentId) {
       // This is a child item - position within parent's range
-      const parent = items.find(i => i.id === item.parentId)
-      if (parent) {
-        // Get parent's position and width
-        const parentStart = parent.startPosition || 0
-        const parentWidth = parent.wordCount || 1000
-        
-        // Get all siblings (including this item)
-        const siblings = items
-          .filter(i => i.parentId === item.parentId && i.level === item.level)
-          .sort((a, b) => a.order - b.order)
-        
-        // Divide parent's range among children
-        const siblingIndex = siblings.findIndex(s => s.id === item.id)
-        const totalSiblings = siblings.length
-        const childWidth = parentWidth / totalSiblings
-        
-        startPos = parentStart + (siblingIndex * childWidth)
-        return { 
-          startPosition: startPos * pixelsPerUnit, 
-          width: childWidth * pixelsPerUnit 
-        }
+      const parentMetrics = getParentMetrics(item.parentId)
+      
+      // Get all siblings (including this item)
+      const siblings = items
+        .filter(i => i.parentId === item.parentId && i.level === item.level)
+        .sort((a, b) => a.order - b.order)
+      
+      // Divide parent's range among children
+      const siblingIndex = siblings.findIndex(s => s.id === item.id)
+      const totalSiblings = siblings.length
+      itemWidth = parentMetrics.width / totalSiblings
+      
+      startPos = parentMetrics.start + (siblingIndex * itemWidth)
+      return { 
+        startPosition: startPos * pixelsPerUnit, 
+        width: itemWidth * pixelsPerUnit 
       }
     }
     
@@ -84,7 +121,7 @@ function StructureTrackLane({
     }
     
     const startPosition = startPos * pixelsPerUnit
-    const width = wordCount * pixelsPerUnit
+    const width = itemWidth * pixelsPerUnit
     
     return { startPosition, width }
   }

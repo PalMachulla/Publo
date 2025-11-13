@@ -59,12 +59,15 @@ function NarrationContainer({
     zoomOut
   } = useNarrationZoom({ totalUnits, viewportWidth: containerWidth })
   
-  // Fit to view on mount
+  // Fit to view on mount and when items change
   useEffect(() => {
     if (items.length > 0) {
-      fitToView()
+      // Small delay to ensure content is rendered
+      setTimeout(() => {
+        fitToView()
+      }, 100)
     }
-  }, [items.length, fitToView])
+  }, [items, fitToView])
   
   // Get unique levels present in items
   const levels = Array.from(new Set(items.map(i => i.level))).sort() as (1 | 2 | 3)[]
