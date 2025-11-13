@@ -327,8 +327,15 @@ function NarrationContainer({
           className="relative overflow-x-auto overflow-y-hidden bg-gray-50"
           style={{ maxHeight: '300px' }}
           onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
+          onClick={(e) => {
+            // Clear focus if clicking on background (not on a segment)
+            const target = e.target as HTMLElement
+            if (target === e.currentTarget || target.classList.contains('narration-content-area')) {
+              setFocusedSegmentId(null)
+            }
+          }}
         >
-          <div style={{ width: Math.max(totalWidth, containerWidth - 64) }}>
+          <div className="narration-content-area" style={{ width: Math.max(totalWidth, containerWidth - 64) }}>
             {/* Structure tracks */}
             {levels.map((level) => (
               <StructureTrackLane

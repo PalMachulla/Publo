@@ -142,7 +142,7 @@ function StructureTrackLane({
     <>
       {/* Main track with segments */}
       <div 
-        className="relative w-full bg-gray-100 border-b border-gray-200 flex"
+        className="relative w-full bg-gray-100 border-b border-gray-100 flex"
         style={{ height: trackHeight }}
       >
         {/* Track label - sticky/fixed */}
