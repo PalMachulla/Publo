@@ -398,15 +398,68 @@ export default function CanvasPage() {
       setNodes(nodesToSave)
     }
     
+    // Activate orchestrator progress ring
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === 'context'
+          ? { ...node, data: { ...node.data, isOrchestrating: true, orchestratorProgress: 0 } }
+          : node
+      )
+    )
+
+    // Animate progress ring
+    let progress = 0
+    const progressInterval = setInterval(() => {
+      progress += 10
+      if (progress <= 90) {
+        setNodes((currentNodes) =>
+          currentNodes.map((node) =>
+            node.id === 'context'
+              ? { ...node, data: { ...node.data, orchestratorProgress: progress } }
+              : node
+          )
+        )
+      }
+    }, 50) // Update every 50ms for smooth animation
+    
     setSaving(true)
     try {
       await saveCanvas(storyId, nodesToSave, edges)
       // Clear the unsaved changes flag after successful save
       hasUnsavedChangesRef.current = false
+      
+      // Complete the progress ring
+      setNodes((currentNodes) =>
+        currentNodes.map((node) =>
+          node.id === 'context'
+            ? { ...node, data: { ...node.data, orchestratorProgress: 100 } }
+            : node
+        )
+      )
+      
+      // Wait a moment to show completion, then hide
+      setTimeout(() => {
+        setNodes((currentNodes) =>
+          currentNodes.map((node) =>
+            node.id === 'context'
+              ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0 } }
+              : node
+          )
+        )
+      }, 500)
     } catch (error) {
       console.error('Failed to save canvas:', error)
       alert('Failed to save canvas. Please try again.')
+      // Hide progress ring on error
+      setNodes((currentNodes) =>
+        currentNodes.map((node) =>
+          node.id === 'context'
+            ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0 } }
+            : node
+        )
+      )
     } finally {
+      clearInterval(progressInterval)
       setSaving(false)
     }
   }, [storyId, nodes, edges, setNodes, saving])
