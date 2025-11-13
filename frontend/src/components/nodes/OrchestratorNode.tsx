@@ -95,7 +95,7 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
         {/* Content centered over circle */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-2">
           {/* Publo Logo */}
-          <div className="w-20 h-20 flex items-center justify-center">
+          <div className="w-14 h-14 flex items-center justify-center">
             <svg
               viewBox="0 0 163 210"
               className="w-full h-full"
