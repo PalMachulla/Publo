@@ -14,7 +14,7 @@ export const DatabaseNodeSchema = z.object({
   type: z.string(),
   position_x: z.number(),
   position_y: z.number(),
-  data: z.record(z.unknown()),
+  data: z.record(z.string(), z.unknown()),
   node_type: z.string().optional(), // Added in migration 003
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
@@ -28,7 +28,7 @@ export const DatabaseEdgeSchema = z.object({
   target: z.string(),
   type: z.string().nullable().optional(),
   animated: z.boolean().nullable().optional(),
-  style: z.record(z.unknown()).nullable().optional(),
+  style: z.record(z.string(), z.unknown()).nullable().optional(),
   created_at: z.string().optional(),
   // Note: edges table doesn't have updated_at column
 }).passthrough() // Allow additional unknown fields
