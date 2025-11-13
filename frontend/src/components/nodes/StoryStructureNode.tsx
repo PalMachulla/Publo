@@ -9,9 +9,22 @@ import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { NarrationContainer } from './narrationline'
 
 function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNodeData>) {
-  const { format, items = [], label, onItemClick, onItemsUpdate, onWidthUpdate, isLoading = false, customNarrationWidth = 1200 } = data
+  const { 
+    format, 
+    items = [], 
+    label, 
+    onItemClick, 
+    onItemsUpdate, 
+    onWidthUpdate, 
+    isLoading = false, 
+    customNarrationWidth = 1200,
+    availableAgents = [],
+    onAgentAssign,
+    showAgentRows: dataShowAgentRows
+  } = data
   const primaryLevel = format ? (getPrimaryStructuralLevel(format) || 'Item') : 'Item'
   const [viewMode, setViewMode] = useState<'cards' | 'narration'>('narration')
+  const [showAgentRows, setShowAgentRows] = useState(dataShowAgentRows || false)
   
   // Get only top-level items (level 1)
   const topLevelItems = items.filter(item => item.level === 1).sort((a, b) => a.order - b.order)
@@ -25,6 +38,11 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
     if (onWidthUpdate) {
       onWidthUpdate(newWidth)
     }
+  }
+  
+  // Handle agent rows toggle
+  const handleToggleAgentRows = () => {
+    setShowAgentRows(!showAgentRows)
   }
   
   // Helper function to get children of an item
@@ -326,6 +344,10 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             initialWidth={customNarrationWidth}
             onWidthChange={handleNarrationWidthChange}
             format={format}
+            availableAgents={availableAgents}
+            onAgentAssign={onAgentAssign}
+            showAgentRows={showAgentRows}
+            onToggleAgentRows={handleToggleAgentRows}
           />
         ) : hasItems ? (
           /* Card View - Horizontal tree structure */
