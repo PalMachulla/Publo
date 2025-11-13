@@ -264,20 +264,33 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         width: nodeWidth
       }}>
         {/* Label above node with tab-like background */}
-        <div className="flex justify-center mb-0 transition-all duration-300 ease-in-out" style={{ width: nodeWidth }}>
-          <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all ${
-            selected ? 'bg-gray-100 shadow-md' : 'bg-gray-200 shadow-sm'
-          }`}>
-            <div className="text-xs text-gray-700 uppercase tracking-widest font-sans font-bold">
+        <div className="flex justify-center -mb-1 transition-all duration-300 ease-in-out" style={{ width: nodeWidth }}>
+          <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all bg-gray-400`}>
+            <div className="text-sm text-gray-700 uppercase tracking-widest font-sans font-bold">
               {label || (format ? format.toUpperCase() : 'STORY')}
             </div>
+            {/* Panel indicator icon */}
+            <svg 
+              className="w-4 h-4 text-gray-700" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+              aria-label="Opens panel"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2.5} 
+                d="M9 5l7 7-7 7" 
+              />
+            </svg>
           </div>
         </div>
 
         {/* Main Container - positioned in front of connector dots */}
         <div
-          className={`relative rounded-2xl transition-all duration-300 ease-in-out overflow-visible ${
-            selected ? 'bg-gray-100 shadow-2xl' : 'bg-gray-200 shadow-md'
+          className={`relative rounded-2xl transition-all duration-300 ease-in-out overflow-visible bg-gray-400 ${
+            selected ? ' shadow-2xl' : ' shadow-md'
           }`}
           style={{
             width: nodeWidth,
