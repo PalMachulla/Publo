@@ -105,6 +105,8 @@ export interface ContextCanvasData {
 
 export interface CreateStoryNodeData extends BaseNodeData {
   nodeType: 'create-story'
+  isOrchestrating?: boolean // Whether the orchestrator is active
+  orchestratorProgress?: number // Progress percentage (0-100)
 }
 
 export type StoryDraftStatus = 'draft' | 'active' | 'published'
