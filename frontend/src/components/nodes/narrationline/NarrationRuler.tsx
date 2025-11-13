@@ -29,16 +29,16 @@ function NarrationRuler({
   }, [totalUnits, markerInterval])
   
   return (
-    <div className="relative h-8 bg-gray-50 border-b border-gray-300">
+    <div className="relative h-8 bg-gray-50 border-b border-gray-300 flex">
       {/* Label area - sticky/fixed */}
-      <div className="sticky left-0 top-0 w-16 h-full bg-gray-200 border-r border-gray-300 flex items-center justify-center z-20 shadow-sm">
+      <div className="sticky left-0 w-16 h-full bg-gray-200 border-r border-gray-300 flex items-center justify-center z-10 shadow-sm flex-shrink-0">
         <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">
           {unitLabel}
         </span>
       </div>
       
-      {/* Ruler markers - overflow hidden to crop numbers at edges */}
-      <div className="absolute left-16 right-0 h-full overflow-hidden">
+      {/* Ruler markers - scrollable area */}
+      <div className="relative flex-1 h-full overflow-visible">
         {markers.map((unit) => (
           <div
             key={unit}
