@@ -5,7 +5,7 @@ import { StoryStructureItem } from '@/types/nodes'
 
 export interface NarrationSegmentProps {
   item: StoryStructureItem
-  level: 1 | 2 | 3
+  level: number // Support any level depth
   startPosition: number  // In pixels
   width: number          // In pixels
   isActive: boolean
@@ -20,25 +20,50 @@ function NarrationSegment({
   isActive,
   onClick
 }: NarrationSegmentProps) {
-  // Sleek color palette matching app design
-  const levelColors = {
+  // Lighter color palette for better visibility
+  const levelColors: Record<number, any> = {
     1: {
-      bg: 'bg-gray-400',
-      border: 'border-gray-500',
-      text: 'text-gray-900',
-      hover: 'hover:bg-gray-500'
-    },
-    2: {
-      bg: 'bg-gray-300',
-      border: 'border-gray-400',
-      text: 'text-gray-800',
-      hover: 'hover:bg-gray-400'
-    },
-    3: {
       bg: 'bg-gray-200',
       border: 'border-gray-300',
-      text: 'text-gray-700',
+      text: 'text-gray-800',
       hover: 'hover:bg-gray-300'
+    },
+    2: {
+      bg: 'bg-gray-100',
+      border: 'border-gray-200',
+      text: 'text-gray-700',
+      hover: 'hover:bg-gray-200'
+    },
+    3: {
+      bg: 'bg-gray-50',
+      border: 'border-gray-100',
+      text: 'text-gray-600',
+      hover: 'hover:bg-gray-100'
+    },
+    // Additional levels for deeper hierarchies
+    4: {
+      bg: 'bg-slate-50',
+      border: 'border-slate-100',
+      text: 'text-slate-600',
+      hover: 'hover:bg-slate-100'
+    },
+    5: {
+      bg: 'bg-zinc-50',
+      border: 'border-zinc-100',
+      text: 'text-zinc-600',
+      hover: 'hover:bg-zinc-100'
+    },
+    6: {
+      bg: 'bg-neutral-50',
+      border: 'border-neutral-100',
+      text: 'text-neutral-600',
+      hover: 'hover:bg-neutral-100'
+    },
+    7: {
+      bg: 'bg-stone-50',
+      border: 'border-stone-100',
+      text: 'text-stone-600',
+      hover: 'hover:bg-stone-100'
     }
   }
   
