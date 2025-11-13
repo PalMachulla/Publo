@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Node } from 'reactflow'
 import { StoryStructureNodeData, StoryStructureItem } from '@/types/nodes'
 import { getDocumentHierarchy } from '@/lib/documentHierarchy'
-import { getFormatIcon } from '@/components/StoryFormatMenu'
+import { getFormatIcon } from '@/components/menus/StoryFormatMenu'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 
 interface StoryStructurePanelProps {

@@ -5,7 +5,7 @@ import { Handle, Position, NodeProps } from 'reactflow'
 import { AnyNodeData, NodeType } from '@/types/nodes'
 import { getNodeIcon, getNodeColor } from '@/lib/nodeIcons'
 
-function StoryNode({ data, selected }: NodeProps<AnyNodeData>) {
+function UniversalNode({ data, selected }: NodeProps<AnyNodeData>) {
   const nodeData = data as any
   const nodeType = nodeData.nodeType || 'story'
   const icon = getNodeIcon(nodeType as NodeType)
@@ -65,5 +65,5 @@ function StoryNode({ data, selected }: NodeProps<AnyNodeData>) {
   )
 }
 
-export default memo(StoryNode)
+export default memo(UniversalNode)
 

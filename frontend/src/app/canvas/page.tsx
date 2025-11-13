@@ -17,24 +17,22 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
-import StoryNode from '@/components/StoryNode'
-import ContextCanvas from '@/components/ContextCanvas'
+import UniversalNode from '@/components/canvas/UniversalNode'
 import CreateStoryNode from '@/components/nodes/CreateStoryNode'
 import StoryDraftNode from '@/components/nodes/StoryDraftNode'
 import StoryStructureNode from '@/components/nodes/StoryStructureNode'
-import ClusterNode from '@/components/ClusterNode'
-import NodeDetailsPanel from '@/components/NodeDetailsPanel'
-import NodeTypeMenu from '@/components/NodeTypeMenu'
-import AIDocumentPanel from '@/components/AIDocumentPanel'
+import ClusterNode from '@/components/nodes/ClusterNode'
+import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
+import NodeTypeMenu from '@/components/menus/NodeTypeMenu'
+import AIDocumentPanel from '@/components/panels/AIDocumentPanel'
 import { CanvasProvider } from '@/contexts/CanvasContext'
 import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/lib/stories'
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
 import { NodeType, StoryFormat, StoryStructureNodeData } from '@/types/nodes'
 
-// Create a wrapper component for CreateStoryNode that injects the callback from ref
+// Node types for React Flow
 const nodeTypes = {
-  storyNode: StoryNode,
-  contextCanvas: ContextCanvas,
+  storyNode: UniversalNode,
   createStoryNode: CreateStoryNode,
   storyDraftNode: StoryDraftNode,
   storyStructureNode: StoryStructureNode,

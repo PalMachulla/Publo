@@ -3,7 +3,7 @@
 import { memo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { StoryStructureNodeData, StoryStructureItem } from '@/types/nodes'
-import { getFormatIcon } from '@/components/StoryFormatMenu'
+import { getFormatIcon } from '@/components/menus/StoryFormatMenu'
 import { getPrimaryStructuralLevel, getDocumentHierarchy } from '@/lib/documentHierarchy'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 
