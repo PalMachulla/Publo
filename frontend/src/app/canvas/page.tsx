@@ -39,14 +39,14 @@ const nodeTypes = {
   clusterNode: ClusterNode,
 }
 
-// Only Create Story node on fresh canvas
+// Only Orchestrator node on fresh canvas
 const initialNodes: Node[] = [
   {
     id: 'context',
-    type: 'createStoryNode',
+    type: 'orchestratorNode',
     position: { x: 250, y: 500 },
     data: { 
-      label: 'Create Story',
+      label: 'Orchestrator',
       comments: [],
       nodeType: 'create-story' as NodeType,
       onCreateStory: (format: StoryFormat) => {
@@ -272,6 +272,30 @@ export default function CanvasPage() {
   }, [])
 
   const loadStoryData = async (id: string) => {
+    // Activate orchestrator progress ring
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === 'context'
+          ? { ...node, data: { ...node.data, isOrchestrating: true, orchestratorProgress: 0 } }
+          : node
+      )
+    )
+
+    // Animate progress ring during load
+    let progress = 0
+    const progressInterval = setInterval(() => {
+      progress += 10
+      if (progress <= 90) {
+        setNodes((currentNodes) =>
+          currentNodes.map((node) =>
+            node.id === 'context'
+              ? { ...node, data: { ...node.data, orchestratorProgress: progress } }
+              : node
+          )
+        )
+      }
+    }, 50)
+
     try {
       console.log(`Loading story: ${id}`)
       const { story, nodes: loadedNodes, edges: loadedEdges } = await getStory(id)
@@ -299,13 +323,13 @@ export default function CanvasPage() {
       let finalNodes = loadedNodes
       
       if (!hasContextCanvas) {
-        // Add Create Story node if it doesn't exist
+        // Add Orchestrator node if it doesn't exist
         const contextNode: Node = {
           id: 'context',
-          type: 'createStoryNode',
+          type: 'orchestratorNode',
           position: { x: 250, y: 500 },
           data: { 
-            label: 'Create Story',
+            label: 'Orchestrator',
             comments: [],
             nodeType: 'create-story' as NodeType
           },
@@ -345,17 +369,49 @@ export default function CanvasPage() {
       setEdges(upgradedEdges)
       setStoryTitle(story.title)
       
+      // Complete the progress ring
+      clearInterval(progressInterval)
+      setNodes((currentNodes) =>
+        currentNodes.map((node) =>
+          node.id === 'context'
+            ? { ...node, data: { ...node.data, orchestratorProgress: 100 } }
+            : node
+        )
+      )
+      
       // Use setTimeout to ensure state updates are applied
       setTimeout(() => {
         setIsLoadingCanvas(false)
         isLoadingRef.current = false
         hasUnsavedChangesRef.current = false // Clear unsaved changes flag after loading
+        
+        // Hide orchestrator indicator after a moment
+        setTimeout(() => {
+          setNodes((currentNodes) =>
+            currentNodes.map((node) =>
+              node.id === 'context'
+                ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0 } }
+                : node
+            )
+          )
+        }, 500)
+        
         console.log(`Story ${id} fully loaded and ready for edits`)
       }, 500)
     } catch (error) {
       console.error('Failed to load story:', error)
+      clearInterval(progressInterval)
       setIsLoadingCanvas(false)
       isLoadingRef.current = false
+      
+      // Hide orchestrator indicator on error
+      setNodes((currentNodes) =>
+        currentNodes.map((node) =>
+          node.id === 'context'
+            ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0 } }
+            : node
+        )
+      )
     }
   }
 
@@ -384,10 +440,10 @@ export default function CanvasPage() {
     if (!hasContext) {
       const contextNode: Node = {
         id: 'context',
-        type: 'createStoryNode',
+        type: 'orchestratorNode',
         position: { x: 250, y: 500 },
         data: { 
-          label: 'Create Story',
+          label: 'Orchestrator',
           comments: [],
           nodeType: 'create-story' as NodeType
         },

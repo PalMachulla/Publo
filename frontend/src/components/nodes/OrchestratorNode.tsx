@@ -17,13 +17,13 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
       
       {/* Top connector dot */}
       <div 
-        className="absolute left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-gray-300"
+        className="absolute left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-gray-400"
         style={{ top: '-8px', pointerEvents: 'none', zIndex: 0 }}
       />
       
       {/* Bottom connector dot */}
       <div 
-        className="absolute left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-gray-300"
+        className="absolute left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-gray-400"
         style={{ bottom: '-8px', pointerEvents: 'none', zIndex: 0 }}
       />
       
@@ -48,7 +48,7 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
             cy="90"
             r="85"
             fill="none"
-            stroke="#d1d5db"
+            stroke="#9ca3af"
             strokeWidth="8"
           />
           
@@ -57,13 +57,13 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
             <circle
               cx="90"
               cy="90"
-              r="85"
+              r="75"
               fill="none"
               stroke="#fbbf24"
-              strokeWidth="8"
+              strokeWidth="6"
               strokeLinecap="round"
-              strokeDasharray={`${2 * Math.PI * 85}`}
-              strokeDashoffset={`${2 * Math.PI * 85 * (1 - orchestratorProgress / 100)}`}
+              strokeDasharray={`${2 * Math.PI * 75}`}
+              strokeDashoffset={`${2 * Math.PI * 75 * (1 - orchestratorProgress / 100)}`}
               className="transition-all duration-300"
             />
           )}
@@ -72,7 +72,7 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
           <circle
             cx="90"
             cy="90"
-            r="73"
+            r="85"
             fill="white"
             stroke="none"
           />
