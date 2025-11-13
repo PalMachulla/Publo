@@ -54,10 +54,11 @@ function NarrationContainer({
   // Get unique levels present in items
   const levels = Array.from(new Set(items.map(i => i.level))).sort() as (1 | 2 | 3)[]
   
-  // Handle resize start
+  // Handle resize start - prevent node dragging
   const handleResizeStart = useCallback((e: React.MouseEvent, direction: 'left' | 'right') => {
     e.preventDefault()
     e.stopPropagation()
+    e.nativeEvent.stopImmediatePropagation()
     setIsResizing(true)
     resizeStartX.current = e.clientX
     resizeStartWidth.current = containerWidth
@@ -104,11 +105,14 @@ function NarrationContainer({
     <div className={`relative ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}>
       {/* Left resize handle */}
       <div
-        className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 group ${isResizing ? 'bg-yellow-400' : 'hover:bg-gray-300'} transition-colors`}
+        className={`noDrag absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors`}
         onMouseDown={(e) => handleResizeStart(e, 'left')}
+        onMouseMove={(e) => e.stopPropagation()}
+        onMouseUp={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         title="Drag to resize"
       >
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
       </div>
       
       {/* Main container with fixed width - overflow hidden to prevent content extending beyond */}
@@ -168,11 +172,14 @@ function NarrationContainer({
       
       {/* Right resize handle */}
       <div
-        className={`absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 group ${isResizing ? 'bg-yellow-400' : 'hover:bg-gray-300'} transition-colors`}
+        className={`noDrag absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors`}
         onMouseDown={(e) => handleResizeStart(e, 'right')}
+        onMouseMove={(e) => e.stopPropagation()}
+        onMouseUp={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         title="Drag to resize"
       >
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
       </div>
     </div>
   )
