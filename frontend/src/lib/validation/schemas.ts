@@ -25,11 +25,11 @@ export const DatabaseEdgeSchema = z.object({
   story_id: z.string(),
   source: z.string(),
   target: z.string(),
-  type: z.string().optional(),
-  animated: z.boolean().optional(),
-  style: z.record(z.unknown()).optional(),
+  type: z.string().nullable().optional(),
+  animated: z.boolean().nullable().optional(),
+  style: z.record(z.unknown()).nullable().optional(),
   created_at: z.string().optional(),
-  updated_at: z.string().optional(),
+  // Note: edges table doesn't have updated_at column
 })
 
 // Story schema (from Supabase)
@@ -37,11 +37,12 @@ export const StorySchema = z.object({
   id: z.string(),
   user_id: z.string(),
   title: z.string(),
+  description: z.string().nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
-  is_public: z.boolean().optional(),
-  shared: z.boolean().optional(),
-  shared_emails: z.array(z.string()).optional(),
+  is_public: z.boolean().nullable().optional().default(false),
+  shared: z.boolean().nullable().optional().default(false),
+  // Note: shared_emails is NOT a database column, it comes from canvas_shares table
 })
 
 // User profile schema
