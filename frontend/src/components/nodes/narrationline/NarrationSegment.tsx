@@ -81,9 +81,9 @@ function NarrationSegment({
     <div
       className={`
         absolute top-0 h-full
-        ${isFocused ? 'bg-yellow-400' : 'bg-gray-100'} 
+        ${isFocused ? 'bg-yellow-100' : 'bg-gray-100'} 
         border-l border-r border-b border-gray-300
-        ${isFocused ? 'text-gray-900' : 'text-gray-700'}
+        ${isFocused ? 'text-gray-800' : 'text-gray-700'}
         ${isFocused ? '' : 'hover:bg-gray-200'}
         ${isActive ? 'ring-2 ring-yellow-400 z-10' : ''}
         ${isFocused ? 'shadow-2xl z-30' : ''}
@@ -117,7 +117,7 @@ function NarrationSegment({
                 e.stopPropagation()
                 onEdit(e)
               }}
-              className="flex-shrink-0 p-1 rounded hover:bg-yellow-400/30 transition-colors"
+              className="flex-shrink-0 p-1 rounded hover:bg-yellow-200 transition-colors"
               title="Edit content"
               aria-label="Edit content"
             >
