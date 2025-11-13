@@ -55,9 +55,11 @@ export function useNarrationZoom({
     if (segmentWordCount === 0) return
     // Available width for the segment:
     // - sticky label: 64px (w-16)
+    // - container border: 4px (border-2 = 2px left + 2px right)
     // - track padding: 8px (px-1 = 4px left + 4px right)
+    // - scrollbar estimate: 16px
     // - safety margin: 8px
-    const availableWidth = viewportWidth - 64 - 8 - 8
+    const availableWidth = viewportWidth - 64 - 4 - 8 - 16 - 8
     const basePixelsPerUnit = 50
     // Calculate zoom to make this segment fill the viewport width
     const newZoom = availableWidth / (segmentWordCount * basePixelsPerUnit)
