@@ -36,18 +36,21 @@ function NarrationContainer({
   const resizeStartWidth = useRef(0)
   const resizeDirection = useRef<'left' | 'right'>('right')
   
-  // Calculate total word count from TOP-LEVEL items only
-  // (child items are nested within their parents, so shouldn't be counted separately)
+  // Calculate total word count from Level 1 items only
+  // Level 1 represents the max extent (e.g., Season with 1000 words)
+  // Lower levels (Episodes, Segments) are subdivisions within that total
   const totalWords = useMemo(() => {
     if (items.length === 0) return 10000 // Default 10k words
     
-    // Sum up only top-level items (no parentId)
-    const topLevelItems = items.filter(item => !item.parentId)
-    const calculated = topLevelItems.reduce((sum, item) => {
+    // Sum up only level 1 items - they define the total extent
+    const level1Items = items.filter(item => item.level === 1)
+    if (level1Items.length === 0) return 10000 // Fallback if no level 1 items
+    
+    const calculated = level1Items.reduce((sum, item) => {
       return sum + (item.wordCount || 1000) // Default 1000 words per section
     }, 0)
     
-    return Math.max(calculated, 5000) // Minimum 5000 words
+    return Math.max(calculated, 1000) // Minimum 1000 words
   }, [items])
   
   const totalUnits = totalWords
