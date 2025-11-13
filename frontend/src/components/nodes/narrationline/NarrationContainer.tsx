@@ -83,10 +83,14 @@ function NarrationContainer({
   }, [items, fitToView])
   
   // Get unique levels present in items
-  const levels = Array.from(new Set(items.map(i => i.level))).sort() as (1 | 2 | 3)[]
+  const allLevels = Array.from(new Set(items.map(i => i.level))).sort()
   
   // Get hierarchy level names based on format
   const hierarchy = format ? getDocumentHierarchy(format) : null
+  const maxAvailableLevels = hierarchy ? hierarchy.length : 3
+  
+  // Filter levels to show based on user selection
+  const levels = allLevels.filter(level => level <= maxVisibleLevels)
   const getLevelName = (level: number): string | undefined => {
     if (!hierarchy || level > hierarchy.length) return undefined
     return hierarchy[level - 1]?.name
@@ -175,8 +179,29 @@ function NarrationContainer({
       <div className="w-full">
         {/* Header with controls */}
         <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-300">
-          <div className="text-xs text-gray-600 font-medium">
-            Narration Line
+          <div className="flex items-center gap-3">
+            <div className="text-xs text-gray-600 font-medium">
+              Narration Line
+            </div>
+            
+            {/* Level selector - only show if format has more than 3 levels */}
+            {maxAvailableLevels > 3 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Levels:</span>
+                <select
+                  value={maxVisibleLevels}
+                  onChange={(e) => setMaxVisibleLevels(Number(e.target.value))}
+                  className="text-xs px-2 py-1 rounded border border-gray-300 bg-white hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-yellow-400 cursor-pointer transition-colors"
+                >
+                  {Array.from({ length: maxAvailableLevels }, (_, i) => i + 1).map((num) => (
+                    <option key={num} value={num}>
+                      {num}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-gray-400">of {maxAvailableLevels}</span>
+              </div>
+            )}
           </div>
           <ZoomControls
             zoom={zoom}
