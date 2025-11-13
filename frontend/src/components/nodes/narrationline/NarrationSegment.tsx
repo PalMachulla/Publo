@@ -79,10 +79,12 @@ function NarrationSegment({
     <div
       className={`
         absolute top-0 h-full
-        ${colors.bg} ${colors.border} ${colors.text}
+        ${isFocused ? 'bg-yellow-400' : colors.bg} 
+        ${colors.border} 
+        ${isFocused ? 'text-gray-900' : colors.text}
         ${colors.hover}
         ${isActive ? 'ring-2 ring-yellow-400 z-10' : 'border'}
-        ${isFocused ? 'ring-4 ring-yellow-500 shadow-2xl z-30' : ''}
+        ${isFocused ? 'shadow-2xl z-30' : ''}
         cursor-pointer
         transition-all duration-200
         hover:shadow-lg hover:z-20
