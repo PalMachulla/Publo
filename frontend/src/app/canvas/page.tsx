@@ -633,11 +633,31 @@ export default function CanvasPage() {
     handleSave()
   }, [availableAgents, handleSave])
 
-  // Reactively inject availableAgents into structure nodes when agents change
-  // REMOVED: This was causing infinite loops. Agents are now injected during:
-  // 1. Canvas load (in loadStoryData)
-  // 2. Node updates (in handleNodeUpdate)
-  // 3. When cluster nodes are created/deleted (handled by handleNodeUpdate)
+  // Update structure nodes with latest agents when cluster nodes change
+  useEffect(() => {
+    if (isLoadingRef.current) return // Don't run during initial load
+    
+    // Check if we have any cluster nodes
+    const clusterCount = nodes.filter(n => n.type === 'clusterNode').length
+    if (clusterCount === 0) return
+    
+    // Update structure nodes with current agents
+    setNodes((currentNodes) => {
+      return currentNodes.map((node) => {
+        if (node.type === 'storyStructureNode') {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              availableAgents: availableAgents,
+              onAgentAssign: handleAgentAssign
+            }
+          }
+        }
+        return node
+      })
+    })
+  }, [nodes.filter(n => n.type === 'clusterNode').length]) // Only when cluster count changes
 
   // Handle Create Story node click - spawn new story structure node
   const handleCreateStory = useCallback((format: StoryFormat, template?: string) => {
