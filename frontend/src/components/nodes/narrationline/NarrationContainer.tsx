@@ -13,6 +13,8 @@ export interface NarrationContainerProps {
   onItemClick: (item: StoryStructureItem) => void
   unitLabel?: string
   isLoading?: boolean
+  initialWidth?: number
+  onWidthChange?: (width: number) => void
 }
 
 function NarrationContainer({
@@ -20,10 +22,12 @@ function NarrationContainer({
   activeItemId,
   onItemClick,
   unitLabel = 'Pages',
-  isLoading = false
+  isLoading = false,
+  initialWidth = 1200,
+  onWidthChange
 }: NarrationContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = useState(1200)
+  const [containerWidth, setContainerWidth] = useState(initialWidth)
   const [isResizing, setIsResizing] = useState(false)
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(0)
@@ -82,7 +86,12 @@ function NarrationContainer({
     // Clamp width between 600 and 2400
     newWidth = Math.max(600, Math.min(2400, newWidth))
     setContainerWidth(newWidth)
-  }, [isResizing])
+    
+    // Notify parent of width change
+    if (onWidthChange) {
+      onWidthChange(newWidth)
+    }
+  }, [isResizing, onWidthChange])
   
   // Handle resize end
   const handleResizeEnd = useCallback(() => {
@@ -105,11 +114,14 @@ function NarrationContainer({
     <div className={`relative ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}>
       {/* Left resize handle */}
       <div
-        className={`noDrag absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors`}
+        data-nodrag="true"
+        className={`noDrag nodrag absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors`}
         onMouseDown={(e) => handleResizeStart(e, 'left')}
         onMouseMove={(e) => e.stopPropagation()}
         onMouseUp={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
+        onDragStart={(e) => e.preventDefault()}
+        draggable={false}
         title="Drag to resize"
       >
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
@@ -172,11 +184,14 @@ function NarrationContainer({
       
       {/* Right resize handle */}
       <div
-        className={`noDrag absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors`}
+        data-nodrag="true"
+        className={`noDrag nodrag absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors`}
         onMouseDown={(e) => handleResizeStart(e, 'right')}
         onMouseMove={(e) => e.stopPropagation()}
         onMouseUp={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
+        onDragStart={(e) => e.preventDefault()}
+        draggable={false}
         title="Drag to resize"
       >
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />

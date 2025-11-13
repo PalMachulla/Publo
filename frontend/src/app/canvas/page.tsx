@@ -830,6 +830,7 @@ export default function CanvasPage() {
           if (mergedData.nodeType === 'story-structure' || node.type === 'storyStructureNode') {
             mergedData.onItemClick = handleStructureItemClick
             mergedData.onItemsUpdate = (items: any[]) => handleStructureItemsUpdate(nodeId, items)
+            mergedData.onWidthUpdate = (width: number) => handleNodeUpdate(nodeId, { customNarrationWidth: width })
           }
           
           const updatedNode = { ...node, data: mergedData }
@@ -848,6 +849,7 @@ export default function CanvasPage() {
         if (mergedData.nodeType === 'story-structure' || prev.type === 'storyStructureNode') {
           mergedData.onItemClick = handleStructureItemClick
           mergedData.onItemsUpdate = (items: any[]) => handleStructureItemsUpdate(nodeId, items)
+          mergedData.onWidthUpdate = (width: number) => handleNodeUpdate(nodeId, { customNarrationWidth: width })
         }
         
         return { ...prev, data: mergedData }

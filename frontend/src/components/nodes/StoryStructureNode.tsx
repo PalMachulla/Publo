@@ -9,7 +9,7 @@ import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { NarrationContainer } from './narrationline'
 
 function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNodeData>) {
-  const { format, items = [], label, onItemClick, onItemsUpdate, isLoading = false } = data
+  const { format, items = [], label, onItemClick, onItemsUpdate, onWidthUpdate, isLoading = false, customNarrationWidth = 1200 } = data
   const primaryLevel = format ? (getPrimaryStructuralLevel(format) || 'Item') : 'Item'
   const [viewMode, setViewMode] = useState<'cards' | 'narration'>('narration')
   
@@ -19,6 +19,13 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
 
   // Get format-specific icon
   const formatIcon = getFormatIcon(format)
+  
+  // Handle narration width change
+  const handleNarrationWidthChange = (newWidth: number) => {
+    if (onWidthUpdate) {
+      onWidthUpdate(newWidth)
+    }
+  }
   
   // Helper function to get children of an item
   const getChildren = (parentId: string): StoryStructureItem[] => {
@@ -56,8 +63,8 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
     }
   }
   
-  // Node width - fixed for narration view, dynamic for cards
-  const nodeWidth = viewMode === 'narration' ? 1200 : (() => {
+  // Node width - uses custom width for narration view, dynamic for cards
+  const nodeWidth = viewMode === 'narration' ? customNarrationWidth : (() => {
     const cardWidth = 240
     const levelGap = 20
     const sidePadding = 24
@@ -306,6 +313,8 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             }}
             unitLabel="Sections"
             isLoading={isLoading}
+            initialWidth={customNarrationWidth}
+            onWidthChange={handleNarrationWidthChange}
           />
         ) : hasItems ? (
           /* Card View - Horizontal tree structure */
