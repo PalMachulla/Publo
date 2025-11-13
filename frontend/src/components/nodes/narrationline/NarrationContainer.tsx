@@ -144,19 +144,23 @@ function NarrationContainer({
     const wordCount = item.wordCount || 1000
     const startPos = item.startPosition || 0
     
-    // Zoom to fit this segment in the viewport
-    zoomToSegment(startPos, wordCount)
+    // Zoom to fit this segment in the viewport (returns the new zoom level)
+    const newZoom = zoomToSegment(startPos, wordCount)
     
     // Set as focused segment
     setFocusedSegmentId(item.id)
     
     // Center the segment in the viewport after a short delay (wait for zoom to apply)
     setTimeout(() => {
-      if (!containerRef.current) return
+      if (!containerRef.current || !newZoom) return
       
-      // Calculate segment position in pixels
-      const segmentPixelStart = startPos * pixelsPerUnit
-      const segmentPixelWidth = wordCount * pixelsPerUnit
+      // Calculate NEW pixelsPerUnit based on the zoom that was just set
+      const baseWidth = 50 // Must match the base in useNarrationZoom
+      const newPixelsPerUnit = baseWidth * newZoom
+      
+      // Calculate segment position in pixels with the NEW pixelsPerUnit
+      const segmentPixelStart = startPos * newPixelsPerUnit
+      const segmentPixelWidth = wordCount * newPixelsPerUnit
       const segmentCenter = segmentPixelStart + (segmentPixelWidth / 2)
       
       // Center the segment in the viewport
@@ -168,7 +172,7 @@ function NarrationContainer({
         behavior: 'smooth'
       })
     }, 50)
-  }, [zoomToSegment, pixelsPerUnit])
+  }, [zoomToSegment])
   
   // Handle edit icon click - open panel
   const handleEditSegment = useCallback((item: StoryStructureItem, e: React.MouseEvent) => {
