@@ -45,6 +45,85 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
   // Format icon
   const formatIcon = getFormatIcon(format)
 
+  // Generate default structure based on format
+  const handleGenerateStructure = () => {
+    const newItems: StoryStructureItem[] = []
+    let itemCounter = 0
+    
+    // Define structure based on format
+    const structureConfig: Record<string, { level1Count: number, level2Count: number, level3Count: number }> = {
+      'podcast': { level1Count: 1, level2Count: 3, level3Count: 2 }, // 1 Season, 3 Episodes per season, 2 Segments per episode
+      'novel': { level1Count: 3, level2Count: 5, level3Count: 3 }, // 3 Parts, 5 Chapters per part, 3 Scenes per chapter
+      'screenplay': { level1Count: 3, level2Count: 10, level3Count: 3 }, // 3 Acts, 10 Sequences per act, 3 Scenes per sequence
+      'short-story': { level1Count: 3, level2Count: 4, level3Count: 0 }, // 3 Acts, 4 Scenes per act
+      'article': { level1Count: 4, level2Count: 3, level3Count: 0 }, // 4 Sections, 3 Subsections per section
+      'essay': { level1Count: 3, level2Count: 3, level3Count: 0 }, // 3 Sections, 3 Paragraphs per section
+      'report': { level1Count: 5, level2Count: 3, level3Count: 2 } // 5 Chapters, 3 Sections per chapter, 2 Subsections
+    }
+    
+    const config = structureConfig[format] || { level1Count: 3, level2Count: 3, level3Count: 0 }
+    
+    // Generate Level 1 items
+    for (let i = 0; i < config.level1Count; i++) {
+      const level1Id = `item-${Date.now()}-${itemCounter++}`
+      const level1Item: StoryStructureItem = {
+        id: level1Id,
+        level: 1,
+        name: `${getLevelName(1)} ${i + 1}`,
+        title: '',
+        description: '',
+        order: i,
+        completed: false,
+        content: '',
+        expanded: true,
+        wordCount: 5000
+      }
+      newItems.push(level1Item)
+      
+      // Generate Level 2 items under this Level 1
+      for (let j = 0; j < config.level2Count; j++) {
+        const level2Id = `item-${Date.now()}-${itemCounter++}`
+        const level2Item: StoryStructureItem = {
+          id: level2Id,
+          level: 2,
+          parentId: level1Id,
+          name: `${getLevelName(2)} ${j + 1}`,
+          title: '',
+          description: '',
+          order: j,
+          completed: false,
+          content: '',
+          expanded: true,
+          wordCount: Math.floor(5000 / config.level2Count)
+        }
+        newItems.push(level2Item)
+        
+        // Generate Level 3 items under this Level 2 (if applicable)
+        if (config.level3Count > 0) {
+          for (let k = 0; k < config.level3Count; k++) {
+            const level3Id = `item-${Date.now()}-${itemCounter++}`
+            const level3Item: StoryStructureItem = {
+              id: level3Id,
+              level: 3,
+              parentId: level2Id,
+              name: `${getLevelName(3)} ${k + 1}`,
+              title: '',
+              description: '',
+              order: k,
+              completed: false,
+              content: '',
+              expanded: false,
+              wordCount: Math.floor(5000 / config.level2Count / config.level3Count)
+            }
+            newItems.push(level3Item)
+          }
+        }
+      }
+    }
+    
+    onUpdate(node.id, { items: newItems })
+  }
+
   // Add new structural item at a specific level
   const handleAddItem = (parentId?: string, level: number = 1) => {
     const siblings = parentId 
@@ -380,17 +459,28 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
             </div>
             <h3 className="text-sm font-medium text-gray-900 mb-1">No {getLevelName(1)}s yet</h3>
             <p className="text-xs text-gray-500 mb-4">
-              Add your first {getLevelName(1).toLowerCase()} to start structuring your {format}
+              Generate a structure automatically or add items manually
             </p>
-            <button
-              onClick={() => handleAddItem(undefined, 1)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-400 text-black rounded-lg font-medium text-sm hover:bg-yellow-500 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add {getLevelName(1)}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleGenerateStructure}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-yellow-400 text-black rounded-lg font-medium text-sm hover:bg-yellow-500 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Generate Structure
+              </button>
+              <button
+                onClick={() => handleAddItem(undefined, 1)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add One
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
