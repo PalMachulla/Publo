@@ -928,7 +928,7 @@ export default function CanvasPage() {
         // Count existing cluster nodes to assign next agent number
         const existingClusterCount = nodes.filter(n => n.data?.nodeType === 'cluster').length
         const nextAgentNumber = existingClusterCount + 1
-        nodeData.label = `AG${String(nextAgentNumber).padStart(3, '0')}`
+        nodeData.label = 'AGENT NODE'
         nodeData.description = 'Agent node'
         nodeData.clusterNodes = []
         nodeData.color = '#9ca3af'
