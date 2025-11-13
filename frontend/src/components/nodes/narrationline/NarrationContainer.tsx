@@ -111,9 +111,9 @@ function NarrationContainer({
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
       
-      {/* Main container with fixed width */}
+      {/* Main container with fixed width - overflow hidden to prevent content extending beyond */}
       <div 
-        className="mx-auto"
+        className="mx-auto overflow-hidden"
         style={{ width: containerWidth }}
       >
         {/* Header with controls */}
