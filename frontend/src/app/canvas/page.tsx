@@ -925,11 +925,15 @@ export default function CanvasPage() {
         nodeData.results = []
         break
       case 'cluster':
-        nodeData.label = 'NODE CLUSTER'
-        nodeData.description = 'Group related nodes'
+        // Count existing cluster nodes to assign next agent number
+        const existingClusterCount = nodes.filter(n => n.data?.nodeType === 'cluster').length
+        const nextAgentNumber = existingClusterCount + 1
+        nodeData.label = `AG${String(nextAgentNumber).padStart(3, '0')}`
+        nodeData.description = 'Agent node'
         nodeData.clusterNodes = []
         nodeData.color = '#9ca3af'
         nodeData.isActive = true
+        nodeData.agentNumber = nextAgentNumber
         break
     }
     

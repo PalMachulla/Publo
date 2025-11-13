@@ -132,6 +132,7 @@ export interface ClusterNodeData extends BaseNodeData {
   clusterNodes?: string[] // IDs of nodes in this cluster
   color?: string // Background color for the cluster node
   isActive?: boolean // Active or passive status
+  agentNumber?: number // Incremental agent number (e.g., 1 for AG001)
 }
 
 export interface StoryStructureItem {

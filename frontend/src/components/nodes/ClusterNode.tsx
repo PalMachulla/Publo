@@ -25,6 +25,7 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
   const textColor = isLight ? '#374151' : '#ffffff'
   const label = data.label || 'CLUSTER'
   const isActive = data.isActive ?? true
+  const agentName = data.agentNumber ? `AG${String(data.agentNumber).padStart(3, '0')}` : 'AGENT'
   
   return (
     <div className="relative">
@@ -52,7 +53,7 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
             {icon}
           </div>
           <div className="text-[9px] font-medium tracking-wider" style={{ color: textColor }}>
-            CLUSTER
+            {agentName}
           </div>
         </div>
       </div>
