@@ -139,10 +139,51 @@ function NarrationContainer({
     setIsResizing(false)
   }, [])
   
+  // Calculate segment's start position and width in words within the timeline
+  const calculateSegmentMetrics = useCallback((item: StoryStructureItem): { startPos: number; width: number } => {
+    // If explicitly set, use it
+    if (item.startPosition !== undefined && item.startPosition !== null) {
+      return { startPos: item.startPosition, width: item.wordCount || 1000 }
+    }
+    
+    let startPos = 0
+    let width = item.wordCount || 1000
+    
+    if (item.parentId) {
+      // This is a child item - calculate parent's metrics first
+      const parent = items.find(i => i.id === item.parentId)
+      if (parent) {
+        const parentMetrics = calculateSegmentMetrics(parent) // Recursive call for parent
+        startPos = parentMetrics.startPos
+        
+        // Get siblings and find this item's index
+        const siblings = items
+          .filter(i => i.parentId === item.parentId && i.level === item.level)
+          .sort((a, b) => a.order - b.order)
+        
+        const siblingIndex = siblings.findIndex(s => s.id === item.id)
+        // Child items divide parent's width equally
+        width = parentMetrics.width / siblings.length
+        startPos += siblingIndex * width
+      }
+    } else {
+      // Top-level item - sum previous siblings' word counts
+      const topLevelSiblings = items
+        .filter(i => !i.parentId && i.level === item.level)
+        .sort((a, b) => a.order - b.order)
+      
+      const siblingIndex = topLevelSiblings.findIndex(s => s.id === item.id)
+      for (let i = 0; i < siblingIndex; i++) {
+        startPos += (topLevelSiblings[i].wordCount || 1000)
+      }
+    }
+    
+    return { startPos, width }
+  }, [items])
+  
   // Handle segment click - zoom to segment and focus it
   const handleSegmentClick = useCallback((item: StoryStructureItem) => {
-    const wordCount = item.wordCount || 1000
-    const startPos = item.startPosition || 0
+    const { startPos, width: wordCount } = calculateSegmentMetrics(item)
     
     // Zoom to fit this segment in the viewport (returns the new zoom level)
     const newZoom = zoomToSegment(startPos, wordCount)
@@ -161,14 +202,13 @@ function NarrationContainer({
       // Calculate segment start position in pixels with the NEW pixelsPerUnit
       const segmentPixelStart = startPos * newPixelsPerUnit
       
-      // Scroll to position the segment at the left edge (accounting for sticky label)
-      // The sticky label is 64px wide, so we want the segment to start right after it
+      // Scroll to position the segment at the left edge
       containerRef.current.scrollTo({
         left: Math.max(0, segmentPixelStart),
         behavior: 'smooth'
       })
     }, 50)
-  }, [zoomToSegment])
+  }, [zoomToSegment, calculateSegmentMetrics])
   
   // Handle edit icon click - open panel
   const handleEditSegment = useCallback((item: StoryStructureItem, e: React.MouseEvent) => {
