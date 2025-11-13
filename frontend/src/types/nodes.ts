@@ -153,6 +153,13 @@ export interface StoryStructureItem {
   assignedAgentColor?: string // Hex color from agent node for overlay
 }
 
+export interface AgentOption {
+  id: string
+  agentNumber: number
+  color: string
+  label: string
+}
+
 export interface StoryStructureNodeData extends BaseNodeData {
   nodeType: 'story-structure'
   format: StoryFormat
