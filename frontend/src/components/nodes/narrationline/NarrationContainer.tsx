@@ -307,7 +307,10 @@ function NarrationContainer({
             zoom={zoom}
             onZoomIn={zoomIn}
             onZoomOut={zoomOut}
-            onFitToView={fitToView}
+            onFitToView={() => {
+              fitToView()
+              setFocusedSegmentId(null) // Clear focus when fitting to view
+            }}
             showAgentRows={showAgentRows}
             onToggleAgentRows={onToggleAgentRows}
           />
