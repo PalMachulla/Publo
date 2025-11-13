@@ -565,13 +565,24 @@ export default function CanvasPage() {
 
   // Reactively inject availableAgents into structure nodes when agents change
   useEffect(() => {
-    if (isLoadingRef.current) return // Don't run during initial load
+    if (isLoadingRef.current) {
+      console.log('Skipping agent injection - canvas is loading')
+      return // Don't run during initial load
+    }
     
-    console.log('Agents changed, updating structure nodes:', availableAgents)
+    if (availableAgents.length === 0) {
+      console.log('No agents available yet')
+      return
+    }
+    
+    console.log('Agents changed, updating structure nodes:', availableAgents.length, 'agents')
     
     setNodes((currentNodes) => {
+      console.log('Injecting agents into', currentNodes.filter(n => n.type === 'storyStructureNode').length, 'structure nodes')
+      
       return currentNodes.map((node) => {
         if (node.type === 'storyStructureNode') {
+          console.log('Injecting agents into node:', node.id)
           return {
             ...node,
             data: {
