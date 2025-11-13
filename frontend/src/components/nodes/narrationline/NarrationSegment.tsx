@@ -42,7 +42,7 @@ function NarrationSegment({
     }
   }
   
-  const colors = levelColors[level]
+  const colors = levelColors[level] || levelColors[1] // Fallback to level 1 colors
   const minWidthForText = 60 // Only show text if segment is wide enough
   
   return (
