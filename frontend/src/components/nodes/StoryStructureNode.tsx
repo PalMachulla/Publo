@@ -282,16 +282,16 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
 
         {/* Main Container - positioned in front of connector dots */}
         <div
-          className={`relative rounded-2xl transition-all duration-300 ease-in-out overflow-visible ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'} ${
+          className={`relative rounded-2xl transition-all duration-300 ease-in-out ${viewMode === 'narration' ? 'overflow-hidden' : 'overflow-visible'} ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'} ${
             selected ? ' shadow-2xl' : ' shadow-md'
           }`}
           style={{
             width: nodeWidth,
             minHeight: 200,
-            paddingLeft: sidePadding,
-            paddingRight: sidePadding,
-            paddingTop: 20,
-            paddingBottom: 20,
+            paddingLeft: viewMode === 'narration' ? 0 : sidePadding,
+            paddingRight: viewMode === 'narration' ? 0 : sidePadding,
+            paddingTop: viewMode === 'narration' ? 0 : 20,
+            paddingBottom: viewMode === 'narration' ? 0 : 20,
             boxSizing: 'border-box'
           }}
         >
