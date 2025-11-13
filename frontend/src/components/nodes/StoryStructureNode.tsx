@@ -269,19 +269,19 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             <div className="text-sm text-gray-700 uppercase tracking-widest font-sans font-bold">
               {label || (format ? format.toUpperCase() : 'STORY')}
             </div>
-            {/* Panel indicator icon */}
+            {/* Panel indicator icon - three dots vertical */}
             <svg 
               className="w-4 h-4 text-gray-700" 
               fill="none" 
               stroke="currentColor" 
+              strokeWidth="1.5"
               viewBox="0 0 24 24"
               aria-label="Opens panel"
             >
               <path 
                 strokeLinecap="round" 
                 strokeLinejoin="round" 
-                strokeWidth={2.5} 
-                d="M9 5l7 7-7 7" 
+                d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" 
               />
             </svg>
           </div>
