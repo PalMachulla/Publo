@@ -22,10 +22,15 @@ function NarrationRuler({
     return 5000                              // Every 5000 words
   }, [pixelsPerUnit])
   
-  // Generate marker positions
+  // Generate marker positions (always include 0)
   const markers = useMemo(() => {
     const count = Math.ceil(totalUnits / markerInterval)
-    return Array.from({ length: count }, (_, i) => i * markerInterval)
+    const markersArray = Array.from({ length: count + 1 }, (_, i) => i * markerInterval)
+    // Ensure 0 is always included
+    if (!markersArray.includes(0)) {
+      markersArray.unshift(0)
+    }
+    return markersArray
   }, [totalUnits, markerInterval])
   
   return (
@@ -39,7 +44,22 @@ function NarrationRuler({
       
       {/* Ruler markers - scrollable area */}
       <div className="relative flex-1 h-full overflow-visible">
-        {markers.map((unit) => (
+        {/* Always show 0 marker at the start (right edge of sticky column) */}
+        <div
+          className="absolute top-0 h-full"
+          style={{ left: 0 }}
+        >
+          {/* Tick mark */}
+          <div className="w-px h-3 bg-gray-400" />
+          
+          {/* Unit number */}
+          <span className="text-[10px] text-gray-600 font-mono absolute top-3 left-0.5 whitespace-nowrap">
+            0
+          </span>
+        </div>
+        
+        {/* Other markers */}
+        {markers.filter(unit => unit > 0).map((unit) => (
           <div
             key={unit}
             className="absolute top-0 h-full"
