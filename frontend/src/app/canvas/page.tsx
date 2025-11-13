@@ -277,25 +277,10 @@ export default function CanvasPage() {
     setNodes((currentNodes) =>
       currentNodes.map((node) =>
         node.id === 'context'
-          ? { ...node, data: { ...node.data, isOrchestrating: true, orchestratorProgress: 0, loadingText: 'Loading Canvas' } }
+          ? { ...node, data: { ...node.data, isOrchestrating: true, loadingText: 'Loading Canvas' } }
           : node
       )
     )
-
-    // Animate progress ring during load
-    let progress = 0
-    const progressInterval = setInterval(() => {
-      progress += 10
-      if (progress <= 90) {
-        setNodes((currentNodes) =>
-          currentNodes.map((node) =>
-            node.id === 'context'
-              ? { ...node, data: { ...node.data, orchestratorProgress: progress } }
-              : node
-          )
-        )
-      }
-    }, 50)
 
     try {
       console.log(`Loading story: ${id}`)
@@ -378,16 +363,6 @@ export default function CanvasPage() {
       setEdges(upgradedEdges)
       setStoryTitle(story.title)
       
-      // Complete the progress ring
-      clearInterval(progressInterval)
-      setNodes((currentNodes) =>
-        currentNodes.map((node) =>
-          node.id === 'context'
-            ? { ...node, data: { ...node.data, orchestratorProgress: 100 } }
-            : node
-        )
-      )
-      
       // Use setTimeout to ensure state updates are applied
       setTimeout(() => {
         setIsLoadingCanvas(false)
@@ -399,7 +374,7 @@ export default function CanvasPage() {
           setNodes((currentNodes) =>
             currentNodes.map((node) =>
               node.id === 'context'
-                ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0, loadingText: '' } }
+                ? { ...node, data: { ...node.data, isOrchestrating: false, loadingText: '' } }
                 : node
             )
           )
@@ -409,7 +384,6 @@ export default function CanvasPage() {
       }, 500)
     } catch (error) {
       console.error('Failed to load story:', error)
-      clearInterval(progressInterval)
       setIsLoadingCanvas(false)
       isLoadingRef.current = false
       
@@ -417,7 +391,7 @@ export default function CanvasPage() {
       setNodes((currentNodes) =>
         currentNodes.map((node) =>
           node.id === 'context'
-            ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0, loadingText: '' } }
+            ? { ...node, data: { ...node.data, isOrchestrating: false, loadingText: '' } }
             : node
         )
       )
@@ -461,29 +435,14 @@ export default function CanvasPage() {
       setNodes(nodesToSave)
     }
     
-    // Activate orchestrator progress ring
+    // Activate orchestrator continuous animation
     setNodes((currentNodes) =>
       currentNodes.map((node) =>
         node.id === 'context'
-          ? { ...node, data: { ...node.data, isOrchestrating: true, orchestratorProgress: 0, loadingText: 'Saving Canvas' } }
+          ? { ...node, data: { ...node.data, isOrchestrating: true, loadingText: 'Saving Canvas' } }
           : node
       )
-    )
-
-    // Animate progress ring
-    let progress = 0
-    const progressInterval = setInterval(() => {
-      progress += 10
-      if (progress <= 90) {
-        setNodes((currentNodes) =>
-          currentNodes.map((node) =>
-            node.id === 'context'
-              ? { ...node, data: { ...node.data, orchestratorProgress: progress } }
-              : node
-          )
-        )
-      }
-    }, 50) // Update every 50ms for smooth animation
+    ) // Update every 50ms for smooth animation
     
     setSaving(true)
     try {
@@ -491,21 +450,12 @@ export default function CanvasPage() {
       // Clear the unsaved changes flag after successful save
       hasUnsavedChangesRef.current = false
       
-      // Complete the progress ring
-      setNodes((currentNodes) =>
-        currentNodes.map((node) =>
-          node.id === 'context'
-            ? { ...node, data: { ...node.data, orchestratorProgress: 100 } }
-            : node
-        )
-      )
-      
       // Wait a moment to show completion, then hide
       setTimeout(() => {
         setNodes((currentNodes) =>
           currentNodes.map((node) =>
             node.id === 'context'
-              ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0, loadingText: '' } }
+              ? { ...node, data: { ...node.data, isOrchestrating: false, loadingText: '' } }
               : node
           )
         )
@@ -513,16 +463,15 @@ export default function CanvasPage() {
     } catch (error) {
       console.error('Failed to save canvas:', error)
       alert('Failed to save canvas. Please try again.')
-      // Hide progress ring on error
+      // Hide animation on error
       setNodes((currentNodes) =>
         currentNodes.map((node) =>
           node.id === 'context'
-            ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0, loadingText: '' } }
+            ? { ...node, data: { ...node.data, isOrchestrating: false, loadingText: '' } }
             : node
         )
       )
     } finally {
-      clearInterval(progressInterval)
       setSaving(false)
     }
   }, [storyId, nodes, edges, setNodes, saving])

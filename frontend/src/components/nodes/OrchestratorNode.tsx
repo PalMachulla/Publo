@@ -9,6 +9,24 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
   
   return (
     <div className="relative">
+      {/* Keyframes for continuous animation */}
+      <style>{`
+        @keyframes orchestratorPulse {
+          0% {
+            stroke-dashoffset: ${2 * Math.PI * 75};
+            transform: rotate(0deg);
+          }
+          50% {
+            stroke-dashoffset: 0;
+            transform: rotate(180deg);
+          }
+          100% {
+            stroke-dashoffset: ${2 * Math.PI * 75};
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
+      <div className="relative">
       {/* Handles on all sides for connections - invisible but functional */}
       <Handle type="target" position={Position.Top} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
       <Handle type="target" position={Position.Left} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
@@ -63,8 +81,10 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
               strokeWidth="6"
               strokeLinecap="round"
               strokeDasharray={`${2 * Math.PI * 75}`}
-              strokeDashoffset={`${2 * Math.PI * 75 * (1 - orchestratorProgress / 100)}`}
-              className="transition-all duration-300"
+              strokeDashoffset={`${2 * Math.PI * 75}`}
+              style={{
+                animation: 'orchestratorPulse 2s ease-in-out infinite'
+              }}
             />
           )}
           
@@ -103,6 +123,7 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   )
