@@ -15,9 +15,10 @@ export const DatabaseNodeSchema = z.object({
   position_x: z.number(),
   position_y: z.number(),
   data: z.record(z.unknown()),
+  node_type: z.string().optional(), // Added in migration 003
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
-})
+}).passthrough() // Allow additional unknown fields
 
 // Database edge schema (from Supabase)
 export const DatabaseEdgeSchema = z.object({
@@ -30,7 +31,7 @@ export const DatabaseEdgeSchema = z.object({
   style: z.record(z.unknown()).nullable().optional(),
   created_at: z.string().optional(),
   // Note: edges table doesn't have updated_at column
-})
+}).passthrough() // Allow additional unknown fields
 
 // Story schema (from Supabase)
 export const StorySchema = z.object({
@@ -43,7 +44,7 @@ export const StorySchema = z.object({
   is_public: z.boolean().nullable().optional().default(false),
   shared: z.boolean().nullable().optional().default(false),
   // Note: shared_emails is NOT a database column, it comes from canvas_shares table
-})
+}).passthrough() // Allow additional unknown fields for forward compatibility
 
 // User profile schema
 export const UserProfileSchema = z.object({
