@@ -272,8 +272,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             {/* Panel indicator icon - three dots vertical - clickable */}
             <button
               onClick={(e) => {
-                e.stopPropagation()
-                // Let the click bubble up to trigger React Flow's node selection which opens panel
+                // Don't stop propagation - let it bubble to React Flow's node click handler
               }}
               className="p-1 rounded hover:bg-gray-500 transition-colors"
               title="Open structure panel"
