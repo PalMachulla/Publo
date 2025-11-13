@@ -9,19 +9,13 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
   
   return (
     <div className="relative">
-      {/* Keyframes for continuous animation */}
+      {/* Keyframes for spinner rotation */}
       <style>{`
-        @keyframes orchestratorPulse {
+        @keyframes orchestratorSpin {
           0% {
-            stroke-dashoffset: ${2 * Math.PI * 75};
             transform: rotate(0deg);
           }
-          50% {
-            stroke-dashoffset: 0;
-            transform: rotate(180deg);
-          }
           100% {
-            stroke-dashoffset: ${2 * Math.PI * 75};
             transform: rotate(360deg);
           }
         }
@@ -70,7 +64,7 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
             strokeWidth="8"
           />
           
-          {/* Yellow progress ring (animated when orchestrating) */}
+          {/* Yellow spinner ring (animated when orchestrating) */}
           {isOrchestrating && (
             <circle
               cx="90"
@@ -80,10 +74,10 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
               stroke="#fbbf24"
               strokeWidth="6"
               strokeLinecap="round"
-              strokeDasharray={`${2 * Math.PI * 75}`}
-              strokeDashoffset={`${2 * Math.PI * 75}`}
+              strokeDasharray={`${Math.PI * 75 * 0.75} ${Math.PI * 75 * 1.25}`}
               style={{
-                animation: 'orchestratorPulse 2s ease-in-out infinite'
+                animation: 'orchestratorSpin 1.5s linear infinite',
+                transformOrigin: '90px 90px'
               }}
             />
           )}
