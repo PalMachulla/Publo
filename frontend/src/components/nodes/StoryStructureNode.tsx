@@ -268,7 +268,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         <div
           className={`relative rounded-2xl transition-all duration-300 ease-in-out overflow-visible ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'} ${
             selected ? ' shadow-2xl' : ' shadow-md'
-          } ${isLoading ? 'opacity-50 animate-pulse' : ''}`}
+          }`}
           style={{
             width: nodeWidth,
             minHeight: 200,
