@@ -185,8 +185,18 @@ function NarrationContainer({
   const handleSegmentClick = useCallback((item: StoryStructureItem) => {
     const { startPos, width: wordCount } = calculateSegmentMetrics(item)
     
+    console.log('Segment clicked:', {
+      name: item.name,
+      level: item.level,
+      startPos,
+      wordCount,
+      parentId: item.parentId
+    })
+    
     // Zoom to fit this segment in the viewport (returns the new zoom level)
     const newZoom = zoomToSegment(startPos, wordCount)
+    
+    console.log('Zoom calculated:', { newZoom, pixelsPerUnit: 50 * newZoom })
     
     // Set as focused segment
     setFocusedSegmentId(item.id)
@@ -204,6 +214,12 @@ function NarrationContainer({
       
       // Account for track lane padding (px-1 = 4px left padding)
       const scrollPosition = Math.max(0, segmentPixelStart - 4)
+      
+      console.log('Scrolling to:', {
+        segmentPixelStart,
+        scrollPosition,
+        viewportWidth: containerRef.current.offsetWidth
+      })
       
       // Scroll to position the segment at the left edge
       containerRef.current.scrollTo({
