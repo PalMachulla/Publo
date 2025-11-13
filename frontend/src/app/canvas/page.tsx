@@ -326,16 +326,49 @@ export default function CanvasPage() {
             }
           }
         }
-        // Migrate old createStoryNode type to orchestratorNode
+        // Migrate old createStoryNode type to orchestratorNode and activate loading
         if (node.id === 'context' && node.type === 'createStoryNode') {
           console.log('Migrating old createStoryNode to orchestratorNode')
           return {
             ...node,
-            type: 'orchestratorNode'
+            type: 'orchestratorNode',
+            data: {
+              ...node.data,
+              isOrchestrating: true,
+              orchestratorProgress: 0,
+              loadingText: 'Loading Canvas'
+            }
+          }
+        }
+        // Activate loading state for orchestrator
+        if (node.id === 'context') {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              isOrchestrating: true,
+              orchestratorProgress: 0,
+              loadingText: 'Loading Canvas'
+            }
           }
         }
         return node
       })
+      
+      // Animate progress ring during load
+      let progress = 0
+      const progressInterval = setInterval(() => {
+        progress += 10
+        if (progress <= 90) {
+          setNodes((currentNodes) =>
+            currentNodes.map((node) =>
+              node.id === 'context'
+                ? { ...node, data: { ...node.data, orchestratorProgress: progress } }
+                : node
+            )
+          )
+        }
+      }, 50)
       
       // Upgrade all edges to use bezier for smooth curved lines
       const upgradedEdges = loadedEdges.map((edge: Edge) => ({
@@ -354,17 +387,49 @@ export default function CanvasPage() {
       setEdges(upgradedEdges)
       setStoryTitle(story.title)
       
+      // Complete the progress ring
+      clearInterval(progressInterval)
+      setNodes((currentNodes) =>
+        currentNodes.map((node) =>
+          node.id === 'context'
+            ? { ...node, data: { ...node.data, orchestratorProgress: 100 } }
+            : node
+        )
+      )
+      
       // Use setTimeout to ensure state updates are applied
       setTimeout(() => {
         setIsLoadingCanvas(false)
         isLoadingRef.current = false
         hasUnsavedChangesRef.current = false // Clear unsaved changes flag after loading
+        
+        // Hide orchestrator indicator after a moment
+        setTimeout(() => {
+          setNodes((currentNodes) =>
+            currentNodes.map((node) =>
+              node.id === 'context'
+                ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0, loadingText: '' } }
+                : node
+            )
+          )
+        }, 500)
+        
         console.log(`Story ${id} fully loaded and ready for edits`)
       }, 500)
     } catch (error) {
       console.error('Failed to load story:', error)
+      clearInterval(progressInterval)
       setIsLoadingCanvas(false)
       isLoadingRef.current = false
+      
+      // Hide orchestrator indicator on error
+      setNodes((currentNodes) =>
+        currentNodes.map((node) =>
+          node.id === 'context'
+            ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0, loadingText: '' } }
+            : node
+        )
+      )
     }
   }
 
@@ -409,7 +474,7 @@ export default function CanvasPage() {
     setNodes((currentNodes) =>
       currentNodes.map((node) =>
         node.id === 'context'
-          ? { ...node, data: { ...node.data, isOrchestrating: true, orchestratorProgress: 0 } }
+          ? { ...node, data: { ...node.data, isOrchestrating: true, orchestratorProgress: 0, loadingText: 'Saving Canvas' } }
           : node
       )
     )
@@ -449,7 +514,7 @@ export default function CanvasPage() {
         setNodes((currentNodes) =>
           currentNodes.map((node) =>
             node.id === 'context'
-              ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0 } }
+              ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0, loadingText: '' } }
               : node
           )
         )
@@ -461,7 +526,7 @@ export default function CanvasPage() {
       setNodes((currentNodes) =>
         currentNodes.map((node) =>
           node.id === 'context'
-            ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0 } }
+            ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0, loadingText: '' } }
             : node
         )
       )
@@ -1403,18 +1468,7 @@ export default function CanvasPage() {
           onCreateStory={handleCreateStory}
         />
 
-        {/* Loading Indicator */}
-        {isLoadingCanvas && (
-          <div className="fixed bottom-40 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">
-            <div className="flex items-center gap-2">
-              <div className="relative w-4 h-4">
-                <div className="absolute inset-0 border-2 border-gray-300 rounded-full"></div>
-                <div className="absolute inset-0 border-2 border-gray-400 rounded-full border-t-transparent animate-spin"></div>
-              </div>
-              <p className="text-gray-400 text-sm">Loading Canvas...</p>
-            </div>
-          </div>
-        )}
+        {/* Loading indicator now integrated into Orchestrator node */}
 
         {/* Fixed Footer - Intelligence Engineered by AIAKAKI */}
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-2">

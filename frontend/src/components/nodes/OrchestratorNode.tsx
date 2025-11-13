@@ -5,7 +5,7 @@ import { Handle, Position, NodeProps } from 'reactflow'
 import { CreateStoryNodeData } from '@/types/nodes'
 
 function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
-  const { isOrchestrating = false, orchestratorProgress = 0 } = data
+  const { isOrchestrating = false, orchestratorProgress = 0, loadingText = '' } = data
   
   return (
     <div className="relative">
@@ -79,7 +79,7 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
         </svg>
         
         {/* Content centered over circle */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-2">
           {/* Publo Logo */}
           <div className="w-20 h-20 flex items-center justify-center">
             <svg
@@ -95,6 +95,13 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
               />
             </svg>
           </div>
+          
+          {/* Loading text below logo */}
+          {loadingText && (
+            <div className="text-[9px] text-gray-600 font-light text-center px-4">
+              {loadingText}
+            </div>
+          )}
         </div>
       </div>
     </div>
