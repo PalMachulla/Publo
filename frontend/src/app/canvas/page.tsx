@@ -272,30 +272,6 @@ export default function CanvasPage() {
   }, [])
 
   const loadStoryData = async (id: string) => {
-    // Activate orchestrator progress ring
-    setNodes((currentNodes) =>
-      currentNodes.map((node) =>
-        node.id === 'context'
-          ? { ...node, data: { ...node.data, isOrchestrating: true, orchestratorProgress: 0 } }
-          : node
-      )
-    )
-
-    // Animate progress ring during load
-    let progress = 0
-    const progressInterval = setInterval(() => {
-      progress += 10
-      if (progress <= 90) {
-        setNodes((currentNodes) =>
-          currentNodes.map((node) =>
-            node.id === 'context'
-              ? { ...node, data: { ...node.data, orchestratorProgress: progress } }
-              : node
-          )
-        )
-      }
-    }, 50)
-
     try {
       console.log(`Loading story: ${id}`)
       const { story, nodes: loadedNodes, edges: loadedEdges } = await getStory(id)
@@ -318,7 +294,7 @@ export default function CanvasPage() {
         setSharedEmails([])
       }
       
-      // Ensure context canvas always exists and is unique
+      // Ensure orchestrator node always exists and is properly typed
       const hasContextCanvas = loadedNodes.some(node => node.id === 'context')
       let finalNodes = loadedNodes
       
@@ -331,10 +307,28 @@ export default function CanvasPage() {
           data: { 
             label: 'Orchestrator',
             comments: [],
-            nodeType: 'create-story' as NodeType
+            nodeType: 'create-story' as NodeType,
+            isOrchestrating: true,
+            orchestratorProgress: 0
           },
         }
         finalNodes = [...loadedNodes, contextNode]
+      } else {
+        // Ensure existing orchestrator node has correct type (migration from old type)
+        finalNodes = loadedNodes.map(node => {
+          if (node.id === 'context') {
+            return {
+              ...node,
+              type: 'orchestratorNode',
+              data: {
+                ...node.data,
+                isOrchestrating: true,
+                orchestratorProgress: 0
+              }
+            }
+          }
+          return node
+        })
       }
       
       // Inject callbacks into story structure nodes
@@ -352,6 +346,24 @@ export default function CanvasPage() {
         return node
       })
       
+      // Set nodes immediately so orchestrator can show
+      setNodes(finalNodes)
+      
+      // Animate progress ring during load
+      let progress = 0
+      const progressInterval = setInterval(() => {
+        progress += 10
+        if (progress <= 90) {
+          setNodes((currentNodes) =>
+            currentNodes.map((node) =>
+              node.id === 'context'
+                ? { ...node, data: { ...node.data, orchestratorProgress: progress } }
+                : node
+            )
+          )
+        }
+      }, 50)
+      
       // Upgrade all edges to use bezier for smooth curved lines
       const upgradedEdges = loadedEdges.map((edge: Edge) => ({
         ...edge,
@@ -365,7 +377,7 @@ export default function CanvasPage() {
       
       console.log(`Loaded ${finalNodes.length} nodes, ${loadedEdges.length} edges for story: ${id}`)
       
-      setNodes(finalNodes)
+      // Set edges and title (nodes already set earlier)
       setEdges(upgradedEdges)
       setStoryTitle(story.title)
       
