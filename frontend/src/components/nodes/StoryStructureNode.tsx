@@ -269,21 +269,30 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
               </button>
             )}
             
-            {/* Panel indicator icon - three dots vertical */}
-            <svg 
-              className="w-4 h-4 text-gray-700" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="1.5"
-              viewBox="0 0 24 24"
-              aria-label="Opens panel"
+            {/* Panel indicator icon - three dots vertical - clickable */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                // Let the click bubble up to trigger React Flow's node selection which opens panel
+              }}
+              className="p-1 rounded hover:bg-gray-500 transition-colors"
+              title="Open structure panel"
+              aria-label="Open structure panel"
             >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" 
-              />
-            </svg>
+              <svg 
+                className="w-4 h-4 text-gray-700" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="1.5"
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" 
+                />
+              </svg>
+            </button>
           </div>
         </div>
 

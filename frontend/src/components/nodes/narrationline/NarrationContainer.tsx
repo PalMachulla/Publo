@@ -114,6 +114,13 @@ function NarrationContainer({
     <div 
       className={`relative mx-auto rounded-2xl bg-gray-400 shadow-lg overflow-hidden ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
       style={{ width: containerWidth }}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => {
+        // Allow the event to bubble if not resizing, but prevent opening panel
+        if (!isResizing) {
+          e.stopPropagation()
+        }
+      }}
     >
       {/* Left resize handle */}
       <div
