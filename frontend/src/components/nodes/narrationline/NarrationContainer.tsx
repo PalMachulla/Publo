@@ -138,7 +138,7 @@ function NarrationContainer({
   
   return (
     <div 
-      className={`relative mx-auto rounded-2xl bg-gray-400 shadow-lg overflow-hidden ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+      className={`relative mx-auto rounded-2xl bg-gray-400 shadow-lg overflow-hidden border-2 border-gray-400 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
       style={{ width: containerWidth }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => {
