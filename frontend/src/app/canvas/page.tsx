@@ -563,41 +563,7 @@ export default function CanvasPage() {
       .sort((a, b) => a.agentNumber - b.agentNumber)
   }, [nodes])
 
-  // Reactively inject availableAgents into structure nodes when agents change
-  useEffect(() => {
-    if (isLoadingRef.current) {
-      console.log('Skipping agent injection - canvas is loading')
-      return // Don't run during initial load
-    }
-    
-    if (availableAgents.length === 0) {
-      console.log('No agents available yet')
-      return
-    }
-    
-    console.log('Agents changed, updating structure nodes:', availableAgents.length, 'agents')
-    
-    setNodes((currentNodes) => {
-      console.log('Injecting agents into', currentNodes.filter(n => n.type === 'storyStructureNode').length, 'structure nodes')
-      
-      return currentNodes.map((node) => {
-        if (node.type === 'storyStructureNode') {
-          console.log('Injecting agents into node:', node.id)
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              availableAgents: availableAgents,
-              onAgentAssign: handleAgentAssign
-            }
-          }
-        }
-        return node
-      })
-    })
-  }, [availableAgents, handleAgentAssign])
-
-  // Handle agent assignment to structure items
+  // Handle agent assignment to structure items (defined BEFORE useEffect that uses it)
   const handleAgentAssign = useCallback((itemId: string, agentId: string | null) => {
     console.log('Agent assignment:', { itemId, agentId })
     
@@ -655,6 +621,40 @@ export default function CanvasPage() {
     // Trigger save
     handleSave()
   }, [availableAgents, handleSave])
+
+  // Reactively inject availableAgents into structure nodes when agents change
+  useEffect(() => {
+    if (isLoadingRef.current) {
+      console.log('Skipping agent injection - canvas is loading')
+      return // Don't run during initial load
+    }
+    
+    if (availableAgents.length === 0) {
+      console.log('No agents available yet')
+      return
+    }
+    
+    console.log('Agents changed, updating structure nodes:', availableAgents.length, 'agents')
+    
+    setNodes((currentNodes) => {
+      console.log('Injecting agents into', currentNodes.filter(n => n.type === 'storyStructureNode').length, 'structure nodes')
+      
+      return currentNodes.map((node) => {
+        if (node.type === 'storyStructureNode') {
+          console.log('Injecting agents into node:', node.id)
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              availableAgents: availableAgents,
+              onAgentAssign: handleAgentAssign
+            }
+          }
+        }
+        return node
+      })
+    })
+  }, [availableAgents, handleAgentAssign])
 
   // Handle Create Story node click - spawn new story structure node
   const handleCreateStory = useCallback((format: StoryFormat, template?: string) => {
