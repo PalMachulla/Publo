@@ -31,7 +31,11 @@ export function useNarrationZoom({
   // Fit entire narration to viewport
   const fitToView = useCallback(() => {
     if (totalUnits === 0) return
-    const newZoom = (viewportWidth - 100) / (totalUnits * 50)
+    // Available width = viewport - sticky label (64px) - padding (20px)
+    const availableWidth = viewportWidth - 64 - 20
+    const basePixelsPerUnit = 50 // Base width per unit
+    // Calculate zoom to fit: availableWidth = totalUnits * basePixelsPerUnit * zoom
+    const newZoom = availableWidth / (totalUnits * basePixelsPerUnit)
     setZoom(Math.max(0.1, Math.min(newZoom, 10)))
   }, [totalUnits, viewportWidth])
   
