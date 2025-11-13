@@ -698,7 +698,9 @@ export default function CanvasPage() {
       template: template,
       isLoading: true, // Start as loading
       onItemClick: handleStructureItemClick,
-      onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(structureId, items)
+      onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(structureId, items),
+      availableAgents: availableAgents, // Inject available agents
+      onAgentAssign: handleAgentAssign // Inject agent assignment callback
     }
     
     const newStructureNode: Node<StoryStructureNodeData> = {
