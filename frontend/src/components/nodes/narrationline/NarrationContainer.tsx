@@ -186,7 +186,7 @@ function NarrationContainer({
           className="relative overflow-x-auto overflow-y-hidden bg-gray-50"
           style={{ maxHeight: '300px' }}
         >
-          <div style={{ width: totalWidth + 100, minWidth: containerWidth }}>
+          <div style={{ width: Math.max(totalWidth, containerWidth - 64) }}>
             {/* Structure tracks */}
             {levels.map((level) => (
               <StructureTrackLane
