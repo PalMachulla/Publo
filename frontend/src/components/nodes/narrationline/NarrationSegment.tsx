@@ -80,10 +80,10 @@ function NarrationSegment({
       className={`
         absolute top-0 h-full
         ${isFocused ? 'bg-yellow-400' : 'bg-gray-100'} 
-        ${colors.border} 
+        border border-gray-300
         ${isFocused ? 'text-gray-900' : 'text-gray-700'}
         ${isFocused ? '' : 'hover:bg-gray-200'}
-        ${isActive ? 'ring-2 ring-yellow-400 z-10' : 'border'}
+        ${isActive ? 'ring-2 ring-yellow-400 z-10' : ''}
         ${isFocused ? 'shadow-2xl z-30' : ''}
         cursor-pointer
         transition-all duration-200
