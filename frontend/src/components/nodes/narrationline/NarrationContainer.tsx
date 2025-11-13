@@ -325,9 +325,26 @@ function NarrationContainer({
         />
         
         {/* Scrollable viewport - horizontal scroll when content is wider than container */}
+        <style>{`
+          .narration-scrollbar::-webkit-scrollbar {
+            height: 14px;
+          }
+          .narration-scrollbar::-webkit-scrollbar-track {
+            background: #f3f4f6;
+            border-radius: 8px;
+          }
+          .narration-scrollbar::-webkit-scrollbar-thumb {
+            background: #9ca3af;
+            border-radius: 8px;
+            border: 2px solid #f3f4f6;
+          }
+          .narration-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+          }
+        `}</style>
         <div
           ref={containerRef}
-          className="relative overflow-x-auto overflow-y-hidden bg-gray-50"
+          className="narration-scrollbar relative overflow-x-auto overflow-y-hidden bg-gray-50"
           style={{ maxHeight: '300px' }}
           onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
           onClick={(e) => {
