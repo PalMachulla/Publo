@@ -10,6 +10,7 @@ export interface NarrationSegmentProps {
   width: number          // In pixels
   isActive: boolean
   isFocused?: boolean // Whether this segment is currently zoomed/focused
+  agentColor?: string // Color of assigned agent (for top border)
   onClick: () => void
   onEdit?: (e: React.MouseEvent) => void // Handler for edit icon click
 }
@@ -21,6 +22,7 @@ function NarrationSegment({
   width,
   isActive,
   isFocused = false,
+  agentColor,
   onClick,
   onEdit
 }: NarrationSegmentProps) {
@@ -80,7 +82,7 @@ function NarrationSegment({
       className={`
         absolute top-0 h-full
         ${isFocused ? 'bg-yellow-400' : 'bg-gray-100'} 
-        border border-gray-300
+        border-l border-r border-b border-gray-300
         ${isFocused ? 'text-gray-900' : 'text-gray-700'}
         ${isFocused ? '' : 'hover:bg-gray-200'}
         ${isActive ? 'ring-2 ring-yellow-400 z-10' : ''}
@@ -94,6 +96,9 @@ function NarrationSegment({
       style={{
         left: startPosition,
         width: Math.max(width, 20), // Min width 20px for visibility
+        borderTopWidth: agentColor ? '3px' : '1px',
+        borderTopColor: agentColor || '#d1d5db', // Agent color or gray-300
+        borderTopStyle: 'solid',
       }}
       onClick={onClick}
       title={item.name} // Tooltip for narrow segments

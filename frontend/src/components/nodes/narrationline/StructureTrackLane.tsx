@@ -157,31 +157,18 @@ function StructureTrackLane({
           {levelItems.map((item, index) => {
             const { startPosition, width } = getSegmentMetrics(item, index)
             return (
-              <>
-                <NarrationSegment
-                  key={item.id}
-                  item={item}
-                  level={level}
-                  startPosition={startPosition}
-                  width={width}
-                  isActive={item.id === activeItemId}
-                  isFocused={item.id === focusedItemId}
-                  onClick={() => onItemClick(item)}
-                  onEdit={onEditItem ? (e) => onEditItem(item, e) : undefined}
-                />
-                {/* Translucent agent color overlay */}
-                {item.assignedAgentColor && (
-                  <div
-                    key={`overlay-${item.id}`}
-                    className="absolute top-0 h-full pointer-events-none rounded-br-lg"
-                    style={{
-                      left: startPosition,
-                      width: Math.max(width, 20),
-                      backgroundColor: item.assignedAgentColor + '20', // 20 = ~12% opacity
-                    }}
-                  />
-                )}
-              </>
+              <NarrationSegment
+                key={item.id}
+                item={item}
+                level={level}
+                startPosition={startPosition}
+                width={width}
+                isActive={item.id === activeItemId}
+                isFocused={item.id === focusedItemId}
+                agentColor={item.assignedAgentColor}
+                onClick={() => onItemClick(item)}
+                onEdit={onEditItem ? (e) => onEditItem(item, e) : undefined}
+              />
             )
           })}
         </div>
