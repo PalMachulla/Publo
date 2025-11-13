@@ -33,7 +33,8 @@ import { NodeType, StoryFormat, StoryStructureNodeData } from '@/types/nodes'
 // Node types for React Flow
 const nodeTypes = {
   storyNode: UniversalNode,
-  createStoryNode: OrchestratorNode,
+  createStoryNode: OrchestratorNode, // Legacy support
+  orchestratorNode: OrchestratorNode, // New type
   storyDraftNode: StoryDraftNode,
   storyStructureNode: StoryStructureNode,
   clusterNode: ClusterNode,
@@ -313,7 +314,7 @@ export default function CanvasPage() {
         finalNodes = [...loadedNodes, contextNode]
       }
       
-      // Inject callbacks into story structure nodes
+      // Inject callbacks into story structure nodes and migrate old orchestrator nodes
       finalNodes = finalNodes.map(node => {
         if (node.type === 'storyStructureNode' || node.data?.nodeType === 'story-structure') {
           return {
@@ -323,6 +324,14 @@ export default function CanvasPage() {
               onItemClick: handleStructureItemClick,
               onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(node.id, items)
             }
+          }
+        }
+        // Migrate old createStoryNode type to orchestratorNode
+        if (node.id === 'context' && node.type === 'createStoryNode') {
+          console.log('Migrating old createStoryNode to orchestratorNode')
+          return {
+            ...node,
+            type: 'orchestratorNode'
           }
         }
         return node
