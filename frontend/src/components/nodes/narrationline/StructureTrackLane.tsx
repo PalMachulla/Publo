@@ -6,7 +6,7 @@ import NarrationSegment from './NarrationSegment'
 import AgentAssignmentRow from './AgentAssignmentRow'
 
 export interface StructureTrackLaneProps {
-  level: 1 | 2 | 3
+  level: number // Support any level depth
   items: StoryStructureItem[]
   pixelsPerUnit: number
   totalUnits: number
