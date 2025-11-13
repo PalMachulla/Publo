@@ -193,21 +193,27 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
                 value={editingName}
                 onChange={(e) => setEditingName(e.target.value)}
                 placeholder={`${getLevelName(item.level)} name`}
+                maxLength={200}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                aria-label="Structure item name"
               />
               <input
                 type="text"
                 value={editingTitle}
                 onChange={(e) => setEditingTitle(e.target.value)}
                 placeholder="Title (optional)"
+                maxLength={500}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                aria-label="Structure item title"
               />
               <textarea
                 value={editingDescription}
                 onChange={(e) => setEditingDescription(e.target.value)}
                 placeholder="Description (optional)"
+                maxLength={2000}
                 rows={2}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm resize-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                aria-label="Structure item description"
               />
               <div className="flex gap-2">
                 <button

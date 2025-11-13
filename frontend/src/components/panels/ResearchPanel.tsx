@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Node } from 'reactflow'
+import { sanitizeUrl } from '@/lib/validation/urlSanitizer'
 import { ResearchNodeData } from '@/types/nodes'
 
 interface ResearchPanelProps {
@@ -123,9 +124,11 @@ export default function ResearchPanel({ node, onUpdate, onDelete }: ResearchPane
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="e.g., Latest developments in quantum computing for healthcare applications"
+            maxLength={2000}
             className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
             rows={4}
             disabled={isResearching}
+            aria-label="Research prompt"
           />
         </div>
 
@@ -242,14 +245,23 @@ export default function ResearchPanel({ node, onUpdate, onDelete }: ResearchPane
                   
                   {expandedResults.has(result.id) && (
                     <div className="p-3 bg-white border-t border-gray-200">
-                      <a 
-                        href={result.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-sm text-cyan-600 hover:text-cyan-700 break-all"
-                      >
-                        {result.url}
-                      </a>
+                      {(() => {
+                        const safeUrl = sanitizeUrl(result.url)
+                        return safeUrl ? (
+                          <a 
+                            href={safeUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-sm text-cyan-600 hover:text-cyan-700 break-all"
+                          >
+                            {result.url}
+                          </a>
+                        ) : (
+                          <span className="text-sm text-gray-500 break-all">
+                            {result.url} (blocked: unsafe URL)
+                          </span>
+                        )
+                      })()}
                       {result.scrapedContent && (
                         <div className="mt-3 text-sm text-gray-700 max-h-64 overflow-y-auto">
                           <div className="whitespace-pre-wrap break-words">

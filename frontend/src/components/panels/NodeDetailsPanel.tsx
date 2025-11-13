@@ -244,7 +244,9 @@ export default function NodeDetailsPanel({
                 type="text"
                 value={nodeData.label || ''}
                 onChange={(e) => handleUpdateLabel(e.target.value)}
+                maxLength={200}
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 transition-all"
+                aria-label="Node title"
               />
             </div>
 
@@ -257,9 +259,11 @@ export default function NodeDetailsPanel({
                 id="node-description"
                 value={nodeData.description || ''}
                 onChange={(e) => handleUpdateDescription(e.target.value)}
+                maxLength={2000}
                 rows={4}
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none transition-all"
                 placeholder="Add a description..."
+                aria-label="Node description"
               />
             </div>
 
@@ -323,9 +327,11 @@ export default function NodeDetailsPanel({
                 <textarea
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
+                  maxLength={1000}
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none text-sm transition-all"
                   placeholder="Add a comment..."
+                  aria-label="Add comment"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                       handleAddComment()

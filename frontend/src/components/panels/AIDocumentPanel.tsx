@@ -1032,7 +1032,9 @@ export default function AIDocumentPanel({
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   placeholder="What's your story, Morning Glory?"
+                  maxLength={1000}
                   className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm placeholder:text-gray-400"
+                  aria-label="Message input"
                 />
                 <button
                   type="submit"

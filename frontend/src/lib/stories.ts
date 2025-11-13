@@ -1,6 +1,13 @@
 import { createClient } from '@/lib/supabase/client'
 import { Node, Edge } from 'reactflow'
 import { Story } from '@/types/nodes'
+import { 
+  StorySchema, 
+  DatabaseNodeSchema, 
+  DatabaseEdgeSchema,
+  GetStoriesResponseSchema 
+} from '@/lib/validation/schemas'
+import { z } from 'zod'
 
 const supabase = createClient()
 
@@ -11,8 +18,19 @@ export async function getStories(): Promise<Story[]> {
     .select('*')
     .order('updated_at', { ascending: false })
   
-  if (error) throw error
-  return data || []
+  if (error) {
+    console.error('Error fetching stories:', error)
+    throw error
+  }
+
+  // Validate response with Zod
+  try {
+    const validatedData = GetStoriesResponseSchema.parse(data || [])
+    return validatedData
+  } catch (validationError) {
+    console.error('Story data validation failed:', validationError)
+    throw new Error('Invalid story data received from server')
+  }
 }
 
 // Get single story with nodes and edges
@@ -24,26 +42,54 @@ export async function getStory(storyId: string) {
   ])
 
   if (storyResult.error) throw storyResult.error
+  if (nodesResult.error) throw nodesResult.error
+  if (edgesResult.error) throw edgesResult.error
 
-  // Transform database nodes to React Flow format
-  const nodes: Node[] = (nodesResult.data || []).map(node => ({
-    id: node.id,
-    type: node.type,
-    position: { x: node.position_x, y: node.position_y },
-    data: node.data
-  }))
+  // Validate story data with Zod
+  let validatedStory
+  try {
+    validatedStory = StorySchema.parse(storyResult.data)
+  } catch (validationError) {
+    console.error('Story validation failed:', validationError)
+    throw new Error('Invalid story data received from server')
+  }
 
-  const edges: Edge[] = (edgesResult.data || []).map(edge => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    type: edge.type,
-    animated: edge.animated,
-    style: edge.style
-  }))
+  // Validate and transform database nodes to React Flow format
+  const nodes: Node[] = (nodesResult.data || []).map(node => {
+    try {
+      const validatedNode = DatabaseNodeSchema.parse(node)
+      return {
+        id: validatedNode.id,
+        type: validatedNode.type,
+        position: { x: validatedNode.position_x, y: validatedNode.position_y },
+        data: validatedNode.data
+      }
+    } catch (validationError) {
+      console.error('Node validation failed:', validationError)
+      throw new Error(`Invalid node data: ${node.id}`)
+    }
+  })
+
+  // Validate and transform database edges to React Flow format
+  const edges: Edge[] = (edgesResult.data || []).map(edge => {
+    try {
+      const validatedEdge = DatabaseEdgeSchema.parse(edge)
+      return {
+        id: validatedEdge.id,
+        source: validatedEdge.source,
+        target: validatedEdge.target,
+        type: validatedEdge.type,
+        animated: validatedEdge.animated,
+        style: validatedEdge.style
+      }
+    } catch (validationError) {
+      console.error('Edge validation failed:', validationError)
+      throw new Error(`Invalid edge data: ${edge.id}`)
+    }
+  })
 
   return {
-    story: storyResult.data,
+    story: validatedStory,
     nodes,
     edges
   }
