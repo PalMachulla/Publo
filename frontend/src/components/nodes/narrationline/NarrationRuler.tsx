@@ -37,8 +37,8 @@ function NarrationRuler({
         </span>
       </div>
       
-      {/* Ruler markers */}
-      <div className="absolute left-16 right-0 h-full">
+      {/* Ruler markers - overflow hidden to crop numbers at edges */}
+      <div className="absolute left-16 right-0 h-full overflow-hidden">
         {markers.map((unit) => (
           <div
             key={unit}

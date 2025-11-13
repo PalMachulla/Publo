@@ -136,13 +136,13 @@ function NarrationContainer({
           unitLabel={unitLabel}
         />
         
-        {/* Scrollable viewport - with overflow hidden to crop content */}
+        {/* Scrollable viewport - horizontal scroll when content is wider than container */}
         <div
           ref={containerRef}
           className="relative overflow-x-auto overflow-y-hidden bg-gray-50"
           style={{ maxHeight: '300px' }}
         >
-          <div style={{ width: Math.max(totalWidth + 100, containerWidth), minWidth: '100%' }}>
+          <div style={{ width: totalWidth + 100, minWidth: containerWidth }}>
             {/* Structure tracks */}
             {levels.map((level) => (
               <StructureTrackLane
