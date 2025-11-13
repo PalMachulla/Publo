@@ -259,6 +259,16 @@ function NarrationContainer({
             </div>
           </div>
         </div>
+        
+        {/* Footer with controls */}
+        <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-t border-gray-300">
+          <div className="text-xs text-gray-600 font-medium">
+            {/* Placeholder for future buttons/controls */}
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Placeholder for future actions */}
+          </div>
+        </div>
       </div>
       
       {/* Right resize handle */}
