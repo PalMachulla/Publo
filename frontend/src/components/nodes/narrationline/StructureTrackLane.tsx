@@ -33,15 +33,16 @@ function StructureTrackLane({
     3: 'L3'
   }
   
-  // Calculate segment position and width
+  // Calculate segment position and width based on word count
   const getSegmentMetrics = (item: StoryStructureItem, itemIndex: number) => {
-    // For now, distribute items evenly
-    // In production, use actual page counts
-    const itemsAtLevel = items.filter(i => i.level === level)
-    const segmentWidth = (totalUnits / itemsAtLevel.length) * pixelsPerUnit
-    const startPosition = itemIndex * segmentWidth
+    // Use actual word count if available, otherwise estimate
+    const wordCount = item.wordCount || 1000 // Default 1000 words per section
+    const startPos = item.startPosition || 0
     
-    return { startPosition, width: segmentWidth }
+    const startPosition = startPos * pixelsPerUnit
+    const width = wordCount * pixelsPerUnit
+    
+    return { startPosition, width }
   }
   
   const levelItems = items
@@ -53,8 +54,8 @@ function StructureTrackLane({
       className="relative w-full bg-gray-100 border-b border-gray-300"
       style={{ height: trackHeight[level] }}
     >
-      {/* Track label */}
-      <div className="absolute left-0 top-0 w-16 h-full bg-gray-200 border-r border-gray-300 flex items-center justify-center z-10">
+      {/* Track label - sticky/fixed */}
+      <div className="sticky left-0 top-0 w-16 h-full bg-gray-200 border-r border-gray-300 flex items-center justify-center z-20 shadow-sm">
         <span className="text-xs text-gray-600 font-mono font-medium">
           {levelLabels[level]}
         </span>

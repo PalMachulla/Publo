@@ -5,21 +5,21 @@ import { memo, useMemo } from 'react'
 export interface NarrationRulerProps {
   totalUnits: number
   pixelsPerUnit: number
-  unitLabel?: string  // 'Pages', 'Sections', 'Minutes', etc.
+  unitLabel?: string  // 'Words', 'Pages', etc.
 }
 
 function NarrationRuler({ 
   totalUnits, 
   pixelsPerUnit,
-  unitLabel = 'Pages'
+  unitLabel = 'Words'
 }: NarrationRulerProps) {
-  // Calculate marker intervals based on zoom level
+  // Calculate marker intervals based on zoom level (for words)
   const markerInterval = useMemo(() => {
-    if (pixelsPerUnit > 100) return 1    // Show every unit
-    if (pixelsPerUnit > 20) return 5     // Every 5 units
-    if (pixelsPerUnit > 5) return 10     // Every 10 units
-    if (pixelsPerUnit > 2) return 25     // Every 25 units
-    return 50                             // Every 50 units
+    if (pixelsPerUnit > 0.1) return 100     // Every 100 words
+    if (pixelsPerUnit > 0.02) return 500    // Every 500 words
+    if (pixelsPerUnit > 0.01) return 1000   // Every 1000 words
+    if (pixelsPerUnit > 0.004) return 2500  // Every 2500 words
+    return 5000                              // Every 5000 words
   }, [pixelsPerUnit])
   
   // Generate marker positions
@@ -30,8 +30,8 @@ function NarrationRuler({
   
   return (
     <div className="relative h-8 bg-gray-50 border-b border-gray-300">
-      {/* Label area */}
-      <div className="absolute left-0 top-0 w-16 h-full bg-gray-200 border-r border-gray-300 flex items-center justify-center">
+      {/* Label area - sticky/fixed */}
+      <div className="sticky left-0 top-0 w-16 h-full bg-gray-200 border-r border-gray-300 flex items-center justify-center z-20 shadow-sm">
         <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">
           {unitLabel}
         </span>
@@ -50,7 +50,7 @@ function NarrationRuler({
             
             {/* Unit number */}
             <span className="text-[10px] text-gray-600 font-mono absolute top-3 -translate-x-1/2 whitespace-nowrap">
-              {unit}
+              {unit.toLocaleString()}
             </span>
           </div>
         ))}

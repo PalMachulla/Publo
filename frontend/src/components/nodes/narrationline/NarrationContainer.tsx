@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useRef, useEffect, useState, useCallback } from 'react'
+import { memo, useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { StoryStructureItem } from '@/types/nodes'
 import { useNarrationZoom } from './useNarrationZoom'
 import StructureTrackLane from './StructureTrackLane'
@@ -33,11 +33,19 @@ function NarrationContainer({
   const resizeStartWidth = useRef(0)
   const resizeDirection = useRef<'left' | 'right'>('right')
   
-  // Calculate total units (for now, count items at deepest level)
-  const totalUnits = Math.max(
-    items.filter(i => i.level === 1).length * 10, // Rough estimate
-    20 // Minimum
-  )
+  // Calculate total word count from all items
+  const totalWords = useMemo(() => {
+    if (items.length === 0) return 10000 // Default 10k words
+    
+    // Sum up all word counts, or estimate if not available
+    const calculated = items.reduce((sum, item) => {
+      return sum + (item.wordCount || 1000) // Default 1000 words per section
+    }, 0)
+    
+    return Math.max(calculated, 5000) // Minimum 5000 words
+  }, [items])
+  
+  const totalUnits = totalWords
   
   const {
     zoom,

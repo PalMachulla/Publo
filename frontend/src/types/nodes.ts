@@ -146,6 +146,8 @@ export interface StoryStructureItem {
   completed?: boolean
   content?: string
   expanded?: boolean // Whether child items are visible
+  wordCount?: number // Word count for this section
+  startPosition?: number // Starting word position in document
 }
 
 export interface StoryStructureNodeData extends BaseNodeData {
