@@ -31,10 +31,11 @@ export function useNarrationZoom({
   // Fit entire narration to viewport
   const fitToView = useCallback(() => {
     if (totalUnits === 0) return
-    // Available width = viewport - sticky label (64px) - padding (20px)
-    const availableWidth = viewportWidth - 64 - 20
+    // Available width = viewport - sticky label (64px) - small margin (8px)
+    const availableWidth = viewportWidth - 64 - 8
     const basePixelsPerUnit = 50 // Base width per unit
-    // Calculate zoom to fit: availableWidth = totalUnits * basePixelsPerUnit * zoom
+    // Calculate zoom to make bars stretch exactly end-to-end
+    // newZoom = availableWidth / (totalUnits * basePixelsPerUnit)
     const newZoom = availableWidth / (totalUnits * basePixelsPerUnit)
     // Allow any zoom level needed to fit - no minimum constraint
     // Only cap at maximum 10x zoom for sanity
