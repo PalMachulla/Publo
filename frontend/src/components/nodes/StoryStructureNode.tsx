@@ -265,7 +265,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
       }}>
         {/* Label above node with tab-like background */}
         <div className="flex justify-center -mb-1 transition-all duration-300 ease-in-out" style={{ width: nodeWidth }}>
-          <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all bg-gray-400`}>
+          <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all bg-gray-400 ${isLoading ? 'opacity-50 animate-pulse' : ''}`}>
             <div className="text-sm text-gray-700 uppercase tracking-widest font-sans font-bold">
               {label || (format ? format.toUpperCase() : 'STORY')}
             </div>
@@ -291,7 +291,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         <div
           className={`relative rounded-2xl transition-all duration-300 ease-in-out overflow-visible bg-gray-400 ${
             selected ? ' shadow-2xl' : ' shadow-md'
-          }`}
+          } ${isLoading ? 'opacity-50 animate-pulse' : ''}`}
           style={{
             width: nodeWidth,
             minHeight: 200,

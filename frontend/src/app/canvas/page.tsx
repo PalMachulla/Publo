@@ -498,23 +498,7 @@ export default function CanvasPage() {
   ) => {
     console.log('Structure item clicked:', { clickedItem, allItems, format, nodeId })
     
-    // Check if node exists in database, only save if it doesn't
-    // This ensures the story structure node exists for RLS policy without unnecessary saves
-    const supabase = createClient()
-    const { data: nodeExists } = await supabase
-      .from('nodes')
-      .select('id')
-      .eq('id', nodeId)
-      .single()
-    
-    if (!nodeExists) {
-      console.log('Node not in database, auto-saving canvas...')
-      setSaving(true)
-      await handleSave()
-      setSaving(false)
-    } else {
-      console.log('Node already exists in database, skipping save')
-    }
+    // Node is saved immediately when created, so no need to check/save here
     
     // Set initial prompt
     setInitialPrompt(`Write content for ${clickedItem.name}${clickedItem.title ? `: ${clickedItem.title}` : ''}`)
@@ -529,7 +513,7 @@ export default function CanvasPage() {
     setIsAIDocPanelOpen(true)
     
     console.log('Opening AI Document Panel with nodeId:', nodeId, 'clickedItem:', clickedItem.id)
-  }, [handleSave])
+  }, [])
   
   // Handle story structure items update (e.g., expanded state changes)
   const handleStructureItemsUpdate = useCallback((nodeId: string, updatedItems: any[]) => {
@@ -640,8 +624,11 @@ export default function CanvasPage() {
     setEdges([...edges, newEdge])
     hasUnsavedChangesRef.current = true
 
-    // Remove loading state after 2 seconds (simulate preparation time)
-    setTimeout(() => {
+    // Save immediately to database so node exists for when items are clicked
+    const saveAndFinalize = async () => {
+      await handleSave()
+      
+      // Remove loading state after save completes
       setNodes((currentNodes) =>
         currentNodes.map((node) =>
           node.id === structureId
@@ -649,8 +636,10 @@ export default function CanvasPage() {
             : node
         )
       )
-    }, 2000)
-  }, [nodes, edges, setNodes, setEdges])
+    }
+    
+    saveAndFinalize()
+  }, [nodes, edges, setNodes, setEdges, handleSave])
   
   // Handle Story Draft node click - open in AI Document Panel
   const handleStoryDraftClick = useCallback((node: Node) => {
