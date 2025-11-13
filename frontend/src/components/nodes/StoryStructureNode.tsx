@@ -1,15 +1,17 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { StoryStructureNodeData, StoryStructureItem } from '@/types/nodes'
 import { getFormatIcon } from '@/components/menus/StoryFormatMenu'
 import { getPrimaryStructuralLevel, getDocumentHierarchy } from '@/lib/documentHierarchy'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
+import { NarrationContainer } from './narrationline'
 
 function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNodeData>) {
   const { format, items = [], label, onItemClick, onItemsUpdate, isLoading = false } = data
   const primaryLevel = format ? (getPrimaryStructuralLevel(format) || 'Item') : 'Item'
+  const [viewMode, setViewMode] = useState<'cards' | 'narration'>('narration')
   
   // Get only top-level items (level 1)
   const topLevelItems = items.filter(item => item.level === 1).sort((a, b) => a.order - b.order)
@@ -54,69 +56,52 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
     }
   }
   
-  // Calculate total width by counting all visible cards horizontally
-  const calculateTotalWidth = (): number => {
+  // Node width - fixed for narration view, dynamic for cards
+  const nodeWidth = viewMode === 'narration' ? 1200 : (() => {
     const cardWidth = 240
-    const levelGap = 20 // Gap between hierarchy levels (gap-5 = 20px)
+    const levelGap = 20
     const sidePadding = 24
     
     if (!hasItems) return 200
     
-    // Count total horizontal cards in linear flow
     const countHorizontalCards = (): number => {
       let totalCards = 0
       
       const traverse = (parentId: string | undefined): number => {
         const children = items.filter(item => item.parentId === parentId)
-        
-        if (children.length === 0) {
-          return 0
-        }
+        if (children.length === 0) return 0
         
         let horizontalSum = 0
-        
         children.forEach(child => {
-          // Count this child
           horizontalSum += 1
-          
-          // If expanded, add its children horizontally
           if (child.expanded) {
-            const childWidth = traverse(child.id)
-            horizontalSum += childWidth
+            horizontalSum += traverse(child.id)
           }
         })
-        
         return horizontalSum
       }
       
-      // Count top level items
       totalCards = topLevelItems.length
-      
-      // Add all expanded children
       topLevelItems.forEach(item => {
         if (item.expanded) {
           totalCards += traverse(item.id)
         }
       })
-      
       return totalCards
     }
     
     const columns = countHorizontalCards()
-    
-    // Width = (number of columns * card width) + (gaps between columns) + padding
     return (columns * cardWidth) + ((columns - 1) * levelGap) + (sidePadding * 2)
-  }
+  })()
   
-  const nodeWidth = calculateTotalWidth()
   const sidePadding = 24
   
   // Helper to get background color based on level
   const getBackgroundColor = (level: number): string => {
     switch (level) {
       case 1: return 'bg-white'
-      case 2: return 'bg-gray-50'
-      case 3: return 'bg-gray-100'
+      case 2: return 'bg-gray-100'
+      case 3: return 'bg-gray-200'
       default: return 'bg-gray-100'
     }
   }
@@ -246,6 +231,37 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             <div className="text-sm text-gray-700 uppercase tracking-widest font-sans font-bold">
               {label || (format ? format.toUpperCase() : 'STORY')}
             </div>
+            
+            {/* View mode toggle */}
+            {hasItems && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setViewMode(viewMode === 'narration' ? 'cards' : 'narration')
+                }}
+                className="p-1 rounded hover:bg-gray-500 transition-colors"
+                title={`Switch to ${viewMode === 'narration' ? 'card' : 'narration'} view`}
+                aria-label="Toggle view mode"
+              >
+                {viewMode === 'narration' ? (
+                  /* Cards icon */
+                  <svg className="w-3.5 h-3.5 text-gray-700" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                    <rect x="14" y="14" width="7" height="7" rx="1" />
+                  </svg>
+                ) : (
+                  /* Timeline icon */
+                  <svg className="w-3.5 h-3.5 text-gray-700" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <line x1="3" y1="6" x2="21" y2="6" strokeLinecap="round" />
+                    <line x1="3" y1="12" x2="21" y2="12" strokeLinecap="round" />
+                    <line x1="3" y1="18" x2="21" y2="18" strokeLinecap="round" />
+                  </svg>
+                )}
+              </button>
+            )}
+            
             {/* Panel indicator icon - three dots vertical */}
             <svg 
               className="w-4 h-4 text-gray-700" 
@@ -279,8 +295,20 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             boxSizing: 'border-box'
           }}
         >
-        {hasItems ? (
-          /* Horizontal tree structure - no scrolling, all cards visible */
+        {viewMode === 'narration' ? (
+          /* Narration Line View - DAW-style horizontal layout */
+          <NarrationContainer
+            items={items}
+            onItemClick={(item) => {
+              if (onItemClick) {
+                onItemClick(item, items, format, id)
+              }
+            }}
+            unitLabel="Sections"
+            isLoading={isLoading}
+          />
+        ) : hasItems ? (
+          /* Card View - Horizontal tree structure */
           <div className="flex flex-nowrap gap-4 items-start">
             {topLevelItems.map((item) => renderHorizontalTree(item))}
           </div>
