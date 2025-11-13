@@ -111,7 +111,10 @@ function NarrationContainer({
   }, [isResizing, handleResizeMove, handleResizeEnd])
   
   return (
-    <div className={`relative ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}>
+    <div 
+      className={`relative mx-auto ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+      style={{ width: containerWidth }}
+    >
       {/* Left resize handle */}
       <div
         data-nodrag="true"
@@ -127,11 +130,8 @@ function NarrationContainer({
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
       </div>
       
-      {/* Main container with fixed width - overflow hidden to prevent content extending beyond */}
-      <div 
-        className="mx-auto overflow-hidden"
-        style={{ width: containerWidth }}
-      >
+      {/* Main content container - overflow hidden to prevent content extending beyond */}
+      <div className="overflow-hidden w-full">
         {/* Header with controls */}
         <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-300">
           <div className="text-xs text-gray-600 font-medium">
