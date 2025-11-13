@@ -36,12 +36,14 @@ function NarrationContainer({
   const resizeStartWidth = useRef(0)
   const resizeDirection = useRef<'left' | 'right'>('right')
   
-  // Calculate total word count from all items
+  // Calculate total word count from TOP-LEVEL items only
+  // (child items are nested within their parents, so shouldn't be counted separately)
   const totalWords = useMemo(() => {
     if (items.length === 0) return 10000 // Default 10k words
     
-    // Sum up all word counts, or estimate if not available
-    const calculated = items.reduce((sum, item) => {
+    // Sum up only top-level items (no parentId)
+    const topLevelItems = items.filter(item => !item.parentId)
+    const calculated = topLevelItems.reduce((sum, item) => {
       return sum + (item.wordCount || 1000) // Default 1000 words per section
     }, 0)
     
