@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback } from 'react'
 
 export interface ZoomState {
-  level: number           // 0.1x to 10x
-  pixelsPerUnit: number   // Pixels per page/section
+  level: number           // 0.001x to 10x (0.1% to 1000%)
+  pixelsPerUnit: number   // Pixels per word/unit
   visibleRange: [number, number]
 }
 
@@ -36,7 +36,9 @@ export function useNarrationZoom({
     const basePixelsPerUnit = 50 // Base width per unit
     // Calculate zoom to fit: availableWidth = totalUnits * basePixelsPerUnit * zoom
     const newZoom = availableWidth / (totalUnits * basePixelsPerUnit)
-    setZoom(Math.max(0.1, Math.min(newZoom, 10)))
+    // Allow any zoom level needed to fit - no minimum constraint
+    // Only cap at maximum 10x zoom for sanity
+    setZoom(Math.min(newZoom, 10))
   }, [totalUnits, viewportWidth])
   
   // Zoom to specific range
@@ -54,12 +56,12 @@ export function useNarrationZoom({
   
   // Zoom out (1.5x)
   const zoomOut = useCallback(() => {
-    setZoom(z => Math.max(z / 1.5, 0.1))
+    setZoom(z => Math.max(z / 1.5, 0.001)) // Allow zooming out to 0.1% (0.001x)
   }, [])
   
   // Set to specific zoom level
   const setZoomLevel = useCallback((level: number) => {
-    setZoom(Math.max(0.1, Math.min(level, 10)))
+    setZoom(Math.max(0.001, Math.min(level, 10))) // Allow down to 0.1% (0.001x)
   }, [])
   
   return {
