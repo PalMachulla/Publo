@@ -34,11 +34,8 @@ function StructureTrackLane({
   availableAgents = [],
   onAgentAssign
 }: StructureTrackLaneProps) {
-  const trackHeight = {
-    1: 40,  // Uniform height for all levels
-    2: 40,  // Uniform height for all levels
-    3: 40   // Uniform height for all levels
-  }
+  // Uniform height for all track levels
+  const trackHeight = 40
   
   // Use provided level name or fall back to L1, L2, L3
   const displayLabel = levelName || `L${level}`
@@ -146,7 +143,7 @@ function StructureTrackLane({
       {/* Main track with segments */}
       <div 
         className="relative w-full bg-gray-100 border-b border-gray-200 flex"
-        style={{ height: trackHeight[level] }}
+        style={{ height: trackHeight }}
       >
         {/* Track label - sticky/fixed */}
         <div className="sticky left-0 w-16 h-full bg-gray-200 border-r border-gray-200 border-b border-gray-200 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
