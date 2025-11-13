@@ -148,6 +148,9 @@ export interface StoryStructureItem {
   expanded?: boolean // Whether child items are visible
   wordCount?: number // Word count for this section
   startPosition?: number // Starting word position in document
+  assignedAgentId?: string // Node ID of assigned agent/cluster
+  assignedAgentNumber?: number // e.g., 6 for AG006
+  assignedAgentColor?: string // Hex color from agent node for overlay
 }
 
 export interface StoryStructureNodeData extends BaseNodeData {
@@ -162,6 +165,9 @@ export interface StoryStructureNodeData extends BaseNodeData {
   template?: string // The selected template ID
   isLoading?: boolean // Whether the node is still being prepared
   customNarrationWidth?: number // Custom width for narration line view
+  showAgentRows?: boolean // Toggle state for agent assignment UI
+  availableAgents?: AgentOption[] // List of available agent nodes
+  onAgentAssign?: (itemId: string, agentId: string | null) => void // Callback when agent is assigned/unassigned
 }
 
 export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData | ClusterNodeData | StoryStructureNodeData
