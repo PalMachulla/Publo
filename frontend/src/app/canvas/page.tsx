@@ -294,7 +294,7 @@ export default function CanvasPage() {
         setSharedEmails([])
       }
       
-      // Ensure orchestrator node always exists and is properly typed
+      // Ensure orchestrator node always exists
       const hasContextCanvas = loadedNodes.some(node => node.id === 'context')
       let finalNodes = loadedNodes
       
@@ -307,28 +307,10 @@ export default function CanvasPage() {
           data: { 
             label: 'Orchestrator',
             comments: [],
-            nodeType: 'create-story' as NodeType,
-            isOrchestrating: true,
-            orchestratorProgress: 0
+            nodeType: 'create-story' as NodeType
           },
         }
         finalNodes = [...loadedNodes, contextNode]
-      } else {
-        // Ensure existing orchestrator node has correct type (migration from old type)
-        finalNodes = loadedNodes.map(node => {
-          if (node.id === 'context') {
-            return {
-              ...node,
-              type: 'orchestratorNode',
-              data: {
-                ...node.data,
-                isOrchestrating: true,
-                orchestratorProgress: 0
-              }
-            }
-          }
-          return node
-        })
       }
       
       // Inject callbacks into story structure nodes
@@ -346,24 +328,6 @@ export default function CanvasPage() {
         return node
       })
       
-      // Set nodes immediately so orchestrator can show
-      setNodes(finalNodes)
-      
-      // Animate progress ring during load
-      let progress = 0
-      const progressInterval = setInterval(() => {
-        progress += 10
-        if (progress <= 90) {
-          setNodes((currentNodes) =>
-            currentNodes.map((node) =>
-              node.id === 'context'
-                ? { ...node, data: { ...node.data, orchestratorProgress: progress } }
-                : node
-            )
-          )
-        }
-      }, 50)
-      
       // Upgrade all edges to use bezier for smooth curved lines
       const upgradedEdges = loadedEdges.map((edge: Edge) => ({
         ...edge,
@@ -377,53 +341,21 @@ export default function CanvasPage() {
       
       console.log(`Loaded ${finalNodes.length} nodes, ${loadedEdges.length} edges for story: ${id}`)
       
-      // Set edges and title (nodes already set earlier)
+      setNodes(finalNodes)
       setEdges(upgradedEdges)
       setStoryTitle(story.title)
-      
-      // Complete the progress ring
-      clearInterval(progressInterval)
-      setNodes((currentNodes) =>
-        currentNodes.map((node) =>
-          node.id === 'context'
-            ? { ...node, data: { ...node.data, orchestratorProgress: 100 } }
-            : node
-        )
-      )
       
       // Use setTimeout to ensure state updates are applied
       setTimeout(() => {
         setIsLoadingCanvas(false)
         isLoadingRef.current = false
         hasUnsavedChangesRef.current = false // Clear unsaved changes flag after loading
-        
-        // Hide orchestrator indicator after a moment
-        setTimeout(() => {
-          setNodes((currentNodes) =>
-            currentNodes.map((node) =>
-              node.id === 'context'
-                ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0 } }
-                : node
-            )
-          )
-        }, 500)
-        
         console.log(`Story ${id} fully loaded and ready for edits`)
       }, 500)
     } catch (error) {
       console.error('Failed to load story:', error)
-      clearInterval(progressInterval)
       setIsLoadingCanvas(false)
       isLoadingRef.current = false
-      
-      // Hide orchestrator indicator on error
-      setNodes((currentNodes) =>
-        currentNodes.map((node) =>
-          node.id === 'context'
-            ? { ...node, data: { ...node.data, isOrchestrating: false, orchestratorProgress: 0 } }
-            : node
-        )
-      )
     }
   }
 
