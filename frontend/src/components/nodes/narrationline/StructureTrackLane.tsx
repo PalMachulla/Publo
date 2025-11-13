@@ -36,7 +36,17 @@ function StructureTrackLane({
   const getSegmentMetrics = (item: StoryStructureItem, itemIndex: number) => {
     // Use actual word count if available, otherwise estimate
     const wordCount = item.wordCount || 1000 // Default 1000 words per section
-    const startPos = item.startPosition || 0
+    
+    // If startPosition is not set, calculate it based on order
+    let startPos = item.startPosition
+    if (startPos === undefined || startPos === null) {
+      // Calculate cumulative position: sum of word counts of all previous items at this level
+      startPos = 0
+      for (let i = 0; i < itemIndex; i++) {
+        const prevItem = levelItems[i]
+        startPos += (prevItem.wordCount || 1000)
+      }
+    }
     
     const startPosition = startPos * pixelsPerUnit
     const width = wordCount * pixelsPerUnit

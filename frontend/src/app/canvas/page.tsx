@@ -566,26 +566,14 @@ export default function CanvasPage() {
     }
     const title = formatLabels[format] || 'Story'
     
-    // Create default "Cover" item for new story structure
-    const coverId = `item-${Date.now()}-cover`
-    const defaultCoverItem = {
-      id: coverId,
-      level: 1,
-      name: 'Cover',
-      title: `Your ${title}`,
-      description: 'Start writing your story here',
-      order: 0,
-      completed: false,
-      content: '',
-    }
-    
     // Create new story structure node - positioned below the Ghostwriter node
+    // No default items - let user create structure from scratch
     const nodeData: StoryStructureNodeData = {
       label: title,
       comments: [],
       nodeType: 'story-structure' as const,
       format: format,
-      items: [defaultCoverItem], // Start with Cover item
+      items: [], // Start empty - user will add items via panel
       activeLevel: 1,
       template: template,
       isLoading: true, // Start as loading
