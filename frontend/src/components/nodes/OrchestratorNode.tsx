@@ -72,7 +72,7 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
           <circle
             cx="90"
             cy="90"
-            r="85"
+            r="70"
             fill="white"
             stroke="none"
           />

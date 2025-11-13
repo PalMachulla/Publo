@@ -273,6 +273,30 @@ export default function CanvasPage() {
   }, [])
 
   const loadStoryData = async (id: string) => {
+    // Activate orchestrator on existing nodes FIRST
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === 'context'
+          ? { ...node, data: { ...node.data, isOrchestrating: true, orchestratorProgress: 0, loadingText: 'Loading Canvas' } }
+          : node
+      )
+    )
+
+    // Animate progress ring during load
+    let progress = 0
+    const progressInterval = setInterval(() => {
+      progress += 10
+      if (progress <= 90) {
+        setNodes((currentNodes) =>
+          currentNodes.map((node) =>
+            node.id === 'context'
+              ? { ...node, data: { ...node.data, orchestratorProgress: progress } }
+              : node
+          )
+        )
+      }
+    }, 50)
+
     try {
       console.log(`Loading story: ${id}`)
       const { story, nodes: loadedNodes, edges: loadedEdges } = await getStory(id)
@@ -326,49 +350,16 @@ export default function CanvasPage() {
             }
           }
         }
-        // Migrate old createStoryNode type to orchestratorNode and activate loading
+        // Migrate old createStoryNode type to orchestratorNode (loading already activated above)
         if (node.id === 'context' && node.type === 'createStoryNode') {
           console.log('Migrating old createStoryNode to orchestratorNode')
           return {
             ...node,
-            type: 'orchestratorNode',
-            data: {
-              ...node.data,
-              isOrchestrating: true,
-              orchestratorProgress: 0,
-              loadingText: 'Loading Canvas'
-            }
-          }
-        }
-        // Activate loading state for orchestrator
-        if (node.id === 'context') {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              isOrchestrating: true,
-              orchestratorProgress: 0,
-              loadingText: 'Loading Canvas'
-            }
+            type: 'orchestratorNode'
           }
         }
         return node
       })
-      
-      // Animate progress ring during load
-      let progress = 0
-      const progressInterval = setInterval(() => {
-        progress += 10
-        if (progress <= 90) {
-          setNodes((currentNodes) =>
-            currentNodes.map((node) =>
-              node.id === 'context'
-                ? { ...node, data: { ...node.data, orchestratorProgress: progress } }
-                : node
-            )
-          )
-        }
-      }, 50)
       
       // Upgrade all edges to use bezier for smooth curved lines
       const upgradedEdges = loadedEdges.map((edge: Edge) => ({
