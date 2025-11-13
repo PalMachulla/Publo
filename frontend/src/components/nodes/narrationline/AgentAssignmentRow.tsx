@@ -5,7 +5,7 @@ import { StoryStructureItem, AgentOption } from '@/types/nodes'
 
 interface AgentAssignmentRowProps {
   item: StoryStructureItem
-  level: 1 | 2 | 3
+  level: number // Support any level depth
   startPosition: number
   width: number
   availableAgents: AgentOption[]
