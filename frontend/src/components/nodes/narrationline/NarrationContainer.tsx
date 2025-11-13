@@ -361,7 +361,7 @@ function NarrationContainer({
               style={{ height: 32 }}
             >
               {/* Label - sticky/fixed */}
-              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-300 flex items-center justify-center z-10 shadow-sm flex-shrink-0">
+              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-300 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
                 <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide truncate px-1 text-center">Carrier</span>
               </div>
               
@@ -377,7 +377,7 @@ function NarrationContainer({
               style={{ height: 32 }}
             >
               {/* Label - sticky/fixed */}
-              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-300 flex items-center justify-center z-10 shadow-sm flex-shrink-0">
+              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-300 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
                 <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide truncate px-1 text-center">Sentiment</span>
               </div>
               
