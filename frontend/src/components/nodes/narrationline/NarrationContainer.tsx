@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useRef, useEffect, useState, useCallback, useMemo } from 'react'
-import { StoryStructureItem } from '@/types/nodes'
+import { StoryStructureItem, AgentOption } from '@/types/nodes'
 import { useNarrationZoom } from './useNarrationZoom'
 import { getDocumentHierarchy } from '@/lib/documentHierarchy'
 import StructureTrackLane from './StructureTrackLane'
@@ -17,6 +17,10 @@ export interface NarrationContainerProps {
   initialWidth?: number
   onWidthChange?: (width: number) => void
   format?: string // Story format to determine hierarchy level names
+  availableAgents?: AgentOption[]
+  onAgentAssign?: (itemId: string, agentId: string | null) => void
+  showAgentRows?: boolean
+  onToggleAgentRows?: () => void
 }
 
 function NarrationContainer({
@@ -27,7 +31,11 @@ function NarrationContainer({
   isLoading = false,
   initialWidth = 1200,
   onWidthChange,
-  format
+  format,
+  availableAgents = [],
+  onAgentAssign,
+  showAgentRows = false,
+  onToggleAgentRows
 }: NarrationContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(initialWidth)
@@ -175,6 +183,8 @@ function NarrationContainer({
             onZoomIn={zoomIn}
             onZoomOut={zoomOut}
             onFitToView={fitToView}
+            showAgentRows={showAgentRows}
+            onToggleAgentRows={onToggleAgentRows}
           />
         </div>
         
@@ -203,6 +213,9 @@ function NarrationContainer({
                 activeItemId={activeItemId}
                 onItemClick={onItemClick}
                 levelName={getLevelName(level)}
+                showAgentRows={showAgentRows}
+                availableAgents={availableAgents}
+                onAgentAssign={onAgentAssign}
               />
             ))}
             
