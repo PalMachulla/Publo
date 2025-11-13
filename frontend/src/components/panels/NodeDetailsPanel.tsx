@@ -187,6 +187,104 @@ export default function NodeDetailsPanel({
                   </div>
                 </div>
 
+                {/* Generate Structure Button (if no items) */}
+                {(!nodeData.items || nodeData.items.length === 0) && (
+                  <div className="bg-yellow-50 border-2 border-yellow-300 border-dashed rounded-lg p-6 text-center">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-yellow-100 flex items-center justify-center">
+                      <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-1">No Structure Yet</h4>
+                    <p className="text-xs text-gray-600 mb-4">
+                      Generate a default structure to get started quickly
+                    </p>
+                    <button
+                      onClick={() => {
+                        // Generate structure logic
+                        const format = nodeData.format || 'podcast'
+                        const structureConfig: Record<string, { level1Count: number, level2Count: number, level3Count: number }> = {
+                          'podcast': { level1Count: 1, level2Count: 3, level3Count: 2 },
+                          'novel': { level1Count: 3, level2Count: 5, level3Count: 3 },
+                          'screenplay': { level1Count: 3, level2Count: 10, level3Count: 3 },
+                          'short-story': { level1Count: 3, level2Count: 4, level3Count: 0 },
+                          'article': { level1Count: 4, level2Count: 3, level3Count: 0 },
+                          'essay': { level1Count: 3, level2Count: 3, level3Count: 0 },
+                          'report': { level1Count: 5, level2Count: 3, level3Count: 2 }
+                        }
+                        const config = structureConfig[format] || { level1Count: 3, level2Count: 3, level3Count: 0 }
+                        
+                        const newItems: any[] = []
+                        let itemCounter = 0
+                        
+                        // Use documentHierarchy to get level names
+                        const hierarchy = nodeData.format ? require('@/lib/documentHierarchy').getDocumentHierarchy(nodeData.format) : null
+                        const getLevelName = (level: number) => hierarchy?.[level - 1]?.name || `Level ${level}`
+                        
+                        for (let i = 0; i < config.level1Count; i++) {
+                          const level1Id = `item-${Date.now()}-${itemCounter++}`
+                          newItems.push({
+                            id: level1Id,
+                            level: 1,
+                            name: `${getLevelName(1)} ${i + 1}`,
+                            title: '',
+                            description: '',
+                            order: i,
+                            completed: false,
+                            content: '',
+                            expanded: true,
+                            wordCount: 5000
+                          })
+                          
+                          for (let j = 0; j < config.level2Count; j++) {
+                            const level2Id = `item-${Date.now()}-${itemCounter++}`
+                            newItems.push({
+                              id: level2Id,
+                              level: 2,
+                              parentId: level1Id,
+                              name: `${getLevelName(2)} ${j + 1}`,
+                              title: '',
+                              description: '',
+                              order: j,
+                              completed: false,
+                              content: '',
+                              expanded: true,
+                              wordCount: Math.floor(5000 / config.level2Count)
+                            })
+                            
+                            if (config.level3Count > 0) {
+                              for (let k = 0; k < config.level3Count; k++) {
+                                const level3Id = `item-${Date.now()}-${itemCounter++}`
+                                newItems.push({
+                                  id: level3Id,
+                                  level: 3,
+                                  parentId: level2Id,
+                                  name: `${getLevelName(3)} ${k + 1}`,
+                                  title: '',
+                                  description: '',
+                                  order: k,
+                                  completed: false,
+                                  content: '',
+                                  expanded: false,
+                                  wordCount: Math.floor(5000 / config.level2Count / config.level3Count)
+                                })
+                              }
+                            }
+                          }
+                        }
+                        
+                        onUpdate(node.id, { items: newItems })
+                      }}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-400 text-black rounded-lg font-medium text-sm hover:bg-yellow-500 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Generate Structure
+                    </button>
+                  </div>
+                )}
+
                 {/* Info Box */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <div className="flex gap-3">
