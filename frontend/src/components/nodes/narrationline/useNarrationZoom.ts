@@ -61,11 +61,11 @@ export function useNarrationZoom({
     const availableWidth = viewportWidth - stickyLabelWidth - safetyMargin
     
     const basePixelsPerUnit = 50
-    // Calculate zoom so segment's wordCount fills the available width
+    // Calculate zoom so segment's wordCount fills the available width exactly
     const newZoom = availableWidth / (segmentWordCount * basePixelsPerUnit)
     
-    // Cap at reasonable zoom levels (0.1x to 10x)
-    const cappedZoom = Math.max(0.1, Math.min(newZoom, 10))
+    // Only cap at maximum (10x), allow any zoom level down to 0.001x for large segments
+    const cappedZoom = Math.max(0.001, Math.min(newZoom, 10))
     
     console.log('zoomToSegment:', { 
       viewportWidth, 
