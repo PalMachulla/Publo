@@ -45,6 +45,7 @@ function NarrationContainer({
   const resizeDirection = useRef<'left' | 'right'>('right')
   const [maxVisibleLevels, setMaxVisibleLevels] = useState(3) // Default to 3 levels
   const [focusedSegmentId, setFocusedSegmentId] = useState<string | null>(null) // Track zoomed segment
+  const [scrollLeft, setScrollLeft] = useState(0) // Track scroll position for ruler
   
   // Calculate total word count from Level 1 items only
   // Level 1 represents the max extent (e.g., Season with 1000 words)
@@ -317,6 +318,7 @@ function NarrationContainer({
           totalUnits={totalUnits}
           pixelsPerUnit={pixelsPerUnit}
           unitLabel={unitLabel}
+          scrollLeft={scrollLeft}
         />
         
         {/* Scrollable viewport - horizontal scroll when content is wider than container */}
@@ -324,6 +326,7 @@ function NarrationContainer({
           ref={containerRef}
           className="relative overflow-x-auto overflow-y-hidden bg-gray-50"
           style={{ maxHeight: '300px' }}
+          onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
         >
           <div style={{ width: Math.max(totalWidth, containerWidth - 64) }}>
             {/* Structure tracks */}

@@ -6,12 +6,14 @@ export interface NarrationRulerProps {
   totalUnits: number
   pixelsPerUnit: number
   unitLabel?: string  // 'Words', 'Pages', etc.
+  scrollLeft?: number  // Current scroll position
 }
 
 function NarrationRuler({ 
   totalUnits, 
   pixelsPerUnit,
-  unitLabel = 'Words'
+  unitLabel = 'Words',
+  scrollLeft = 0
 }: NarrationRulerProps) {
   // Calculate marker intervals based on zoom level (for words)
   const markerInterval = useMemo(() => {
@@ -42,38 +44,30 @@ function NarrationRuler({
         </span>
       </div>
       
-      {/* Ruler markers - scrollable area */}
+      {/* Ruler markers - scrollable area (offset by scrollLeft) */}
       <div className="relative flex-1 h-full overflow-visible">
-        {/* Always show 0 marker at the start (right edge of sticky column) */}
-        <div
-          className="absolute top-0 h-full"
-          style={{ left: 0 }}
-        >
-          {/* Tick mark */}
-          <div className="w-px h-3 bg-gray-400" />
+        {/* Show markers offset by scroll position */}
+        {markers.map((unit) => {
+          const markerPosition = unit * pixelsPerUnit - scrollLeft
+          // Only render markers that are visible in viewport
+          if (markerPosition < -100 || markerPosition > 2000) return null
           
-          {/* Unit number */}
-          <span className="text-[10px] text-gray-600 font-mono absolute top-3 left-0.5 whitespace-nowrap">
-            0
-          </span>
-        </div>
-        
-        {/* Other markers */}
-        {markers.filter(unit => unit > 0).map((unit) => (
-          <div
-            key={unit}
-            className="absolute top-0 h-full"
-            style={{ left: unit * pixelsPerUnit }}
-          >
-            {/* Tick mark */}
-            <div className="w-px h-3 bg-gray-400" />
-            
-            {/* Unit number */}
-            <span className="text-[10px] text-gray-600 font-mono absolute top-3 -translate-x-1/2 whitespace-nowrap">
-              {unit.toLocaleString()}
-            </span>
-          </div>
-        ))}
+          return (
+            <div
+              key={unit}
+              className="absolute top-0 h-full"
+              style={{ left: markerPosition }}
+            >
+              {/* Tick mark */}
+              <div className="w-px h-3 bg-gray-400" />
+              
+              {/* Unit number */}
+              <span className="text-[10px] text-gray-600 font-mono absolute top-3 -translate-x-1/2 whitespace-nowrap">
+                {unit.toLocaleString()}
+              </span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
