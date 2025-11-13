@@ -22,9 +22,9 @@ function StructureTrackLane({
   onItemClick
 }: StructureTrackLaneProps) {
   const trackHeight = {
-    1: 48,  // Tallest for top level
-    2: 36,  // Medium for chapters
-    3: 28   // Shortest for scenes
+    1: 40,  // Uniform height for all levels
+    2: 40,  // Uniform height for all levels
+    3: 40   // Uniform height for all levels
   }
   
   const levelLabels = {

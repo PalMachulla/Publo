@@ -52,7 +52,6 @@ function NarrationSegment({
         ${colors.bg} ${colors.border} ${colors.text}
         ${colors.hover}
         ${isActive ? 'ring-2 ring-yellow-400 z-10' : 'border'}
-        rounded-lg
         cursor-pointer
         transition-all duration-200
         hover:shadow-lg hover:z-20
