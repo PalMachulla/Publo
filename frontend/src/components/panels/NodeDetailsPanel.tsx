@@ -4,12 +4,12 @@ import { useState } from 'react'
 import { Node } from 'reactflow'
 import { AnyNodeData, Comment } from '@/types/nodes'
 import { useAuth } from '@/contexts/AuthContext'
-import StoryBookPanel from './panels/StoryBookPanel'
-import CharacterPanel from './panels/CharacterPanel'
-import ResearchPanel from './panels/ResearchPanel'
-import ClusterPanel from './panels/ClusterPanel'
-import CreateStoryPanel from './panels/CreateStoryPanel'
-import StoryStructurePanel from './panels/StoryStructurePanel'
+import StoryBookPanel from './StoryBookPanel'
+import CharacterPanel from './CharacterPanel'
+import ResearchPanel from './ResearchPanel'
+import ClusterPanel from './ClusterPanel'
+import CreateStoryPanel from './CreateStoryPanel'
+import StoryStructurePanel from './StoryStructurePanel'
 
 interface NodeDetailsPanelProps {
   node: Node<AnyNodeData> | null

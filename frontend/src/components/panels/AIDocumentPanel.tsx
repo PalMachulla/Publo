@@ -4,15 +4,15 @@ import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { useDocumentSections } from '@/hooks/useDocumentSections'
 import { useDocumentEditor } from '@/hooks/useDocumentEditor'
-import EditorToolbar from './editor/EditorToolbar'
+import EditorToolbar from '../editor/EditorToolbar'
 import type { StoryStructureItem } from '@/types/nodes'
 import type { Editor } from '@tiptap/react'
 import type { DocumentSection } from '@/types/document'
-import type { ProseMirrorEditorProps, ProseMirrorEditorRef } from './editor/ProseMirrorEditor'
+import type { ProseMirrorEditorProps, ProseMirrorEditorRef } from '../editor/ProseMirrorEditor'
 
 // Dynamically import ProseMirrorEditor to avoid SSR issues
 const ProseMirrorEditor = dynamic<ProseMirrorEditorProps>(
-  () => import('./editor/ProseMirrorEditor'),
+  () => import('../editor/ProseMirrorEditor'),
   { 
     ssr: false, 
     loading: () => <div className="flex items-center justify-center h-full"><div className="text-gray-400">Loading editor...</div></div>
