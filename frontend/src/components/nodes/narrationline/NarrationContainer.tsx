@@ -213,8 +213,8 @@ function NarrationContainer({
       // Calculate segment start position in pixels with the NEW pixelsPerUnit
       const segmentPixelStart = startPos * newPixelsPerUnit
       
-      // Account for track lane padding (px-1 = 4px left padding)
-      const scrollPosition = Math.max(0, segmentPixelStart - 4)
+      // No padding to account for now
+      const scrollPosition = Math.max(0, segmentPixelStart)
       
       console.log('Scrolling to:', {
         segmentPixelStart,

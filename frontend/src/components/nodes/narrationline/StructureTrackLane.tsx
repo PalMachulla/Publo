@@ -156,7 +156,7 @@ function StructureTrackLane({
         </div>
         
         {/* Narration segments - scrollable area */}
-        <div className="relative flex-1 h-full px-1 py-1 overflow-visible">
+        <div className="relative flex-1 h-full overflow-visible">
           {levelItems.map((item, index) => {
             const { startPosition, width } = getSegmentMetrics(item, index)
             return (
@@ -176,7 +176,7 @@ function StructureTrackLane({
                 {item.assignedAgentColor && (
                   <div
                     key={`overlay-${item.id}`}
-                    className="absolute top-0 h-full pointer-events-none rounded-sm"
+                    className="absolute top-0 h-full pointer-events-none rounded-br-lg"
                     style={{
                       left: startPosition,
                       width: Math.max(width, 20),

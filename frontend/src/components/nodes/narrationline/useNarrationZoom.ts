@@ -57,7 +57,7 @@ export function useNarrationZoom({
     // viewportWidth includes sticky label, but scrollable area starts after it
     // Available width = viewport - sticky label (64px) - safety margin
     const stickyLabelWidth = 64
-    const safetyMargin = 32 // Account for padding, borders, scrollbar
+    const safetyMargin = 24 // Account for borders, scrollbar (reduced since no track padding now)
     const availableWidth = viewportWidth - stickyLabelWidth - safetyMargin
     
     const basePixelsPerUnit = 50
