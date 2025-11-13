@@ -1,8 +1,9 @@
 'use client'
 
 import { memo } from 'react'
-import { StoryStructureItem } from '@/types/nodes'
+import { StoryStructureItem, AgentOption } from '@/types/nodes'
 import NarrationSegment from './NarrationSegment'
+import AgentAssignmentRow from './AgentAssignmentRow'
 
 export interface StructureTrackLaneProps {
   level: 1 | 2 | 3
@@ -12,6 +13,9 @@ export interface StructureTrackLaneProps {
   activeItemId?: string
   onItemClick: (item: StoryStructureItem) => void
   levelName?: string // e.g., "Acts", "Chapters", "Scenes"
+  showAgentRows?: boolean
+  availableAgents?: AgentOption[]
+  onAgentAssign?: (itemId: string, agentId: string | null) => void
 }
 
 function StructureTrackLane({
@@ -21,7 +25,10 @@ function StructureTrackLane({
   totalUnits,
   activeItemId,
   onItemClick,
-  levelName
+  levelName,
+  showAgentRows = false,
+  availableAgents = [],
+  onAgentAssign
 }: StructureTrackLaneProps) {
   const trackHeight = {
     1: 40,  // Uniform height for all levels
@@ -131,35 +138,83 @@ function StructureTrackLane({
     .sort((a, b) => a.order - b.order)
   
   return (
-    <div 
-      className="relative w-full bg-gray-100 border-b border-gray-300 flex"
-      style={{ height: trackHeight[level] }}
-    >
-      {/* Track label - sticky/fixed */}
-      <div className="sticky left-0 w-16 h-full bg-gray-200 border-r border-gray-300 flex items-center justify-center z-10 shadow-sm flex-shrink-0">
-        <span className="text-[10px] text-gray-600 font-medium uppercase tracking-wide text-center px-1">
-          {displayLabel}
-        </span>
+    <>
+      {/* Main track with segments */}
+      <div 
+        className="relative w-full bg-gray-100 border-b border-gray-300 flex"
+        style={{ height: trackHeight[level] }}
+      >
+        {/* Track label - sticky/fixed */}
+        <div className="sticky left-0 w-16 h-full bg-gray-200 border-r border-gray-300 flex items-center justify-center z-10 shadow-sm flex-shrink-0">
+          <span className="text-[10px] text-gray-600 font-medium uppercase tracking-wide text-center px-1">
+            {displayLabel}
+          </span>
+        </div>
+        
+        {/* Narration segments - scrollable area */}
+        <div className="relative flex-1 h-full px-1 py-1 overflow-visible">
+          {levelItems.map((item, index) => {
+            const { startPosition, width } = getSegmentMetrics(item, index)
+            return (
+              <>
+                <NarrationSegment
+                  key={item.id}
+                  item={item}
+                  level={level}
+                  startPosition={startPosition}
+                  width={width}
+                  isActive={item.id === activeItemId}
+                  onClick={() => onItemClick(item)}
+                />
+                {/* Translucent agent color overlay */}
+                {item.assignedAgentColor && (
+                  <div
+                    key={`overlay-${item.id}`}
+                    className="absolute top-0 h-full pointer-events-none rounded-sm"
+                    style={{
+                      left: startPosition,
+                      width: Math.max(width, 20),
+                      backgroundColor: item.assignedAgentColor + '20', // 20 = ~12% opacity
+                    }}
+                  />
+                )}
+              </>
+            )
+          })}
+        </div>
       </div>
       
-      {/* Narration segments - scrollable area */}
-      <div className="relative flex-1 h-full px-1 py-1 overflow-visible">
-        {levelItems.map((item, index) => {
-          const { startPosition, width } = getSegmentMetrics(item, index)
-          return (
-            <NarrationSegment
-              key={item.id}
-              item={item}
-              level={level}
-              startPosition={startPosition}
-              width={width}
-              isActive={item.id === activeItemId}
-              onClick={() => onItemClick(item)}
-            />
-          )
-        })}
-      </div>
-    </div>
+      {/* Agent assignment row (if enabled) */}
+      {showAgentRows && (
+        <div 
+          className="relative w-full bg-gray-50 border-b border-gray-200 flex"
+          style={{ height: 32 }}
+        >
+          {/* Agent row label - sticky/fixed */}
+          <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-300 flex items-center justify-center z-10 shadow-sm flex-shrink-0">
+            <span className="text-[8px] text-gray-500 font-medium uppercase tracking-wide">Agent</span>
+          </div>
+          
+          {/* Agent dropdowns - scrollable area */}
+          <div className="relative flex-1 h-full overflow-visible">
+            {levelItems.map((item, index) => {
+              const { startPosition, width } = getSegmentMetrics(item, index)
+              return (
+                <AgentAssignmentRow
+                  key={`agent-${item.id}`}
+                  item={item}
+                  level={level}
+                  startPosition={startPosition}
+                  width={width}
+                  availableAgents={availableAgents}
+                  onAgentAssign={onAgentAssign || (() => {})}
+                />
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
