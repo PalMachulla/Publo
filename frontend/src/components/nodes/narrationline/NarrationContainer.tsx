@@ -225,6 +225,38 @@ function NarrationContainer({
                 No structure items yet
               </div>
             )}
+            
+            {/* Placeholder rows - Carrier */}
+            <div 
+              className="relative w-full bg-gray-50 border-b border-gray-200 flex"
+              style={{ height: 32 }}
+            >
+              {/* Label - sticky/fixed */}
+              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-300 flex items-center justify-center z-10 shadow-sm flex-shrink-0">
+                <span className="text-[8px] text-gray-500 font-medium uppercase tracking-wide">Carrier</span>
+              </div>
+              
+              {/* Content area - empty for now */}
+              <div className="relative flex-1 h-full overflow-visible">
+                {/* Placeholder - will add functionality later */}
+              </div>
+            </div>
+            
+            {/* Placeholder rows - Sentiment */}
+            <div 
+              className="relative w-full bg-gray-50 border-b border-gray-200 flex"
+              style={{ height: 32 }}
+            >
+              {/* Label - sticky/fixed */}
+              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-300 flex items-center justify-center z-10 shadow-sm flex-shrink-0">
+                <span className="text-[8px] text-gray-500 font-medium uppercase tracking-wide">Sentiment</span>
+              </div>
+              
+              {/* Content area - empty for now */}
+              <div className="relative flex-1 h-full overflow-visible">
+                {/* Placeholder - will add functionality later */}
+              </div>
+            </div>
           </div>
         </div>
       </div>
