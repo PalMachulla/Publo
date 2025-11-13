@@ -43,6 +43,7 @@ function NarrationContainer({
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(0)
   const resizeDirection = useRef<'left' | 'right'>('right')
+  const [maxVisibleLevels, setMaxVisibleLevels] = useState(3) // Default to 3 levels
   
   // Calculate total word count from Level 1 items only
   // Level 1 represents the max extent (e.g., Season with 1000 words)
