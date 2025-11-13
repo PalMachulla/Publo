@@ -88,7 +88,7 @@ function NarrationSegment({
         cursor-pointer
         transition-all duration-200
         overflow-hidden
-        rounded-br
+        rounded-br-lg
         group
       `}
       style={{
