@@ -87,7 +87,6 @@ function NarrationSegment({
         ${isFocused ? 'shadow-2xl z-30' : ''}
         cursor-pointer
         transition-all duration-200
-        hover:shadow-lg hover:z-20
         overflow-hidden
         rounded-br
         group
