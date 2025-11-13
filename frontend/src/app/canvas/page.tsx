@@ -633,13 +633,21 @@ export default function CanvasPage() {
     handleSave()
   }, [availableAgents, handleSave])
 
+  // Track cluster count to detect when agents are added/removed
+  const clusterCount = useMemo(() => nodes.filter(n => n.type === 'clusterNode').length, [nodes])
+  const prevClusterCountRef = useRef(clusterCount)
+  
   // Update structure nodes with latest agents when cluster nodes change
   useEffect(() => {
     if (isLoadingRef.current) return // Don't run during initial load
     
-    // Check if we have any cluster nodes
-    const clusterCount = nodes.filter(n => n.type === 'clusterNode').length
+    // Only update if cluster count actually changed
+    if (prevClusterCountRef.current === clusterCount) return
+    prevClusterCountRef.current = clusterCount
+    
     if (clusterCount === 0) return
+    
+    console.log('Cluster count changed, updating structure nodes with', availableAgents.length, 'agents')
     
     // Update structure nodes with current agents
     setNodes((currentNodes) => {
@@ -657,7 +665,7 @@ export default function CanvasPage() {
         return node
       })
     })
-  }, [nodes.filter(n => n.type === 'clusterNode').length]) // Only when cluster count changes
+  }, [clusterCount, availableAgents]) // Only when cluster count changes
 
   // Handle Create Story node click - spawn new story structure node
   const handleCreateStory = useCallback((format: StoryFormat, template?: string) => {
