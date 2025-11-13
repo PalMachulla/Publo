@@ -166,9 +166,9 @@ export interface Story {
   id: string
   user_id: string
   title: string
-  description?: string
-  is_public: boolean
-  shared: boolean
+  description?: string | null
+  is_public?: boolean | null
+  shared?: boolean | null
   created_at: string
   updated_at: string
 }
