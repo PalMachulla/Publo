@@ -3,6 +3,7 @@ export { default as NarrationSegment } from './NarrationSegment'
 export { default as StructureTrackLane } from './StructureTrackLane'
 export { default as NarrationRuler } from './NarrationRuler'
 export { default as ZoomControls } from './ZoomControls'
+export { default as AgentAssignmentRow } from './AgentAssignmentRow'
 export { useNarrationZoom } from './useNarrationZoom'
 
 export type { NarrationContainerProps } from './NarrationContainer'
