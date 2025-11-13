@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useRef, useEffect } from 'react'
+import { memo, useRef, useEffect, useState, useCallback } from 'react'
 import { StoryStructureItem } from '@/types/nodes'
 import { useNarrationZoom } from './useNarrationZoom'
 import StructureTrackLane from './StructureTrackLane'
@@ -23,6 +23,11 @@ function NarrationContainer({
   isLoading = false
 }: NarrationContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [containerWidth, setContainerWidth] = useState(1200)
+  const [isResizing, setIsResizing] = useState(false)
+  const resizeStartX = useRef(0)
+  const resizeStartWidth = useRef(0)
+  const resizeDirection = useRef<'left' | 'right'>('right')
   
   // Calculate total units (for now, count items at deepest level)
   const totalUnits = Math.max(
@@ -37,7 +42,7 @@ function NarrationContainer({
     fitToView,
     zoomIn,
     zoomOut
-  } = useNarrationZoom({ totalUnits, viewportWidth: 1200 })
+  } = useNarrationZoom({ totalUnits, viewportWidth: containerWidth })
   
   // Fit to view on mount
   useEffect(() => {
@@ -49,55 +54,125 @@ function NarrationContainer({
   // Get unique levels present in items
   const levels = Array.from(new Set(items.map(i => i.level))).sort() as (1 | 2 | 3)[]
   
+  // Handle resize start
+  const handleResizeStart = useCallback((e: React.MouseEvent, direction: 'left' | 'right') => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsResizing(true)
+    resizeStartX.current = e.clientX
+    resizeStartWidth.current = containerWidth
+    resizeDirection.current = direction
+  }, [containerWidth])
+  
+  // Handle resize move
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizing) return
+    
+    const deltaX = e.clientX - resizeStartX.current
+    const direction = resizeDirection.current
+    
+    let newWidth: number
+    if (direction === 'right') {
+      newWidth = resizeStartWidth.current + deltaX
+    } else {
+      newWidth = resizeStartWidth.current - deltaX
+    }
+    
+    // Clamp width between 600 and 2400
+    newWidth = Math.max(600, Math.min(2400, newWidth))
+    setContainerWidth(newWidth)
+  }, [isResizing])
+  
+  // Handle resize end
+  const handleResizeEnd = useCallback(() => {
+    setIsResizing(false)
+  }, [])
+  
+  // Add/remove mouse event listeners for resize
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', handleResizeMove)
+      window.addEventListener('mouseup', handleResizeEnd)
+      return () => {
+        window.removeEventListener('mousemove', handleResizeMove)
+        window.removeEventListener('mouseup', handleResizeEnd)
+      }
+    }
+  }, [isResizing, handleResizeMove, handleResizeEnd])
+  
   return (
-    <div className={`w-full ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}>
-      {/* Header with controls */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-300">
-        <div className="text-xs text-gray-600 font-medium">
-          Narration Line
-        </div>
-        <ZoomControls
-          zoom={zoom}
-          onZoomIn={zoomIn}
-          onZoomOut={zoomOut}
-          onFitToView={fitToView}
-        />
+    <div className={`relative ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}>
+      {/* Left resize handle */}
+      <div
+        className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 group ${isResizing ? 'bg-yellow-400' : 'hover:bg-gray-300'} transition-colors`}
+        onMouseDown={(e) => handleResizeStart(e, 'left')}
+        title="Drag to resize"
+      >
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
       
-      {/* Ruler */}
-      <NarrationRuler
-        totalUnits={totalUnits}
-        pixelsPerUnit={pixelsPerUnit}
-        unitLabel={unitLabel}
-      />
-      
-      {/* Scrollable viewport */}
-      <div
-        ref={containerRef}
-        className="relative overflow-x-auto overflow-y-hidden bg-gray-50"
-        style={{ maxHeight: '300px' }}
+      {/* Main container with fixed width */}
+      <div 
+        className="mx-auto"
+        style={{ width: containerWidth }}
       >
-        <div style={{ width: Math.max(totalWidth + 100, '100%'), minWidth: '100%' }}>
-          {/* Structure tracks */}
-          {levels.map((level) => (
-            <StructureTrackLane
-              key={level}
-              level={level}
-              items={items}
-              pixelsPerUnit={pixelsPerUnit}
-              totalUnits={totalUnits}
-              activeItemId={activeItemId}
-              onItemClick={onItemClick}
-            />
-          ))}
-          
-          {/* Empty state if no items */}
-          {items.length === 0 && (
-            <div className="h-32 flex items-center justify-center text-gray-400 text-sm">
-              No structure items yet
-            </div>
-          )}
+        {/* Header with controls */}
+        <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-300">
+          <div className="text-xs text-gray-600 font-medium">
+            Narration Line
+          </div>
+          <ZoomControls
+            zoom={zoom}
+            onZoomIn={zoomIn}
+            onZoomOut={zoomOut}
+            onFitToView={fitToView}
+          />
         </div>
+        
+        {/* Ruler */}
+        <NarrationRuler
+          totalUnits={totalUnits}
+          pixelsPerUnit={pixelsPerUnit}
+          unitLabel={unitLabel}
+        />
+        
+        {/* Scrollable viewport - with overflow hidden to crop content */}
+        <div
+          ref={containerRef}
+          className="relative overflow-x-auto overflow-y-hidden bg-gray-50"
+          style={{ maxHeight: '300px' }}
+        >
+          <div style={{ width: Math.max(totalWidth + 100, containerWidth), minWidth: '100%' }}>
+            {/* Structure tracks */}
+            {levels.map((level) => (
+              <StructureTrackLane
+                key={level}
+                level={level}
+                items={items}
+                pixelsPerUnit={pixelsPerUnit}
+                totalUnits={totalUnits}
+                activeItemId={activeItemId}
+                onItemClick={onItemClick}
+              />
+            ))}
+            
+            {/* Empty state if no items */}
+            {items.length === 0 && (
+              <div className="h-32 flex items-center justify-center text-gray-400 text-sm">
+                No structure items yet
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Right resize handle */}
+      <div
+        className={`absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 group ${isResizing ? 'bg-yellow-400' : 'hover:bg-gray-300'} transition-colors`}
+        onMouseDown={(e) => handleResizeStart(e, 'right')}
+        title="Drag to resize"
+      >
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
     </div>
   )

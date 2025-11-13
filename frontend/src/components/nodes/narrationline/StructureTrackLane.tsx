@@ -60,8 +60,8 @@ function StructureTrackLane({
         </span>
       </div>
       
-      {/* Narration segments */}
-      <div className="absolute left-16 right-0 h-full px-1 py-1">
+      {/* Narration segments - overflow hidden to crop at edges */}
+      <div className="absolute left-16 right-0 h-full px-1 py-1 overflow-hidden">
         {levelItems.map((item, index) => {
           const { startPosition, width } = getSegmentMetrics(item, index)
           return (
