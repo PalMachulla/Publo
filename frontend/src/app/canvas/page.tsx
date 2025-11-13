@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback, useState, useRef } from 'react'
+import { useEffect, useCallback, useState, useRef, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
@@ -323,6 +323,17 @@ export default function CanvasPage() {
         finalNodes = [...loadedNodes, contextNode]
       }
       
+      // First pass: get available agents from loaded cluster nodes
+      const loadedAgents = finalNodes
+        .filter(n => n.type === 'clusterNode')
+        .map(n => ({
+          id: n.id,
+          agentNumber: n.data.agentNumber || 0,
+          color: n.data.color || '#9ca3af',
+          label: n.data.label || 'Agent'
+        }))
+        .sort((a, b) => a.agentNumber - b.agentNumber)
+      
       // Inject callbacks into story structure nodes and migrate old orchestrator nodes
       finalNodes = finalNodes.map(node => {
         if (node.type === 'storyStructureNode' || node.data?.nodeType === 'story-structure') {
@@ -331,7 +342,10 @@ export default function CanvasPage() {
             data: {
               ...node.data,
               onItemClick: handleStructureItemClick,
-              onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(node.id, items)
+              onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(node.id, items),
+              onWidthUpdate: (width: number) => handleNodeUpdate(node.id, { customNarrationWidth: width }),
+              availableAgents: loadedAgents,
+              onAgentAssign: handleAgentAssign
             }
           }
         }
@@ -546,6 +560,78 @@ export default function CanvasPage() {
       hasUnsavedChangesRef.current = true
     }
   }, [handleStructureItemClick, currentStoryStructureNodeId])
+
+  // Get available agent nodes for assignment
+  const availableAgents = useMemo(() => {
+    return nodes
+      .filter(n => n.type === 'clusterNode')
+      .map(n => ({
+        id: n.id,
+        agentNumber: n.data.agentNumber || 0,
+        color: n.data.color || '#9ca3af',
+        label: n.data.label || 'Agent'
+      }))
+      .sort((a, b) => a.agentNumber - b.agentNumber)
+  }, [nodes])
+
+  // Handle agent assignment to structure items
+  const handleAgentAssign = useCallback((itemId: string, agentId: string | null) => {
+    console.log('Agent assignment:', { itemId, agentId })
+    
+    // Update nodes SAFELY - only modify the structure node with this item
+    setNodes((currentNodes) => {
+      return currentNodes.map((node) => {
+        // Update structure node containing this item
+        if (node.type === 'storyStructureNode' && node.data.items) {
+          const hasThisItem = node.data.items.some((item: any) => item.id === itemId)
+          if (!hasThisItem) return node // Not this structure node
+          
+          const updatedItems = node.data.items.map((item: any) => {
+            if (item.id === itemId) {
+              if (agentId) {
+                // Assign agent
+                const agent = availableAgents.find(a => a.id === agentId)
+                if (agent) {
+                  return {
+                    ...item,
+                    assignedAgentId: agentId,
+                    assignedAgentNumber: agent.agentNumber,
+                    assignedAgentColor: agent.color
+                  }
+                }
+              } else {
+                // Unassign agent
+                return {
+                  ...item,
+                  assignedAgentId: undefined,
+                  assignedAgentNumber: undefined,
+                  assignedAgentColor: undefined
+                }
+              }
+            }
+            return item
+          })
+          
+          return { ...node, data: { ...node.data, items: updatedItems } }
+        }
+        
+        // Update agent node isActive status
+        if (node.type === 'clusterNode' && node.id === agentId) {
+          return { ...node, data: { ...node.data, isActive: true } }
+        }
+        
+        return node
+      })
+    })
+    
+    // Mark as having unsaved changes
+    if (!isLoadingRef.current) {
+      hasUnsavedChangesRef.current = true
+    }
+    
+    // Trigger save
+    handleSave()
+  }, [availableAgents, handleSave])
 
   // Handle Create Story node click - spawn new story structure node
   const handleCreateStory = useCallback((format: StoryFormat, template?: string) => {
@@ -819,6 +905,8 @@ export default function CanvasPage() {
             mergedData.onItemClick = handleStructureItemClick
             mergedData.onItemsUpdate = (items: any[]) => handleStructureItemsUpdate(nodeId, items)
             mergedData.onWidthUpdate = (width: number) => handleNodeUpdate(nodeId, { customNarrationWidth: width })
+            mergedData.availableAgents = availableAgents
+            mergedData.onAgentAssign = handleAgentAssign
           }
           
           const updatedNode = { ...node, data: mergedData }
@@ -838,6 +926,8 @@ export default function CanvasPage() {
           mergedData.onItemClick = handleStructureItemClick
           mergedData.onItemsUpdate = (items: any[]) => handleStructureItemsUpdate(nodeId, items)
           mergedData.onWidthUpdate = (width: number) => handleNodeUpdate(nodeId, { customNarrationWidth: width })
+          mergedData.availableAgents = availableAgents
+          mergedData.onAgentAssign = handleAgentAssign
         }
         
         return { ...prev, data: mergedData }
