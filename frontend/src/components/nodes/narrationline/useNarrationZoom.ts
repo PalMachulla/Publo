@@ -50,22 +50,35 @@ export function useNarrationZoom({
     setZoom(Math.max(0.1, Math.min(newZoom, 10)))
   }, [viewportWidth])
   
-  // Zoom to segment (fit segment to full width)
+  // Zoom to segment (fit segment to full width from left to right edge)
   const zoomToSegment = useCallback((segmentStart: number, segmentWordCount: number) => {
     if (segmentWordCount === 0) return
-    // Available width for the segment (conservative estimate):
-    // - sticky label: 64px (w-16)
-    // - container border: 4px (border-2)
-    // - track padding: 8px (px-1)
-    // - scrollbar: 20px (conservative estimate)
-    // - safety margin: 24px (extra buffer)
-    const availableWidth = viewportWidth - 64 - 4 - 8 - 20 - 24
+    // Calculate the actual scrollable/visible content width
+    // viewportWidth includes sticky label, but scrollable area starts after it
+    // Available width = viewport - sticky label (64px) - safety margin
+    const stickyLabelWidth = 64
+    const safetyMargin = 32 // Account for padding, borders, scrollbar
+    const availableWidth = viewportWidth - stickyLabelWidth - safetyMargin
+    
     const basePixelsPerUnit = 50
-    // Calculate zoom to make this segment fill the viewport width
+    // Calculate zoom so segment's wordCount fills the available width
     const newZoom = availableWidth / (segmentWordCount * basePixelsPerUnit)
+    
     // Cap at reasonable zoom levels (0.1x to 10x)
     const cappedZoom = Math.max(0.1, Math.min(newZoom, 10))
-    console.log('zoomToSegment:', { viewportWidth, availableWidth, segmentWordCount, newZoom, cappedZoom })
+    
+    console.log('zoomToSegment:', { 
+      viewportWidth, 
+      stickyLabelWidth,
+      safetyMargin,
+      availableWidth, 
+      segmentWordCount, 
+      newZoom, 
+      cappedZoom,
+      resultingPixelsPerUnit: basePixelsPerUnit * cappedZoom,
+      segmentPixelWidth: segmentWordCount * basePixelsPerUnit * cappedZoom
+    })
+    
     setZoom(cappedZoom)
     return cappedZoom // Return the capped value that was actually set
   }, [viewportWidth])
