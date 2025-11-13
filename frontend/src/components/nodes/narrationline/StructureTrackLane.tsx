@@ -32,20 +32,55 @@ function StructureTrackLane({
   // Use provided level name or fall back to L1, L2, L3
   const displayLabel = levelName || `L${level}`
   
-  // Calculate segment position and width based on word count
+  // Calculate segment position and width based on hierarchical structure
   const getSegmentMetrics = (item: StoryStructureItem, itemIndex: number) => {
     // Use actual word count if available, otherwise estimate
     const wordCount = item.wordCount || 1000 // Default 1000 words per section
     
-    // If startPosition is not set, calculate it based on order
-    let startPos = item.startPosition
-    if (startPos === undefined || startPos === null) {
-      // Calculate cumulative position: sum of word counts of all previous items at this level
-      startPos = 0
-      for (let i = 0; i < itemIndex; i++) {
-        const prevItem = levelItems[i]
-        startPos += (prevItem.wordCount || 1000)
+    // If startPosition is explicitly set, use it
+    if (item.startPosition !== undefined && item.startPosition !== null) {
+      const startPosition = item.startPosition * pixelsPerUnit
+      const width = wordCount * pixelsPerUnit
+      return { startPosition, width }
+    }
+    
+    // Calculate position based on hierarchy
+    let startPos = 0
+    
+    if (item.parentId) {
+      // This is a child item - position within parent's range
+      const parent = items.find(i => i.id === item.parentId)
+      if (parent) {
+        // Get parent's position and width
+        const parentStart = parent.startPosition || 0
+        const parentWidth = parent.wordCount || 1000
+        
+        // Get all siblings (including this item)
+        const siblings = items
+          .filter(i => i.parentId === item.parentId && i.level === item.level)
+          .sort((a, b) => a.order - b.order)
+        
+        // Divide parent's range among children
+        const siblingIndex = siblings.findIndex(s => s.id === item.id)
+        const totalSiblings = siblings.length
+        const childWidth = parentWidth / totalSiblings
+        
+        startPos = parentStart + (siblingIndex * childWidth)
+        return { 
+          startPosition: startPos * pixelsPerUnit, 
+          width: childWidth * pixelsPerUnit 
+        }
       }
+    }
+    
+    // Top-level item - calculate based on previous siblings at same level
+    const topLevelSiblings = items
+      .filter(i => !i.parentId && i.level === item.level)
+      .sort((a, b) => a.order - b.order)
+    
+    const siblingIndex = topLevelSiblings.findIndex(s => s.id === item.id)
+    for (let i = 0; i < siblingIndex; i++) {
+      startPos += (topLevelSiblings[i].wordCount || 1000)
     }
     
     const startPosition = startPos * pixelsPerUnit
