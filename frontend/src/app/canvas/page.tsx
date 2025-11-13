@@ -580,29 +580,24 @@ export default function CanvasPage() {
     
     // Update nodes SAFELY - only modify the structure node with this item
     setNodes((currentNodes) => {
-      const updatedNodes = currentNodes.map((node) => {
+      return currentNodes.map((node) => {
         // Update structure node containing this item
         if (node.type === 'storyStructureNode' && node.data.items) {
           const hasThisItem = node.data.items.some((item: any) => item.id === itemId)
           if (!hasThisItem) return node // Not this structure node
-          
-          console.log('Found structure node with item:', node.id)
           
           const updatedItems = node.data.items.map((item: any) => {
             if (item.id === itemId) {
               if (agentId) {
                 // Assign agent
                 const agent = availableAgents.find(a => a.id === agentId)
-                console.log('Agent found:', agent)
                 if (agent) {
-                  const updatedItem = {
+                  return {
                     ...item,
                     assignedAgentId: agentId,
                     assignedAgentNumber: agent.agentNumber,
                     assignedAgentColor: agent.color
                   }
-                  console.log('Updated item:', updatedItem)
-                  return updatedItem
                 }
               } else {
                 // Unassign agent
@@ -617,20 +612,7 @@ export default function CanvasPage() {
             return item
           })
           
-          console.log('Updated items for node:', updatedItems.filter((i: any) => i.assignedAgentId))
-          return { 
-            ...node, 
-            data: { 
-              ...node.data, 
-              items: updatedItems,
-              // Re-inject callbacks to ensure they persist
-              onItemClick: node.data.onItemClick,
-              onItemsUpdate: node.data.onItemsUpdate,
-              onWidthUpdate: node.data.onWidthUpdate,
-              availableAgents: node.data.availableAgents,
-              onAgentAssign: node.data.onAgentAssign
-            } 
-          }
+          return { ...node, data: { ...node.data, items: updatedItems } }
         }
         
         // Update agent node isActive status
@@ -640,9 +622,6 @@ export default function CanvasPage() {
         
         return node
       })
-      
-      console.log('setNodes completed, returning updated nodes')
-      return updatedNodes
     })
     
     // Mark as having unsaved changes
@@ -650,11 +629,8 @@ export default function CanvasPage() {
       hasUnsavedChangesRef.current = true
     }
     
-    // Trigger save after a short delay to ensure state update completes
-    setTimeout(() => {
-      console.log('Triggering save after agent assignment')
-      handleSave()
-    }, 100)
+    // Trigger save
+    handleSave()
   }, [availableAgents, handleSave])
 
   // Handle Create Story node click - spawn new story structure node
