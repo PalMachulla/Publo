@@ -24,6 +24,7 @@ export interface NarrationSegmentProps {
   isFocused?: boolean // Whether this segment is currently zoomed/focused
   agentColor?: string // Color of assigned agent (for top border)
   onClick: () => void
+  onDoubleClick?: () => void // Handler for double click (zoom)
   onEdit?: (e: React.MouseEvent) => void // Handler for edit icon click
   onColorChange?: (color: string | null) => void // Handler for color picker
 }
@@ -37,6 +38,7 @@ function NarrationSegment({
   isFocused = false,
   agentColor,
   onClick,
+  onDoubleClick,
   onEdit,
   onColorChange
 }: NarrationSegmentProps) {
@@ -143,6 +145,7 @@ function NarrationSegment({
         }
       }}
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       title={item.name} // Tooltip for narrow segments
     >
       {/* Segment label - only show if wide enough */}

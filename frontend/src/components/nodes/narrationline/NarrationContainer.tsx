@@ -184,11 +184,17 @@ function NarrationContainer({
     return { startPos, width }
   }, [items])
   
-  // Handle segment click - zoom to segment and focus it
+  // Handle segment single click - just mark/focus it
   const handleSegmentClick = useCallback((item: StoryStructureItem) => {
+    console.log('Segment clicked (focus only):', item.name)
+    setFocusedSegmentId(item.id)
+  }, [])
+  
+  // Handle segment double click - zoom to segment and focus it
+  const handleSegmentDoubleClick = useCallback((item: StoryStructureItem) => {
     const { startPos, width: wordCount } = calculateSegmentMetrics(item)
     
-    console.log('Segment clicked:', {
+    console.log('Segment double-clicked (zoom):', {
       name: item.name,
       level: item.level,
       startPos,
@@ -446,6 +452,7 @@ function NarrationContainer({
                 activeItemId={activeItemId}
                 focusedItemId={focusedSegmentId}
                 onItemClick={handleSegmentClick}
+                onItemDoubleClick={handleSegmentDoubleClick}
                 onEditItem={handleEditSegment}
                 onColorChange={handleColorChange}
                 levelName={getLevelName(level)}
