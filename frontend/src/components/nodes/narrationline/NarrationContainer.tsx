@@ -67,13 +67,16 @@ function NarrationContainer({
   
   const {
     zoom,
+    setZoom,
     pixelsPerUnit,
     totalWidth,
     fitToView,
-    zoomToSegment,
-    zoomIn,
-    zoomOut
+    zoomToSegment
   } = useNarrationZoom({ totalUnits, viewportWidth: containerWidth })
+  
+  const prevZoomRef = useRef(zoom) // Track previous zoom for centered zooming
+  const zoomCenterUnitsRef = useRef<number | null>(null) // Lock the center point during zoom
+  const isZoomingRef = useRef(false) // Track if we're in an active zoom session
   
   // Fit to view on mount and when items change
   useEffect(() => {
@@ -330,6 +333,64 @@ function NarrationContainer({
     }
   }, [isResizing, handleResizeMove, handleResizeEnd])
   
+  // Centered zoom: adjust scroll position when zoom changes
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    
+    const prevZoom = prevZoomRef.current
+    if (prevZoom === zoom) {
+      // Zoom hasn't changed, we're done zooming
+      isZoomingRef.current = false
+      return
+    }
+    
+    // Mark that we're in an active zoom session
+    if (!isZoomingRef.current) {
+      isZoomingRef.current = true
+    }
+    
+    // Calculate the viewport center point geometry (constant during zoom)
+    const viewportWidth = container.clientWidth
+    const stickyLabelWidth = 64
+    const viewportCenterX = viewportWidth / 2
+    const contentCenterX = viewportCenterX - stickyLabelWidth
+    
+    // If this is the first zoom change in a sequence, capture the center point ONCE
+    if (zoomCenterUnitsRef.current === null) {
+      const currentScrollLeft = container.scrollLeft
+      const centerContentPosition = currentScrollLeft + contentCenterX
+      zoomCenterUnitsRef.current = centerContentPosition / (50 * prevZoom)
+      console.log('Locked center at unit:', zoomCenterUnitsRef.current)
+    }
+    
+    // Use the locked center point throughout the entire zoom session
+    const centerUnits = zoomCenterUnitsRef.current
+    
+    // Calculate where this unit should be in pixels at the new zoom
+    const newCenterContentPosition = centerUnits * 50 * zoom
+    const newScrollLeft = newCenterContentPosition - contentCenterX
+    
+    // Apply new scroll position immediately (no animation)
+    container.scrollLeft = Math.max(0, newScrollLeft)
+    
+    // Update prev zoom for next iteration
+    prevZoomRef.current = zoom
+  }, [zoom])
+  
+  // Clear the locked center point when zoom stabilizes (after user stops dragging)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isZoomingRef.current) {
+        console.log('Zoom session ended, clearing lock')
+        isZoomingRef.current = false
+        zoomCenterUnitsRef.current = null
+      }
+    }, 200) // Clear after 200ms of no zoom changes
+    
+    return () => clearTimeout(timer)
+  }, [zoom])
+  
   return (
     <div 
       className={`relative mx-auto bg-white border border-gray-200 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
@@ -350,7 +411,7 @@ function NarrationContainer({
       {/* Left resize handle */}
       <div
         data-nodrag="true"
-        className={`noDrag nodrag absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-l-xl`}
+        className={`noDrag nodrag absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-50 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-l-xl`}
         onMouseDown={(e) => handleResizeStart(e, 'left')}
         onMouseMove={(e) => e.stopPropagation()}
         onMouseUp={(e) => e.stopPropagation()}
@@ -396,8 +457,7 @@ function NarrationContainer({
           </div>
           <ZoomControls
             zoom={zoom}
-            onZoomIn={zoomIn}
-            onZoomOut={zoomOut}
+            onZoomChange={setZoom}
             onFitToView={() => {
               fitToView()
               setFocusedSegmentId(null) // Clear focus when fitting to view
@@ -506,7 +566,7 @@ function NarrationContainer({
       {/* Right resize handle */}
       <div
         data-nodrag="true"
-        className={`noDrag nodrag absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-r-xl`}
+        className={`noDrag nodrag absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-50 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-r-xl`}
         onMouseDown={(e) => handleResizeStart(e, 'right')}
         onMouseMove={(e) => e.stopPropagation()}
         onMouseUp={(e) => e.stopPropagation()}

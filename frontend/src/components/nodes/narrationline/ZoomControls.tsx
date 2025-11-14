@@ -1,57 +1,53 @@
 'use client'
 
 import { memo } from 'react'
-import { Button } from '@/components/ui'
-import { MagnifyingGlassIcon, ZoomInIcon, ZoomOutIcon } from '@radix-ui/react-icons'
+import { Button, Slider } from '@/components/ui'
+import { MagnifyingGlassIcon, ZoomOutIcon, ZoomInIcon } from '@radix-ui/react-icons'
 
 export interface ZoomControlsProps {
   zoom: number
-  onZoomIn: () => void
-  onZoomOut: () => void
+  onZoomChange: (zoom: number) => void
   onFitToView: () => void
 }
 
 function ZoomControls({ 
   zoom, 
-  onZoomIn, 
-  onZoomOut, 
+  onZoomChange,
   onFitToView
 }: ZoomControlsProps) {
-  const zoomPercent = Math.round(zoom * 100)
+  // Convert zoom to logarithmic slider value (0.001 to 10 -> -3 to 1)
+  const zoomToSlider = (z: number) => Math.log10(z)
+  // Convert slider value back to zoom
+  const sliderToZoom = (s: number) => Math.pow(10, s)
+  
+  const handleSliderChange = (value: number[]) => {
+    const newZoom = sliderToZoom(value[0])
+    onZoomChange(newZoom)
+  }
   
   return (
     <div className="flex items-center gap-2">
-      {/* Zoom out */}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onZoomOut}
-        className="h-7 w-7 p-0"
-        title="Zoom out"
-        aria-label="Zoom out"
-      >
-        <ZoomOutIcon className="w-4 h-4" />
-      </Button>
+      {/* Zoom out icon */}
+      <ZoomOutIcon className="w-4 h-4 text-gray-500" />
       
-      {/* Zoom percentage */}
-      <div className="text-xs font-mono text-gray-700 min-w-[3rem] text-center font-medium">
-        {zoomPercent}%
+      {/* Zoom slider */}
+      <div className="w-32">
+        <Slider
+          value={[zoomToSlider(zoom)]}
+          onValueChange={handleSliderChange}
+          min={-3}  // 10^-3 = 0.001 (0.1%)
+          max={1}   // 10^1 = 10 (1000%)
+          step={0.01}
+          className="cursor-pointer"
+          aria-label="Zoom level"
+        />
       </div>
       
-      {/* Zoom in */}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onZoomIn}
-        className="h-7 w-7 p-0"
-        title="Zoom in"
-        aria-label="Zoom in"
-      >
-        <ZoomInIcon className="w-4 h-4" />
-      </Button>
+      {/* Zoom in icon */}
+      <ZoomInIcon className="w-4 h-4 text-gray-500" />
       
       {/* Divider */}
-      <div className="w-px h-5 bg-gray-200" />
+      <div className="w-px h-5 bg-gray-200 ml-1" />
       
       {/* Fit to view */}
       <Button
