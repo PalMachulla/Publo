@@ -308,11 +308,18 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
           defaultOpen={false}
           icon={<ChatBubbleIcon className="w-4 h-4 text-gray-600" />}
         >
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+            <p className="text-xs text-blue-900 leading-relaxed">
+              Control how the orchestrator interacts with this agent during the writing process
+            </p>
+          </div>
+
           {/* Consultation Triggers */}
           <div>
-            <Label className="mb-3">When should this agent be consulted?</Label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
+            <Label className="mb-3">Orchestrator Triggers</Label>
+            <p className="text-xs text-gray-500 mb-3">When should the orchestrator consult this agent?</p>
+            <div className="space-y-3 pl-1">
+              <label className="flex items-start gap-3 cursor-pointer group">
                 <Checkbox
                   checked={consultationTriggers.onSegmentStart}
                   onCheckedChange={(checked) => {
@@ -322,10 +329,14 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
                     })
                     handleSave()
                   }}
+                  className="mt-0.5"
                 />
-                <span className="text-sm text-gray-700">At segment start</span>
+                <div className="flex-1">
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Before writing each segment</span>
+                  <p className="text-xs text-gray-500 mt-0.5">Get guidance before starting new content</p>
+                </div>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-start gap-3 cursor-pointer group">
                 <Checkbox
                   checked={consultationTriggers.onDemand}
                   onCheckedChange={(checked) => {
@@ -335,10 +346,14 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
                     })
                     handleSave()
                   }}
+                  className="mt-0.5"
                 />
-                <span className="text-sm text-gray-700">On demand (orchestrator requests)</span>
+                <div className="flex-1">
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">When explicitly needed</span>
+                  <p className="text-xs text-gray-500 mt-0.5">Orchestrator requests consultation as needed</p>
+                </div>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-start gap-3 cursor-pointer group">
                 <Checkbox
                   checked={consultationTriggers.onSegmentReview}
                   onCheckedChange={(checked) => {
@@ -348,8 +363,12 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
                     })
                     handleSave()
                   }}
+                  className="mt-0.5"
                 />
-                <span className="text-sm text-gray-700">During segment review</span>
+                <div className="flex-1">
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">After writing each segment</span>
+                  <p className="text-xs text-gray-500 mt-0.5">Review and validate completed content</p>
+                </div>
               </label>
             </div>
           </div>
@@ -357,6 +376,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
           {/* Consultation Depth */}
           <div>
             <Label>Consultation Depth</Label>
+            <p className="text-xs text-gray-500 mb-3">How detailed should responses be?</p>
             <ToggleGroup
               type="single"
               value={consultationDepth}
@@ -366,16 +386,19 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
                   handleSave()
                 }
               }}
-              className="grid grid-cols-3"
+              className="grid grid-cols-3 gap-2"
             >
-              <ToggleGroupItem value="quick">
-                Quick
+              <ToggleGroupItem value="quick" className="flex-col h-auto py-3">
+                <span className="font-medium">Quick</span>
+                <span className="text-xs text-gray-500 mt-1">Brief check</span>
               </ToggleGroupItem>
-              <ToggleGroupItem value="detailed">
-                Detailed
+              <ToggleGroupItem value="detailed" className="flex-col h-auto py-3">
+                <span className="font-medium">Detailed</span>
+                <span className="text-xs text-gray-500 mt-1">Thorough</span>
               </ToggleGroupItem>
-              <ToggleGroupItem value="comprehensive">
-                Comprehensive
+              <ToggleGroupItem value="comprehensive" className="flex-col h-auto py-3">
+                <span className="font-medium">Deep</span>
+                <span className="text-xs text-gray-500 mt-1">Full analysis</span>
               </ToggleGroupItem>
             </ToggleGroup>
           </div>
@@ -383,6 +406,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
           {/* Response Style */}
           <div>
             <Label>Response Style</Label>
+            <p className="text-xs text-gray-500 mb-3">How should this agent communicate?</p>
             <Select
               value={responseStyle}
               onValueChange={(value) => {
@@ -394,10 +418,30 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="directive">Directive (commands/instructions)</SelectItem>
-                <SelectItem value="suggestive">Suggestive (recommendations)</SelectItem>
-                <SelectItem value="analytical">Analytical (pros/cons)</SelectItem>
-                <SelectItem value="reference_based">Reference-based (citations)</SelectItem>
+                <SelectItem value="directive">
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">Directive</span>
+                    <span className="text-xs text-gray-500">Clear commands and instructions</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="suggestive">
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">Suggestive</span>
+                    <span className="text-xs text-gray-500">Gentle recommendations</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="analytical">
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">Analytical</span>
+                    <span className="text-xs text-gray-500">Pros, cons, and options</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="reference_based">
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">Reference-based</span>
+                    <span className="text-xs text-gray-500">Citations and examples</span>
+                  </div>
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -410,8 +454,8 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
             min={0}
             max={100}
             step={1}
-            minLabel="Wait for questions"
-            maxLabel="Actively volunteers"
+            minLabel="Waits for requests"
+            maxLabel="Volunteers insights"
             valueFormatter={(v) => `${v}%`}
           />
         </CollapsibleSection>
