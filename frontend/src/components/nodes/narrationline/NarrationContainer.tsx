@@ -332,10 +332,12 @@ function NarrationContainer({
   
   return (
     <div 
-      className={`relative mx-auto rounded-xl bg-white overflow-hidden border border-gray-200 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+      className={`relative mx-auto bg-white border border-gray-200 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
       style={{ 
         width: containerWidth,
-        boxShadow: 'var(--brand-shadow-md)'
+        boxShadow: 'var(--brand-shadow-md)',
+        overflow: 'visible',
+        borderRadius: '0.75rem' // rounded-xl equivalent
       }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => {
@@ -361,9 +363,9 @@ function NarrationContainer({
       </div>
       
       {/* Main content container */}
-      <div className="w-full">
+      <div className="w-full" style={{ overflow: 'visible' }}>
         {/* Header with controls */}
-        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-xl">
           <div className="flex items-center gap-3">
             <h3 className="text-sm font-semibold text-gray-900">
               Narration Line
@@ -425,7 +427,7 @@ function NarrationContainer({
             }
           }}
         >
-          <div className="narration-content-area" style={{ width: Math.max(totalWidth, containerWidth - 64) }}>
+          <div className="narration-content-area" style={{ width: Math.max(totalWidth, containerWidth - 64), overflow: 'visible' }}>
             {/* Structure tracks */}
             {levels.map((level) => (
               <StructureTrackLane
@@ -488,7 +490,7 @@ function NarrationContainer({
         </div>
         
         {/* Footer with controls */}
-        <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-200">
+        <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-200 rounded-b-xl">
           <div className="text-xs text-gray-500">
             {/* Placeholder for future buttons/controls */}
           </div>
