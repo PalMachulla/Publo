@@ -476,8 +476,7 @@ function NarrationContainer({
           ref={containerRef}
           className="relative overflow-x-auto overflow-y-auto bg-white narration-scrollbar"
           style={{ 
-            maxHeight: '300px',
-            paddingRight: '12px' // Space for resize handle
+            maxHeight: '300px'
           }}
           onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
           onClick={(e) => {
@@ -488,7 +487,10 @@ function NarrationContainer({
             }
           }}
         >
-          <div className="narration-content-area" style={{ width: Math.max(totalWidth, containerWidth - 64), overflow: 'visible' }}>
+          <div className="narration-content-area" style={{ 
+            width: totalWidth + 16, // Add extra space for proper scrolling (8px left padding + 8px buffer)
+            overflow: 'visible' 
+          }}>
             {/* Structure tracks */}
             {levels.map((level) => (
               <StructureTrackLane

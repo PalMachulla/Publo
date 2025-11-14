@@ -31,12 +31,11 @@ export function useNarrationZoom({
   // Fit entire narration to viewport
   const fitToView = useCallback(() => {
     if (totalUnits === 0) return
-    // Available width = viewport - sticky label (64px) - right padding (12px) - left padding (8px) - scrollbar buffer (8px)
+    // Available width = viewport - sticky label (64px) - left padding (8px) - buffer (16px for proper display)
     const stickyLabelWidth = 64
-    const rightPadding = 12 // Space for resize handle
     const leftPadding = 8   // Left padding from pl-2
-    const scrollbarBuffer = 8 // Buffer for scrollbar
-    const availableWidth = viewportWidth - stickyLabelWidth - rightPadding - leftPadding - scrollbarBuffer
+    const buffer = 16       // Right buffer for clean edge
+    const availableWidth = viewportWidth - stickyLabelWidth - leftPadding - buffer
     const basePixelsPerUnit = 50 // Base width per unit
     // Calculate zoom to make bars stretch exactly end-to-end
     const newZoom = availableWidth / (totalUnits * basePixelsPerUnit)
