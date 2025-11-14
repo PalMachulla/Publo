@@ -3,7 +3,6 @@
 import { memo } from 'react'
 import { StoryStructureItem, AgentOption } from '@/types/nodes'
 import NarrationSegment from './NarrationSegment'
-import AgentAssignmentRow from './AgentAssignmentRow'
 
 export interface StructureTrackLaneProps {
   level: number // Support any level depth
@@ -17,7 +16,6 @@ export interface StructureTrackLaneProps {
   onEditItem?: (item: StoryStructureItem, e: React.MouseEvent) => void
   onColorChange?: (itemId: string, color: string | null) => void
   levelName?: string // e.g., "Acts", "Chapters", "Scenes"
-  showAgentRows?: boolean
   availableAgents?: AgentOption[]
   onAgentAssign?: (itemId: string, agentId: string | null) => void
 }
@@ -34,7 +32,6 @@ function StructureTrackLane({
   onEditItem,
   onColorChange,
   levelName,
-  showAgentRows = false,
   availableAgents = [],
   onAgentAssign
 }: StructureTrackLaneProps) {
@@ -181,42 +178,13 @@ function StructureTrackLane({
                 onDoubleClick={onItemDoubleClick ? () => onItemDoubleClick(item) : undefined}
                 onEdit={onEditItem ? (e) => onEditItem(item, e) : undefined}
                 onColorChange={onColorChange ? (color) => onColorChange(item.id, color) : undefined}
+                availableAgents={availableAgents}
+                onAgentAssign={onAgentAssign ? (agentId) => onAgentAssign(item.id, agentId) : undefined}
               />
             )
           })}
         </div>
       </div>
-      
-      {/* Agent assignment row (if enabled) */}
-      {showAgentRows && (
-        <div 
-          className="relative w-full bg-gray-50/50 border-b border-gray-100 flex"
-          style={{ height: 32 }}
-        >
-          {/* Agent row label - sticky/fixed */}
-          <div className="sticky left-0 w-16 h-full bg-gray-50 border-r border-gray-200 flex items-center justify-center z-40 flex-shrink-0">
-            <span className="text-[8px] text-gray-600 font-semibold uppercase tracking-wider">Agent</span>
-          </div>
-          
-          {/* Agent dropdowns - scrollable area */}
-          <div className="relative flex-1 h-full overflow-visible">
-            {levelItems.map((item, index) => {
-              const { startPosition, width } = getSegmentMetrics(item, index)
-              return (
-                <AgentAssignmentRow
-                  key={`agent-${item.id}`}
-                  item={item}
-                  level={level}
-                  startPosition={startPosition}
-                  width={width}
-                  availableAgents={availableAgents}
-                  onAgentAssign={onAgentAssign || (() => {})}
-                />
-              )
-            })}
-          </div>
-        </div>
-      )}
     </>
   )
 }

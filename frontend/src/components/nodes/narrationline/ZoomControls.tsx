@@ -2,24 +2,20 @@
 
 import { memo } from 'react'
 import { Button } from '@/components/ui'
-import { MagnifyingGlassIcon, ZoomInIcon, ZoomOutIcon, PersonIcon } from '@radix-ui/react-icons'
+import { MagnifyingGlassIcon, ZoomInIcon, ZoomOutIcon } from '@radix-ui/react-icons'
 
 export interface ZoomControlsProps {
   zoom: number
   onZoomIn: () => void
   onZoomOut: () => void
   onFitToView: () => void
-  showAgentRows?: boolean
-  onToggleAgentRows?: () => void
 }
 
 function ZoomControls({ 
   zoom, 
   onZoomIn, 
   onZoomOut, 
-  onFitToView,
-  showAgentRows = false,
-  onToggleAgentRows
+  onFitToView
 }: ZoomControlsProps) {
   const zoomPercent = Math.round(zoom * 100)
   
@@ -68,25 +64,6 @@ function ZoomControls({
         <MagnifyingGlassIcon className="w-3.5 h-3.5 mr-1" />
         Fit
       </Button>
-      
-      {/* Agent rows toggle */}
-      {onToggleAgentRows && (
-        <>
-          {/* Divider */}
-          <div className="w-px h-5 bg-gray-200" />
-          
-          <Button
-            variant={showAgentRows ? "default" : "ghost"}
-            size="sm"
-            onClick={onToggleAgentRows}
-            className="h-7 px-2 text-xs"
-            title={showAgentRows ? 'Hide agent assignments' : 'Show agent assignments'}
-          >
-            <PersonIcon className="w-3.5 h-3.5 mr-1" />
-            {showAgentRows ? 'Hide' : 'Show'} Agents
-          </Button>
-        </>
-      )}
     </div>
   )
 }

@@ -21,8 +21,6 @@ export interface NarrationContainerProps {
   format?: string // Story format to determine hierarchy level names
   availableAgents?: AgentOption[]
   onAgentAssign?: (itemId: string, agentId: string | null) => void
-  showAgentRows?: boolean
-  onToggleAgentRows?: () => void
 }
 
 function NarrationContainer({
@@ -36,9 +34,7 @@ function NarrationContainer({
   onWidthChange,
   format,
   availableAgents = [],
-  onAgentAssign,
-  showAgentRows = false,
-  onToggleAgentRows
+  onAgentAssign
 }: NarrationContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(initialWidth)
@@ -404,8 +400,6 @@ function NarrationContainer({
               fitToView()
               setFocusedSegmentId(null) // Clear focus when fitting to view
             }}
-            showAgentRows={showAgentRows}
-            onToggleAgentRows={onToggleAgentRows}
           />
         </div>
         
@@ -447,7 +441,6 @@ function NarrationContainer({
                 onEditItem={handleEditSegment}
                 onColorChange={handleColorChange}
                 levelName={getLevelName(level)}
-                showAgentRows={showAgentRows}
                 availableAgents={availableAgents}
                 onAgentAssign={onAgentAssign}
               />

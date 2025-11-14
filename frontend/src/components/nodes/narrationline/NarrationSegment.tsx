@@ -1,7 +1,8 @@
 'use client'
 
 import { memo, useState } from 'react'
-import { StoryStructureItem } from '@/types/nodes'
+import { StoryStructureItem, AgentOption } from '@/types/nodes'
+import AgentSelector from './AgentSelector'
 
 // Pastel color palette - soft, muted colors
 export const PASTEL_COLORS = [
@@ -28,6 +29,8 @@ export interface NarrationSegmentProps {
   onDoubleClick?: () => void // Handler for double click (zoom)
   onEdit?: (e: React.MouseEvent) => void // Handler for edit icon click
   onColorChange?: (color: string | null) => void // Handler for color picker
+  availableAgents?: AgentOption[] // Available agents for assignment
+  onAgentAssign?: (agentId: string | null) => void // Handler for agent assignment
 }
 
 function NarrationSegment({
@@ -42,7 +45,9 @@ function NarrationSegment({
   onClick,
   onDoubleClick,
   onEdit,
-  onColorChange
+  onColorChange,
+  availableAgents = [],
+  onAgentAssign
 }: NarrationSegmentProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
   
@@ -158,6 +163,15 @@ function NarrationSegment({
           {/* Action buttons - only show when focused AND segment is wide enough */}
           {isFocused && width >= minWidthForEditIcon && (
             <div className="flex items-center gap-1 flex-shrink-0 relative">
+              {/* Agent selector */}
+              {onAgentAssign && (
+                <AgentSelector
+                  selectedAgentId={item.assignedAgentId}
+                  availableAgents={availableAgents}
+                  onAgentSelect={onAgentAssign}
+                />
+              )}
+              
               {/* Color picker button */}
               {onColorChange && (
                 <div className="relative">
