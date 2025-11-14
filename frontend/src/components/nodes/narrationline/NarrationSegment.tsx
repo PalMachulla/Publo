@@ -1,6 +1,7 @@
 'use client'
 
 import React, { memo, useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { StoryStructureItem, AgentOption } from '@/types/nodes'
 import AgentSelector from './AgentSelector'
 
@@ -53,23 +54,39 @@ function NarrationSegment({
   const [showAgentSelector, setShowAgentSelector] = useState(false)
   const colorButtonRef = useRef<HTMLButtonElement>(null)
   const [colorPickerPosition, setColorPickerPosition] = useState({ top: 0, left: 0 })
+  const [mounted, setMounted] = useState(false)
+
+  // Track when component is mounted for portal
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Calculate color picker position when opened
   useEffect(() => {
     if (showColorPicker && colorButtonRef.current) {
-      const rect = colorButtonRef.current.getBoundingClientRect()
-      const dropdownWidth = 128 // w-32 = 128px
+      const updatePosition = () => {
+        if (!colorButtonRef.current) return
+        
+        const rect = colorButtonRef.current.getBoundingClientRect()
+        const dropdownWidth = 128 // w-32 = 128px
+        
+        // Calculate position relative to viewport
+        setColorPickerPosition({
+          top: rect.bottom + 4,
+          left: Math.max(8, Math.min(rect.left, window.innerWidth - dropdownWidth - 8))
+        })
+      }
       
-      // Check if there's enough space on the right
-      const spaceOnRight = window.innerWidth - rect.right
+      updatePosition()
       
-      setColorPickerPosition({
-        top: rect.bottom + 4,
-        // If enough space on right, align to left of button; otherwise align right edge
-        left: spaceOnRight >= dropdownWidth 
-          ? rect.left 
-          : rect.right - dropdownWidth
-      })
+      // Update position on scroll
+      window.addEventListener('scroll', updatePosition, true)
+      window.addEventListener('resize', updatePosition)
+      
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true)
+        window.removeEventListener('resize', updatePosition)
+      }
     }
   }, [showColorPicker])
   
@@ -228,8 +245,8 @@ function NarrationSegment({
                     </svg>
                   </button>
                   
-                  {/* Color picker dropdown - using fixed positioning to avoid clipping */}
-                  {showColorPicker && (
+                  {/* Color picker dropdown - using portal to render at body level */}
+                  {showColorPicker && mounted && createPortal(
                     <div 
                       className="fixed bg-white border border-gray-200 rounded-lg shadow-xl p-3 w-32"
                       style={{ 
@@ -279,7 +296,8 @@ function NarrationSegment({
                           Clear color
                         </button>
                       )}
-                    </div>
+                    </div>,
+                    document.body
                   )}
                 </div>
               )}

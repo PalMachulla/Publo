@@ -1,6 +1,7 @@
 'use client'
 
 import React, { memo, useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { AgentOption } from '@/types/nodes'
 import { PersonIcon, Cross2Icon } from '@radix-ui/react-icons'
 
@@ -61,23 +62,39 @@ function AgentSelector({
   
   const buttonRef = useRef<HTMLButtonElement>(null)
   const [dropdownPosition, setDropdownPosition] = React.useState({ top: 0, left: 0 })
+  const [mounted, setMounted] = React.useState(false)
+
+  // Track when component is mounted for portal
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Calculate dropdown position when opened
   React.useEffect(() => {
     if (isOpen && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect()
-      const dropdownWidth = 220
+      const updatePosition = () => {
+        if (!buttonRef.current) return
+        
+        const rect = buttonRef.current.getBoundingClientRect()
+        const dropdownWidth = 220
+        
+        // Calculate position relative to viewport
+        setDropdownPosition({
+          top: rect.bottom + 4,
+          left: Math.max(8, Math.min(rect.left, window.innerWidth - dropdownWidth - 8))
+        })
+      }
       
-      // Check if there's enough space on the right
-      const spaceOnRight = window.innerWidth - rect.right
+      updatePosition()
       
-      setDropdownPosition({
-        top: rect.bottom + 4,
-        // If enough space on right, align to left of button; otherwise align right edge
-        left: spaceOnRight >= dropdownWidth 
-          ? rect.left 
-          : rect.right - dropdownWidth
-      })
+      // Update position on scroll
+      window.addEventListener('scroll', updatePosition, true)
+      window.addEventListener('resize', updatePosition)
+      
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true)
+        window.removeEventListener('resize', updatePosition)
+      }
     }
   }, [isOpen])
 
@@ -104,8 +121,8 @@ function AgentSelector({
         <PersonIcon className={`w-4 h-4 ${selectedAgent ? 'text-yellow-600' : 'text-gray-700'}`} />
       </button>
       
-      {/* Dropdown - using fixed positioning to avoid clipping */}
-      {isOpen && (
+      {/* Dropdown - using portal to render at body level */}
+      {isOpen && mounted && createPortal(
         <div 
           className="fixed bg-white border border-gray-200 rounded-lg shadow-xl min-w-[220px] max-h-64 overflow-y-auto"
           style={{ 
@@ -199,7 +216,8 @@ function AgentSelector({
               No agents available
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
