@@ -188,11 +188,11 @@ function NarrationSegment({
                   {/* Color picker dropdown */}
                   {showColorPicker && (
                     <div 
-                      className="absolute top-full right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl p-2"
+                      className="absolute top-full right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl p-3 w-32"
                       style={{ zIndex: 9999 }}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="grid grid-cols-4 gap-1.5 mb-2">
+                      <div className="grid grid-cols-4 gap-2 mb-2">
                         {PASTEL_COLORS.map((color) => (
                           <button
                             key={color.hex}
