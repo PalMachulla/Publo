@@ -7,7 +7,7 @@ import { getDocumentHierarchy } from '@/lib/documentHierarchy'
 import StructureTrackLane from './StructureTrackLane'
 import NarrationRuler from './NarrationRuler'
 import ZoomControls from './ZoomControls'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Label, ScrollArea, ScrollBar } from '@/components/ui'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Label } from '@/components/ui'
 
 export interface NarrationContainerProps {
   items: StoryStructureItem[]
@@ -472,29 +472,22 @@ function NarrationContainer({
         />
         
         {/* Scrollable viewport - horizontal scroll when content is wider than container */}
-        <div className="relative">
-          <ScrollArea 
-            className="bg-white" 
-            style={{ maxHeight: '300px' }}
-          >
-            <div
-              ref={containerRef}
-              className="w-full"
-              style={{ paddingRight: '12px' }} // Space for resize handle
-              onScroll={(e) => {
-                const target = e.target as HTMLElement
-                if (target.classList.contains('narration-content-area') || target === e.currentTarget) {
-                  setScrollLeft(e.currentTarget.scrollLeft)
-                }
-              }}
-              onClick={(e) => {
-                // Clear focus if clicking on background (not on a segment)
-                const target = e.target as HTMLElement
-                if (target === e.currentTarget || target.classList.contains('narration-content-area')) {
-                  setFocusedSegmentId(null)
-                }
-              }}
-            >
+        <div
+          ref={containerRef}
+          className="relative overflow-x-auto overflow-y-auto bg-white narration-scrollbar"
+          style={{ 
+            maxHeight: '300px',
+            paddingRight: '12px' // Space for resize handle
+          }}
+          onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
+          onClick={(e) => {
+            // Clear focus if clicking on background (not on a segment)
+            const target = e.target as HTMLElement
+            if (target === e.currentTarget || target.classList.contains('narration-content-area')) {
+              setFocusedSegmentId(null)
+            }
+          }}
+        >
           <div className="narration-content-area" style={{ width: Math.max(totalWidth, containerWidth - 64), overflow: 'visible' }}>
             {/* Structure tracks */}
             {levels.map((level) => (
@@ -555,9 +548,6 @@ function NarrationContainer({
               </div>
             </div>
           </div>
-            </div>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
         </div>
         
         {/* Footer with controls */}

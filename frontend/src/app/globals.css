@@ -80,3 +80,30 @@ body {
 *::-webkit-scrollbar-thumb:active {
   background: rgba(156, 163, 175, 0.7);
 }
+
+/* Slider-style scrollbar for narration container */
+.narration-scrollbar::-webkit-scrollbar {
+  height: 24px;
+  background: #f3f4f6; /* gray-100 */
+}
+
+.narration-scrollbar::-webkit-scrollbar-track {
+  background: #f3f4f6; /* gray-100 */
+  border-radius: 0;
+}
+
+.narration-scrollbar::-webkit-scrollbar-thumb {
+  background: #fbbf24; /* yellow-400 */
+  border-radius: 9999px; /* rounded-full */
+  min-width: 60px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  border: 4px solid #f3f4f6; /* Creates padding effect */
+}
+
+.narration-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #f59e0b; /* yellow-500 */
+}
+
+.narration-scrollbar::-webkit-scrollbar-thumb:active {
+  background: #d97706; /* yellow-600 */
+}
