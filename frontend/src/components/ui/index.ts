@@ -13,6 +13,8 @@ export type { LabelProps } from './atoms/Label'
 
 export { Checkbox } from './atoms/Checkbox'
 
+export { Switch } from './atoms/Switch'
+
 export { Slider } from './atoms/Slider'
 export type { SliderProps } from './atoms/Slider'
 

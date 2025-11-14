@@ -14,10 +14,10 @@ const CollapsibleSection = React.forwardRef<HTMLDivElement, CollapsibleSectionPr
     const [isOpen, setIsOpen] = React.useState(defaultOpen)
 
     return (
-      <div ref={ref} className={cn('border border-gray-200 rounded-lg overflow-hidden', className)}>
+      <div ref={ref} className={cn('border border-gray-100 rounded-xl overflow-hidden shadow-sm bg-white', className)}>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-2"
+          className="w-full px-5 py-4 bg-gray-50/50 hover:bg-gray-100/50 transition-all flex items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-inset"
         >
           <div className="flex items-center gap-2">
             {icon}
@@ -35,7 +35,7 @@ const CollapsibleSection = React.forwardRef<HTMLDivElement, CollapsibleSectionPr
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </button>
-        {isOpen && <div className="p-4 space-y-4 bg-white">{children}</div>}
+        {isOpen && <div className="p-5 space-y-5 bg-white">{children}</div>}
       </div>
     )
   }

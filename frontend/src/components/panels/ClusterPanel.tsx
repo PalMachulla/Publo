@@ -15,6 +15,7 @@ import {
   Slider, 
   Label,
   Button,
+  Switch,
   ToggleGroup,
   ToggleGroupItem,
   CollapsibleSection 
@@ -193,7 +194,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [] }: C
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto p-6 space-y-5">
         
         {/* === SECTION 1: Identity & Status === */}
         <CollapsibleSection 
@@ -279,26 +280,20 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [] }: C
           </div>
 
           {/* Status Toggle */}
-          <div>
-            <Label>Agent Status</Label>
-            <ToggleGroup
-              type="single"
-              value={isActive ? 'available' : 'unavailable'}
-              onValueChange={(value) => {
-                if (value) {
-                  const newIsActive = value === 'available'
-                  setIsActive(newIsActive)
-                  onUpdate(node.id, { ...node.data, isActive: newIsActive })
-                }
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <Label>Agent Status</Label>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {isActive ? 'Available for consultation' : 'Currently unavailable'}
+              </p>
+            </div>
+            <Switch
+              checked={isActive}
+              onCheckedChange={(checked) => {
+                setIsActive(checked)
+                onUpdate(node.id, { ...node.data, isActive: checked })
               }}
-            >
-              <ToggleGroupItem value="available" className="data-[state=on]:bg-green-500 data-[state=on]:text-white">
-                Available
-              </ToggleGroupItem>
-              <ToggleGroupItem value="unavailable" className="data-[state=on]:bg-gray-500 data-[state=on]:text-white">
-                Unavailable
-              </ToggleGroupItem>
-            </ToggleGroup>
+            />
           </div>
         </CollapsibleSection>
 
