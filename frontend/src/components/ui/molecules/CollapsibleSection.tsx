@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { ChevronDownIcon } from '@radix-ui/react-icons'
 import { cn } from '@/lib/utils'
 
 export interface CollapsibleSectionProps {
@@ -14,28 +15,31 @@ const CollapsibleSection = React.forwardRef<HTMLDivElement, CollapsibleSectionPr
     const [isOpen, setIsOpen] = React.useState(defaultOpen)
 
     return (
-      <div ref={ref} className={cn('border border-gray-100 rounded-xl overflow-hidden shadow-sm bg-white', className)}>
+      <div ref={ref} className={cn('border-b border-gray-100 last:border-b-0', className)}>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full px-5 py-4 bg-gray-50/50 hover:bg-gray-100/50 transition-all flex items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-inset"
+          className="w-full px-0 py-4 hover:bg-gray-50/50 transition-all flex items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-inset rounded-lg group"
         >
-          <div className="flex items-center gap-2">
-            {icon}
-            <span className="font-medium text-gray-900">{title}</span>
+          <div className="flex items-center gap-3">
+            {icon && (
+              <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors">
+                {icon}
+              </div>
+            )}
+            <span className="font-semibold text-gray-900 text-base">{title}</span>
           </div>
-          <svg
+          <ChevronDownIcon
             className={cn(
-              'w-5 h-5 text-gray-500 transition-transform',
+              'w-5 h-5 text-gray-400 transition-transform',
               isOpen && 'rotate-180'
             )}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+          />
         </button>
-        {isOpen && <div className="p-5 space-y-5 bg-white">{children}</div>}
+        {isOpen && (
+          <div className="pb-6 space-y-5">
+            {children}
+          </div>
+        )}
       </div>
     )
   }

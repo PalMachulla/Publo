@@ -4,6 +4,13 @@ import { useState, useEffect, useMemo } from 'react'
 import { Node, Edge } from 'reactflow'
 import { ClusterNodeData, AgentSpecialization, ConsultationDepth, ResponseStyle, ResponseLengthLimit } from '@/types/nodes'
 import { 
+  PersonIcon, 
+  ChatBubbleIcon, 
+  BookmarkIcon, 
+  MixIcon, 
+  GearIcon 
+} from '@radix-ui/react-icons'
+import { 
   Input, 
   Textarea, 
   Select, 
@@ -194,13 +201,13 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [] }: C
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
+      <div className="flex-1 overflow-y-auto px-6 py-4">
         
         {/* === SECTION 1: Identity & Status === */}
         <CollapsibleSection 
           title="Identity & Status" 
           defaultOpen={true}
-          icon={<span className="text-lg">🎯</span>}
+          icon={<PersonIcon className="w-4 h-4 text-gray-600" />}
         >
           {/* Agent Name */}
           <div>
@@ -301,7 +308,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [] }: C
         <CollapsibleSection 
           title="Consultation Behavior" 
           defaultOpen={false}
-          icon={<span className="text-lg">💬</span>}
+          icon={<ChatBubbleIcon className="w-4 h-4 text-gray-600" />}
         >
           {/* Consultation Triggers */}
           <div>
@@ -415,7 +422,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [] }: C
         <CollapsibleSection 
           title="Knowledge & Resources" 
           defaultOpen={false}
-          icon={<span className="text-lg">📚</span>}
+          icon={<BookmarkIcon className="w-4 h-4 text-gray-600" />}
         >
           {/* Context Awareness */}
           <Slider
@@ -482,7 +489,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [] }: C
         <CollapsibleSection 
           title="Interaction Model" 
           defaultOpen={false}
-          icon={<span className="text-lg">⚙️</span>}
+          icon={<MixIcon className="w-4 h-4 text-gray-600" />}
         >
           {/* Example Queries */}
           <div>
@@ -573,7 +580,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [] }: C
         <CollapsibleSection 
           title="Advanced Settings" 
           defaultOpen={false}
-          icon={<span className="text-lg">🔧</span>}
+          icon={<GearIcon className="w-4 h-4 text-gray-600" />}
         >
           {/* Model Selection */}
           <div>
