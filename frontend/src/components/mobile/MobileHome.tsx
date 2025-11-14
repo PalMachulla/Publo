@@ -46,9 +46,15 @@ const MobileHome = () => {
   ]
   
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col relative">
+      {/* Subtle grid background */}
+      <div className="absolute inset-0 opacity-30" style={{
+        backgroundImage: 'linear-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 0, 0, 0.08) 1px, transparent 1px)',
+        backgroundSize: '24px 24px'
+      }}></div>
+
       {/* Header with Publo Logo */}
-      <header className="px-6 py-8 border-b border-gray-100">
+      <header className="px-6 py-8 border-b border-gray-100 bg-white/80 backdrop-blur-sm relative z-10">
         <div className="flex items-center justify-center">
           <img 
             src="/publo_logo.svg" 
@@ -59,7 +65,7 @@ const MobileHome = () => {
       </header>
 
       {/* Main Content - 4 Cards */}
-      <main className="flex-1 px-4 py-8">
+      <main className="flex-1 px-4 py-8 relative z-10">
         <div className="grid grid-cols-2 gap-4 max-w-2xl mx-auto">
           {sections.map((section) => {
             const Icon = section.icon
@@ -71,10 +77,11 @@ const MobileHome = () => {
                   aspect-square rounded-2xl 
                   bg-gradient-to-br ${section.color}
                   flex flex-col items-center justify-center
-                  shadow-sm hover:shadow-md transition-all duration-200
+                  shadow-md hover:shadow-lg transition-all duration-200
                   active:scale-95
-                  border border-gray-100
+                  border border-gray-200
                   p-6 gap-3
+                  backdrop-blur-sm
                 `}
               >
                 <Icon className={`w-12 h-12 ${section.iconColor}`} strokeWidth={1.5} />
@@ -91,7 +98,7 @@ const MobileHome = () => {
       </main>
 
       {/* Footer - Intelligence Engineered by aiakaki */}
-      <footer className="px-6 py-4 border-t border-gray-100">
+      <footer className="px-6 py-4 border-t border-gray-100 bg-white/80 backdrop-blur-sm relative z-10">
         <div className="flex flex-col items-center justify-center gap-2">
           <span className="text-xs text-gray-500">Intelligence Engineered by</span>
           <img 
