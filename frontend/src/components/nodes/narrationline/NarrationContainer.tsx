@@ -488,7 +488,8 @@ function NarrationContainer({
           }}
         >
           <div className="narration-content-area" style={{ 
-            width: totalWidth + 32, // Add extra space for proper scrolling (8px left padding + 24px buffer)
+            width: `${totalWidth + 40}px`, // totalWidth + left padding (8px) + right buffer (32px)
+            minWidth: `${totalWidth + 40}px`, // Ensure minimum width
             overflow: 'visible' 
           }}>
             {/* Structure tracks */}
@@ -521,7 +522,7 @@ function NarrationContainer({
             {/* Placeholder rows - Carrier */}
             <div 
               className="relative bg-gray-50/50 border-b border-gray-100 flex"
-              style={{ height: 32, minWidth: '100%' }}
+              style={{ height: 32, width: '100%', minWidth: '100%' }}
             >
               {/* Label - sticky/fixed */}
               <div className="sticky left-0 w-16 h-full bg-gray-50 border-r border-gray-200 flex items-center justify-center z-40 flex-shrink-0">
@@ -537,7 +538,7 @@ function NarrationContainer({
             {/* Placeholder rows - Sentiment */}
             <div 
               className="relative bg-gray-50/50 border-b border-gray-100 flex"
-              style={{ height: 32, minWidth: '100%' }}
+              style={{ height: 32, width: '100%', minWidth: '100%' }}
             >
               {/* Label - sticky/fixed */}
               <div className="sticky left-0 w-16 h-full bg-gray-50 border-r border-gray-200 flex items-center justify-center z-40 flex-shrink-0">

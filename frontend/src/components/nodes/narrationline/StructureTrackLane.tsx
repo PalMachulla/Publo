@@ -146,7 +146,8 @@ function StructureTrackLane({
         className="relative bg-white border-b border-gray-100 flex"
         style={{ 
           height: trackHeight,
-          minWidth: '100%' // Ensure it at least fills container
+          width: '100%',
+          minWidth: '100%'
         }}
       >
         {/* Track label - sticky/fixed */}
