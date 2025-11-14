@@ -361,7 +361,6 @@ function NarrationContainer({
       const currentScrollLeft = container.scrollLeft
       const centerContentPosition = currentScrollLeft + contentCenterX
       zoomCenterUnitsRef.current = centerContentPosition / (50 * prevZoom)
-      console.log('Locked center at unit:', zoomCenterUnitsRef.current)
     }
     
     // Use the locked center point throughout the entire zoom session
@@ -382,7 +381,6 @@ function NarrationContainer({
   useEffect(() => {
     const timer = setTimeout(() => {
       if (isZoomingRef.current) {
-        console.log('Zoom session ended, clearing lock')
         isZoomingRef.current = false
         zoomCenterUnitsRef.current = null
       }
