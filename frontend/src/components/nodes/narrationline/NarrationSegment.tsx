@@ -48,8 +48,6 @@ function NarrationSegment({
   // If item has backgroundColor, use it; otherwise it inherits from parent
   // The color gets lighter/more transparent at deeper levels
   const getBackgroundColor = () => {
-    if (isFocused) return '#fef3c7' // yellow-100 for focused state
-    
     // If item has a custom background color
     if (item.backgroundColor) {
       return item.backgroundColor
@@ -119,7 +117,7 @@ function NarrationSegment({
         border-l border-r border-b border-gray-300
         ${isFocused ? 'text-gray-800' : 'text-gray-700'}
         ${isActive ? 'ring-2 ring-yellow-400 z-10' : ''}
-        ${isFocused ? 'shadow-2xl z-40' : ''}
+        ${isFocused ? 'shadow-md z-40' : ''}
         cursor-pointer
         transition-all duration-200
         rounded-br-lg
@@ -166,7 +164,7 @@ function NarrationSegment({
                       e.stopPropagation()
                       setShowColorPicker(!showColorPicker)
                     }}
-                    className="p-1 rounded hover:bg-yellow-200 transition-colors"
+                    className="p-1 rounded hover:bg-gray-200 transition-colors"
                     title="Set color"
                     aria-label="Set color"
                   >
@@ -244,7 +242,7 @@ function NarrationSegment({
                     e.stopPropagation()
                     onEdit(e)
                   }}
-                  className="p-1 rounded hover:bg-yellow-200 transition-colors"
+                  className="p-1 rounded hover:bg-gray-200 transition-colors"
                   title="Edit content"
                   aria-label="Edit content"
                 >
