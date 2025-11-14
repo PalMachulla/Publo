@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Node } from 'reactflow'
+import { Node, Edge } from 'reactflow'
 import { ClusterNodeData, AgentSpecialization, ConsultationDepth, ResponseStyle, ResponseLengthLimit } from '@/types/nodes'
 import CollapsibleSection from './cluster-panel/CollapsibleSection'
 import Slider from './cluster-panel/Slider'
@@ -10,9 +10,10 @@ interface ClusterPanelProps {
   node: Node<ClusterNodeData>
   onUpdate: (nodeId: string, updates: Partial<ClusterNodeData>) => void
   onDelete: (nodeId: string) => void
+  edges?: Edge[]
 }
 
-export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelProps) {
+export default function ClusterPanel({ node, onUpdate, onDelete, edges = [] }: ClusterPanelProps) {
   // Basic fields
   const [label, setLabel] = useState(node.data.label || '')
   const [description, setDescription] = useState(node.data.description || '')
@@ -132,7 +133,13 @@ export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelP
     setShowDeleteConfirm(false)
   }
 
-  const nodeCount = node.data.clusterNodes?.length || 0
+  // Count connected resources based on edges
+  const nodeCount = useMemo(() => {
+    // Count edges where this node is either source or target
+    return edges.filter(edge => 
+      edge.source === node.id || edge.target === node.id
+    ).length
+  }, [edges, node.id])
   
   // Calculate estimated token usage
   const estimatedTokenUsage = useMemo(() => {

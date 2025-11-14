@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Node } from 'reactflow'
+import { Node, Edge } from 'reactflow'
 import { AnyNodeData, Comment } from '@/types/nodes'
 import { useAuth } from '@/contexts/AuthContext'
 import StoryBookPanel from './StoryBookPanel'
@@ -36,6 +36,7 @@ interface NodeDetailsPanelProps {
   onUpdate: (nodeId: string, data: any) => void
   onDelete: (nodeId: string) => void
   onCreateStory?: (format: any) => void
+  edges?: Edge[]
 }
 
 export default function NodeDetailsPanel({
@@ -44,7 +45,8 @@ export default function NodeDetailsPanel({
   onClose,
   onUpdate,
   onDelete,
-  onCreateStory
+  onCreateStory,
+  edges = []
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
   const [commentText, setCommentText] = useState('')
@@ -130,7 +132,7 @@ export default function NodeDetailsPanel({
           ) : nodeType === 'research' ? (
             <ResearchPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
           ) : nodeType === 'cluster' ? (
-            <ClusterPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
+            <ClusterPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} edges={edges} />
           ) : nodeType === 'create-story' ? (
             <CreateStoryPanel 
               node={node as any} 
