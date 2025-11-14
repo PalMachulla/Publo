@@ -1,0 +1,113 @@
+'use client'
+
+import { useRouter } from 'next/navigation'
+import { MagnifyingGlassIcon, PencilSquareIcon, BookOpenIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
+
+const MobileHome = () => {
+  const router = useRouter()
+  
+  const sections = [
+    {
+      id: 'research',
+      title: 'RESEARCH',
+      icon: MagnifyingGlassIcon,
+      description: 'Last opp filer, ta bilder og video',
+      route: '/mobile/research',
+      color: 'from-blue-50 to-blue-100',
+      iconColor: 'text-blue-600'
+    },
+    {
+      id: 'write',
+      title: 'WRITE',
+      icon: PencilSquareIcon,
+      description: 'Skriv med maler og inputs',
+      route: '/mobile/write',
+      color: 'from-yellow-50 to-yellow-100',
+      iconColor: 'text-yellow-600'
+    },
+    {
+      id: 'books',
+      title: 'MY BOOKS',
+      icon: BookOpenIcon,
+      description: 'Dine bøker og bokdatabasen',
+      route: '/mobile/books',
+      color: 'from-green-50 to-green-100',
+      iconColor: 'text-green-600'
+    },
+    {
+      id: 'settings',
+      title: 'SETTINGS',
+      icon: Cog6ToothIcon,
+      description: 'Abonnement og innstillinger',
+      route: '/mobile/settings',
+      color: 'from-gray-50 to-gray-100',
+      iconColor: 'text-gray-600'
+    }
+  ]
+  
+  return (
+    <div className="min-h-screen bg-white flex flex-col">
+      {/* Header with Publo Logo */}
+      <header className="px-6 py-8 border-b border-gray-100">
+        <div className="flex items-center justify-center">
+          <h1 className="text-4xl font-bold tracking-tight">
+            <span className="text-gray-900">Publ</span>
+            <span className="text-yellow-400">o</span>
+          </h1>
+        </div>
+      </header>
+
+      {/* Main Content - 4 Cards */}
+      <main className="flex-1 px-4 py-8">
+        <div className="grid grid-cols-2 gap-4 max-w-2xl mx-auto">
+          {sections.map((section) => {
+            const Icon = section.icon
+            return (
+              <button
+                key={section.id}
+                onClick={() => router.push(section.route)}
+                className={`
+                  aspect-square rounded-2xl 
+                  bg-gradient-to-br ${section.color}
+                  flex flex-col items-center justify-center
+                  shadow-sm hover:shadow-md transition-all duration-200
+                  active:scale-95
+                  border border-gray-100
+                  p-6 gap-3
+                `}
+              >
+                <Icon className={`w-12 h-12 ${section.iconColor}`} strokeWidth={1.5} />
+                <h2 className="text-base font-semibold text-gray-900 tracking-wide">
+                  {section.title}
+                </h2>
+                <p className="text-xs text-gray-600 text-center leading-relaxed">
+                  {section.description}
+                </p>
+              </button>
+            )
+          })}
+        </div>
+      </main>
+
+      {/* Footer - Intelligence Engineered by aiakaki */}
+      <footer className="px-6 py-4 border-t border-gray-100">
+        <div className="flex items-center justify-center gap-2">
+          <span className="text-xs text-gray-500">Intelligence Engineered by</span>
+          <div className="flex items-center gap-1">
+            <span className="text-xs font-semibold text-gray-700">aiakaki</span>
+            <svg 
+              className="w-4 h-4 text-yellow-400" 
+              viewBox="0 0 24 24" 
+              fill="currentColor"
+            >
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+            </svg>
+          </div>
+        </div>
+      </footer>
+    </div>
+  )
+}
+
+export default MobileHome
+
