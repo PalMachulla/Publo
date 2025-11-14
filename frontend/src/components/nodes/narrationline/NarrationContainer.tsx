@@ -7,6 +7,7 @@ import { getDocumentHierarchy } from '@/lib/documentHierarchy'
 import StructureTrackLane from './StructureTrackLane'
 import NarrationRuler from './NarrationRuler'
 import ZoomControls from './ZoomControls'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Label } from '@/components/ui'
 
 export interface NarrationContainerProps {
   items: StoryStructureItem[]
@@ -335,8 +336,11 @@ function NarrationContainer({
   
   return (
     <div 
-      className={`relative mx-auto rounded-2xl bg-gray-400 shadow-lg overflow-hidden border-2 border-gray-400 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
-      style={{ width: containerWidth }}
+      className={`relative mx-auto rounded-xl bg-white overflow-hidden border border-gray-200 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+      style={{ 
+        width: containerWidth,
+        boxShadow: 'var(--brand-shadow-md)'
+      }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => {
         // Allow the event to bubble if not resizing, but prevent opening panel
@@ -348,7 +352,7 @@ function NarrationContainer({
       {/* Left resize handle */}
       <div
         data-nodrag="true"
-        className={`noDrag nodrag absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors rounded-l-2xl`}
+        className={`noDrag nodrag absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-l-xl`}
         onMouseDown={(e) => handleResizeStart(e, 'left')}
         onMouseMove={(e) => e.stopPropagation()}
         onMouseUp={(e) => e.stopPropagation()}
@@ -357,33 +361,37 @@ function NarrationContainer({
         draggable={false}
         title="Drag to resize"
       >
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-300 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
       </div>
       
       {/* Main content container */}
       <div className="w-full">
         {/* Header with controls */}
-        <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-200">
+        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
           <div className="flex items-center gap-3">
-            <div className="text-xs text-gray-600 font-medium">
+            <h3 className="text-sm font-semibold text-gray-900">
               Narration Line
-            </div>
+            </h3>
             
             {/* Level selector - only show if format has more than 3 levels */}
             {maxAvailableLevels > 3 && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Levels:</span>
-                <select
-                  value={maxVisibleLevels}
-                  onChange={(e) => setMaxVisibleLevels(Number(e.target.value))}
-                  className="text-xs px-2 py-1 rounded border border-gray-300 bg-white hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-yellow-400 cursor-pointer transition-colors"
+                <Label className="text-xs text-gray-500">Levels:</Label>
+                <Select
+                  value={maxVisibleLevels.toString()}
+                  onValueChange={(value) => setMaxVisibleLevels(Number(value))}
                 >
-                  {Array.from({ length: maxAvailableLevels }, (_, i) => i + 1).map((num) => (
-                    <option key={num} value={num}>
-                      {num}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="h-7 w-16 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: maxAvailableLevels }, (_, i) => i + 1).map((num) => (
+                      <SelectItem key={num} value={num.toString()}>
+                        {num}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <span className="text-xs text-gray-400">of {maxAvailableLevels}</span>
               </div>
             )}
@@ -410,26 +418,9 @@ function NarrationContainer({
         />
         
         {/* Scrollable viewport - horizontal scroll when content is wider than container */}
-        <style>{`
-          .narration-scrollbar::-webkit-scrollbar {
-            height: 14px;
-          }
-          .narration-scrollbar::-webkit-scrollbar-track {
-            background: #f3f4f6;
-            border-radius: 8px;
-          }
-          .narration-scrollbar::-webkit-scrollbar-thumb {
-            background: #9ca3af;
-            border-radius: 8px;
-            border: 2px solid #f3f4f6;
-          }
-          .narration-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #6b7280;
-          }
-        `}</style>
         <div
           ref={containerRef}
-          className="narration-scrollbar relative overflow-x-auto overflow-y-hidden bg-gray-50"
+          className="relative overflow-x-auto overflow-y-hidden bg-white"
           style={{ maxHeight: '300px' }}
           onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
           onClick={(e) => {
@@ -464,19 +455,19 @@ function NarrationContainer({
             
             {/* Empty state if no items */}
             {items.length === 0 && (
-              <div className="h-32 flex items-center justify-center text-gray-400 text-sm">
+              <div className="h-32 flex items-center justify-center text-gray-500 text-sm">
                 No structure items yet
               </div>
             )}
             
             {/* Placeholder rows - Carrier */}
             <div 
-              className="relative w-full bg-gray-50 border-b border-gray-200 flex"
+              className="relative w-full bg-gray-50/50 border-b border-gray-100 flex"
               style={{ height: 32 }}
             >
               {/* Label - sticky/fixed */}
-              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-200 border-b border-gray-200 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
-                <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide truncate px-1 text-center">Carrier</span>
+              <div className="sticky left-0 w-16 h-full bg-gray-50 border-r border-gray-200 flex items-center justify-center z-40 flex-shrink-0">
+                <span className="text-[10px] text-gray-600 font-medium uppercase tracking-wide truncate px-1 text-center">Carrier</span>
               </div>
               
               {/* Content area - empty for now */}
@@ -487,12 +478,12 @@ function NarrationContainer({
             
             {/* Placeholder rows - Sentiment */}
             <div 
-              className="relative w-full bg-gray-50 border-b border-gray-200 flex"
+              className="relative w-full bg-gray-50/50 border-b border-gray-100 flex"
               style={{ height: 32 }}
             >
               {/* Label - sticky/fixed */}
-              <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-200 border-b border-gray-200 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
-                <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide truncate px-1 text-center">Sentiment</span>
+              <div className="sticky left-0 w-16 h-full bg-gray-50 border-r border-gray-200 flex items-center justify-center z-40 flex-shrink-0">
+                <span className="text-[10px] text-gray-600 font-medium uppercase tracking-wide truncate px-1 text-center">Sentiment</span>
               </div>
               
               {/* Content area - empty for now */}
@@ -504,8 +495,8 @@ function NarrationContainer({
         </div>
         
         {/* Footer with controls */}
-        <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-t border-gray-200">
-          <div className="text-xs text-gray-600 font-medium">
+        <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-200">
+          <div className="text-xs text-gray-500">
             {/* Placeholder for future buttons/controls */}
           </div>
           <div className="flex items-center gap-2">
@@ -517,7 +508,7 @@ function NarrationContainer({
       {/* Right resize handle */}
       <div
         data-nodrag="true"
-        className={`noDrag nodrag absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-gray-300/50'} transition-colors rounded-r-2xl`}
+        className={`noDrag nodrag absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-30 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-r-xl`}
         onMouseDown={(e) => handleResizeStart(e, 'right')}
         onMouseMove={(e) => e.stopPropagation()}
         onMouseUp={(e) => e.stopPropagation()}
@@ -526,7 +517,7 @@ function NarrationContainer({
         draggable={false}
         title="Drag to resize"
       >
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-300 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
       </div>
     </div>
   )

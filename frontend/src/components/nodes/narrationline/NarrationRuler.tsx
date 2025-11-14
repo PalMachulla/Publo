@@ -36,10 +36,10 @@ function NarrationRuler({
   }, [totalUnits, markerInterval])
   
   return (
-    <div className="relative h-8 bg-gray-50 border-b border-gray-200 flex">
+    <div className="relative h-8 bg-white border-b border-gray-200 flex">
       {/* Label area - sticky/fixed */}
-      <div className="sticky left-0 w-16 h-full bg-gray-200 border-r border-gray-200 border-b border-gray-200 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
-        <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide truncate px-1 text-center">
+      <div className="sticky left-0 w-16 h-full bg-gray-50 border-r border-gray-200 flex items-center justify-center z-40 flex-shrink-0">
+        <span className="text-[10px] text-gray-600 font-semibold uppercase tracking-wider truncate px-1 text-center">
           {unitLabel}
         </span>
       </div>
@@ -59,10 +59,10 @@ function NarrationRuler({
               style={{ left: markerPosition }}
             >
               {/* Tick mark */}
-              <div className="w-px h-3 bg-gray-400" />
+              <div className="w-px h-3 bg-gray-300" />
               
               {/* Unit number */}
-              <span className="text-[10px] text-gray-600 font-mono absolute top-3 -translate-x-1/2 whitespace-nowrap">
+              <span className="text-[10px] text-gray-700 font-mono font-medium absolute top-3 -translate-x-1/2 whitespace-nowrap">
                 {unit.toLocaleString()}
               </span>
             </div>

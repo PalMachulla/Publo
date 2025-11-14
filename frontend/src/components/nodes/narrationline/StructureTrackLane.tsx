@@ -146,12 +146,12 @@ function StructureTrackLane({
     <>
       {/* Main track with segments */}
       <div 
-        className="relative w-full bg-gray-100 border-b border-gray-100 flex"
+        className="relative w-full bg-white border-b border-gray-100 flex"
         style={{ height: trackHeight }}
       >
         {/* Track label - sticky/fixed */}
-        <div className="sticky left-0 w-16 h-full bg-gray-200 border-r border-gray-200 border-b border-gray-200 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
-          <span className="text-[10px] text-gray-600 font-medium uppercase tracking-wide text-center px-1 truncate">
+        <div className="sticky left-0 w-16 h-full bg-gray-50 border-r border-gray-200 flex items-center justify-center z-40 flex-shrink-0">
+          <span className="text-[10px] text-gray-700 font-semibold uppercase tracking-wider text-center px-1 truncate">
             {displayLabel}
           </span>
         </div>
@@ -190,12 +190,12 @@ function StructureTrackLane({
       {/* Agent assignment row (if enabled) */}
       {showAgentRows && (
         <div 
-          className="relative w-full bg-gray-50 border-b border-gray-200 flex"
+          className="relative w-full bg-gray-50/50 border-b border-gray-100 flex"
           style={{ height: 32 }}
         >
           {/* Agent row label - sticky/fixed */}
-          <div className="sticky left-0 w-16 h-full bg-gray-100 border-r border-gray-200 border-b border-gray-200 flex items-center justify-center z-40 shadow-sm flex-shrink-0">
-            <span className="text-[8px] text-gray-500 font-medium uppercase tracking-wide">Agent</span>
+          <div className="sticky left-0 w-16 h-full bg-gray-50 border-r border-gray-200 flex items-center justify-center z-40 flex-shrink-0">
+            <span className="text-[8px] text-gray-600 font-semibold uppercase tracking-wider">Agent</span>
           </div>
           
           {/* Agent dropdowns - scrollable area */}
