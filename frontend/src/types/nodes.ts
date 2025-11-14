@@ -159,6 +159,7 @@ export interface AgentOption {
   agentNumber: number
   color: string
   label: string
+  isActive?: boolean
 }
 
 export interface StoryStructureNodeData extends BaseNodeData {

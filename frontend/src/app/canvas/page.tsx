@@ -569,7 +569,8 @@ export default function CanvasPage() {
         id: n.id,
         agentNumber: n.data.agentNumber || 0,
         color: n.data.color || '#9ca3af',
-        label: n.data.label || 'Agent'
+        label: n.data.label || 'Agent',
+        isActive: n.data.isActive ?? true
       }))
       .sort((a, b) => a.agentNumber - b.agentNumber)
   }, [nodes])
@@ -578,16 +579,20 @@ export default function CanvasPage() {
   const handleAgentAssign = useCallback((itemId: string, agentId: string | null) => {
     console.log('Agent assignment:', { itemId, agentId })
     
-    // Update nodes SAFELY - only modify the structure node with this item
     setNodes((currentNodes) => {
-      return currentNodes.map((node) => {
-        // Update structure node containing this item
+      let previousAgentId: string | null = null
+      let updatedNodes = currentNodes
+      
+      // First pass: Update structure node and track previous agent
+      updatedNodes = updatedNodes.map((node) => {
         if (node.type === 'storyStructureNode' && node.data.items) {
           const hasThisItem = node.data.items.some((item: any) => item.id === itemId)
-          if (!hasThisItem) return node // Not this structure node
+          if (!hasThisItem) return node
           
           const updatedItems = node.data.items.map((item: any) => {
             if (item.id === itemId) {
+              previousAgentId = item.assignedAgentId || null
+              
               if (agentId) {
                 // Assign agent
                 const agent = availableAgents.find(a => a.id === agentId)
@@ -614,14 +619,28 @@ export default function CanvasPage() {
           
           return { ...node, data: { ...node.data, items: updatedItems } }
         }
-        
-        // Update agent node isActive status
-        if (node.type === 'clusterNode' && node.id === agentId) {
-          return { ...node, data: { ...node.data, isActive: true } }
-        }
-        
         return node
       })
+      
+      // Second pass: Update agent active/passive status
+      updatedNodes = updatedNodes.map((node) => {
+        if (node.type === 'clusterNode') {
+          // Check if this agent is assigned to any items across all structure nodes
+          const isAssigned = updatedNodes.some((n) => 
+            n.type === 'storyStructureNode' && 
+            n.data.items?.some((item: any) => item.assignedAgentId === node.id)
+          )
+          
+          // Set active if assigned, passive if not
+          if (node.data.isActive !== isAssigned) {
+            console.log(`Agent ${node.id} isActive: ${node.data.isActive} → ${isAssigned}`)
+            return { ...node, data: { ...node.data, isActive: isAssigned } }
+          }
+        }
+        return node
+      })
+      
+      return updatedNodes
     })
     
     // Mark as having unsaved changes

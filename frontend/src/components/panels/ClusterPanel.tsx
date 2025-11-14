@@ -138,7 +138,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete }: ClusterPanelP
         {/* Status Toggle */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Cluster Status
+            Agent Status
           </label>
           <div className="flex gap-2">
             <button

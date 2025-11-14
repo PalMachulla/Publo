@@ -160,6 +160,12 @@ function StructureTrackLane({
         <div className="relative flex-1 h-full overflow-visible">
           {levelItems.map((item, index) => {
             const { startPosition, width } = getSegmentMetrics(item, index)
+            // Find the agent's active status if one is assigned
+            const assignedAgent = item.assignedAgentId 
+              ? availableAgents.find(a => a.id === item.assignedAgentId)
+              : null
+            const agentIsActive = assignedAgent ? (assignedAgent as any).isActive !== false : true
+            
             return (
               <NarrationSegment
                 key={item.id}
@@ -170,6 +176,7 @@ function StructureTrackLane({
                 isActive={item.id === activeItemId}
                 isFocused={item.id === focusedItemId}
                 agentColor={item.assignedAgentColor}
+                agentIsActive={agentIsActive}
                 onClick={() => onItemClick(item)}
                 onDoubleClick={onItemDoubleClick ? () => onItemDoubleClick(item) : undefined}
                 onEdit={onEditItem ? (e) => onEditItem(item, e) : undefined}

@@ -23,6 +23,7 @@ export interface NarrationSegmentProps {
   isActive: boolean
   isFocused?: boolean // Whether this segment is currently zoomed/focused
   agentColor?: string // Color of assigned agent (for top border)
+  agentIsActive?: boolean // Whether the assigned agent is active (affects border style)
   onClick: () => void
   onDoubleClick?: () => void // Handler for double click (zoom)
   onEdit?: (e: React.MouseEvent) => void // Handler for edit icon click
@@ -37,6 +38,7 @@ function NarrationSegment({
   isActive,
   isFocused = false,
   agentColor,
+  agentIsActive = true,
   onClick,
   onDoubleClick,
   onEdit,
@@ -129,7 +131,7 @@ function NarrationSegment({
         backgroundColor,
         borderTopWidth: agentColor ? '3px' : '1px',
         borderTopColor: agentColor || '#d1d5db', // Agent color or gray-300
-        borderTopStyle: 'solid',
+        borderTopStyle: agentColor && !agentIsActive ? 'dashed' : 'solid', // Dashed if agent is passive
         overflow: showColorPicker ? 'visible' : 'hidden', // Allow dropdown to show
       }}
       onMouseEnter={(e) => {
