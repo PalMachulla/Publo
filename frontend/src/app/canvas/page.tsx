@@ -1574,6 +1574,7 @@ export default function CanvasPage() {
           onDelete={handleNodeDelete}
           onCreateStory={handleCreateStory}
           edges={edges}
+          nodes={nodes}
         />
 
         {/* Loading indicator now integrated into Orchestrator node */}

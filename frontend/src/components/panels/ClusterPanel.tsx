@@ -8,7 +8,9 @@ import {
   ChatBubbleIcon, 
   BookmarkIcon, 
   MixIcon, 
-  GearIcon 
+  GearIcon,
+  Link2Icon,
+  Cross2Icon
 } from '@radix-ui/react-icons'
 import { 
   Input, 
@@ -33,9 +35,10 @@ interface ClusterPanelProps {
   onUpdate: (nodeId: string, updates: Partial<ClusterNodeData>) => void
   onDelete: (nodeId: string) => void
   edges?: Edge[]
+  nodes?: Node[]
 }
 
-export default function ClusterPanel({ node, onUpdate, onDelete, edges = [] }: ClusterPanelProps) {
+export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nodes = [] }: ClusterPanelProps) {
   // Basic fields
   const [label, setLabel] = useState(node.data.label || '')
   const [description, setDescription] = useState(node.data.description || '')
@@ -155,13 +158,23 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [] }: C
     setShowDeleteConfirm(false)
   }
 
-  // Count connected resources based on edges
-  const nodeCount = useMemo(() => {
-    // Count edges where this node is either source or target
-    return edges.filter(edge => 
+  // Get connected nodes based on edges
+  const connectedNodes = useMemo(() => {
+    // Find edges where this node is either source or target
+    const connectedEdges = edges.filter(edge => 
       edge.source === node.id || edge.target === node.id
-    ).length
-  }, [edges, node.id])
+    )
+    
+    // Get the connected node IDs
+    const connectedNodeIds = connectedEdges.map(edge => 
+      edge.source === node.id ? edge.target : edge.source
+    )
+    
+    // Get the actual node objects
+    return nodes.filter(n => connectedNodeIds.includes(n.id))
+  }, [edges, nodes, node.id])
+  
+  const nodeCount = connectedNodes.length
   
   // Calculate estimated token usage
   const estimatedTokenUsage = useMemo(() => {
@@ -474,14 +487,53 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [] }: C
             </div>
           </div>
 
-          {/* Connected Resources Placeholder */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <p className="text-sm text-blue-900">
-              <strong>Connected Resources:</strong> {nodeCount} {nodeCount === 1 ? 'node' : 'nodes'}
-            </p>
-            <p className="text-xs text-blue-700 mt-1">
-              Connect knowledge nodes to this agent to expand its expertise.
-            </p>
+          {/* Connected Resources */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <Label>Connected Resources</Label>
+              <span className="text-xs text-gray-500 font-medium">
+                {nodeCount} {nodeCount === 1 ? 'node' : 'nodes'}
+              </span>
+            </div>
+            
+            {connectedNodes.length > 0 ? (
+              <div className="space-y-2">
+                {connectedNodes.map((connectedNode) => (
+                  <div
+                    key={connectedNode.id}
+                    className="flex items-center gap-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors"
+                  >
+                    <div className="flex-shrink-0">
+                      <Link2Icon className="w-4 h-4 text-gray-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {connectedNode.data.label || 'Untitled Node'}
+                      </p>
+                      <p className="text-xs text-gray-500 capitalize">
+                        {connectedNode.data.nodeType?.replace('_', ' ') || 'Node'}
+                      </p>
+                    </div>
+                    {connectedNode.data.color && (
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-300"
+                        style={{ backgroundColor: connectedNode.data.color }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6 px-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg">
+                <BookmarkIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-sm text-gray-600 font-medium mb-1">
+                  No resources connected
+                </p>
+                <p className="text-xs text-gray-500">
+                  Connect knowledge nodes to this agent to expand its expertise
+                </p>
+              </div>
+            )}
           </div>
         </CollapsibleSection>
 

@@ -37,6 +37,7 @@ interface NodeDetailsPanelProps {
   onDelete: (nodeId: string) => void
   onCreateStory?: (format: any) => void
   edges?: Edge[]
+  nodes?: Node[]
 }
 
 export default function NodeDetailsPanel({
@@ -46,7 +47,8 @@ export default function NodeDetailsPanel({
   onUpdate,
   onDelete,
   onCreateStory,
-  edges = []
+  edges = [],
+  nodes = []
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
   const [commentText, setCommentText] = useState('')
@@ -132,7 +134,7 @@ export default function NodeDetailsPanel({
           ) : nodeType === 'research' ? (
             <ResearchPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
           ) : nodeType === 'cluster' ? (
-            <ClusterPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} edges={edges} />
+            <ClusterPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} edges={edges} nodes={nodes} />
           ) : nodeType === 'create-story' ? (
             <CreateStoryPanel 
               node={node as any} 
