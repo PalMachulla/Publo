@@ -308,8 +308,8 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
           defaultOpen={false}
           icon={<ChatBubbleIcon className="w-4 h-4 text-gray-600" />}
         >
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-            <p className="text-xs text-blue-900 leading-relaxed">
+          <div className="mb-4 p-3 rounded-lg brand-info-banner">
+            <p className="text-xs leading-relaxed">
               Control how the orchestrator interacts with this agent during the writing process
             </p>
           </div>
@@ -388,17 +388,17 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
               }}
               className="grid grid-cols-3 gap-2"
             >
-              <ToggleGroupItem value="quick" className="flex-col h-auto py-3">
-                <span className="font-medium">Quick</span>
-                <span className="text-xs text-gray-500 mt-1">Brief check</span>
+              <ToggleGroupItem value="quick" className="flex flex-col items-center h-auto py-3 px-2">
+                <span className="font-medium text-sm">Quick</span>
+                <span className="text-xs text-gray-500 mt-1 text-center whitespace-nowrap">Brief</span>
               </ToggleGroupItem>
-              <ToggleGroupItem value="detailed" className="flex-col h-auto py-3">
-                <span className="font-medium">Detailed</span>
-                <span className="text-xs text-gray-500 mt-1">Thorough</span>
+              <ToggleGroupItem value="detailed" className="flex flex-col items-center h-auto py-3 px-2">
+                <span className="font-medium text-sm">Detailed</span>
+                <span className="text-xs text-gray-500 mt-1 text-center whitespace-nowrap">Thorough</span>
               </ToggleGroupItem>
-              <ToggleGroupItem value="comprehensive" className="flex-col h-auto py-3">
-                <span className="font-medium">Deep</span>
-                <span className="text-xs text-gray-500 mt-1">Full analysis</span>
+              <ToggleGroupItem value="comprehensive" className="flex flex-col items-center h-auto py-3 px-2">
+                <span className="font-medium text-sm">Deep</span>
+                <span className="text-xs text-gray-500 mt-1 text-center whitespace-nowrap">Analysis</span>
               </ToggleGroupItem>
             </ToggleGroup>
           </div>
