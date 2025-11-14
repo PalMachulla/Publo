@@ -48,7 +48,7 @@ function NarrationRuler({
   }, [totalUnits, markerInterval])
   
   return (
-    <div className="relative h-8 bg-white border-b border-gray-200 flex">
+    <div className="relative h-8 bg-white border-b border-gray-200 flex" style={{ minWidth: '100%' }}>
       {/* Label area - sticky/fixed */}
       <div className="sticky left-0 w-16 h-full bg-gray-50 border-r border-gray-200 flex items-center justify-center z-50 flex-shrink-0">
         <span className="text-[10px] text-gray-600 font-semibold uppercase tracking-wider truncate px-1 text-center">

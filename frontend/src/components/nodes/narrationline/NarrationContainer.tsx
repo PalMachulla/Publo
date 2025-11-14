@@ -520,8 +520,8 @@ function NarrationContainer({
             
             {/* Placeholder rows - Carrier */}
             <div 
-              className="relative w-full bg-gray-50/50 border-b border-gray-100 flex"
-              style={{ height: 32 }}
+              className="relative bg-gray-50/50 border-b border-gray-100 flex"
+              style={{ height: 32, minWidth: '100%' }}
             >
               {/* Label - sticky/fixed */}
               <div className="sticky left-0 w-16 h-full bg-gray-50 border-r border-gray-200 flex items-center justify-center z-40 flex-shrink-0">
@@ -536,8 +536,8 @@ function NarrationContainer({
             
             {/* Placeholder rows - Sentiment */}
             <div 
-              className="relative w-full bg-gray-50/50 border-b border-gray-100 flex"
-              style={{ height: 32 }}
+              className="relative bg-gray-50/50 border-b border-gray-100 flex"
+              style={{ height: 32, minWidth: '100%' }}
             >
               {/* Label - sticky/fixed */}
               <div className="sticky left-0 w-16 h-full bg-gray-50 border-r border-gray-200 flex items-center justify-center z-40 flex-shrink-0">
