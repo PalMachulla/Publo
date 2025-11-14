@@ -27,7 +27,8 @@ import {
   Switch,
   ToggleGroup,
   ToggleGroupItem,
-  CollapsibleSection 
+  CollapsibleSection,
+  ColorPicker
 } from '@/components/ui'
 
 interface ClusterPanelProps {
@@ -274,30 +275,14 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
           </div>
 
           {/* Color Picker */}
-          <div>
-            <Label>Agent Color</Label>
-            <div className="flex items-center gap-3">
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => {
-                  const newColor = e.target.value
-                  setColor(newColor)
-                  onUpdate(node.id, { ...node.data, color: newColor })
-                }}
-                className="w-12 h-12 rounded-lg border border-gray-300 cursor-pointer"
-              />
-              <Input
-                type="text"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                onBlur={handleSave}
-                placeholder="#9ca3af"
-                pattern="^#[0-9A-Fa-f]{6}$"
-                className="flex-1 font-mono"
-              />
-            </div>
-          </div>
+          <ColorPicker
+            label="Agent Color"
+            value={color}
+            onChange={(newColor) => {
+              setColor(newColor)
+              onUpdate(node.id, { ...node.data, color: newColor })
+            }}
+          />
 
           {/* Status Toggle */}
           <div className="flex items-center justify-between py-2">
