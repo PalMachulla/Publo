@@ -3,22 +3,32 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { useDeviceType } from '@/hooks/useDeviceType'
 
 export default function Home() {
   const { user, loading } = useAuth()
+  const { isMobile, isLoading: deviceLoading } = useDeviceType()
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading) {
-      if (user) {
-        router.push('/stories')
-      } else {
-        router.push('/auth')
+    // Wait for both auth and device detection to complete
+    if (!loading && !deviceLoading) {
+      // Mobile users always go to mobile view
+      if (isMobile) {
+        router.push('/mobile')
+      } 
+      // Desktop users follow auth flow
+      else {
+        if (user) {
+          router.push('/stories')
+        } else {
+          router.push('/auth')
+        }
       }
     }
-  }, [user, loading, router])
+  }, [user, loading, isMobile, deviceLoading, router])
 
-  if (loading) {
+  if (loading || deviceLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 relative overflow-hidden">
         {/* Grid background */}

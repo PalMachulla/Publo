@@ -1,10 +1,39 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 import { MagnifyingGlassIcon, Pencil2Icon, ReaderIcon, GearIcon } from '@radix-ui/react-icons'
 
 const MobileHome = () => {
   const router = useRouter()
+  const { user, loading } = useAuth()
+
+  // Redirect to auth if not logged in
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/auth')
+    }
+  }, [user, loading, router])
+
+  // Show loading state while checking auth
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center relative">
+        {/* Subtle grid background */}
+        <div className="absolute inset-0 opacity-30" style={{
+          backgroundImage: 'linear-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 0, 0, 0.08) 1px, transparent 1px)',
+          backgroundSize: '24px 24px'
+        }}></div>
+        <div className="relative z-10 text-gray-500">Loading...</div>
+      </div>
+    )
+  }
+
+  // Don't render if no user (will redirect)
+  if (!user) {
+    return null
+  }
   
   const sections = [
     {

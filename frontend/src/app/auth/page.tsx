@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { useDeviceType } from '@/hooks/useDeviceType'
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true)
@@ -14,14 +15,16 @@ export default function AuthPage() {
   const [message, setMessage] = useState('')
   
   const { signIn, signUp, signInWithGithub, signInWithGoogle, user } = useAuth()
+  const { isMobile } = useDeviceType()
   const router = useRouter()
   const searchParams = useSearchParams()
 
   useEffect(() => {
     if (user) {
-      router.push('/canvas')
+      // Redirect based on device type
+      router.push(isMobile ? '/mobile' : '/canvas')
     }
-  }, [user, router])
+  }, [user, isMobile, router])
 
   useEffect(() => {
     const errorParam = searchParams.get('error')
@@ -42,7 +45,7 @@ export default function AuthPage() {
         if (error) {
           setError(error.message)
         } else {
-          router.push('/canvas')
+          router.push(isMobile ? '/mobile' : '/canvas')
         }
       } else {
         const { error } = await signUp(email, password, name)
