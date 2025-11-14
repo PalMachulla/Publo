@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { MagnifyingGlassIcon, PencilSquareIcon, BookOpenIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, Pencil2Icon, ReaderIcon, GearIcon } from '@radix-ui/react-icons'
 
 const MobileHome = () => {
   const router = useRouter()
@@ -9,39 +9,35 @@ const MobileHome = () => {
   const sections = [
     {
       id: 'research',
-      title: 'RESEARCH',
+      title: 'Research',
       icon: MagnifyingGlassIcon,
-      description: 'Last opp filer, ta bilder og video',
+      description: 'Upload files, photos, and recordings',
       route: '/mobile/research',
-      color: 'from-blue-50 to-blue-100',
-      iconColor: 'text-blue-600'
+      gradient: 'from-gray-50 to-gray-100'
     },
     {
       id: 'write',
-      title: 'WRITE',
-      icon: PencilSquareIcon,
-      description: 'Skriv med maler og inputs',
+      title: 'Write',
+      icon: Pencil2Icon,
+      description: 'Create with templates and guides',
       route: '/mobile/write',
-      color: 'from-yellow-50 to-yellow-100',
-      iconColor: 'text-yellow-600'
+      gradient: 'from-gray-100 to-gray-200'
     },
     {
       id: 'books',
-      title: 'MY BOOKS',
-      icon: BookOpenIcon,
-      description: 'Dine bøker og bokdatabasen',
+      title: 'My Books',
+      icon: ReaderIcon,
+      description: 'Browse your library and discover',
       route: '/mobile/books',
-      color: 'from-green-50 to-green-100',
-      iconColor: 'text-green-600'
+      gradient: 'from-gray-50 to-gray-100'
     },
     {
       id: 'settings',
-      title: 'SETTINGS',
-      icon: Cog6ToothIcon,
-      description: 'Abonnement og innstillinger',
+      title: 'Settings',
+      icon: GearIcon,
+      description: 'Manage account and preferences',
       route: '/mobile/settings',
-      color: 'from-gray-50 to-gray-100',
-      iconColor: 'text-gray-600'
+      gradient: 'from-gray-100 to-gray-200'
     }
   ]
   
@@ -75,20 +71,22 @@ const MobileHome = () => {
                 onClick={() => router.push(section.route)}
                 className={`
                   aspect-square rounded-2xl 
-                  bg-gradient-to-br ${section.color}
+                  bg-gradient-to-br ${section.gradient}
                   flex flex-col items-center justify-center
-                  shadow-md hover:shadow-lg transition-all duration-200
-                  active:scale-95
-                  border border-gray-200
+                  shadow-sm hover:shadow-md transition-all duration-300
+                  hover:scale-[1.02] active:scale-[0.98]
+                  border border-gray-200/50
                   p-6 gap-3
-                  backdrop-blur-sm
+                  group
                 `}
               >
-                <Icon className={`w-12 h-12 ${section.iconColor}`} strokeWidth={1.5} />
-                <h2 className="text-base font-semibold text-gray-900 tracking-wide">
+                <div className="w-14 h-14 rounded-full bg-white/80 flex items-center justify-center shadow-sm group-hover:shadow-md transition-all">
+                  <Icon className="w-7 h-7 text-gray-700" />
+                </div>
+                <h2 className="text-sm font-semibold text-gray-900 tracking-wide">
                   {section.title}
                 </h2>
-                <p className="text-xs text-gray-600 text-center leading-relaxed">
+                <p className="text-xs text-gray-500 text-center leading-relaxed">
                   {section.description}
                 </p>
               </button>
