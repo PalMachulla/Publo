@@ -488,8 +488,8 @@ function NarrationContainer({
           }}
         >
           <div className="narration-content-area" style={{ 
-            width: `${totalWidth + 40}px`, // totalWidth + left padding (8px) + right buffer (32px)
-            minWidth: `${totalWidth + 40}px`, // Ensure minimum width
+            width: `${totalWidth + 64}px`, // totalWidth + left padding (8px) + generous right buffer (56px)
+            minWidth: `${totalWidth + 64}px`, // Ensure minimum width
             overflow: 'visible' 
           }}>
             {/* Structure tracks */}
