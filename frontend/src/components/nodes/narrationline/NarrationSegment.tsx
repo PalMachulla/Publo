@@ -160,9 +160,8 @@ function NarrationSegment({
     <div
       className={`
         absolute top-0 h-full
-        border-l border-r border-b border-gray-300
         ${isFocused ? 'text-gray-800' : 'text-gray-700'}
-        ${isActive ? 'ring-2 ring-yellow-400 z-10' : ''}
+        ${isActive ? 'border-2 border-yellow-400 z-10' : 'border-l border-r border-b border-gray-300'}
         ${isFocused ? 'shadow-md z-40' : ''}
         cursor-pointer
         transition-all duration-200
@@ -176,7 +175,6 @@ function NarrationSegment({
         borderTopWidth: agentColor ? '3px' : '1px',
         borderTopColor: agentColor || '#d1d5db', // Agent color or gray-300
         borderTopStyle: agentColor && !agentIsActive ? 'dashed' : 'solid', // Dashed if agent is passive
-        overflow: 'visible', // Allow dropdowns to show
       }}
       onMouseEnter={(e) => {
         if (!isFocused && !item.backgroundColor) {
