@@ -15,13 +15,25 @@ function NarrationRuler({
   unitLabel = 'Words',
   scrollLeft = 0
 }: NarrationRulerProps) {
-  // Calculate marker intervals based on zoom level (for words)
+  // Calculate marker intervals based on zoom level and total units
+  // Aim for markers every 80-150 pixels for readability
   const markerInterval = useMemo(() => {
-    if (pixelsPerUnit > 0.1) return 100     // Every 100 words
-    if (pixelsPerUnit > 0.02) return 500    // Every 500 words
-    if (pixelsPerUnit > 0.01) return 1000   // Every 1000 words
-    if (pixelsPerUnit > 0.004) return 2500  // Every 2500 words
-    return 5000                              // Every 5000 words
+    const targetPixelSpacing = 100 // Target pixels between markers
+    
+    // Calculate ideal interval based on pixel spacing
+    const idealInterval = targetPixelSpacing / pixelsPerUnit
+    
+    // Round to nice numbers based on magnitude
+    if (idealInterval < 100) return 50
+    if (idealInterval < 250) return 100
+    if (idealInterval < 750) return 500
+    if (idealInterval < 1500) return 1000
+    if (idealInterval < 3500) return 2500
+    if (idealInterval < 7500) return 5000
+    if (idealInterval < 15000) return 10000
+    if (idealInterval < 35000) return 25000
+    if (idealInterval < 75000) return 50000
+    return 100000
   }, [pixelsPerUnit])
   
   // Generate marker positions (always include 0)
@@ -45,12 +57,12 @@ function NarrationRuler({
       </div>
       
       {/* Ruler markers - scrollable area (offset by scrollLeft) */}
-      <div className="relative flex-1 h-full overflow-visible">
+      <div className="relative flex-1 h-full overflow-hidden">
         {/* Show markers offset by scroll position */}
         {markers.map((unit) => {
           const markerPosition = unit * pixelsPerUnit - scrollLeft
-          // Only render markers that are visible in viewport
-          if (markerPosition < -100 || markerPosition > 2000) return null
+          // Only render markers that are visible in viewport (with some buffer)
+          if (markerPosition < -150 || markerPosition > 2500) return null
           
           return (
             <div
@@ -61,8 +73,8 @@ function NarrationRuler({
               {/* Tick mark */}
               <div className="w-px h-3 bg-gray-300" />
               
-              {/* Unit number */}
-              <span className="text-[10px] text-gray-700 font-mono font-medium absolute top-3 -translate-x-1/2 whitespace-nowrap">
+              {/* Unit number - using left alignment to prevent overflow on right */}
+              <span className="text-[10px] text-gray-700 font-mono font-medium absolute top-3 left-0 -translate-x-1/2 whitespace-nowrap">
                 {unit.toLocaleString()}
               </span>
             </div>
