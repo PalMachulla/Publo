@@ -50,6 +50,7 @@ function NarrationSegment({
   onAgentAssign
 }: NarrationSegmentProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
+  const [showAgentSelector, setShowAgentSelector] = useState(false)
   
   // Calculate background color with inheritance
   // If item has backgroundColor, use it; otherwise it inherits from parent
@@ -137,7 +138,7 @@ function NarrationSegment({
         borderTopWidth: agentColor ? '3px' : '1px',
         borderTopColor: agentColor || '#d1d5db', // Agent color or gray-300
         borderTopStyle: agentColor && !agentIsActive ? 'dashed' : 'solid', // Dashed if agent is passive
-        overflow: showColorPicker ? 'visible' : 'hidden', // Allow dropdown to show
+        overflow: 'visible', // Allow dropdowns to show
       }}
       onMouseEnter={(e) => {
         if (!isFocused && !item.backgroundColor) {
@@ -169,6 +170,11 @@ function NarrationSegment({
                   selectedAgentId={item.assignedAgentId}
                   availableAgents={availableAgents}
                   onAgentSelect={onAgentAssign}
+                  isOpen={showAgentSelector}
+                  onToggle={(open) => {
+                    setShowAgentSelector(open)
+                    if (open) setShowColorPicker(false) // Close color picker when opening agent selector
+                  }}
                 />
               )}
               
@@ -179,6 +185,7 @@ function NarrationSegment({
                     onClick={(e) => {
                       e.stopPropagation()
                       setShowColorPicker(!showColorPicker)
+                      if (!showColorPicker) setShowAgentSelector(false) // Close agent selector when opening color picker
                     }}
                     className="p-1 rounded hover:bg-gray-200 transition-colors"
                     title="Set color"
@@ -202,8 +209,7 @@ function NarrationSegment({
                   {/* Color picker dropdown */}
                   {showColorPicker && (
                     <div 
-                      className="absolute top-full right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl p-3 w-32"
-                      style={{ zIndex: 9999 }}
+                      className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-3 w-32 z-[10000]"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="grid grid-cols-4 gap-2 mb-2">

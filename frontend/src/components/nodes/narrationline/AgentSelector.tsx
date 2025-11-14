@@ -8,21 +8,33 @@ export interface AgentSelectorProps {
   selectedAgentId?: string | null
   availableAgents: AgentOption[]
   onAgentSelect: (agentId: string | null) => void
+  isOpen?: boolean
+  onToggle?: (open: boolean) => void
 }
 
 function AgentSelector({
   selectedAgentId,
   availableAgents,
-  onAgentSelect
+  onAgentSelect,
+  isOpen: controlledIsOpen,
+  onToggle
 }: AgentSelectorProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [internalIsOpen, setInternalIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  
+  // Use controlled state if provided, otherwise use internal state
+  const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen
+  const setIsOpen = onToggle || setInternalIsOpen
   
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false)
+        if (onToggle) {
+          onToggle(false)
+        } else {
+          setInternalIsOpen(false)
+        }
       }
     }
     
@@ -33,7 +45,7 @@ function AgentSelector({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [isOpen])
+  }, [isOpen, onToggle])
   
   const selectedAgent = availableAgents.find(a => a.id === selectedAgentId)
   
@@ -52,7 +64,11 @@ function AgentSelector({
       <button
         onClick={(e) => {
           e.stopPropagation()
-          setIsOpen(!isOpen)
+          if (onToggle) {
+            onToggle(!isOpen)
+          } else {
+            setInternalIsOpen(!isOpen)
+          }
         }}
         className={`p-1 rounded transition-colors ${
           selectedAgent 
@@ -68,7 +84,7 @@ function AgentSelector({
       {/* Dropdown */}
       {isOpen && (
         <div 
-          className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl min-w-[220px] max-h-64 overflow-y-auto z-[9999]"
+          className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl min-w-[220px] max-h-64 overflow-y-auto z-[10000]"
           onClick={(e) => e.stopPropagation()}
         >
           {/* No Agent option */}
@@ -76,7 +92,11 @@ function AgentSelector({
             onClick={(e) => {
               e.stopPropagation()
               onAgentSelect(null)
-              setIsOpen(false)
+              if (onToggle) {
+                onToggle(false)
+              } else {
+                setInternalIsOpen(false)
+              }
             }}
             className={`w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 ${
               !selectedAgentId ? 'bg-gray-50' : ''
@@ -103,7 +123,11 @@ function AgentSelector({
                 onClick={(e) => {
                   e.stopPropagation()
                   onAgentSelect(agent.id)
-                  setIsOpen(false)
+                  if (onToggle) {
+                    onToggle(false)
+                  } else {
+                    setInternalIsOpen(false)
+                  }
                 }}
                 className={`w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 ${
                   isSelected ? 'bg-yellow-50' : ''
