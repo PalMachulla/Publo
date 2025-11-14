@@ -931,8 +931,14 @@ export default function CanvasPage() {
   // Handle node update from panel
   const handleNodeUpdate = useCallback((nodeId: string, newData: any) => {
     console.log('handleNodeUpdate called:', { nodeId, newData })
-    setNodes((nds) =>
-      nds.map((node) => {
+    setNodes((nds) => {
+      // First pass: check if this is an agent color update
+      const updatingNode = nds.find(n => n.id === nodeId)
+      const isAgentColorUpdate = updatingNode?.type === 'clusterNode' && 
+                                  newData.color && 
+                                  newData.color !== updatingNode.data.color
+      
+      return nds.map((node) => {
         if (node.id === nodeId) {
           const mergedData = { ...node.data, ...newData }
           
@@ -949,9 +955,36 @@ export default function CanvasPage() {
           console.log('Node updated - merged data:', updatedNode.data)
           return updatedNode
         }
+        
+        // Sync agent color to all assigned segments
+        if (isAgentColorUpdate && node.type === 'storyStructureNode' && node.data.items) {
+          const hasAssignedItems = node.data.items.some((item: any) => item.assignedAgentId === nodeId)
+          
+          if (hasAssignedItems) {
+            const updatedItems = node.data.items.map((item: any) => {
+              if (item.assignedAgentId === nodeId) {
+                console.log(`Syncing color for item ${item.name}: ${item.assignedAgentColor} → ${newData.color}`)
+                return {
+                  ...item,
+                  assignedAgentColor: newData.color
+                }
+              }
+              return item
+            })
+            
+            return { 
+              ...node, 
+              data: { 
+                ...node.data, 
+                items: updatedItems 
+              } 
+            }
+          }
+        }
+        
         return node
       })
-    )
+    })
     // Update selected node to reflect changes in panel
     setSelectedNode((prev) => {
       if (prev?.id === nodeId) {
@@ -975,7 +1008,7 @@ export default function CanvasPage() {
     if (!isLoadingRef.current) {
       hasUnsavedChangesRef.current = true
     }
-  }, [setNodes, handleStructureItemClick, handleStructureItemsUpdate])
+  }, [setNodes, handleStructureItemClick, handleStructureItemsUpdate, availableAgents, handleAgentAssign])
 
   // Handle node deletion
   const handleNodeDelete = useCallback((nodeId: string) => {
