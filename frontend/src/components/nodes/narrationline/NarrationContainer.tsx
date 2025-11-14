@@ -488,7 +488,7 @@ function NarrationContainer({
           }}
         >
           <div className="narration-content-area" style={{ 
-            width: totalWidth + 16, // Add extra space for proper scrolling (8px left padding + 8px buffer)
+            width: totalWidth + 32, // Add extra space for proper scrolling (8px left padding + 24px buffer)
             overflow: 'visible' 
           }}>
             {/* Structure tracks */}
