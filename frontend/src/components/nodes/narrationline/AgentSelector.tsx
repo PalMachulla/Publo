@@ -66,9 +66,17 @@ function AgentSelector({
   React.useEffect(() => {
     if (isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect()
+      const dropdownWidth = 220
+      
+      // Check if there's enough space on the right
+      const spaceOnRight = window.innerWidth - rect.right
+      
       setDropdownPosition({
         top: rect.bottom + 4,
-        left: rect.right - 220 // Align right edge
+        // If enough space on right, align to left of button; otherwise align right edge
+        left: spaceOnRight >= dropdownWidth 
+          ? rect.left 
+          : rect.right - dropdownWidth
       })
     }
   }, [isOpen])

@@ -58,9 +58,17 @@ function NarrationSegment({
   useEffect(() => {
     if (showColorPicker && colorButtonRef.current) {
       const rect = colorButtonRef.current.getBoundingClientRect()
+      const dropdownWidth = 128 // w-32 = 128px
+      
+      // Check if there's enough space on the right
+      const spaceOnRight = window.innerWidth - rect.right
+      
       setColorPickerPosition({
         top: rect.bottom + 4,
-        left: rect.right - 128 // Align right edge (w-32 = 128px)
+        // If enough space on right, align to left of button; otherwise align right edge
+        left: spaceOnRight >= dropdownWidth 
+          ? rect.left 
+          : rect.right - dropdownWidth
       })
     }
   }, [showColorPicker])
