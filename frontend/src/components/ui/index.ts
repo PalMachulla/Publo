@@ -17,6 +17,7 @@ export { Switch } from './atoms/Switch'
 export { ColorPicker } from './atoms/ColorPicker'
 
 export { Slider } from './atoms/Slider'
+export { ScrollArea, ScrollBar } from './atoms/ScrollBar'
 export type { SliderProps } from './atoms/Slider'
 
 export {
