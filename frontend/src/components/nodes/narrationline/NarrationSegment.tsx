@@ -4,7 +4,7 @@ import { memo, useState } from 'react'
 import { StoryStructureItem } from '@/types/nodes'
 
 // Pastel color palette - soft, muted colors
-const PASTEL_COLORS = [
+export const PASTEL_COLORS = [
   { hex: '#fde2e2', name: 'Rose' },      // Soft rose
   { hex: '#fef3c7', name: 'Honey' },     // Soft yellow
   { hex: '#d1fae5', name: 'Mint' },      // Soft mint
@@ -193,20 +193,31 @@ function NarrationSegment({
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="grid grid-cols-4 gap-2 mb-2">
-                        {PASTEL_COLORS.map((color) => (
-                          <button
-                            key={color.hex}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onColorChange(color.hex)
-                              setShowColorPicker(false)
-                            }}
-                            className="w-6 h-6 rounded border border-gray-300 hover:scale-110 transition-transform"
-                            style={{ backgroundColor: color.hex }}
-                            title={color.name}
-                            aria-label={`Select ${color.name} color`}
-                          />
-                        ))}
+                        {PASTEL_COLORS.map((color) => {
+                          const isSelected = item.backgroundColor === color.hex
+                          return (
+                            <button
+                              key={color.hex}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onColorChange(color.hex)
+                                setShowColorPicker(false)
+                              }}
+                              className={`w-6 h-6 rounded border-2 hover:scale-110 transition-transform relative ${
+                                isSelected ? 'border-gray-900 ring-2 ring-gray-900' : 'border-gray-300'
+                              }`}
+                              style={{ backgroundColor: color.hex }}
+                              title={color.name}
+                              aria-label={`Select ${color.name} color`}
+                            >
+                              {isSelected && (
+                                <svg className="w-4 h-4 absolute inset-0 m-auto text-gray-900" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </button>
+                          )
+                        })}
                       </div>
                       {/* Clear color button */}
                       {item.backgroundColor && (

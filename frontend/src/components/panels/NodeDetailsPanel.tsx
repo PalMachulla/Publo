@@ -10,6 +10,24 @@ import ResearchPanel from './ResearchPanel'
 import ClusterPanel from './ClusterPanel'
 import CreateStoryPanel from './CreateStoryPanel'
 import StoryStructurePanel from './StoryStructurePanel'
+import { PASTEL_COLORS } from '@/components/nodes/narrationline/NarrationSegment'
+
+// Helper function to lighten a hex color for cascading
+function lightenColor(hex: string, depth: number): string {
+  const cleanHex = hex.replace('#', '')
+  const r = parseInt(cleanHex.substr(0, 2), 16)
+  const g = parseInt(cleanHex.substr(2, 2), 16)
+  const b = parseInt(cleanHex.substr(4, 2), 16)
+  
+  // depth 1: 30% lighter, depth 2: 50% lighter, depth 3+: 70% lighter
+  const factor = depth === 1 ? 0.3 : depth === 2 ? 0.5 : 0.7
+  
+  const newR = Math.round(r + (255 - r) * factor)
+  const newG = Math.round(g + (255 - g) * factor)
+  const newB = Math.round(b + (255 - b) * factor)
+  
+  return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`
+}
 
 interface NodeDetailsPanelProps {
   node: Node<AnyNodeData> | null
@@ -223,6 +241,10 @@ export default function NodeDetailsPanel({
                         
                         for (let i = 0; i < config.level1Count; i++) {
                           const level1Id = `item-${Date.now()}-${itemCounter++}`
+                          // Assign pastel color cycling through palette
+                          const colorIndex = i % PASTEL_COLORS.length
+                          const assignedColor = PASTEL_COLORS[colorIndex].hex
+                          
                           newItems.push({
                             id: level1Id,
                             level: 1,
@@ -233,11 +255,15 @@ export default function NodeDetailsPanel({
                             completed: false,
                             content: '',
                             expanded: true,
-                            wordCount: 5000
+                            wordCount: 5000,
+                            backgroundColor: assignedColor // Auto-assign color
                           })
                           
                           for (let j = 0; j < config.level2Count; j++) {
                             const level2Id = `item-${Date.now()}-${itemCounter++}`
+                            // Cascade color from level 1 (30% lighter)
+                            const level2Color = lightenColor(assignedColor, 1)
+                            
                             newItems.push({
                               id: level2Id,
                               level: 2,
@@ -249,12 +275,16 @@ export default function NodeDetailsPanel({
                               completed: false,
                               content: '',
                               expanded: true,
-                              wordCount: Math.floor(5000 / config.level2Count)
+                              wordCount: Math.floor(5000 / config.level2Count),
+                              backgroundColor: level2Color // Cascaded color
                             })
                             
                             if (config.level3Count > 0) {
                               for (let k = 0; k < config.level3Count; k++) {
                                 const level3Id = `item-${Date.now()}-${itemCounter++}`
+                                // Cascade color from level 2 (50% lighter than original)
+                                const level3Color = lightenColor(assignedColor, 2)
+                                
                                 newItems.push({
                                   id: level3Id,
                                   level: 3,
@@ -266,7 +296,8 @@ export default function NodeDetailsPanel({
                                   completed: false,
                                   content: '',
                                   expanded: false,
-                                  wordCount: Math.floor(5000 / config.level2Count / config.level3Count)
+                                  wordCount: Math.floor(5000 / config.level2Count / config.level3Count),
+                                  backgroundColor: level3Color // Cascaded color
                                 })
                               }
                             }
