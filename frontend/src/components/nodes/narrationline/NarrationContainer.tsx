@@ -416,8 +416,11 @@ function NarrationContainer({
         {/* Scrollable viewport - horizontal scroll when content is wider than container */}
         <div
           ref={containerRef}
-          className="relative overflow-x-auto bg-white"
-          style={{ maxHeight: '300px', overflowY: 'visible' }}
+          className="relative overflow-x-auto overflow-y-auto bg-white"
+          style={{ 
+            maxHeight: '300px',
+            paddingRight: '12px' // Space for resize handle and scrollbar
+          }}
           onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
           onClick={(e) => {
             // Clear focus if clicking on background (not on a segment)

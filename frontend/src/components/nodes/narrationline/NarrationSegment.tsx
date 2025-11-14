@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useState } from 'react'
+import React, { memo, useState, useRef, useEffect } from 'react'
 import { StoryStructureItem, AgentOption } from '@/types/nodes'
 import AgentSelector from './AgentSelector'
 
@@ -51,6 +51,19 @@ function NarrationSegment({
 }: NarrationSegmentProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showAgentSelector, setShowAgentSelector] = useState(false)
+  const colorButtonRef = useRef<HTMLButtonElement>(null)
+  const [colorPickerPosition, setColorPickerPosition] = useState({ top: 0, left: 0 })
+
+  // Calculate color picker position when opened
+  useEffect(() => {
+    if (showColorPicker && colorButtonRef.current) {
+      const rect = colorButtonRef.current.getBoundingClientRect()
+      setColorPickerPosition({
+        top: rect.bottom + 4,
+        left: rect.right - 128 // Align right edge (w-32 = 128px)
+      })
+    }
+  }, [showColorPicker])
   
   // Calculate background color with inheritance
   // If item has backgroundColor, use it; otherwise it inherits from parent
@@ -182,6 +195,7 @@ function NarrationSegment({
               {onColorChange && (
                 <div className="relative">
                   <button
+                    ref={colorButtonRef}
                     onClick={(e) => {
                       e.stopPropagation()
                       setShowColorPicker(!showColorPicker)
@@ -206,10 +220,15 @@ function NarrationSegment({
                     </svg>
                   </button>
                   
-                  {/* Color picker dropdown */}
+                  {/* Color picker dropdown - using fixed positioning to avoid clipping */}
                   {showColorPicker && (
                     <div 
-                      className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-3 w-32 z-[10000]"
+                      className="fixed bg-white border border-gray-200 rounded-lg shadow-xl p-3 w-32"
+                      style={{ 
+                        top: `${colorPickerPosition.top}px`,
+                        left: `${colorPickerPosition.left}px`,
+                        zIndex: 99999
+                      }}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="grid grid-cols-4 gap-2 mb-2">

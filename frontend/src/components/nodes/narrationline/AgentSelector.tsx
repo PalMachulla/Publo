@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useState, useRef, useEffect } from 'react'
+import React, { memo, useState, useRef, useEffect } from 'react'
 import { AgentOption } from '@/types/nodes'
 import { PersonIcon, Cross2Icon } from '@radix-ui/react-icons'
 
@@ -59,9 +59,24 @@ function AgentSelector({
     return 'AG000'
   }
   
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const [dropdownPosition, setDropdownPosition] = React.useState({ top: 0, left: 0 })
+
+  // Calculate dropdown position when opened
+  React.useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setDropdownPosition({
+        top: rect.bottom + 4,
+        left: rect.right - 220 // Align right edge
+      })
+    }
+  }, [isOpen])
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button
+        ref={buttonRef}
         onClick={(e) => {
           e.stopPropagation()
           if (onToggle) {
@@ -81,10 +96,15 @@ function AgentSelector({
         <PersonIcon className={`w-4 h-4 ${selectedAgent ? 'text-yellow-600' : 'text-gray-700'}`} />
       </button>
       
-      {/* Dropdown */}
+      {/* Dropdown - using fixed positioning to avoid clipping */}
       {isOpen && (
         <div 
-          className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl min-w-[220px] max-h-64 overflow-y-auto z-[10000]"
+          className="fixed bg-white border border-gray-200 rounded-lg shadow-xl min-w-[220px] max-h-64 overflow-y-auto"
+          style={{ 
+            top: `${dropdownPosition.top}px`,
+            left: `${dropdownPosition.left}px`,
+            zIndex: 99999
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* No Agent option */}
