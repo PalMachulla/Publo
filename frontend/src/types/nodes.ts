@@ -127,12 +127,80 @@ export interface StoryDraftNodeData extends BaseNodeData {
   preview?: string
 }
 
+export type AgentSpecialization = 
+  | 'character_voice' 
+  | 'historical_accuracy' 
+  | 'genre_conventions'
+  | 'world_rules' 
+  | 'tone_style' 
+  | 'research' 
+  | 'custom'
+
+export type ConsultationDepth = 'quick' | 'detailed' | 'comprehensive'
+export type ResponseStyle = 'directive' | 'suggestive' | 'analytical' | 'reference_based'
+export type ResponseLengthLimit = 'brief' | 'moderate' | 'detailed' | 'unlimited'
+export type ResourceUsageMode = 'full_text' | 'summaries' | 'on_demand' | 'indexed'
+export type ResourceType = 'character_profile' | 'world_bible' | 'style_sample' | 'research' | 'previous_segments'
+
+export interface ConsultationTriggers {
+  onSegmentStart: boolean
+  onDemand: boolean
+  automaticTriggers: string[] // keywords that auto-invoke
+  onSegmentReview: boolean
+}
+
+export interface ResponsePreferences {
+  includeExamples: boolean
+  citeSources: boolean
+  offerAlternatives: 'always' | 'when_relevant' | 'no'
+  showConfidence: boolean
+}
+
+export interface ResourceConnection {
+  resourceId: string
+  resourceType: ResourceType
+  priority: number // 0-100
+  autoTriggerKeywords: string[]
+  usageMode: ResourceUsageMode
+  sections?: string[] // for world bible sections
+}
+
 export interface ClusterNodeData extends BaseNodeData {
   nodeType: 'cluster'
   clusterNodes?: string[] // IDs of nodes in this cluster
   color?: string // Background color for the cluster node
   isActive?: boolean // Active or passive status
   agentNumber?: number // Incremental agent number (e.g., 1 for AG001)
+  
+  // Agent Identity
+  specialization?: AgentSpecialization
+  
+  // Consultation Behavior
+  consultationTriggers?: ConsultationTriggers
+  consultationDepth?: ConsultationDepth
+  responseStyle?: ResponseStyle
+  proactivityLevel?: number // 0-100
+  
+  // Knowledge & Resources
+  connectedResources?: ResourceConnection[]
+  contextAwareness?: number // 0-100
+  canAccessDraft?: boolean
+  canAccessOtherAgents?: boolean
+  canAccessExternalTools?: boolean
+  
+  // Interaction
+  exampleQueries?: string[]
+  responsePreferences?: ResponsePreferences
+  
+  // Model & Voice
+  modelSelection?: string
+  expertPersonality?: number // 0 (formal) - 100 (casual)
+  temperature?: number // 0.0-1.0
+  
+  // Efficiency
+  responseLengthLimit?: ResponseLengthLimit
+  tokenBudget?: number
+  maxConsultations?: number | null
 }
 
 export interface StoryStructureItem {
