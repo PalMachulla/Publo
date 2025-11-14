@@ -57,7 +57,7 @@ function NarrationRuler({
       </div>
       
       {/* Ruler markers - scrollable area (offset by scrollLeft) */}
-      <div className="relative flex-1 h-full overflow-hidden pl-1">
+      <div className="relative flex-1 h-full overflow-hidden pl-2">
         {/* Show markers offset by scroll position */}
         {markers.map((unit) => {
           const markerPosition = unit * pixelsPerUnit - scrollLeft

@@ -154,7 +154,7 @@ function StructureTrackLane({
         </div>
         
         {/* Narration segments - scrollable area */}
-        <div className="relative flex-1 h-full overflow-hidden pl-1">
+        <div className="relative flex-1 h-full overflow-hidden pl-2">
           {levelItems.map((item, index) => {
             const { startPosition, width } = getSegmentMetrics(item, index)
             // Find the agent's active status if one is assigned
