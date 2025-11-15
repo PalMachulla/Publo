@@ -78,6 +78,7 @@ function NarrationContainer({
   const zoomCenterUnitsRef = useRef<number | null>(null) // Lock the center point during zoom
   const mouseCenterXRef = useRef<number | null>(null) // Store mouse X position for zoom-to-cursor
   const scrollLeftAtZoomStartRef = useRef<number | null>(null) // Store scroll position when zoom starts
+  const intendedScrollLeftRef = useRef<number>(0) // Track intended scroll (with decimals) to avoid rounding errors
   const isZoomingRef = useRef(false) // Track if we're in an active zoom session
   const currentZoomRef = useRef(zoom) // Track current zoom for event handler
   const accumulatedDeltaRef = useRef(0) // Accumulate tiny trackpad deltaY values
@@ -107,12 +108,15 @@ function NarrationContainer({
         
         // If this is the start of a zoom session, capture scroll position
         if (!isZoomingRef.current) {
+          // Initialize intended scroll position from actual (rounded) position
+          intendedScrollLeftRef.current = container.scrollLeft
           scrollLeftAtZoomStartRef.current = container.scrollLeft
           
           // Debug: Check element hierarchy and computed styles
           const containerStyles = window.getComputedStyle(container)
           console.log('📍 Starting zoom session:', {
             scrollLeft: container.scrollLeft,
+            intendedScrollLeft: intendedScrollLeftRef.current,
             mouseX,
             containerWidth: container.clientWidth,
             containerPaddingLeft: containerStyles.paddingLeft,
@@ -500,8 +504,8 @@ function NarrationContainer({
     
     // If this is the first zoom change in a sequence, capture the center point ONCE
     if (zoomCenterUnitsRef.current === null) {
-      // Use the stored scroll position from when zoom started (not current scrollLeft)
-      const startScrollLeft = scrollLeftAtZoomStartRef.current ?? container.scrollLeft
+      // Use the INTENDED scroll position (with decimals) to avoid rounding errors
+      const startScrollLeft = intendedScrollLeftRef.current
       const mouseContentPosition = startScrollLeft + contentMouseX
       zoomCenterUnitsRef.current = mouseContentPosition / (50 * prevZoom)
       
@@ -510,6 +514,7 @@ function NarrationContainer({
         totalLeftOffset,
         contentMouseX,
         startScrollLeft,
+        intendedScrollLeft: intendedScrollLeftRef.current,
         mouseContentPosition,
         centerUnits: zoomCenterUnitsRef.current,
         prevZoom
@@ -523,7 +528,7 @@ function NarrationContainer({
     const newCenterContentPosition = centerUnits * 50 * zoom
     const newScrollLeft = newCenterContentPosition - contentMouseX
     
-    const oldScrollLeft = container.scrollLeft
+    const oldIntendedScrollLeft = intendedScrollLeftRef.current
     
     console.log('🎯 Applying zoom-to-cursor:', {
       direction: zoom > prevZoom ? '🔍 ZOOM IN' : '🔎 ZOOM OUT',
@@ -533,20 +538,23 @@ function NarrationContainer({
       zoomRatio: zoom / prevZoom,
       newCenterContentPosition,
       contentMouseX,
-      oldScrollLeft,
+      oldIntendedScrollLeft,
       newScrollLeft,
-      scrollDelta: newScrollLeft - oldScrollLeft
+      scrollDelta: newScrollLeft - oldIntendedScrollLeft
     })
     
-    // Apply new scroll position in one smooth operation
-    container.scrollLeft = Math.max(0, newScrollLeft)
+    // Store the intended position (with full decimal precision)
+    intendedScrollLeftRef.current = Math.max(0, newScrollLeft)
+    
+    // Apply to browser (will be rounded to integer)
+    container.scrollLeft = intendedScrollLeftRef.current
     
     // Log the actual result after setting
     requestAnimationFrame(() => {
       console.log('✨ After scroll set:', {
-        requestedScrollLeft: newScrollLeft,
+        intendedScrollLeft: intendedScrollLeftRef.current,
         actualScrollLeft: container.scrollLeft,
-        difference: container.scrollLeft - newScrollLeft
+        roundingError: container.scrollLeft - intendedScrollLeftRef.current
       })
     })
     
@@ -563,6 +571,10 @@ function NarrationContainer({
         zoomCenterUnitsRef.current = null
         mouseCenterXRef.current = null
         scrollLeftAtZoomStartRef.current = null
+        // Reset intended scroll to actual (for next zoom session)
+        if (containerRef.current) {
+          intendedScrollLeftRef.current = containerRef.current.scrollLeft
+        }
       }
     }, 200) // Clear after 200ms of no zoom changes
     
