@@ -212,8 +212,24 @@ function NarrationContainer({
         
         setZoom(newZoom)
       } else {
-        // Regular wheel: let browser scroll, but prevent ReactFlow from seeing it
-        e.stopPropagation()
+        // Regular wheel: Convert vertical scroll to horizontal pan
+        e.preventDefault() // Prevent page scroll
+        e.stopPropagation() // Prevent ReactFlow from seeing it
+        
+        // Use deltaY for vertical wheel or deltaX for horizontal trackpad scroll
+        const scrollAmount = e.deltaY !== 0 ? e.deltaY : e.deltaX
+        
+        // Update scroll position
+        const newScrollLeft = container.scrollLeft + scrollAmount
+        container.scrollLeft = newScrollLeft
+        
+        console.log('🖱️ Panning timeline:', {
+          deltaY: e.deltaY,
+          deltaX: e.deltaX,
+          scrollAmount,
+          oldScrollLeft: container.scrollLeft - scrollAmount,
+          newScrollLeft: container.scrollLeft
+        })
       }
     }
 
