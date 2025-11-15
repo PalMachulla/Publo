@@ -100,11 +100,16 @@ function NarrationContainer({
         e.preventDefault() // Now this works because passive: false
         
         const currentZoom = currentZoomRef.current // Get current zoom from ref
-        const zoomDelta = -e.deltaY * 0.001
+        // Increased sensitivity for trackpad: 0.01 instead of 0.001
+        const zoomDelta = -e.deltaY * 0.01
         const newZoom = Math.max(0.001, Math.min(10, currentZoom + zoomDelta))
         
-        console.log('🔍 Zooming:', { oldZoom: currentZoom, newZoom, delta: zoomDelta }) // DEBUG
-        setZoom(newZoom)
+        console.log('🔍 Zooming:', { oldZoom: currentZoom, newZoom, delta: zoomDelta, rawDeltaY: e.deltaY }) // DEBUG
+        
+        // Only update if there's a meaningful change
+        if (Math.abs(newZoom - currentZoom) > 0.0001) {
+          setZoom(newZoom)
+        }
       } else {
         // Regular wheel = Horizontal scroll
         e.preventDefault()
