@@ -151,8 +151,8 @@ function NarrationSegment({
   }
   
   const colors = levelColors[level] || levelColors[1] // Fallback to level 1 colors
-  const minWidthForText = 60 // Only show text if segment is wide enough
-  const minWidthForEditIcon = 80 // Show edit icon if segment is wide enough
+  const minWidthForText = 40 // Only show text if segment is wide enough
+  const minWidthForButtons = 40 // Show action buttons if segment is wide enough (reduced from 80)
   
   const backgroundColor = getBackgroundColor()
   
@@ -199,7 +199,7 @@ function NarrationSegment({
           </div>
           
           {/* Action buttons - only show when focused AND segment is wide enough */}
-          {isFocused && width >= minWidthForEditIcon && (
+          {isFocused && width >= minWidthForButtons && (
             <div className="flex items-center gap-1 flex-shrink-0 relative">
               {/* Agent selector */}
               {onAgentAssign && (
