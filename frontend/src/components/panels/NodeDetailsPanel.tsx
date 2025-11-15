@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Node, Edge } from 'reactflow'
-import { AnyNodeData, Comment } from '@/types/nodes'
+import { AnyNodeData, Comment, StoryStructureItem } from '@/types/nodes'
 import { useAuth } from '@/contexts/AuthContext'
 import StoryBookPanel from './StoryBookPanel'
 import CharacterPanel from './CharacterPanel'
@@ -27,6 +27,240 @@ function lightenColor(hex: string, depth: number): string {
   const newB = Math.round(b + (255 - b) * factor)
   
   return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`
+}
+
+// Define realistic structure templates with proportional word counts
+// These templates are used when clicking "Generate Structure" button in the NodeDetailsPanel
+// IMPORTANT: These must match the templates in StoryStructurePanel.tsx
+const structureTemplates: Record<string, any> = {
+  'screenplay': {
+    // Classic 3-act structure: 25% / 50% / 25%
+    level1: [
+      { name: 'Act 1', wordCount: 3750, children: [
+        { name: 'Sequence 1', wordCount: 1500, children: [
+          { name: 'Scene 1', wordCount: 600 },
+          { name: 'Scene 2', wordCount: 500 },
+          { name: 'Scene 3', wordCount: 400 }
+        ]},
+        { name: 'Sequence 2', wordCount: 1250, children: [
+          { name: 'Scene 1', wordCount: 500 },
+          { name: 'Scene 2', wordCount: 750 }
+        ]},
+        { name: 'Sequence 3', wordCount: 1000, children: [
+          { name: 'Scene 1', wordCount: 1000 }
+        ]}
+      ]},
+      { name: 'Act 2', wordCount: 7500, children: [
+        { name: 'Sequence 1', wordCount: 2250, children: [
+          { name: 'Scene 1', wordCount: 750 },
+          { name: 'Scene 2', wordCount: 1000 },
+          { name: 'Scene 3', wordCount: 500 }
+        ]},
+        { name: 'Sequence 2', wordCount: 3000, children: [
+          { name: 'Scene 1', wordCount: 1200 },
+          { name: 'Scene 2', wordCount: 1800 }
+        ]},
+        { name: 'Sequence 3', wordCount: 2250, children: [
+          { name: 'Scene 1', wordCount: 900 },
+          { name: 'Scene 2', wordCount: 1350 }
+        ]}
+      ]},
+      { name: 'Act 3', wordCount: 3750, children: [
+        { name: 'Sequence 1', wordCount: 2250, children: [
+          { name: 'Scene 1', wordCount: 1350 },
+          { name: 'Scene 2', wordCount: 900 }
+        ]},
+        { name: 'Sequence 2', wordCount: 1500, children: [
+          { name: 'Scene 1', wordCount: 1500 }
+        ]}
+      ]}
+    ]
+  },
+  'novel': {
+    // 3 Parts with varied chapter lengths
+    level1: [
+      { name: 'Part 1', wordCount: 25000, children: [
+        { name: 'Chapter 1', wordCount: 6000, children: [
+          { name: 'Scene 1', wordCount: 2500 },
+          { name: 'Scene 2', wordCount: 2000 },
+          { name: 'Scene 3', wordCount: 1500 }
+        ]},
+        { name: 'Chapter 2', wordCount: 5500, children: [
+          { name: 'Scene 1', wordCount: 2500 },
+          { name: 'Scene 2', wordCount: 3000 }
+        ]},
+        { name: 'Chapter 3', wordCount: 6500, children: [
+          { name: 'Scene 1', wordCount: 3500 },
+          { name: 'Scene 2', wordCount: 3000 }
+        ]},
+        { name: 'Chapter 4', wordCount: 7000, children: [
+          { name: 'Scene 1', wordCount: 3500 },
+          { name: 'Scene 2', wordCount: 3500 }
+        ]}
+      ]},
+      { name: 'Part 2', wordCount: 35000, children: [
+        { name: 'Chapter 5', wordCount: 7000, children: [
+          { name: 'Scene 1', wordCount: 3500 },
+          { name: 'Scene 2', wordCount: 3500 }
+        ]},
+        { name: 'Chapter 6', wordCount: 8000, children: [
+          { name: 'Scene 1', wordCount: 4000 },
+          { name: 'Scene 2', wordCount: 4000 }
+        ]},
+        { name: 'Chapter 7', wordCount: 10000, children: [
+          { name: 'Scene 1', wordCount: 5000 },
+          { name: 'Scene 2', wordCount: 5000 }
+        ]},
+        { name: 'Chapter 8', wordCount: 10000, children: [
+          { name: 'Scene 1', wordCount: 5000 },
+          { name: 'Scene 2', wordCount: 5000 }
+        ]}
+      ]},
+      { name: 'Part 3', wordCount: 20000, children: [
+        { name: 'Chapter 9', wordCount: 8000, children: [
+          { name: 'Scene 1', wordCount: 4000 },
+          { name: 'Scene 2', wordCount: 4000 }
+        ]},
+        { name: 'Chapter 10', wordCount: 12000, children: [
+          { name: 'Scene 1', wordCount: 6000 },
+          { name: 'Scene 2', wordCount: 6000 }
+        ]}
+      ]}
+    ]
+  },
+  'short-story': {
+    // 3 Acts with scenes
+    level1: [
+      { name: 'Act 1', wordCount: 1000, children: [
+        { name: 'Scene 1', wordCount: 400 },
+        { name: 'Scene 2', wordCount: 600 }
+      ]},
+      { name: 'Act 2', wordCount: 2500, children: [
+        { name: 'Scene 1', wordCount: 800 },
+        { name: 'Scene 2', wordCount: 1200 },
+        { name: 'Scene 3', wordCount: 500 }
+      ]},
+      { name: 'Act 3', wordCount: 1500, children: [
+        { name: 'Scene 1', wordCount: 1000 },
+        { name: 'Scene 2', wordCount: 500 }
+      ]}
+    ]
+  },
+  'podcast': {
+    // 1 Season with 3 episodes
+    level1: [
+      { name: 'Season 1', wordCount: 15000, children: [
+        { name: 'Episode 1', wordCount: 4500, children: [
+          { name: 'Segment 1', wordCount: 2000 },
+          { name: 'Segment 2', wordCount: 2500 }
+        ]},
+        { name: 'Episode 2', wordCount: 5500, children: [
+          { name: 'Segment 1', wordCount: 3000 },
+          { name: 'Segment 2', wordCount: 2500 }
+        ]},
+        { name: 'Episode 3', wordCount: 5000, children: [
+          { name: 'Segment 1', wordCount: 2500 },
+          { name: 'Segment 2', wordCount: 2500 }
+        ]}
+      ]}
+    ]
+  },
+  'article': {
+    // 4 Sections with subsections
+    level1: [
+      { name: 'Section 1', wordCount: 1500, children: [
+        { name: 'Subsection 1', wordCount: 600 },
+        { name: 'Subsection 2', wordCount: 900 }
+      ]},
+      { name: 'Section 2', wordCount: 2500, children: [
+        { name: 'Subsection 1', wordCount: 1000 },
+        { name: 'Subsection 2', wordCount: 800 },
+        { name: 'Subsection 3', wordCount: 700 }
+      ]},
+      { name: 'Section 3', wordCount: 2000, children: [
+        { name: 'Subsection 1', wordCount: 1200 },
+        { name: 'Subsection 2', wordCount: 800 }
+      ]},
+      { name: 'Section 4', wordCount: 1000, children: [
+        { name: 'Subsection 1', wordCount: 1000 }
+      ]}
+    ]
+  },
+  'essay': {
+    // 3 Sections with paragraphs
+    level1: [
+      { name: 'Section 1', wordCount: 1200, children: [
+        { name: 'Paragraph 1', wordCount: 400 },
+        { name: 'Paragraph 2', wordCount: 500 },
+        { name: 'Paragraph 3', wordCount: 300 }
+      ]},
+      { name: 'Section 2', wordCount: 2000, children: [
+        { name: 'Paragraph 1', wordCount: 700 },
+        { name: 'Paragraph 2', wordCount: 800 },
+        { name: 'Paragraph 3', wordCount: 500 }
+      ]},
+      { name: 'Section 3', wordCount: 1800, children: [
+        { name: 'Paragraph 1', wordCount: 600 },
+        { name: 'Paragraph 2', wordCount: 700 },
+        { name: 'Paragraph 3', wordCount: 500 }
+      ]}
+    ]
+  },
+  'report': {
+    // 5 Chapters with sections
+    level1: [
+      { name: 'Chapter 1', wordCount: 3000, children: [
+        { name: 'Section 1', wordCount: 1000, children: [
+          { name: 'Subsection 1', wordCount: 600 },
+          { name: 'Subsection 2', wordCount: 400 }
+        ]},
+        { name: 'Section 2', wordCount: 2000, children: [
+          { name: 'Subsection 1', wordCount: 1200 },
+          { name: 'Subsection 2', wordCount: 800 }
+        ]}
+      ]},
+      { name: 'Chapter 2', wordCount: 4500, children: [
+        { name: 'Section 1', wordCount: 2250, children: [
+          { name: 'Subsection 1', wordCount: 1350 },
+          { name: 'Subsection 2', wordCount: 900 }
+        ]},
+        { name: 'Section 2', wordCount: 2250, children: [
+          { name: 'Subsection 1', wordCount: 1350 },
+          { name: 'Subsection 2', wordCount: 900 }
+        ]}
+      ]},
+      { name: 'Chapter 3', wordCount: 4000, children: [
+        { name: 'Section 1', wordCount: 2000, children: [
+          { name: 'Subsection 1', wordCount: 1200 },
+          { name: 'Subsection 2', wordCount: 800 }
+        ]},
+        { name: 'Section 2', wordCount: 2000, children: [
+          { name: 'Subsection 1', wordCount: 1200 },
+          { name: 'Subsection 2', wordCount: 800 }
+        ]}
+      ]},
+      { name: 'Chapter 4', wordCount: 3500, children: [
+        { name: 'Section 1', wordCount: 1750, children: [
+          { name: 'Subsection 1', wordCount: 1050 },
+          { name: 'Subsection 2', wordCount: 700 }
+        ]},
+        { name: 'Section 2', wordCount: 1750, children: [
+          { name: 'Subsection 1', wordCount: 1050 },
+          { name: 'Subsection 2', wordCount: 700 }
+        ]}
+      ]},
+      { name: 'Chapter 5', wordCount: 2500, children: [
+        { name: 'Section 1', wordCount: 1250, children: [
+          { name: 'Subsection 1', wordCount: 750 },
+          { name: 'Subsection 2', wordCount: 500 }
+        ]},
+        { name: 'Section 2', wordCount: 1250, children: [
+          { name: 'Subsection 1', wordCount: 750 },
+          { name: 'Subsection 2', wordCount: 500 }
+        ]}
+      ]}
+    ]
+  }
 }
 
 interface NodeDetailsPanelProps {
@@ -223,90 +457,60 @@ export default function NodeDetailsPanel({
                     </p>
                     <button
                       onClick={() => {
-                        // Generate structure logic
-                        const format = nodeData.format || 'podcast'
-                        const structureConfig: Record<string, { level1Count: number, level2Count: number, level3Count: number }> = {
-                          'podcast': { level1Count: 1, level2Count: 3, level3Count: 2 },
-                          'novel': { level1Count: 3, level2Count: 5, level3Count: 3 },
-                          'screenplay': { level1Count: 3, level2Count: 10, level3Count: 3 },
-                          'short-story': { level1Count: 3, level2Count: 4, level3Count: 0 },
-                          'article': { level1Count: 4, level2Count: 3, level3Count: 0 },
-                          'essay': { level1Count: 3, level2Count: 3, level3Count: 0 },
-                          'report': { level1Count: 5, level2Count: 3, level3Count: 2 }
-                        }
-                        const config = structureConfig[format] || { level1Count: 3, level2Count: 3, level3Count: 0 }
+                        const format = nodeData.format || 'screenplay'
+                        const template = structureTemplates[format] || structureTemplates['screenplay']
                         
-                        const newItems: any[] = []
+                        const newItems: StoryStructureItem[] = []
                         let itemCounter = 0
                         
-                        // Use documentHierarchy to get level names
-                        const hierarchy = nodeData.format ? require('@/lib/documentHierarchy').getDocumentHierarchy(nodeData.format) : null
-                        const getLevelName = (level: number) => hierarchy?.[level - 1]?.name || `Level ${level}`
-                        
-                        for (let i = 0; i < config.level1Count; i++) {
-                          const level1Id = `item-${Date.now()}-${itemCounter++}`
-                          // Assign pastel color cycling through palette
-                          const colorIndex = i % PASTEL_COLORS.length
-                          const assignedColor = PASTEL_COLORS[colorIndex].hex
-                          
-                          newItems.push({
-                            id: level1Id,
-                            level: 1,
-                            name: `${getLevelName(1)} ${i + 1}`,
-                            title: '',
-                            description: '',
-                            order: i,
-                            completed: false,
-                            content: '',
-                            expanded: true,
-                            wordCount: 5000,
-                            backgroundColor: assignedColor // Auto-assign color
-                          })
-                          
-                          for (let j = 0; j < config.level2Count; j++) {
-                            const level2Id = `item-${Date.now()}-${itemCounter++}`
-                            // Cascade color from level 1 (30% lighter)
-                            const level2Color = lightenColor(assignedColor, 1)
+                        // Recursive function to generate items from template
+                        const generateFromTemplate = (templateItems: any[], parentId?: string, level: number = 1, parentColor?: string) => {
+                          for (let i = 0; i < templateItems.length; i++) {
+                            const templateItem = templateItems[i]
+                            const itemId = `item-${Date.now()}-${itemCounter++}`
                             
-                            newItems.push({
-                              id: level2Id,
-                              level: 2,
-                              parentId: level1Id,
-                              name: `${getLevelName(2)} ${j + 1}`,
+                            // Assign colors only at level 1, cascade for children
+                            let itemColor = parentColor
+                            if (level === 1) {
+                              const colorIndex = i % PASTEL_COLORS.length
+                              itemColor = PASTEL_COLORS[colorIndex].hex
+                            } else if (parentColor) {
+                              itemColor = lightenColor(parentColor, level - 1)
+                            }
+                            
+                            const item: StoryStructureItem = {
+                              id: itemId,
+                              level,
+                              parentId,
+                              name: templateItem.name,
                               title: '',
                               description: '',
-                              order: j,
+                              order: i,
                               completed: false,
                               content: '',
-                              expanded: true,
-                              wordCount: Math.floor(5000 / config.level2Count),
-                              backgroundColor: level2Color // Cascaded color
-                            })
+                              expanded: level < 3,
+                              wordCount: templateItem.wordCount,
+                              backgroundColor: itemColor
+                            }
                             
-                            if (config.level3Count > 0) {
-                              for (let k = 0; k < config.level3Count; k++) {
-                                const level3Id = `item-${Date.now()}-${itemCounter++}`
-                                // Cascade color from level 2 (50% lighter than original)
-                                const level3Color = lightenColor(assignedColor, 2)
-                                
-                                newItems.push({
-                                  id: level3Id,
-                                  level: 3,
-                                  parentId: level2Id,
-                                  name: `${getLevelName(3)} ${k + 1}`,
-                                  title: '',
-                                  description: '',
-                                  order: k,
-                                  completed: false,
-                                  content: '',
-                                  expanded: false,
-                                  wordCount: Math.floor(5000 / config.level2Count / config.level3Count),
-                                  backgroundColor: level3Color // Cascaded color
-                                })
-                              }
+                            newItems.push(item)
+                            
+                            if (templateItem.children && templateItem.children.length > 0) {
+                              generateFromTemplate(templateItem.children, itemId, level + 1, itemColor)
                             }
                           }
                         }
+                        
+                        generateFromTemplate(template.level1)
+                        
+                        console.log('📝 Generated structure (NodeDetailsPanel):', {
+                          format,
+                          totalItems: newItems.length,
+                          level1Items: newItems.filter(i => i.level === 1).map(i => ({ name: i.name, wordCount: i.wordCount })),
+                          level2Items: newItems.filter(i => i.level === 2).map(i => ({ name: i.name, wordCount: i.wordCount, parentId: i.parentId })),
+                          level3Items: newItems.filter(i => i.level === 3).map(i => ({ name: i.name, wordCount: i.wordCount, parentId: i.parentId })),
+                          allItems: newItems
+                        })
                         
                         onUpdate(node.id, { items: newItems })
                       }}
