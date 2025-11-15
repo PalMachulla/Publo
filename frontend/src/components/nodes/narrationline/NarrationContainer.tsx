@@ -211,16 +211,18 @@ function NarrationContainer({
         })
         
         setZoom(newZoom)
+      } else {
+        // Regular wheel: let browser scroll, but prevent ReactFlow from seeing it
+        e.stopPropagation()
       }
-      // Note: Don't preventDefault for regular wheel - let browser handle normal scrolling!
-      // The browser will naturally convert vertical wheel to horizontal scroll in overflow-x containers
     }
 
-    // Use native listener with passive: false to allow preventDefault
-    container.addEventListener('wheel', handleWheel, { passive: false, capture: true })
+    // Use native listener WITHOUT capture - let browser handle scroll naturally
+    // Only intercept when we actually need to (Shift+Wheel)
+    container.addEventListener('wheel', handleWheel, { passive: false })
     
     return () => {
-      container.removeEventListener('wheel', handleWheel, { capture: true } as EventListenerOptions)
+      container.removeEventListener('wheel', handleWheel)
     }
   }, [setZoom])
   
