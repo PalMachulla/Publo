@@ -488,8 +488,17 @@ function NarrationContainer({
             
             // Handle wheel events for scrolling/zooming
             if (e.shiftKey) {
-              // Shift+Wheel = Zoom (leave default zoom behavior)
-              // The existing centered zoom logic will handle this via the slider
+              // Shift+Wheel = Zoom (centered on mouse position)
+              e.preventDefault()
+              
+              // Calculate zoom delta (negative deltaY = zoom in, positive = zoom out)
+              const zoomDelta = -e.deltaY * 0.001 // Adjust sensitivity
+              const newZoom = Math.max(0.001, Math.min(10, zoom + zoomDelta))
+              
+              console.log('🔍 Zooming:', { oldZoom: zoom, newZoom, delta: zoomDelta }) // DEBUG
+              
+              // Update zoom (existing centered zoom logic will handle the scroll adjustment)
+              setZoom(newZoom)
             } else {
               // Regular wheel = Horizontal scroll
               e.preventDefault() // Prevent default to handle manually
