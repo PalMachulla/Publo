@@ -83,6 +83,7 @@ function StructureTrackLane({
   }
   
   // Calculate segment position and width based on hierarchical structure
+  // IMPROVED: Reduces rounding errors by keeping calculations in word count space longer
   const getSegmentMetrics = (item: StoryStructureItem, itemIndex: number) => {
     // Use actual word count if available, otherwise estimate
     const wordCount = item.wordCount || 1000 // Default 1000 words per section
@@ -111,31 +112,40 @@ function StructureTrackLane({
       const totalSiblingsWordCount = siblings.reduce((sum, s) => 
         sum + (s.wordCount || 1000), 0)
       
-      // This child's proportional width based on its word count
+      // IMPROVED: Calculate proportion of parent width
       const proportion = wordCount / totalSiblingsWordCount
-      itemWidth = parentMetrics.width * proportion
       
-      // Start position = parent start + sum of previous siblings' proportional widths
+      // Calculate width in pixels (parent's pixel width * proportion)
+      const parentPixelWidth = parentMetrics.width * pixelsPerUnit
+      const itemPixelWidth = Math.round(parentPixelWidth * proportion)
+      
+      // IMPROVED: Calculate offset by summing actual pixel widths of previous siblings
+      // This prevents accumulated float errors
       const siblingIndex = siblings.findIndex(s => s.id === item.id)
-      let offset = 0
+      let pixelOffset = 0
       for (let i = 0; i < siblingIndex; i++) {
         const siblingProportion = (siblings[i].wordCount || 1000) / totalSiblingsWordCount
-        offset += parentMetrics.width * siblingProportion
+        const siblingPixelWidth = Math.round(parentPixelWidth * siblingProportion)
+        pixelOffset += siblingPixelWidth
       }
-      startPos = parentMetrics.start + offset
+      
+      // Start position in pixels
+      const parentPixelStart = Math.round(parentMetrics.start * pixelsPerUnit)
+      const startPixelPosition = parentPixelStart + pixelOffset
       
       console.log(`📊 Child segment [${item.name}]:`, {
         wordCount,
         totalSiblingsWordCount,
         proportion: (proportion * 100).toFixed(1) + '%',
-        parentWidth: parentMetrics.width,
-        calculatedWidth: itemWidth,
+        parentPixelWidth,
+        itemPixelWidth,
+        startPixelPosition,
         siblings: siblings.map(s => ({ name: s.name, wordCount: s.wordCount }))
       })
       
       return { 
-        startPosition: startPos * pixelsPerUnit, 
-        width: itemWidth * pixelsPerUnit 
+        startPosition: startPixelPosition, 
+        width: itemPixelWidth 
       }
     }
     
@@ -149,13 +159,15 @@ function StructureTrackLane({
       startPos += (topLevelSiblings[i].wordCount || 1000)
     }
     
-    const startPosition = startPos * pixelsPerUnit
-    const width = itemWidth * pixelsPerUnit
+    // Round pixel values to reduce sub-pixel errors
+    const startPosition = Math.round(startPos * pixelsPerUnit)
+    const width = Math.round(itemWidth * pixelsPerUnit)
     
     console.log(`📊 Top-level segment [${item.name}]:`, {
       wordCount,
       startPos,
-      width: itemWidth,
+      startPosition,
+      width,
       allTopLevel: topLevelSiblings.map(s => ({ name: s.name, wordCount: s.wordCount }))
     })
     
