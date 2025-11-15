@@ -613,7 +613,7 @@ function NarrationContainer({
   
   return (
     <div 
-      className={`nodrag nopan nowheel relative mx-auto bg-white border border-gray-200 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+      className={`nodrag nopan relative mx-auto bg-white border border-gray-200 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
       style={{ 
         width: containerWidth,
         boxShadow: 'var(--brand-shadow-md)',
@@ -623,12 +623,12 @@ function NarrationContainer({
       }}
       data-nodrag="true"
       // Note: onMouseDownCapture removed to allow segment clicks to work
-      // ReactFlow interference is prevented by nodrag/nopan/nowheel classes
+      // ReactFlow interference is prevented by nodrag/nopan classes and our wheel handler
     >
       {/* Left resize handle */}
       <div
         data-nodrag="true"
-        className={`noDrag nodrag nopan nowheel absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-50 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-l-xl`}
+        className={`noDrag nodrag nopan absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-50 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-l-xl`}
         onMouseDownCapture={(e) => {
           e.stopPropagation()
           handleResizeStart(e, 'left')
@@ -696,7 +696,7 @@ function NarrationContainer({
         {/* Scrollable viewport - horizontal scroll when content is wider than container */}
         <div
           ref={containerRef}
-          className="nodrag nopan nowheel relative overflow-x-auto overflow-y-auto bg-white narration-scrollbar"
+          className="nodrag nopan relative overflow-x-auto overflow-y-auto bg-white narration-scrollbar"
           style={{ 
             maxHeight: '300px',
             overscrollBehavior: 'contain', // Prevent scroll chaining to ReactFlow
@@ -801,7 +801,7 @@ function NarrationContainer({
       {/* Right resize handle */}
       <div
         data-nodrag="true"
-        className={`noDrag nodrag nopan nowheel absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-50 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-r-xl`}
+        className={`noDrag nodrag nopan absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-50 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-r-xl`}
         onMouseDownCapture={(e) => {
           e.stopPropagation()
           handleResizeStart(e, 'right')
