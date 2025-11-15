@@ -238,6 +238,25 @@ function NarrationContainer({
     }
   }, [items, fitToView])
   
+  // Auto-fit when container width changes (window resize, node resize, etc.)
+  useEffect(() => {
+    if (!containerRef.current || items.length === 0) return
+    
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // Debounce: only fit if width actually changed
+        const newWidth = entry.contentRect.width
+        if (Math.abs(newWidth - containerWidth) > 5) {
+          fitToView()
+        }
+      }
+    })
+    
+    resizeObserver.observe(containerRef.current)
+    
+    return () => resizeObserver.disconnect()
+  }, [items.length, containerWidth, fitToView])
+  
   // Get unique levels present in items
   const allLevels = Array.from(new Set(items.map(i => i.level))).sort()
   
@@ -702,8 +721,8 @@ function NarrationContainer({
           }}
         >
           <div className="narration-content-area" style={{ 
-            width: `${totalWidth + 64}px`, // totalWidth + left padding (8px) + generous right buffer (56px)
-            minWidth: `${totalWidth + 64}px`, // Ensure minimum width
+            width: '100%', // Fill the full scrollable viewport width
+            minWidth: '100%', // Always fill at least viewport width (no right gap)
             overflow: 'visible',
             position: 'relative', // Ensure it's positioned relative for absolute children
             left: 0, // Explicitly anchor to left edge
@@ -775,7 +794,7 @@ function NarrationContainer({
           <div className="text-xs text-gray-500">
             {/* Placeholder for future buttons/controls */}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 h-16">
             {/* Placeholder for future actions */}
           </div>
         </div>
