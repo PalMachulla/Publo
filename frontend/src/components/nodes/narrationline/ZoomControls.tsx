@@ -53,7 +53,10 @@ function ZoomControls({
       <Button
         variant="ghost"
         size="sm"
-        onClick={onFitToView}
+        onClick={(e) => {
+          e.stopPropagation() // Prevent click from bubbling to parent node
+          onFitToView()
+        }}
         className="h-7 px-2 text-xs"
         title="Fit to view"
       >
