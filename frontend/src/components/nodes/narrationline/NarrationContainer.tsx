@@ -94,12 +94,10 @@ function NarrationContainer({
     if (!container) return
 
     const handleWheel = (e: WheelEvent) => {
-      // CRITICAL: Stop propagation to prevent ReactFlow interference
-      e.stopPropagation()
-      
       if (e.shiftKey) {
         // Shift+Wheel = Zoom
-        e.preventDefault() // Now this works because passive: false
+        e.stopPropagation() // Prevent ReactFlow from seeing zoom events
+        e.preventDefault() // Prevent scroll during zoom
         
         // Capture mouse position AND scroll position at this exact moment
         const containerRect = container.getBoundingClientRect()
