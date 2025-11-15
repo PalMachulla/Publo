@@ -129,8 +129,19 @@ function NarrationContainer({
             break
         }
         
-        // Calculate zoom delta with normalized values
-        const zoomDelta = -normalizedDelta * 0.002 // Adjust sensitivity
+        // Adaptive zoom speed: faster scroll = faster zoom
+        // Small movements = fine control, large movements = rapid zoom
+        const magnitude = Math.abs(normalizedDelta)
+        
+        // Base sensitivity + speed bonus
+        // Slow scroll (10px): ~0.0002 sensitivity
+        // Medium scroll (100px): ~0.0004 sensitivity
+        // Fast scroll (500px): ~0.0012 sensitivity
+        const baseSensitivity = 0.0002
+        const speedMultiplier = Math.min(magnitude / 200, 5) // Cap at 5x
+        const adaptiveSensitivity = baseSensitivity * (1 + speedMultiplier)
+        
+        const zoomDelta = -normalizedDelta * adaptiveSensitivity
         
         // Ignore extremely tiny movements (prevents jitter)
         if (Math.abs(zoomDelta) < 0.0001) {
@@ -144,8 +155,9 @@ function NarrationContainer({
           oldZoom: currentZoom, 
           newZoom, 
           zoomDelta,
-          primaryDelta,
-          normalizedDelta,
+          magnitude,
+          adaptiveSensitivity,
+          speedMultiplier,
           direction: Math.sign(normalizedDelta),
           usedDeltaX: Math.abs(e.deltaX) > Math.abs(e.deltaY)
         })
