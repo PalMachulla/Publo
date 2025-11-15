@@ -483,6 +483,7 @@ function NarrationContainer({
             touchAction: 'none' // Prevent touch gestures
           }}
           onWheelCapture={(e) => {
+            console.log('🎯 Timeline wheel event:', { deltaY: e.deltaY, shiftKey: e.shiftKey }) // DEBUG
             e.stopPropagation() // CRITICAL: Stop ReactFlow from seeing events
             
             // Handle wheel events for scrolling/zooming
@@ -493,6 +494,7 @@ function NarrationContainer({
               // Regular wheel = Horizontal scroll
               e.preventDefault() // Prevent default to handle manually
               if (containerRef.current) {
+                console.log('📜 Scrolling timeline, new position:', containerRef.current.scrollLeft + e.deltaY) // DEBUG
                 // Scroll horizontally
                 containerRef.current.scrollLeft += e.deltaY
               }
