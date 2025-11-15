@@ -23,7 +23,7 @@ export function useNarrationZoom({
     return baseWidth * zoom
   }, [zoom])
   
-  // Calculate total width of narration line
+  // Calculate total width of narration arrangement view
   const totalWidth = useMemo(() => {
     return totalUnits * pixelsPerUnit
   }, [totalUnits, pixelsPerUnit])

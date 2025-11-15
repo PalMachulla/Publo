@@ -241,7 +241,7 @@ export interface StoryStructureNodeData extends BaseNodeData {
   onWidthUpdate?: (width: number) => void // Callback when narration width changes
   template?: string // The selected template ID
   isLoading?: boolean // Whether the node is still being prepared
-  customNarrationWidth?: number // Custom width for narration line view
+  customNarrationWidth?: number // Custom width for narration arrangement view
   showAgentRows?: boolean // Toggle state for agent assignment UI
   availableAgents?: AgentOption[] // List of available agent nodes
   onAgentAssign?: (itemId: string, agentId: string | null) => void // Callback when agent is assigned/unassigned

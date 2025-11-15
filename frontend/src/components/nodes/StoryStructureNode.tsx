@@ -324,7 +324,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
           }}
         >
         {viewMode === 'narration' ? (
-          /* Narration Line View - DAW-style horizontal layout */
+          /* Narration Arrangement View - DAW-style horizontal layout */
           <NarrationContainer
             items={items}
             onItemClick={(item) => {

@@ -427,7 +427,7 @@ function NarrationContainer({
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-xl">
           <div className="flex items-center gap-3">
             <h3 className="text-sm font-semibold text-gray-900">
-              Narration Line
+              Narration Arrangement View
             </h3>
             
             {/* Level selector - only show if format has more than 3 levels */}
