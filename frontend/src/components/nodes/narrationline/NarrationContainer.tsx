@@ -91,8 +91,6 @@ function NarrationContainer({
     if (!container) return
 
     const handleWheel = (e: WheelEvent) => {
-      console.log('🎯 Native wheel event:', { deltaY: e.deltaY, shiftKey: e.shiftKey }) // DEBUG
-      
       // CRITICAL: Stop propagation to prevent ReactFlow interference
       e.stopPropagation()
       
@@ -100,39 +98,57 @@ function NarrationContainer({
         // Shift+Wheel = Zoom
         e.preventDefault() // Now this works because passive: false
         
-        const currentZoom = currentZoomRef.current // Get current zoom from ref
+        // DEBUG: See what trackpad actually sends
+        console.log('🔍 Wheel Debug:', {
+          deltaY: e.deltaY,
+          deltaX: e.deltaX,
+          deltaMode: e.deltaMode,
+          deltaModeName: e.deltaMode === 0 ? 'PIXEL' : e.deltaMode === 1 ? 'LINE' : 'PAGE',
+          wheelDelta: (e as any).wheelDelta,
+          detail: (e as any).detail
+        })
         
-        // For ultra-precise trackpads: use wheel direction from deltaMode and wheelDelta
-        // Some trackpads only send -0, so we need to detect direction differently
-        let direction = 0
-        if (e.deltaY !== 0) {
-          direction = Math.sign(e.deltaY)
-        } else if (Object.is(e.deltaY, -0)) {
-          // Negative zero detected - treat as zoom in
-          direction = -1
-        } else {
-          // Positive zero or exactly zero - treat as zoom out  
-          direction = 1
+        const currentZoom = currentZoomRef.current
+        
+        // Normalize deltaY based on deltaMode for consistent behavior
+        let normalizedDelta = e.deltaY
+        
+        switch (e.deltaMode) {
+          case WheelEvent.DOM_DELTA_PIXEL: // 0x00 (most common for trackpads)
+            normalizedDelta = e.deltaY
+            break
+          case WheelEvent.DOM_DELTA_LINE: // 0x01 (mouse wheel)
+            normalizedDelta = e.deltaY * 16 // Approximate line height
+            break
+          case WheelEvent.DOM_DELTA_PAGE: // 0x02 (rare)
+            normalizedDelta = e.deltaY * (container?.clientHeight || 100)
+            break
         }
         
-        // Apply small zoom step per event (2%)
-        const zoomDelta = -direction * 0.02 // 2% per wheel event
+        // Calculate zoom delta with normalized values
+        const zoomDelta = -normalizedDelta * 0.002 // Adjust sensitivity
+        
+        // Ignore extremely tiny movements (prevents jitter)
+        if (Math.abs(zoomDelta) < 0.0001) {
+          console.log('⏭️  Delta too small, ignoring:', zoomDelta)
+          return
+        }
+        
         const newZoom = Math.max(0.001, Math.min(10, currentZoom + zoomDelta))
         
-        console.log('🔍 Zooming:', { 
+        console.log('✅ Applying zoom:', { 
           oldZoom: currentZoom, 
           newZoom, 
-          delta: zoomDelta,
-          direction,
-          rawDeltaY: e.deltaY
-        }) // DEBUG
+          zoomDelta,
+          normalizedDelta,
+          direction: Math.sign(normalizedDelta)
+        })
         
         setZoom(newZoom)
       } else {
         // Regular wheel = Horizontal scroll
         e.preventDefault()
         container.scrollLeft += e.deltaY
-        console.log('📜 Scrolling to:', container.scrollLeft) // DEBUG
       }
     }
 
