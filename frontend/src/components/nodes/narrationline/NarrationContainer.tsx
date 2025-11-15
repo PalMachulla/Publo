@@ -100,11 +100,28 @@ function NarrationContainer({
         e.preventDefault() // Now this works because passive: false
         
         const currentZoom = currentZoomRef.current // Get current zoom from ref
-        // Increased sensitivity for trackpad: 0.01 instead of 0.001
-        const zoomDelta = -e.deltaY * 0.01
+        
+        // For trackpads that send tiny deltaY values, apply a minimum step
+        let zoomDelta: number
+        if (Math.abs(e.deltaY) < 1) {
+          // Very small deltaY (trackpad with fine precision)
+          // Apply minimum zoom step based on direction
+          const direction = e.deltaY === 0 ? 0 : Math.sign(e.deltaY)
+          zoomDelta = -direction * 0.01 // Minimum 1% zoom step
+        } else {
+          // Normal mouse wheel or larger trackpad values
+          zoomDelta = -e.deltaY * 0.01
+        }
+        
         const newZoom = Math.max(0.001, Math.min(10, currentZoom + zoomDelta))
         
-        console.log('🔍 Zooming:', { oldZoom: currentZoom, newZoom, delta: zoomDelta, rawDeltaY: e.deltaY }) // DEBUG
+        console.log('🔍 Zooming:', { 
+          oldZoom: currentZoom, 
+          newZoom, 
+          delta: zoomDelta, 
+          rawDeltaY: e.deltaY,
+          wasSmall: Math.abs(e.deltaY) < 1
+        }) // DEBUG
         
         // Only update if there's a meaningful change
         if (Math.abs(newZoom - currentZoom) > 0.0001) {
