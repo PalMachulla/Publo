@@ -400,7 +400,11 @@ function NarrationContainer({
         touchAction: 'none' // Prevent touch gestures from reaching ReactFlow
       }}
       data-nodrag="true"
-      onWheelCapture={(e) => e.stopPropagation()} // CRITICAL: Capture phase stops ReactFlow
+      onWheelCapture={(e) => {
+        console.log('🔵 OUTER container wheel (capture):', e.target) // DEBUG
+        e.stopPropagation()
+      }}
+      onWheel={(e) => console.log('🟢 OUTER container wheel (bubble):', e.target)} // DEBUG
       onMouseDownCapture={(e) => e.stopPropagation()}
       onClickCapture={(e) => e.stopPropagation()}
     >
