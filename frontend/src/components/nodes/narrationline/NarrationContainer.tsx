@@ -77,6 +77,7 @@ function NarrationContainer({
   const prevZoomRef = useRef(zoom) // Track previous zoom for centered zooming
   const zoomCenterUnitsRef = useRef<number | null>(null) // Lock the center point during zoom
   const mouseCenterXRef = useRef<number | null>(null) // Store mouse X position for zoom-to-cursor
+  const scrollLeftAtZoomStartRef = useRef<number | null>(null) // Store scroll position when zoom starts
   const isZoomingRef = useRef(false) // Track if we're in an active zoom session
   const currentZoomRef = useRef(zoom) // Track current zoom for event handler
   const accumulatedDeltaRef = useRef(0) // Accumulate tiny trackpad deltaY values
@@ -99,10 +100,16 @@ function NarrationContainer({
         // Shift+Wheel = Zoom
         e.preventDefault() // Now this works because passive: false
         
-        // Capture mouse position for zoom-to-cursor
+        // Capture mouse position AND scroll position at this exact moment
         const containerRect = container.getBoundingClientRect()
         const mouseX = e.clientX - containerRect.left
         mouseCenterXRef.current = mouseX
+        
+        // If this is the start of a zoom session, capture scroll position
+        if (!isZoomingRef.current) {
+          scrollLeftAtZoomStartRef.current = container.scrollLeft
+          console.log('📍 Starting zoom session, scrollLeft:', container.scrollLeft)
+        }
         
         // Mark that we're zooming
         isZoomingRef.current = true
@@ -481,14 +488,15 @@ function NarrationContainer({
     
     // If this is the first zoom change in a sequence, capture the center point ONCE
     if (zoomCenterUnitsRef.current === null) {
-      const currentScrollLeft = container.scrollLeft
-      const mouseContentPosition = currentScrollLeft + contentMouseX
+      // Use the stored scroll position from when zoom started (not current scrollLeft)
+      const startScrollLeft = scrollLeftAtZoomStartRef.current ?? container.scrollLeft
+      const mouseContentPosition = startScrollLeft + contentMouseX
       zoomCenterUnitsRef.current = mouseContentPosition / (50 * prevZoom)
       
       console.log('🔒 Locking zoom center:', {
         mouseX,
         contentMouseX,
-        currentScrollLeft,
+        startScrollLeft,
         mouseContentPosition,
         centerUnits: zoomCenterUnitsRef.current,
         prevZoom
@@ -507,10 +515,11 @@ function NarrationContainer({
       newCenterContentPosition,
       contentMouseX,
       newScrollLeft,
-      zoom
+      zoom,
+      oldScrollLeft: container.scrollLeft
     })
     
-    // Apply new scroll position immediately (no animation)
+    // Apply new scroll position in one smooth operation
     container.scrollLeft = Math.max(0, newScrollLeft)
     
     // Update prev zoom for next iteration
@@ -525,6 +534,7 @@ function NarrationContainer({
         isZoomingRef.current = false
         zoomCenterUnitsRef.current = null
         mouseCenterXRef.current = null
+        scrollLeftAtZoomStartRef.current = null
       }
     }, 200) // Clear after 200ms of no zoom changes
     
