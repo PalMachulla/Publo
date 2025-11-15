@@ -114,14 +114,23 @@ function NarrationContainer({
           
           // Debug: Check element hierarchy and computed styles
           const containerStyles = window.getComputedStyle(container)
+          
+          // Find what segment is actually under the mouse
+          const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY)
+          const segmentUnderMouse = elementsUnderMouse.find(el => 
+            el.classList.contains('group') && el.getAttribute('title')
+          )
+          
           console.log('📍 Starting zoom session:', {
             scrollLeft: container.scrollLeft,
             intendedScrollLeft: intendedScrollLeftRef.current,
             mouseX,
+            mouseXFromBrowserEdge: e.clientX,
             containerWidth: container.clientWidth,
+            containerBoundingLeft: containerRect.left,
+            segmentUnderMouse: segmentUnderMouse?.getAttribute('title'),
             containerPaddingLeft: containerStyles.paddingLeft,
-            containerPaddingRight: containerStyles.paddingRight,
-            containerMarginLeft: containerStyles.marginLeft
+            containerPaddingRight: containerStyles.paddingRight
           })
         }
         
@@ -511,13 +520,16 @@ function NarrationContainer({
       
       console.log('🔒 Locking zoom center:', {
         mouseX,
+        stickyLabelWidth,
+        segmentPaddingLeft,
         totalLeftOffset,
         contentMouseX,
         startScrollLeft,
         intendedScrollLeft: intendedScrollLeftRef.current,
         mouseContentPosition,
         centerUnits: zoomCenterUnitsRef.current,
-        prevZoom
+        prevZoom,
+        calculatedPixelPosition: zoomCenterUnitsRef.current * 50 * prevZoom
       })
     }
     
