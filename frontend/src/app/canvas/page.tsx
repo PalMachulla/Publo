@@ -1544,8 +1544,8 @@ export default function CanvasPage() {
             nodesDraggable={true}
             nodesConnectable={true}
             elementsSelectable={true}
-            panOnDrag={[1, 2]} // Only middle/right-click to pan (leaves left-click for timeline)
-            zoomOnDoubleClick={false} // Prevent accidental zoom conflicts
+            panOnDrag={true} // Allow normal canvas panning (timeline isolation handled by nodrag classes)
+            zoomOnDoubleClick={false} // Prevent accidental zoom conflicts with timeline
             onNodesDelete={(deleted) => {
               // Prevent deletion of context canvas node
               const hasContext = deleted.some(node => node.id === 'context')
