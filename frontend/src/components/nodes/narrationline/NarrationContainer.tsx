@@ -213,11 +213,9 @@ function NarrationContainer({
         })
         
         setZoom(newZoom)
-      } else {
-        // Regular wheel = Horizontal scroll
-        e.preventDefault()
-        container.scrollLeft += e.deltaY
       }
+      // Note: Don't preventDefault for regular wheel - let browser handle normal scrolling!
+      // The browser will naturally convert vertical wheel to horizontal scroll in overflow-x containers
     }
 
     // Use native listener with passive: false to allow preventDefault
