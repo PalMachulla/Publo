@@ -391,29 +391,30 @@ function NarrationContainer({
   
   return (
     <div 
-      className={`relative mx-auto bg-white border border-gray-200 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+      className={`nodrag nopan nowheel relative mx-auto bg-white border border-gray-200 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
       style={{ 
         width: containerWidth,
         boxShadow: 'var(--brand-shadow-md)',
         overflow: 'visible',
-        borderRadius: '0.75rem' // rounded-xl equivalent
+        borderRadius: '0.75rem', // rounded-xl equivalent
+        touchAction: 'none' // Prevent touch gestures from reaching ReactFlow
       }}
-      onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => {
-        // Allow the event to bubble if not resizing, but prevent opening panel
-        if (!isResizing) {
-          e.stopPropagation()
-        }
-      }}
+      data-nodrag="true"
+      onWheelCapture={(e) => e.stopPropagation()} // CRITICAL: Capture phase stops ReactFlow
+      onMouseDownCapture={(e) => e.stopPropagation()}
+      onClickCapture={(e) => e.stopPropagation()}
     >
       {/* Left resize handle */}
       <div
         data-nodrag="true"
-        className={`noDrag nodrag absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-50 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-l-xl`}
-        onMouseDown={(e) => handleResizeStart(e, 'left')}
-        onMouseMove={(e) => e.stopPropagation()}
-        onMouseUp={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
+        className={`noDrag nodrag nopan nowheel absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-50 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-l-xl`}
+        onMouseDownCapture={(e) => {
+          e.stopPropagation()
+          handleResizeStart(e, 'left')
+        }}
+        onMouseMoveCapture={(e) => e.stopPropagation()}
+        onMouseUpCapture={(e) => e.stopPropagation()}
+        onClickCapture={(e) => e.stopPropagation()}
         onDragStart={(e) => e.preventDefault()}
         draggable={false}
         title="Drag to resize"
@@ -474,9 +475,21 @@ function NarrationContainer({
         {/* Scrollable viewport - horizontal scroll when content is wider than container */}
         <div
           ref={containerRef}
-          className="relative overflow-x-auto overflow-y-auto bg-white narration-scrollbar"
+          className="nodrag nopan nowheel relative overflow-x-auto overflow-y-auto bg-white narration-scrollbar"
           style={{ 
-            maxHeight: '300px'
+            maxHeight: '300px',
+            overscrollBehavior: 'contain', // Prevent scroll chaining to ReactFlow
+            scrollBehavior: 'auto',
+            touchAction: 'none' // Prevent touch gestures
+          }}
+          onWheelCapture={(e) => {
+            e.stopPropagation() // CRITICAL: Stop ReactFlow from seeing scroll/zoom events
+          }}
+          onMouseDownCapture={(e) => {
+            e.stopPropagation()
+            if (e.shiftKey) {
+              e.preventDefault() // Prevent text selection during zoom
+            }
           }}
           onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
           onClick={(e) => {
@@ -567,11 +580,14 @@ function NarrationContainer({
       {/* Right resize handle */}
       <div
         data-nodrag="true"
-        className={`noDrag nodrag absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-50 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-r-xl`}
-        onMouseDown={(e) => handleResizeStart(e, 'right')}
-        onMouseMove={(e) => e.stopPropagation()}
-        onMouseUp={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
+        className={`noDrag nodrag nopan nowheel absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-50 group ${isResizing ? 'bg-yellow-400/50' : 'hover:bg-amber-100/80'} transition-colors rounded-r-xl`}
+        onMouseDownCapture={(e) => {
+          e.stopPropagation()
+          handleResizeStart(e, 'right')
+        }}
+        onMouseMoveCapture={(e) => e.stopPropagation()}
+        onMouseUpCapture={(e) => e.stopPropagation()}
+        onClickCapture={(e) => e.stopPropagation()}
         onDragStart={(e) => e.preventDefault()}
         draggable={false}
         title="Drag to resize"
