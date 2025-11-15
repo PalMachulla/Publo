@@ -151,8 +151,8 @@ function NarrationSegment({
   }
   
   const colors = levelColors[level] || levelColors[1] // Fallback to level 1 colors
-  const minWidthForText = 40 // Only show text if segment is wide enough
-  const minWidthForButtons = 40 // Show action buttons if segment is wide enough (reduced from 80)
+  const minWidthForText = 50 // Only show text if segment is wide enough
+  const minWidthForButtons = 100 // Show action buttons if segment is wide enough (need room for 3 buttons)
   
   const backgroundColor = getBackgroundColor()
   
