@@ -540,9 +540,8 @@ function NarrationContainer({
         touchAction: 'none' // Prevent touch gestures from reaching ReactFlow
       }}
       data-nodrag="true"
-      // Removed wheel handlers from outer container - only inner viewport needs them
-      onMouseDownCapture={(e) => e.stopPropagation()}
-      onClickCapture={(e) => e.stopPropagation()}
+      // Note: onMouseDownCapture removed to allow segment clicks to work
+      // ReactFlow interference is prevented by nodrag/nopan/nowheel classes
     >
       {/* Left resize handle */}
       <div
