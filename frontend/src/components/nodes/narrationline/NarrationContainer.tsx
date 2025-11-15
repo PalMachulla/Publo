@@ -102,34 +102,32 @@ function NarrationContainer({
         
         const currentZoom = currentZoomRef.current // Get current zoom from ref
         
-        // Accumulate tiny deltaY values from trackpad
-        // Object.is distinguishes -0 from +0
-        const actualDelta = Object.is(e.deltaY, -0) ? -0.1 : (Object.is(e.deltaY, 0) ? 0 : e.deltaY)
-        accumulatedDeltaRef.current += actualDelta
+        // For ultra-precise trackpads: use wheel direction from deltaMode and wheelDelta
+        // Some trackpads only send -0, so we need to detect direction differently
+        let direction = 0
+        if (e.deltaY !== 0) {
+          direction = Math.sign(e.deltaY)
+        } else if (Object.is(e.deltaY, -0)) {
+          // Negative zero detected - treat as zoom in
+          direction = -1
+        } else {
+          // Positive zero or exactly zero - treat as zoom out  
+          direction = 1
+        }
         
-        console.log('🔍 Accumulating:', { 
-          rawDeltaY: e.deltaY,
-          actualDelta,
-          accumulated: accumulatedDeltaRef.current,
-          isNegativeZero: Object.is(e.deltaY, -0),
-          isPositiveZero: Object.is(e.deltaY, 0)
+        // Apply small zoom step per event (2%)
+        const zoomDelta = -direction * 0.02 // 2% per wheel event
+        const newZoom = Math.max(0.001, Math.min(10, currentZoom + zoomDelta))
+        
+        console.log('🔍 Zooming:', { 
+          oldZoom: currentZoom, 
+          newZoom, 
+          delta: zoomDelta,
+          direction,
+          rawDeltaY: e.deltaY
         }) // DEBUG
         
-        // Apply zoom when accumulated value is meaningful (threshold: 1.0)
-        if (Math.abs(accumulatedDeltaRef.current) >= 1.0) {
-          const zoomDelta = -accumulatedDeltaRef.current * 0.01
-          const newZoom = Math.max(0.001, Math.min(10, currentZoom + zoomDelta))
-          
-          console.log('✅ Applying zoom:', { 
-            oldZoom: currentZoom, 
-            newZoom, 
-            delta: zoomDelta, 
-            accumulated: accumulatedDeltaRef.current
-          }) // DEBUG
-          
-          setZoom(newZoom)
-          accumulatedDeltaRef.current = 0 // Reset accumulator
-        }
+        setZoom(newZoom)
       } else {
         // Regular wheel = Horizontal scroll
         e.preventDefault()
