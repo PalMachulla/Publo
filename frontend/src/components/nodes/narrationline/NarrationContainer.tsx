@@ -77,6 +77,12 @@ function NarrationContainer({
   const prevZoomRef = useRef(zoom) // Track previous zoom for centered zooming
   const zoomCenterUnitsRef = useRef<number | null>(null) // Lock the center point during zoom
   const isZoomingRef = useRef(false) // Track if we're in an active zoom session
+  const currentZoomRef = useRef(zoom) // Track current zoom for event handler
+  
+  // Keep zoom ref in sync
+  useEffect(() => {
+    currentZoomRef.current = zoom
+  }, [zoom])
   
   // Add native wheel event listener to handle preventDefault properly
   useEffect(() => {
@@ -93,10 +99,11 @@ function NarrationContainer({
         // Shift+Wheel = Zoom
         e.preventDefault() // Now this works because passive: false
         
+        const currentZoom = currentZoomRef.current // Get current zoom from ref
         const zoomDelta = -e.deltaY * 0.001
-        const newZoom = Math.max(0.001, Math.min(10, zoom + zoomDelta))
+        const newZoom = Math.max(0.001, Math.min(10, currentZoom + zoomDelta))
         
-        console.log('🔍 Zooming:', { oldZoom: zoom, newZoom, delta: zoomDelta }) // DEBUG
+        console.log('🔍 Zooming:', { oldZoom: currentZoom, newZoom, delta: zoomDelta }) // DEBUG
         setZoom(newZoom)
       } else {
         // Regular wheel = Horizontal scroll
@@ -112,7 +119,7 @@ function NarrationContainer({
     return () => {
       container.removeEventListener('wheel', handleWheel, { capture: true } as EventListenerOptions)
     }
-  }, [zoom, setZoom])
+  }, [setZoom])
   
   // Fit to view on mount and when items change
   useEffect(() => {
