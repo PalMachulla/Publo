@@ -703,7 +703,10 @@ function NarrationContainer({
           <div className="narration-content-area" style={{ 
             width: `${totalWidth + 64}px`, // totalWidth + left padding (8px) + generous right buffer (56px)
             minWidth: `${totalWidth + 64}px`, // Ensure minimum width
-            overflow: 'visible' 
+            overflow: 'visible',
+            position: 'relative', // Ensure it's positioned relative for absolute children
+            left: 0, // Explicitly anchor to left edge
+            display: 'block' // Ensure block layout
           }}>
             {/* Structure tracks */}
             {levels.map((level) => (
