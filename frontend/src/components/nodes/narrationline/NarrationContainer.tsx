@@ -78,6 +78,42 @@ function NarrationContainer({
   const zoomCenterUnitsRef = useRef<number | null>(null) // Lock the center point during zoom
   const isZoomingRef = useRef(false) // Track if we're in an active zoom session
   
+  // Add native wheel event listener to handle preventDefault properly
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const handleWheel = (e: WheelEvent) => {
+      console.log('🎯 Native wheel event:', { deltaY: e.deltaY, shiftKey: e.shiftKey }) // DEBUG
+      
+      // CRITICAL: Stop propagation to prevent ReactFlow interference
+      e.stopPropagation()
+      
+      if (e.shiftKey) {
+        // Shift+Wheel = Zoom
+        e.preventDefault() // Now this works because passive: false
+        
+        const zoomDelta = -e.deltaY * 0.001
+        const newZoom = Math.max(0.001, Math.min(10, zoom + zoomDelta))
+        
+        console.log('🔍 Zooming:', { oldZoom: zoom, newZoom, delta: zoomDelta }) // DEBUG
+        setZoom(newZoom)
+      } else {
+        // Regular wheel = Horizontal scroll
+        e.preventDefault()
+        container.scrollLeft += e.deltaY
+        console.log('📜 Scrolling to:', container.scrollLeft) // DEBUG
+      }
+    }
+
+    // Use native listener with passive: false to allow preventDefault
+    container.addEventListener('wheel', handleWheel, { passive: false, capture: true })
+    
+    return () => {
+      container.removeEventListener('wheel', handleWheel, { capture: true } as EventListenerOptions)
+    }
+  }, [zoom, setZoom])
+  
   // Fit to view on mount and when items change
   useEffect(() => {
     if (items.length > 0) {
@@ -481,33 +517,6 @@ function NarrationContainer({
             overscrollBehavior: 'contain', // Prevent scroll chaining to ReactFlow
             scrollBehavior: 'auto',
             touchAction: 'none' // Prevent touch gestures
-          }}
-          onWheelCapture={(e) => {
-            console.log('🎯 Timeline wheel event:', { deltaY: e.deltaY, shiftKey: e.shiftKey }) // DEBUG
-            e.stopPropagation() // CRITICAL: Stop ReactFlow from seeing events
-            
-            // Handle wheel events for scrolling/zooming
-            if (e.shiftKey) {
-              // Shift+Wheel = Zoom (centered on mouse position)
-              e.preventDefault()
-              
-              // Calculate zoom delta (negative deltaY = zoom in, positive = zoom out)
-              const zoomDelta = -e.deltaY * 0.001 // Adjust sensitivity
-              const newZoom = Math.max(0.001, Math.min(10, zoom + zoomDelta))
-              
-              console.log('🔍 Zooming:', { oldZoom: zoom, newZoom, delta: zoomDelta }) // DEBUG
-              
-              // Update zoom (existing centered zoom logic will handle the scroll adjustment)
-              setZoom(newZoom)
-            } else {
-              // Regular wheel = Horizontal scroll
-              e.preventDefault() // Prevent default to handle manually
-              if (containerRef.current) {
-                console.log('📜 Scrolling timeline, new position:', containerRef.current.scrollLeft + e.deltaY) // DEBUG
-                // Scroll horizontally
-                containerRef.current.scrollLeft += e.deltaY
-              }
-            }
           }}
           onMouseDownCapture={(e) => {
             e.stopPropagation()
