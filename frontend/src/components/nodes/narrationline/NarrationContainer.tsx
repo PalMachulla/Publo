@@ -358,11 +358,13 @@ function NarrationContainer({
     }, 50)
   }, [zoomToSegment, calculateSegmentMetrics])
   
-  // Handle edit icon click - open panel
+  // Handle edit icon click - just focus the segment
+  // Note: Panel should only open from the menu button on the structure node, not from segments
   const handleEditSegment = useCallback((item: StoryStructureItem, e: React.MouseEvent) => {
     e.stopPropagation() // Prevent triggering segment click/zoom
-    onItemClick(item) // This opens the AI Document Panel
-  }, [onItemClick])
+    setFocusedSegmentId(item.id) // Just focus the segment
+    // Removed: onItemClick(item) - panel opens only from menu button now
+  }, [])
   
   // Handle color change for a segment and propagate to descendants
   const handleColorChange = useCallback((itemId: string, color: string | null) => {
