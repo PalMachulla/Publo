@@ -400,11 +400,7 @@ function NarrationContainer({
         touchAction: 'none' // Prevent touch gestures from reaching ReactFlow
       }}
       data-nodrag="true"
-      onWheelCapture={(e) => {
-        console.log('🔵 OUTER container wheel (capture):', e.target) // DEBUG
-        e.stopPropagation()
-      }}
-      onWheel={(e) => console.log('🟢 OUTER container wheel (bubble):', e.target)} // DEBUG
+      // Removed wheel handlers from outer container - only inner viewport needs them
       onMouseDownCapture={(e) => e.stopPropagation()}
       onClickCapture={(e) => e.stopPropagation()}
     >
