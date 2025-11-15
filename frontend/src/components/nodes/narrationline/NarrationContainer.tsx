@@ -76,6 +76,7 @@ function NarrationContainer({
   
   const prevZoomRef = useRef(zoom) // Track previous zoom for centered zooming
   const zoomCenterUnitsRef = useRef<number | null>(null) // Lock the center point during zoom
+  const mouseCenterXRef = useRef<number | null>(null) // Store mouse X position for zoom-to-cursor
   const isZoomingRef = useRef(false) // Track if we're in an active zoom session
   const currentZoomRef = useRef(zoom) // Track current zoom for event handler
   const accumulatedDeltaRef = useRef(0) // Accumulate tiny trackpad deltaY values
@@ -98,6 +99,14 @@ function NarrationContainer({
         // Shift+Wheel = Zoom
         e.preventDefault() // Now this works because passive: false
         
+        // Capture mouse position for zoom-to-cursor
+        const containerRect = container.getBoundingClientRect()
+        const mouseX = e.clientX - containerRect.left
+        mouseCenterXRef.current = mouseX
+        
+        // Mark that we're zooming
+        isZoomingRef.current = true
+        
         // DEBUG: See what trackpad actually sends
         console.log('🔍 Wheel Debug:', {
           deltaY: e.deltaY,
@@ -105,7 +114,8 @@ function NarrationContainer({
           deltaMode: e.deltaMode,
           deltaModeName: e.deltaMode === 0 ? 'PIXEL' : e.deltaMode === 1 ? 'LINE' : 'PAGE',
           wheelDelta: (e as any).wheelDelta,
-          detail: (e as any).detail
+          detail: (e as any).detail,
+          mouseX: mouseX
         })
         
         const currentZoom = currentZoomRef.current
@@ -450,17 +460,27 @@ function NarrationContainer({
       isZoomingRef.current = true
     }
     
-    // Calculate the viewport center point geometry (constant during zoom)
-    const viewportWidth = container.clientWidth
+    // Use mouse cursor position as zoom center (zoom-to-cursor behavior)
     const stickyLabelWidth = 64
-    const viewportCenterX = viewportWidth / 2
-    const contentCenterX = viewportCenterX - stickyLabelWidth
+    
+    // Get the mouse X position relative to the content area (excluding sticky label)
+    const mouseX = mouseCenterXRef.current || (container.clientWidth / 2)
+    const contentMouseX = mouseX - stickyLabelWidth
     
     // If this is the first zoom change in a sequence, capture the center point ONCE
     if (zoomCenterUnitsRef.current === null) {
       const currentScrollLeft = container.scrollLeft
-      const centerContentPosition = currentScrollLeft + contentCenterX
-      zoomCenterUnitsRef.current = centerContentPosition / (50 * prevZoom)
+      const mouseContentPosition = currentScrollLeft + contentMouseX
+      zoomCenterUnitsRef.current = mouseContentPosition / (50 * prevZoom)
+      
+      console.log('🔒 Locking zoom center:', {
+        mouseX,
+        contentMouseX,
+        currentScrollLeft,
+        mouseContentPosition,
+        centerUnits: zoomCenterUnitsRef.current,
+        prevZoom
+      })
     }
     
     // Use the locked center point throughout the entire zoom session
@@ -468,7 +488,15 @@ function NarrationContainer({
     
     // Calculate where this unit should be in pixels at the new zoom
     const newCenterContentPosition = centerUnits * 50 * zoom
-    const newScrollLeft = newCenterContentPosition - contentCenterX
+    const newScrollLeft = newCenterContentPosition - contentMouseX
+    
+    console.log('🎯 Applying zoom-to-cursor:', {
+      centerUnits,
+      newCenterContentPosition,
+      contentMouseX,
+      newScrollLeft,
+      zoom
+    })
     
     // Apply new scroll position immediately (no animation)
     container.scrollLeft = Math.max(0, newScrollLeft)
@@ -477,12 +505,14 @@ function NarrationContainer({
     prevZoomRef.current = zoom
   }, [zoom])
   
-  // Clear the locked center point when zoom stabilizes (after user stops dragging)
+  // Clear the locked center point when zoom stabilizes (after user stops scrolling)
   useEffect(() => {
     const timer = setTimeout(() => {
       if (isZoomingRef.current) {
+        console.log('🔓 Unlocking zoom center')
         isZoomingRef.current = false
         zoomCenterUnitsRef.current = null
+        mouseCenterXRef.current = null
       }
     }, 200) // Clear after 200ms of no zoom changes
     
