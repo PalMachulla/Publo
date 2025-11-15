@@ -108,7 +108,17 @@ function NarrationContainer({
         // If this is the start of a zoom session, capture scroll position
         if (!isZoomingRef.current) {
           scrollLeftAtZoomStartRef.current = container.scrollLeft
-          console.log('📍 Starting zoom session, scrollLeft:', container.scrollLeft)
+          
+          // Debug: Check element hierarchy and computed styles
+          const containerStyles = window.getComputedStyle(container)
+          console.log('📍 Starting zoom session:', {
+            scrollLeft: container.scrollLeft,
+            mouseX,
+            containerWidth: container.clientWidth,
+            containerPaddingLeft: containerStyles.paddingLeft,
+            containerPaddingRight: containerStyles.paddingRight,
+            containerMarginLeft: containerStyles.marginLeft
+          })
         }
         
         // Mark that we're zooming
@@ -513,17 +523,32 @@ function NarrationContainer({
     const newCenterContentPosition = centerUnits * 50 * zoom
     const newScrollLeft = newCenterContentPosition - contentMouseX
     
+    const oldScrollLeft = container.scrollLeft
+    
     console.log('🎯 Applying zoom-to-cursor:', {
+      direction: zoom > prevZoom ? '🔍 ZOOM IN' : '🔎 ZOOM OUT',
       centerUnits,
+      prevZoom,
+      newZoom: zoom,
+      zoomRatio: zoom / prevZoom,
       newCenterContentPosition,
       contentMouseX,
+      oldScrollLeft,
       newScrollLeft,
-      zoom,
-      oldScrollLeft: container.scrollLeft
+      scrollDelta: newScrollLeft - oldScrollLeft
     })
     
     // Apply new scroll position in one smooth operation
     container.scrollLeft = Math.max(0, newScrollLeft)
+    
+    // Log the actual result after setting
+    requestAnimationFrame(() => {
+      console.log('✨ After scroll set:', {
+        requestedScrollLeft: newScrollLeft,
+        actualScrollLeft: container.scrollLeft,
+        difference: container.scrollLeft - newScrollLeft
+      })
+    })
     
     // Update prev zoom for next iteration
     prevZoomRef.current = zoom
