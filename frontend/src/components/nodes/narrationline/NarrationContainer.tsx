@@ -719,8 +719,8 @@ function NarrationContainer({
           }}
         >
           <div className="narration-content-area" style={{ 
-            width: '100%', // Fill the full scrollable viewport width
-            minWidth: '100%', // Always fill at least viewport width (no right gap)
+            width: `max(100%, ${totalWidth}px)`, // Fill viewport OR content width, whichever is larger
+            minWidth: `max(100%, ${totalWidth}px)`, // Ensure scrollbar appears when needed
             overflow: 'visible',
             position: 'relative', // Ensure it's positioned relative for absolute children
             left: 0, // Explicitly anchor to left edge
