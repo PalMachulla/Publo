@@ -644,7 +644,7 @@ function NarrationContainer({
   
   return (
     <div 
-      className={`nodrag nopan relative mx-auto bg-white border-2 border-gray-300 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+      className={`nodrag nopan relative mx-auto bg-white border-[3px] border-gray-400 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
       style={{ 
         width: containerWidth,
         boxShadow: 'var(--brand-shadow-md)',
