@@ -139,36 +139,46 @@ function NarrationContainer({
             break
         }
         
-        // Adaptive zoom speed: faster scroll = faster zoom
-        // Small movements = fine control, large movements = rapid zoom
+        // Zoom speed ONLY based on scroll velocity (not affected by current zoom level)
+        // Use multiplicative zoom: zoom *= (1 + factor)
         const magnitude = Math.abs(normalizedDelta)
         
-        // Base sensitivity + speed bonus
-        // Slow scroll (10px): ~0.0002 sensitivity
-        // Medium scroll (100px): ~0.0004 sensitivity
-        // Fast scroll (500px): ~0.0012 sensitivity
-        const baseSensitivity = 0.0002
-        const speedMultiplier = Math.min(magnitude / 200, 5) // Cap at 5x
-        const adaptiveSensitivity = baseSensitivity * (1 + speedMultiplier)
+        // Calculate zoom factor based purely on scroll speed
+        // Slow scroll: small factor (fine control)
+        // Fast scroll: large factor (rapid zoom)
+        const baseSpeed = 0.001 // Base zoom factor per pixel
+        const speedBoost = Math.min(magnitude / 100, 3) // Up to 3x boost for fast scrolls
+        const zoomFactor = magnitude * baseSpeed * (1 + speedBoost)
         
-        const zoomDelta = -normalizedDelta * adaptiveSensitivity
+        // Direction: negative delta = zoom in, positive = zoom out
+        const direction = Math.sign(normalizedDelta)
         
-        // Ignore extremely tiny movements (prevents jitter)
-        if (Math.abs(zoomDelta) < 0.0001) {
-          console.log('⏭️  Delta too small, ignoring:', zoomDelta)
-          return
+        // Apply multiplicative zoom (percentage-based, consistent at all zoom levels)
+        let newZoom: number
+        if (direction < 0) {
+          // Zoom in: multiply by (1 + factor)
+          newZoom = currentZoom * (1 + zoomFactor)
+        } else {
+          // Zoom out: divide by (1 + factor)
+          newZoom = currentZoom / (1 + zoomFactor)
         }
         
-        const newZoom = Math.max(0.001, Math.min(10, currentZoom + zoomDelta))
+        // Clamp to valid range
+        newZoom = Math.max(0.001, Math.min(10, newZoom))
+        
+        // Ignore if change is too small (prevents micro-jitter)
+        if (Math.abs(newZoom - currentZoom) < 0.0001) {
+          console.log('⏭️  Change too small, ignoring')
+          return
+        }
         
         console.log('✅ Applying zoom:', { 
           oldZoom: currentZoom, 
           newZoom, 
-          zoomDelta,
+          change: ((newZoom / currentZoom - 1) * 100).toFixed(1) + '%',
           magnitude,
-          adaptiveSensitivity,
-          speedMultiplier,
-          direction: Math.sign(normalizedDelta),
+          zoomFactor: zoomFactor.toFixed(4),
+          direction: direction < 0 ? 'IN' : 'OUT',
           usedDeltaX: Math.abs(e.deltaX) > Math.abs(e.deltaY)
         })
         
