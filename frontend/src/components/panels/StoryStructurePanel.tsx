@@ -54,44 +54,92 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
     // Each child's word count is specified, and they sum to match parent
     const structureTemplates: Record<string, any> = {
       'screenplay': {
-        // Classic 3-act structure: 25% / 50% / 25%
+        // Classic 3-act structure: 25% / 50% / 25% with Beats
         level1: [
           { name: 'Act 1', wordCount: 3750, children: [
             { name: 'Sequence 1', wordCount: 1500, children: [
-              { name: 'Scene 1', wordCount: 600 },
-              { name: 'Scene 2', wordCount: 500 },
-              { name: 'Scene 3', wordCount: 400 }
+              { name: 'Scene 1', wordCount: 600, children: [
+                { name: 'Beat 1', wordCount: 300 },
+                { name: 'Beat 2', wordCount: 300 }
+              ]},
+              { name: 'Scene 2', wordCount: 500, children: [
+                { name: 'Beat 1', wordCount: 250 },
+                { name: 'Beat 2', wordCount: 250 }
+              ]},
+              { name: 'Scene 3', wordCount: 400, children: [
+                { name: 'Beat 1', wordCount: 200 },
+                { name: 'Beat 2', wordCount: 200 }
+              ]}
             ]},
             { name: 'Sequence 2', wordCount: 1250, children: [
-              { name: 'Scene 1', wordCount: 500 },
-              { name: 'Scene 2', wordCount: 750 }
+              { name: 'Scene 1', wordCount: 500, children: [
+                { name: 'Beat 1', wordCount: 250 },
+                { name: 'Beat 2', wordCount: 250 }
+              ]},
+              { name: 'Scene 2', wordCount: 750, children: [
+                { name: 'Beat 1', wordCount: 400 },
+                { name: 'Beat 2', wordCount: 350 }
+              ]}
             ]},
             { name: 'Sequence 3', wordCount: 1000, children: [
-              { name: 'Scene 1', wordCount: 1000 }
+              { name: 'Scene 1', wordCount: 1000, children: [
+                { name: 'Beat 1', wordCount: 500 },
+                { name: 'Beat 2', wordCount: 500 }
+              ]}
             ]}
           ]},
           { name: 'Act 2', wordCount: 7500, children: [
             { name: 'Sequence 1', wordCount: 2250, children: [
-              { name: 'Scene 1', wordCount: 750 },
-              { name: 'Scene 2', wordCount: 1000 },
-              { name: 'Scene 3', wordCount: 500 }
+              { name: 'Scene 1', wordCount: 750, children: [
+                { name: 'Beat 1', wordCount: 400 },
+                { name: 'Beat 2', wordCount: 350 }
+              ]},
+              { name: 'Scene 2', wordCount: 1000, children: [
+                { name: 'Beat 1', wordCount: 500 },
+                { name: 'Beat 2', wordCount: 500 }
+              ]},
+              { name: 'Scene 3', wordCount: 500, children: [
+                { name: 'Beat 1', wordCount: 250 },
+                { name: 'Beat 2', wordCount: 250 }
+              ]}
             ]},
             { name: 'Sequence 2', wordCount: 3000, children: [
-              { name: 'Scene 1', wordCount: 1200 },
-              { name: 'Scene 2', wordCount: 1800 }
+              { name: 'Scene 1', wordCount: 1200, children: [
+                { name: 'Beat 1', wordCount: 600 },
+                { name: 'Beat 2', wordCount: 600 }
+              ]},
+              { name: 'Scene 2', wordCount: 1800, children: [
+                { name: 'Beat 1', wordCount: 900 },
+                { name: 'Beat 2', wordCount: 900 }
+              ]}
             ]},
             { name: 'Sequence 3', wordCount: 2250, children: [
-              { name: 'Scene 1', wordCount: 900 },
-              { name: 'Scene 2', wordCount: 1350 }
+              { name: 'Scene 1', wordCount: 900, children: [
+                { name: 'Beat 1', wordCount: 450 },
+                { name: 'Beat 2', wordCount: 450 }
+              ]},
+              { name: 'Scene 2', wordCount: 1350, children: [
+                { name: 'Beat 1', wordCount: 700 },
+                { name: 'Beat 2', wordCount: 650 }
+              ]}
             ]}
           ]},
           { name: 'Act 3', wordCount: 3750, children: [
             { name: 'Sequence 1', wordCount: 2250, children: [
-              { name: 'Scene 1', wordCount: 1350 },
-              { name: 'Scene 2', wordCount: 900 }
+              { name: 'Scene 1', wordCount: 1350, children: [
+                { name: 'Beat 1', wordCount: 700 },
+                { name: 'Beat 2', wordCount: 650 }
+              ]},
+              { name: 'Scene 2', wordCount: 900, children: [
+                { name: 'Beat 1', wordCount: 450 },
+                { name: 'Beat 2', wordCount: 450 }
+              ]}
             ]},
             { name: 'Sequence 2', wordCount: 1500, children: [
-              { name: 'Scene 1', wordCount: 1500 }
+              { name: 'Scene 1', wordCount: 1500, children: [
+                { name: 'Beat 1', wordCount: 750 },
+                { name: 'Beat 2', wordCount: 750 }
+              ]}
             ]}
           ]}
         ]
@@ -167,20 +215,38 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
         ]
       },
       'podcast': {
-        // 1 Season with 3 episodes
+        // 1 Season with 3 episodes, segments, and topics
         level1: [
           { name: 'Season 1', wordCount: 15000, children: [
             { name: 'Episode 1', wordCount: 4500, children: [
-              { name: 'Segment 1', wordCount: 2000 },
-              { name: 'Segment 2', wordCount: 2500 }
+              { name: 'Segment 1', wordCount: 2000, children: [
+                { name: 'Topic 1', wordCount: 800 },
+                { name: 'Topic 2', wordCount: 1200 }
+              ]},
+              { name: 'Segment 2', wordCount: 2500, children: [
+                { name: 'Topic 1', wordCount: 1000 },
+                { name: 'Topic 2', wordCount: 1500 }
+              ]}
             ]},
             { name: 'Episode 2', wordCount: 5500, children: [
-              { name: 'Segment 1', wordCount: 3000 },
-              { name: 'Segment 2', wordCount: 2500 }
+              { name: 'Segment 1', wordCount: 3000, children: [
+                { name: 'Topic 1', wordCount: 1200 },
+                { name: 'Topic 2', wordCount: 1800 }
+              ]},
+              { name: 'Segment 2', wordCount: 2500, children: [
+                { name: 'Topic 1', wordCount: 1000 },
+                { name: 'Topic 2', wordCount: 1500 }
+              ]}
             ]},
             { name: 'Episode 3', wordCount: 5000, children: [
-              { name: 'Segment 1', wordCount: 2500 },
-              { name: 'Segment 2', wordCount: 2500 }
+              { name: 'Segment 1', wordCount: 2500, children: [
+                { name: 'Topic 1', wordCount: 1000 },
+                { name: 'Topic 2', wordCount: 1500 }
+              ]},
+              { name: 'Segment 2', wordCount: 2500, children: [
+                { name: 'Topic 1', wordCount: 1250 },
+                { name: 'Topic 2', wordCount: 1250 }
+              ]}
             ]}
           ]}
         ]
@@ -227,56 +293,116 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
         ]
       },
       'report': {
-        // 5 Chapters with sections
+        // 5 Chapters with sections, subsections, and sub-subsections
         level1: [
           { name: 'Chapter 1', wordCount: 3000, children: [
             { name: 'Section 1', wordCount: 1000, children: [
-              { name: 'Subsection 1', wordCount: 600 },
-              { name: 'Subsection 2', wordCount: 400 }
+              { name: 'Subsection 1', wordCount: 600, children: [
+                { name: 'Sub-subsection 1', wordCount: 300 },
+                { name: 'Sub-subsection 2', wordCount: 300 }
+              ]},
+              { name: 'Subsection 2', wordCount: 400, children: [
+                { name: 'Sub-subsection 1', wordCount: 200 },
+                { name: 'Sub-subsection 2', wordCount: 200 }
+              ]}
             ]},
             { name: 'Section 2', wordCount: 2000, children: [
-              { name: 'Subsection 1', wordCount: 1200 },
-              { name: 'Subsection 2', wordCount: 800 }
+              { name: 'Subsection 1', wordCount: 1200, children: [
+                { name: 'Sub-subsection 1', wordCount: 600 },
+                { name: 'Sub-subsection 2', wordCount: 600 }
+              ]},
+              { name: 'Subsection 2', wordCount: 800, children: [
+                { name: 'Sub-subsection 1', wordCount: 400 },
+                { name: 'Sub-subsection 2', wordCount: 400 }
+              ]}
             ]}
           ]},
           { name: 'Chapter 2', wordCount: 4500, children: [
             { name: 'Section 1', wordCount: 2250, children: [
-              { name: 'Subsection 1', wordCount: 1350 },
-              { name: 'Subsection 2', wordCount: 900 }
+              { name: 'Subsection 1', wordCount: 1350, children: [
+                { name: 'Sub-subsection 1', wordCount: 700 },
+                { name: 'Sub-subsection 2', wordCount: 650 }
+              ]},
+              { name: 'Subsection 2', wordCount: 900, children: [
+                { name: 'Sub-subsection 1', wordCount: 450 },
+                { name: 'Sub-subsection 2', wordCount: 450 }
+              ]}
             ]},
             { name: 'Section 2', wordCount: 2250, children: [
-              { name: 'Subsection 1', wordCount: 1350 },
-              { name: 'Subsection 2', wordCount: 900 }
+              { name: 'Subsection 1', wordCount: 1350, children: [
+                { name: 'Sub-subsection 1', wordCount: 700 },
+                { name: 'Sub-subsection 2', wordCount: 650 }
+              ]},
+              { name: 'Subsection 2', wordCount: 900, children: [
+                { name: 'Sub-subsection 1', wordCount: 450 },
+                { name: 'Sub-subsection 2', wordCount: 450 }
+              ]}
             ]}
           ]},
           { name: 'Chapter 3', wordCount: 4000, children: [
             { name: 'Section 1', wordCount: 2000, children: [
-              { name: 'Subsection 1', wordCount: 1200 },
-              { name: 'Subsection 2', wordCount: 800 }
+              { name: 'Subsection 1', wordCount: 1200, children: [
+                { name: 'Sub-subsection 1', wordCount: 600 },
+                { name: 'Sub-subsection 2', wordCount: 600 }
+              ]},
+              { name: 'Subsection 2', wordCount: 800, children: [
+                { name: 'Sub-subsection 1', wordCount: 400 },
+                { name: 'Sub-subsection 2', wordCount: 400 }
+              ]}
             ]},
             { name: 'Section 2', wordCount: 2000, children: [
-              { name: 'Subsection 1', wordCount: 1200 },
-              { name: 'Subsection 2', wordCount: 800 }
+              { name: 'Subsection 1', wordCount: 1200, children: [
+                { name: 'Sub-subsection 1', wordCount: 600 },
+                { name: 'Sub-subsection 2', wordCount: 600 }
+              ]},
+              { name: 'Subsection 2', wordCount: 800, children: [
+                { name: 'Sub-subsection 1', wordCount: 400 },
+                { name: 'Sub-subsection 2', wordCount: 400 }
+              ]}
             ]}
           ]},
           { name: 'Chapter 4', wordCount: 3500, children: [
             { name: 'Section 1', wordCount: 1750, children: [
-              { name: 'Subsection 1', wordCount: 1050 },
-              { name: 'Subsection 2', wordCount: 700 }
+              { name: 'Subsection 1', wordCount: 1050, children: [
+                { name: 'Sub-subsection 1', wordCount: 550 },
+                { name: 'Sub-subsection 2', wordCount: 500 }
+              ]},
+              { name: 'Subsection 2', wordCount: 700, children: [
+                { name: 'Sub-subsection 1', wordCount: 350 },
+                { name: 'Sub-subsection 2', wordCount: 350 }
+              ]}
             ]},
             { name: 'Section 2', wordCount: 1750, children: [
-              { name: 'Subsection 1', wordCount: 1050 },
-              { name: 'Subsection 2', wordCount: 700 }
+              { name: 'Subsection 1', wordCount: 1050, children: [
+                { name: 'Sub-subsection 1', wordCount: 550 },
+                { name: 'Sub-subsection 2', wordCount: 500 }
+              ]},
+              { name: 'Subsection 2', wordCount: 700, children: [
+                { name: 'Sub-subsection 1', wordCount: 350 },
+                { name: 'Sub-subsection 2', wordCount: 350 }
+              ]}
             ]}
           ]},
           { name: 'Chapter 5', wordCount: 2500, children: [
             { name: 'Section 1', wordCount: 1250, children: [
-              { name: 'Subsection 1', wordCount: 750 },
-              { name: 'Subsection 2', wordCount: 500 }
+              { name: 'Subsection 1', wordCount: 750, children: [
+                { name: 'Sub-subsection 1', wordCount: 400 },
+                { name: 'Sub-subsection 2', wordCount: 350 }
+              ]},
+              { name: 'Subsection 2', wordCount: 500, children: [
+                { name: 'Sub-subsection 1', wordCount: 250 },
+                { name: 'Sub-subsection 2', wordCount: 250 }
+              ]}
             ]},
             { name: 'Section 2', wordCount: 1250, children: [
-              { name: 'Subsection 1', wordCount: 750 },
-              { name: 'Subsection 2', wordCount: 500 }
+              { name: 'Subsection 1', wordCount: 750, children: [
+                { name: 'Sub-subsection 1', wordCount: 400 },
+                { name: 'Sub-subsection 2', wordCount: 350 }
+              ]},
+              { name: 'Subsection 2', wordCount: 500, children: [
+                { name: 'Sub-subsection 1', wordCount: 250 },
+                { name: 'Sub-subsection 2', wordCount: 250 }
+              ]}
             ]}
           ]}
         ]
@@ -301,7 +427,7 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
           order: i,
           completed: false,
           content: '',
-          expanded: level < 3, // Expand levels 1 and 2
+          expanded: level < 4, // Expand first 3 levels to show 4 levels
           wordCount: templateItem.wordCount
         }
         
@@ -319,8 +445,11 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
     console.log('📝 Generated structure:', {
       format,
       totalItems: newItems.length,
+      maxLevel: Math.max(...newItems.map(i => i.level)),
       level1Items: newItems.filter(i => i.level === 1).map(i => ({ name: i.name, wordCount: i.wordCount })),
       level2Items: newItems.filter(i => i.level === 2).map(i => ({ name: i.name, wordCount: i.wordCount, parentId: i.parentId })),
+      level3Items: newItems.filter(i => i.level === 3).map(i => ({ name: i.name, wordCount: i.wordCount, parentId: i.parentId })),
+      level4Items: newItems.filter(i => i.level === 4).map(i => ({ name: i.name, wordCount: i.wordCount, parentId: i.parentId })),
       allItems: newItems
     })
     
