@@ -187,8 +187,14 @@ function NarrationSegment({
           e.currentTarget.style.backgroundColor = backgroundColor
         }
       }}
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
+      onClick={(e) => {
+        e.stopPropagation() // Prevent click from bubbling to parent node
+        onClick()
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation() // Prevent double-click from bubbling to parent node
+        onDoubleClick?.()
+      }}
       title={item.name} // Tooltip for narrow segments
     >
       {/* Segment label - only show if wide enough */}
