@@ -8,6 +8,7 @@ import StructureTrackLane from './StructureTrackLane'
 import NarrationRuler from './NarrationRuler'
 import ZoomControls from './ZoomControls'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Label } from '@/components/ui'
+import { ChevronDownIcon, ReaderIcon } from '@radix-ui/react-icons'
 
 export interface NarrationContainerProps {
   items: StoryStructureItem[]
@@ -45,6 +46,7 @@ function NarrationContainer({
   const [maxVisibleLevels, setMaxVisibleLevels] = useState(3) // Default to 3 levels
   const [focusedSegmentId, setFocusedSegmentId] = useState<string | null>(null) // Track zoomed segment
   const [scrollLeft, setScrollLeft] = useState(0) // Track scroll position for ruler
+  const [isReaderExpanded, setIsReaderExpanded] = useState(false) // Track reader view expansion
   
   // Calculate total word count from Level 1 items only
   // Level 1 represents the max extent (e.g., Season with 1000 words)
@@ -713,6 +715,43 @@ function NarrationContainer({
               setFocusedSegmentId(null) // Clear focus when fitting to view
             }}
           />
+        </div>
+        
+        {/* Reader View - Expandable text preview */}
+        <div className="border-b border-gray-200">
+          <button
+            onClick={() => setIsReaderExpanded(!isReaderExpanded)}
+            className="w-full px-4 py-2 flex items-center justify-between hover:bg-gray-50/50 transition-colors group"
+          >
+            <div className="flex items-center gap-2">
+              <ReaderIcon className="w-4 h-4 text-gray-600 group-hover:text-yellow-600 transition-colors" />
+              <span className="text-xs font-medium text-gray-700">Reader View</span>
+              <span className="text-xs text-gray-400">(Coming soon: Summarized segment text)</span>
+            </div>
+            <ChevronDownIcon 
+              className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
+                isReaderExpanded ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+          
+          {/* Expandable content area */}
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${
+              isReaderExpanded ? 'max-h-96' : 'max-h-0'
+            }`}
+          >
+            <div className="px-4 py-4 bg-gray-50/30">
+              <div className="bg-white rounded-lg border border-gray-200 p-4 min-h-[200px] max-h-80 overflow-y-auto">
+                <div className="prose prose-sm max-w-none">
+                  <p className="text-gray-500 italic text-center py-8">
+                    Select a segment to view its content here.<br />
+                    <span className="text-xs">Future: Auto-summarize all visible segments</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         
         {/* Ruler */}

@@ -146,7 +146,86 @@ if (process.env.NODE_ENV === 'development') {
 
 ---
 
-### 5. **Keyboard Shortcuts for Narration Arrangement View**
+### 5. **Reader View with Auto-Summarized Segment Text**
+**Category**: UX Enhancement  
+**Effort**: Medium (4-6 hours)  
+**Priority**: Medium  
+**Status**: UI Implemented, Content Logic Pending
+
+**Feature**: Expandable reader view panel in the Narration Arrangement View that displays:
+- Selected segment's full content
+- Auto-summarized text from all visible segments (AI-powered)
+- Hierarchical text aggregation (Level 1 includes all child content)
+- Smooth expand/collapse animation
+- Scrollable text area with elegant typography
+
+**Current Status**: 
+- ✅ UI component implemented (expandable panel with smooth animation)
+- ✅ Positioned between header and ruler
+- ✅ Icon-based toggle with hover states
+- ⏳ Content population logic pending
+- ⏳ AI summarization integration pending
+
+**Implementation Tasks**:
+1. **Phase 1: Basic Content Display** (2 hours)
+   - Show selected segment's `content` field
+   - Display hierarchy path (e.g., "Act 2 → Scene 3")
+   - Word count indicator
+   - Last edited timestamp
+
+2. **Phase 2: Aggregated Content** (2 hours)
+   - Collect content from all visible segments at current level
+   - Concatenate with section headers
+   - Format with proper typography
+
+3. **Phase 3: AI Summarization** (2-4 hours)
+   - API integration with OpenAI/Claude
+   - Summarize visible segments into cohesive overview
+   - Cache summaries to reduce API calls
+   - Loading states and error handling
+
+**Example Implementation**:
+```tsx
+// Phase 1: Basic content
+const displayContent = useMemo(() => {
+  if (!focusedSegmentId) {
+    return "Select a segment to view its content"
+  }
+  const segment = items.find(i => i.id === focusedSegmentId)
+  return segment?.content || "No content yet"
+}, [focusedSegmentId, items])
+
+// Phase 2: Aggregated content
+const aggregatedContent = useMemo(() => {
+  const visibleSegments = items.filter(i => i.level <= maxVisibleLevels)
+  return visibleSegments.map(s => `## ${s.name}\n${s.content || ''}`).join('\n\n')
+}, [items, maxVisibleLevels])
+
+// Phase 3: AI summarization
+const summarizeContent = async (segments: StoryStructureItem[]) => {
+  const prompt = `Summarize these story segments into a cohesive overview:\n${
+    segments.map(s => `${s.name}: ${s.content}`).join('\n')
+  }`
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4',
+    messages: [{ role: 'user', content: prompt }]
+  })
+  return response.choices[0].message.content
+}
+```
+
+**Files Modified**:
+- ✅ `/frontend/src/components/nodes/narrationline/NarrationContainer.tsx`
+
+**Benefits**:
+- ✅ Quick overview of story content without opening editor
+- ✅ Verify narrative flow and coherence
+- ✅ Export-ready text preview
+- ✅ Mobile-friendly reading experience
+
+---
+
+### 6. **Keyboard Shortcuts for Narration Arrangement View**
 **Category**: UX Enhancement  
 **Effort**: Small (2-3 hours)  
 **Priority**: Medium  
@@ -169,7 +248,7 @@ if (process.env.NODE_ENV === 'development') {
 
 ---
 
-### 6. **Segment Drag-and-Drop Reordering**
+### 7. **Segment Drag-and-Drop Reordering**
 **Category**: UX Enhancement  
 **Effort**: Medium (4-6 hours)  
 **Priority**: Medium  
@@ -190,7 +269,7 @@ if (process.env.NODE_ENV === 'development') {
 
 ---
 
-### 7. **Mini-map Navigation**
+### 8. **Mini-map Navigation**
 **Category**: UX Enhancement  
 **Effort**: Medium (4-5 hours)  
 **Priority**: Low  
@@ -215,7 +294,7 @@ if (process.env.NODE_ENV === 'development') {
 
 ## 🎨 Visual & Styling Improvements
 
-### 8. **Custom Color Schemes per Story**
+### 9. **Custom Color Schemes per Story**
 **Category**: Theming  
 **Effort**: Small (2-3 hours)  
 **Priority**: Low  
@@ -239,7 +318,7 @@ interface StoryTheme {
 
 ---
 
-### 9. **Dark Mode for Arrangement View**
+### 10. **Dark Mode for Arrangement View**
 **Category**: Theming  
 **Effort**: Small (2-3 hours)  
 **Priority**: Low  
@@ -251,7 +330,7 @@ interface StoryTheme {
 
 ---
 
-### 10. **Segment Visual States**
+### 11. **Segment Visual States**
 **Category**: UX Enhancement  
 **Effort**: Small (1-2 hours)  
 **Priority**: Low  
@@ -270,7 +349,7 @@ interface StoryTheme {
 
 ## 🔧 Technical Debt & Optimizations
 
-### 11. **Performance: Virtualize Segment Rendering**
+### 12. **Performance: Virtualize Segment Rendering**
 **Category**: Performance  
 **Effort**: Medium (4-6 hours)  
 **Priority**: Low  
@@ -287,7 +366,7 @@ interface StoryTheme {
 
 ---
 
-### 12. **Debounce Supabase Updates**
+### 13. **Debounce Supabase Updates**
 **Category**: Performance  
 **Effort**: Small (1-2 hours)  
 **Priority**: Medium  
@@ -312,7 +391,7 @@ const debouncedSave = useDebouncedCallback(
 
 ---
 
-### 13. **Extract Structure Templates to Separate File**
+### 14. **Extract Structure Templates to Separate File**
 **Category**: Code Organization  
 **Effort**: Small (1 hour)  
 **Priority**: Low  
@@ -333,7 +412,7 @@ const debouncedSave = useDebouncedCallback(
 
 ---
 
-### 14. **Unit Tests for Proportional Calculations**
+### 15. **Unit Tests for Proportional Calculations**
 **Category**: Testing  
 **Effort**: Medium (3-4 hours)  
 **Priority**: Medium  
@@ -356,7 +435,7 @@ describe('getSegmentMetrics', () => {
 
 ## 🌟 New Features - Future Vision
 
-### 15. **AI-Powered Structure Generation**
+### 16. **AI-Powered Structure Generation**
 **Category**: AI Feature  
 **Effort**: Large (16-20 hours)  
 **Priority**: Future  
@@ -372,7 +451,7 @@ describe('getSegmentMetrics', () => {
 
 ---
 
-### 16. **Collaborative Editing**
+### 17. **Collaborative Editing**
 **Category**: Multiplayer  
 **Effort**: Large (20-30 hours)  
 **Priority**: Future  
@@ -388,7 +467,7 @@ describe('getSegmentMetrics', () => {
 
 ---
 
-### 17. **Export to Popular Formats**
+### 18. **Export to Popular Formats**
 **Category**: Integration  
 **Effort**: Medium (6-8 hours)  
 **Priority**: Future  
@@ -403,7 +482,7 @@ describe('getSegmentMetrics', () => {
 
 ---
 
-### 18. **Template Marketplace**
+### 19. **Template Marketplace**
 **Category**: Community Feature  
 **Effort**: Large (12-16 hours)  
 **Priority**: Future  
@@ -419,7 +498,7 @@ describe('getSegmentMetrics', () => {
 
 ---
 
-### 19. **Writing Analytics Dashboard**
+### 20. **Writing Analytics Dashboard**
 **Category**: Analytics  
 **Effort**: Large (10-15 hours)  
 **Priority**: Future  
@@ -435,7 +514,7 @@ describe('getSegmentMetrics', () => {
 
 ---
 
-### 20. **Voice-to-Structure**
+### 21. **Voice-to-Structure**
 **Category**: Accessibility / Innovation  
 **Effort**: Large (12-16 hours)  
 **Priority**: Future  
@@ -449,7 +528,7 @@ describe('getSegmentMetrics', () => {
 
 ## 🐛 Known Issues
 
-### 21. **Side Panel Opens on Segment Click (Sometimes)**
+### 22. **Side Panel Opens on Segment Click (Sometimes)**
 **Category**: Bug  
 **Effort**: Small (1 hour)  
 **Priority**: Medium  
@@ -463,7 +542,7 @@ describe('getSegmentMetrics', () => {
 
 ---
 
-### 22. **Zoom Bounce at High Zoom Levels**
+### 23. **Zoom Bounce at High Zoom Levels**
 **Category**: Bug  
 **Effort**: Small (1-2 hours)  
 **Priority**: Low  
@@ -477,7 +556,7 @@ describe('getSegmentMetrics', () => {
 
 ---
 
-### 23. **Mobile: Arrangement View Not Touch-Optimized**
+### 24. **Mobile: Arrangement View Not Touch-Optimized**
 **Category**: Mobile / UX  
 **Effort**: Medium (4-6 hours)  
 **Priority**: Medium  
@@ -495,7 +574,7 @@ describe('getSegmentMetrics', () => {
 
 ## 📋 Documentation Needs
 
-### 24. **Video Tutorial Series**
+### 25. **Video Tutorial Series**
 **Category**: Documentation  
 **Effort**: Large (8-12 hours)  
 **Priority**: Medium  
@@ -510,7 +589,7 @@ describe('getSegmentMetrics', () => {
 
 ---
 
-### 25. **API Documentation**
+### 26. **API Documentation**
 **Category**: Documentation  
 **Effort**: Medium (4-6 hours)  
 **Priority**: Low  
@@ -529,7 +608,7 @@ describe('getSegmentMetrics', () => {
 
 ## 🎯 Quick Wins - Easy Improvements
 
-### 26. **Show Word Count in Ruler**
+### 27. **Show Word Count in Ruler**
 **Effort**: 30 minutes  
 **Priority**: Low
 
@@ -537,7 +616,7 @@ Add word count markers to narration ruler (every 1000 words).
 
 ---
 
-### 27. **Double-Click to Rename Segment**
+### 28. **Double-Click to Rename Segment**
 **Effort**: 1 hour  
 **Priority**: Medium
 
@@ -545,7 +624,7 @@ Allow inline editing of segment names in arrangement view.
 
 ---
 
-### 28. **Segment Search/Filter**
+### 29. **Segment Search/Filter**
 **Effort**: 2 hours  
 **Priority**: Medium
 
@@ -553,7 +632,7 @@ Add search bar to filter visible segments by name or content.
 
 ---
 
-### 29. **Undo/Redo for Structure Changes**
+### 30. **Undo/Redo for Structure Changes**
 **Effort**: 3 hours  
 **Priority**: High
 
@@ -565,7 +644,7 @@ Implement command pattern for undo/redo of:
 
 ---
 
-### 30. **Export as Image**
+### 31. **Export as Image**
 **Effort**: 2 hours  
 **Priority**: Low
 
