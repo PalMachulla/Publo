@@ -480,11 +480,13 @@ function NarrationContainer({
     }
     
     // Use mouse cursor position as zoom center (zoom-to-cursor behavior)
-    const stickyLabelWidth = 64
+    const stickyLabelWidth = 64 // w-16
+    const segmentPaddingLeft = 8 // pl-2 on the segment container
+    const totalLeftOffset = stickyLabelWidth + segmentPaddingLeft // 72px total
     
-    // Get the mouse X position relative to the content area (excluding sticky label)
+    // Get the mouse X position relative to the content area (excluding sticky label + padding)
     const mouseX = mouseCenterXRef.current || (container.clientWidth / 2)
-    const contentMouseX = mouseX - stickyLabelWidth
+    const contentMouseX = mouseX - totalLeftOffset
     
     // If this is the first zoom change in a sequence, capture the center point ONCE
     if (zoomCenterUnitsRef.current === null) {
@@ -495,6 +497,7 @@ function NarrationContainer({
       
       console.log('🔒 Locking zoom center:', {
         mouseX,
+        totalLeftOffset,
         contentMouseX,
         startScrollLeft,
         mouseContentPosition,
