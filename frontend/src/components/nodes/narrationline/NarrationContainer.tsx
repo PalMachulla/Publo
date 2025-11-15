@@ -504,10 +504,11 @@ function NarrationContainer({
     
     // Use mouse cursor position as zoom center (zoom-to-cursor behavior)
     const stickyLabelWidth = 64 // w-16
-    const segmentPaddingLeft = 8 // pl-2 on the segment container
-    const totalLeftOffset = stickyLabelWidth + segmentPaddingLeft // 72px total
+    // NOTE: Segments are positioned inside a pl-2 container, so their left values
+    // are ALREADY relative to that padding. We should NOT subtract it here!
+    const totalLeftOffset = stickyLabelWidth // Just the sticky label, not padding
     
-    // Get the mouse X position relative to the content area (excluding sticky label + padding)
+    // Get the mouse X position relative to the content area (excluding sticky label)
     const mouseX = mouseCenterXRef.current || (container.clientWidth / 2)
     const contentMouseX = mouseX - totalLeftOffset
     
@@ -521,15 +522,15 @@ function NarrationContainer({
       console.log('🔒 Locking zoom center:', {
         mouseX,
         stickyLabelWidth,
-        segmentPaddingLeft,
-        totalLeftOffset,
+        totalLeftOffset: totalLeftOffset,
         contentMouseX,
         startScrollLeft,
         intendedScrollLeft: intendedScrollLeftRef.current,
         mouseContentPosition,
         centerUnits: zoomCenterUnitsRef.current,
         prevZoom,
-        calculatedPixelPosition: zoomCenterUnitsRef.current * 50 * prevZoom
+        calculatedPixelPosition: zoomCenterUnitsRef.current * 50 * prevZoom,
+        NOTE: 'Changed totalLeftOffset from 72px to 64px - segments are already relative to pl-2 padding'
       })
     }
     
