@@ -483,7 +483,20 @@ function NarrationContainer({
             touchAction: 'none' // Prevent touch gestures
           }}
           onWheelCapture={(e) => {
-            e.stopPropagation() // CRITICAL: Stop ReactFlow from seeing scroll/zoom events
+            e.stopPropagation() // CRITICAL: Stop ReactFlow from seeing events
+            
+            // Handle wheel events for scrolling/zooming
+            if (e.shiftKey) {
+              // Shift+Wheel = Zoom (leave default zoom behavior)
+              // The existing centered zoom logic will handle this via the slider
+            } else {
+              // Regular wheel = Horizontal scroll
+              e.preventDefault() // Prevent default to handle manually
+              if (containerRef.current) {
+                // Scroll horizontally
+                containerRef.current.scrollLeft += e.deltaY
+              }
+            }
           }}
           onMouseDownCapture={(e) => {
             e.stopPropagation()
