@@ -99,7 +99,7 @@ function StructureTrackLane({
     let itemWidth = wordCount
     
     if (item.parentId) {
-      // This is a child item - position within parent's range
+      // This is a child item - position within parent's range PROPORTIONALLY by word count
       const parentMetrics = getParentMetrics(item.parentId)
       
       // Get all siblings (including this item)
@@ -107,12 +107,23 @@ function StructureTrackLane({
         .filter(i => i.parentId === item.parentId && i.level === item.level)
         .sort((a, b) => a.order - b.order)
       
-      // Divide parent's range among children
-      const siblingIndex = siblings.findIndex(s => s.id === item.id)
-      const totalSiblings = siblings.length
-      itemWidth = parentMetrics.width / totalSiblings
+      // Calculate total word count of all siblings
+      const totalSiblingsWordCount = siblings.reduce((sum, s) => 
+        sum + (s.wordCount || 1000), 0)
       
-      startPos = parentMetrics.start + (siblingIndex * itemWidth)
+      // This child's proportional width based on its word count
+      const proportion = wordCount / totalSiblingsWordCount
+      itemWidth = parentMetrics.width * proportion
+      
+      // Start position = parent start + sum of previous siblings' proportional widths
+      const siblingIndex = siblings.findIndex(s => s.id === item.id)
+      let offset = 0
+      for (let i = 0; i < siblingIndex; i++) {
+        const siblingProportion = (siblings[i].wordCount || 1000) / totalSiblingsWordCount
+        offset += parentMetrics.width * siblingProportion
+      }
+      startPos = parentMetrics.start + offset
+      
       return { 
         startPosition: startPos * pixelsPerUnit, 
         width: itemWidth * pixelsPerUnit 

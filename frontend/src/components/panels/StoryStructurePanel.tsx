@@ -45,81 +45,276 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
   // Format icon
   const formatIcon = getFormatIcon(format)
 
-  // Generate default structure based on format
+  // Generate default structure based on format with realistic, varied word counts
   const handleGenerateStructure = () => {
     const newItems: StoryStructureItem[] = []
     let itemCounter = 0
     
-    // Define structure based on format
-    const structureConfig: Record<string, { level1Count: number, level2Count: number, level3Count: number }> = {
-      'podcast': { level1Count: 1, level2Count: 3, level3Count: 2 }, // 1 Season, 3 Episodes per season, 2 Segments per episode
-      'novel': { level1Count: 3, level2Count: 5, level3Count: 3 }, // 3 Parts, 5 Chapters per part, 3 Scenes per chapter
-      'screenplay': { level1Count: 3, level2Count: 10, level3Count: 3 }, // 3 Acts, 10 Sequences per act, 3 Scenes per sequence
-      'short-story': { level1Count: 3, level2Count: 4, level3Count: 0 }, // 3 Acts, 4 Scenes per act
-      'article': { level1Count: 4, level2Count: 3, level3Count: 0 }, // 4 Sections, 3 Subsections per section
-      'essay': { level1Count: 3, level2Count: 3, level3Count: 0 }, // 3 Sections, 3 Paragraphs per section
-      'report': { level1Count: 5, level2Count: 3, level3Count: 2 } // 5 Chapters, 3 Sections per chapter, 2 Subsections
+    // Define realistic structure templates with proportional word counts
+    // Each child's word count is specified, and they sum to match parent
+    const structureTemplates: Record<string, any> = {
+      'screenplay': {
+        // Classic 3-act structure: 25% / 50% / 25%
+        level1: [
+          { name: 'Act 1', wordCount: 3750, children: [
+            { name: 'Sequence 1', wordCount: 1500, children: [
+              { name: 'Scene 1', wordCount: 600 },
+              { name: 'Scene 2', wordCount: 500 },
+              { name: 'Scene 3', wordCount: 400 }
+            ]},
+            { name: 'Sequence 2', wordCount: 1250, children: [
+              { name: 'Scene 1', wordCount: 500 },
+              { name: 'Scene 2', wordCount: 750 }
+            ]},
+            { name: 'Sequence 3', wordCount: 1000, children: [
+              { name: 'Scene 1', wordCount: 1000 }
+            ]}
+          ]},
+          { name: 'Act 2', wordCount: 7500, children: [
+            { name: 'Sequence 1', wordCount: 2250, children: [
+              { name: 'Scene 1', wordCount: 750 },
+              { name: 'Scene 2', wordCount: 1000 },
+              { name: 'Scene 3', wordCount: 500 }
+            ]},
+            { name: 'Sequence 2', wordCount: 3000, children: [
+              { name: 'Scene 1', wordCount: 1200 },
+              { name: 'Scene 2', wordCount: 1800 }
+            ]},
+            { name: 'Sequence 3', wordCount: 2250, children: [
+              { name: 'Scene 1', wordCount: 900 },
+              { name: 'Scene 2', wordCount: 1350 }
+            ]}
+          ]},
+          { name: 'Act 3', wordCount: 3750, children: [
+            { name: 'Sequence 1', wordCount: 2250, children: [
+              { name: 'Scene 1', wordCount: 1350 },
+              { name: 'Scene 2', wordCount: 900 }
+            ]},
+            { name: 'Sequence 2', wordCount: 1500, children: [
+              { name: 'Scene 1', wordCount: 1500 }
+            ]}
+          ]}
+        ]
+      },
+      'novel': {
+        // 3 Parts with varied chapter lengths
+        level1: [
+          { name: 'Part 1', wordCount: 25000, children: [
+            { name: 'Chapter 1', wordCount: 6000, children: [
+              { name: 'Scene 1', wordCount: 2500 },
+              { name: 'Scene 2', wordCount: 2000 },
+              { name: 'Scene 3', wordCount: 1500 }
+            ]},
+            { name: 'Chapter 2', wordCount: 5500, children: [
+              { name: 'Scene 1', wordCount: 2500 },
+              { name: 'Scene 2', wordCount: 3000 }
+            ]},
+            { name: 'Chapter 3', wordCount: 6500, children: [
+              { name: 'Scene 1', wordCount: 3500 },
+              { name: 'Scene 2', wordCount: 3000 }
+            ]},
+            { name: 'Chapter 4', wordCount: 7000, children: [
+              { name: 'Scene 1', wordCount: 3500 },
+              { name: 'Scene 2', wordCount: 3500 }
+            ]}
+          ]},
+          { name: 'Part 2', wordCount: 35000, children: [
+            { name: 'Chapter 5', wordCount: 7000, children: [
+              { name: 'Scene 1', wordCount: 3500 },
+              { name: 'Scene 2', wordCount: 3500 }
+            ]},
+            { name: 'Chapter 6', wordCount: 8000, children: [
+              { name: 'Scene 1', wordCount: 4000 },
+              { name: 'Scene 2', wordCount: 4000 }
+            ]},
+            { name: 'Chapter 7', wordCount: 10000, children: [
+              { name: 'Scene 1', wordCount: 5000 },
+              { name: 'Scene 2', wordCount: 5000 }
+            ]},
+            { name: 'Chapter 8', wordCount: 10000, children: [
+              { name: 'Scene 1', wordCount: 5000 },
+              { name: 'Scene 2', wordCount: 5000 }
+            ]}
+          ]},
+          { name: 'Part 3', wordCount: 20000, children: [
+            { name: 'Chapter 9', wordCount: 8000, children: [
+              { name: 'Scene 1', wordCount: 4000 },
+              { name: 'Scene 2', wordCount: 4000 }
+            ]},
+            { name: 'Chapter 10', wordCount: 12000, children: [
+              { name: 'Scene 1', wordCount: 6000 },
+              { name: 'Scene 2', wordCount: 6000 }
+            ]}
+          ]}
+        ]
+      },
+      'short-story': {
+        // 3 Acts without scenes
+        level1: [
+          { name: 'Act 1', wordCount: 1000, children: [
+            { name: 'Scene 1', wordCount: 400 },
+            { name: 'Scene 2', wordCount: 600 }
+          ]},
+          { name: 'Act 2', wordCount: 2500, children: [
+            { name: 'Scene 1', wordCount: 800 },
+            { name: 'Scene 2', wordCount: 1200 },
+            { name: 'Scene 3', wordCount: 500 }
+          ]},
+          { name: 'Act 3', wordCount: 1500, children: [
+            { name: 'Scene 1', wordCount: 1000 },
+            { name: 'Scene 2', wordCount: 500 }
+          ]}
+        ]
+      },
+      'podcast': {
+        // 1 Season with 3 episodes
+        level1: [
+          { name: 'Season 1', wordCount: 15000, children: [
+            { name: 'Episode 1', wordCount: 4500, children: [
+              { name: 'Segment 1', wordCount: 2000 },
+              { name: 'Segment 2', wordCount: 2500 }
+            ]},
+            { name: 'Episode 2', wordCount: 5500, children: [
+              { name: 'Segment 1', wordCount: 3000 },
+              { name: 'Segment 2', wordCount: 2500 }
+            ]},
+            { name: 'Episode 3', wordCount: 5000, children: [
+              { name: 'Segment 1', wordCount: 2500 },
+              { name: 'Segment 2', wordCount: 2500 }
+            ]}
+          ]}
+        ]
+      },
+      'article': {
+        // 4 Sections with subsections
+        level1: [
+          { name: 'Section 1', wordCount: 1500, children: [
+            { name: 'Subsection 1', wordCount: 600 },
+            { name: 'Subsection 2', wordCount: 900 }
+          ]},
+          { name: 'Section 2', wordCount: 2500, children: [
+            { name: 'Subsection 1', wordCount: 1000 },
+            { name: 'Subsection 2', wordCount: 800 },
+            { name: 'Subsection 3', wordCount: 700 }
+          ]},
+          { name: 'Section 3', wordCount: 2000, children: [
+            { name: 'Subsection 1', wordCount: 1200 },
+            { name: 'Subsection 2', wordCount: 800 }
+          ]},
+          { name: 'Section 4', wordCount: 1000, children: [
+            { name: 'Subsection 1', wordCount: 1000 }
+          ]}
+        ]
+      },
+      'essay': {
+        // 3 Sections with paragraphs
+        level1: [
+          { name: 'Section 1', wordCount: 1200, children: [
+            { name: 'Paragraph 1', wordCount: 400 },
+            { name: 'Paragraph 2', wordCount: 500 },
+            { name: 'Paragraph 3', wordCount: 300 }
+          ]},
+          { name: 'Section 2', wordCount: 2000, children: [
+            { name: 'Paragraph 1', wordCount: 700 },
+            { name: 'Paragraph 2', wordCount: 800 },
+            { name: 'Paragraph 3', wordCount: 500 }
+          ]},
+          { name: 'Section 3', wordCount: 1800, children: [
+            { name: 'Paragraph 1', wordCount: 600 },
+            { name: 'Paragraph 2', wordCount: 700 },
+            { name: 'Paragraph 3', wordCount: 500 }
+          ]}
+        ]
+      },
+      'report': {
+        // 5 Chapters with sections
+        level1: [
+          { name: 'Chapter 1', wordCount: 3000, children: [
+            { name: 'Section 1', wordCount: 1000, children: [
+              { name: 'Subsection 1', wordCount: 600 },
+              { name: 'Subsection 2', wordCount: 400 }
+            ]},
+            { name: 'Section 2', wordCount: 2000, children: [
+              { name: 'Subsection 1', wordCount: 1200 },
+              { name: 'Subsection 2', wordCount: 800 }
+            ]}
+          ]},
+          { name: 'Chapter 2', wordCount: 4500, children: [
+            { name: 'Section 1', wordCount: 2250, children: [
+              { name: 'Subsection 1', wordCount: 1350 },
+              { name: 'Subsection 2', wordCount: 900 }
+            ]},
+            { name: 'Section 2', wordCount: 2250, children: [
+              { name: 'Subsection 1', wordCount: 1350 },
+              { name: 'Subsection 2', wordCount: 900 }
+            ]}
+          ]},
+          { name: 'Chapter 3', wordCount: 4000, children: [
+            { name: 'Section 1', wordCount: 2000, children: [
+              { name: 'Subsection 1', wordCount: 1200 },
+              { name: 'Subsection 2', wordCount: 800 }
+            ]},
+            { name: 'Section 2', wordCount: 2000, children: [
+              { name: 'Subsection 1', wordCount: 1200 },
+              { name: 'Subsection 2', wordCount: 800 }
+            ]}
+          ]},
+          { name: 'Chapter 4', wordCount: 3500, children: [
+            { name: 'Section 1', wordCount: 1750, children: [
+              { name: 'Subsection 1', wordCount: 1050 },
+              { name: 'Subsection 2', wordCount: 700 }
+            ]},
+            { name: 'Section 2', wordCount: 1750, children: [
+              { name: 'Subsection 1', wordCount: 1050 },
+              { name: 'Subsection 2', wordCount: 700 }
+            ]}
+          ]},
+          { name: 'Chapter 5', wordCount: 2500, children: [
+            { name: 'Section 1', wordCount: 1250, children: [
+              { name: 'Subsection 1', wordCount: 750 },
+              { name: 'Subsection 2', wordCount: 500 }
+            ]},
+            { name: 'Section 2', wordCount: 1250, children: [
+              { name: 'Subsection 1', wordCount: 750 },
+              { name: 'Subsection 2', wordCount: 500 }
+            ]}
+          ]}
+        ]
+      }
     }
     
-    const config = structureConfig[format] || { level1Count: 3, level2Count: 3, level3Count: 0 }
+    const template = structureTemplates[format] || structureTemplates['screenplay']
     
-    // Generate Level 1 items
-    for (let i = 0; i < config.level1Count; i++) {
-      const level1Id = `item-${Date.now()}-${itemCounter++}`
-      const level1Item: StoryStructureItem = {
-        id: level1Id,
-        level: 1,
-        name: `${getLevelName(1)} ${i + 1}`,
-        title: '',
-        description: '',
-        order: i,
-        completed: false,
-        content: '',
-        expanded: true,
-        wordCount: 5000
-      }
-      newItems.push(level1Item)
-      
-      // Generate Level 2 items under this Level 1
-      for (let j = 0; j < config.level2Count; j++) {
-        const level2Id = `item-${Date.now()}-${itemCounter++}`
-        const level2Item: StoryStructureItem = {
-          id: level2Id,
-          level: 2,
-          parentId: level1Id,
-          name: `${getLevelName(2)} ${j + 1}`,
+    // Recursive function to generate items from template
+    const generateFromTemplate = (templateItems: any[], parentId?: string, level: number = 1) => {
+      for (let i = 0; i < templateItems.length; i++) {
+        const templateItem = templateItems[i]
+        const itemId = `item-${Date.now()}-${itemCounter++}`
+        
+        const item: StoryStructureItem = {
+          id: itemId,
+          level,
+          parentId,
+          name: templateItem.name,
           title: '',
           description: '',
-          order: j,
+          order: i,
           completed: false,
           content: '',
-          expanded: true,
-          wordCount: Math.floor(5000 / config.level2Count)
+          expanded: level < 3, // Expand levels 1 and 2
+          wordCount: templateItem.wordCount
         }
-        newItems.push(level2Item)
         
-        // Generate Level 3 items under this Level 2 (if applicable)
-        if (config.level3Count > 0) {
-          for (let k = 0; k < config.level3Count; k++) {
-            const level3Id = `item-${Date.now()}-${itemCounter++}`
-            const level3Item: StoryStructureItem = {
-              id: level3Id,
-              level: 3,
-              parentId: level2Id,
-              name: `${getLevelName(3)} ${k + 1}`,
-              title: '',
-              description: '',
-              order: k,
-              completed: false,
-              content: '',
-              expanded: false,
-              wordCount: Math.floor(5000 / config.level2Count / config.level3Count)
-            }
-            newItems.push(level3Item)
-          }
+        newItems.push(item)
+        
+        // Recursively generate children
+        if (templateItem.children && templateItem.children.length > 0) {
+          generateFromTemplate(templateItem.children, itemId, level + 1)
         }
       }
     }
+    
+    generateFromTemplate(template.level1)
     
     onUpdate(node.id, { items: newItems })
   }
