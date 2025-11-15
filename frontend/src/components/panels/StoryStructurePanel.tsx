@@ -316,6 +316,14 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
     
     generateFromTemplate(template.level1)
     
+    console.log('📝 Generated structure:', {
+      format,
+      totalItems: newItems.length,
+      level1Items: newItems.filter(i => i.level === 1).map(i => ({ name: i.name, wordCount: i.wordCount })),
+      level2Items: newItems.filter(i => i.level === 2).map(i => ({ name: i.name, wordCount: i.wordCount, parentId: i.parentId })),
+      allItems: newItems
+    })
+    
     onUpdate(node.id, { items: newItems })
   }
 

@@ -124,6 +124,15 @@ function StructureTrackLane({
       }
       startPos = parentMetrics.start + offset
       
+      console.log(`📊 Child segment [${item.name}]:`, {
+        wordCount,
+        totalSiblingsWordCount,
+        proportion: (proportion * 100).toFixed(1) + '%',
+        parentWidth: parentMetrics.width,
+        calculatedWidth: itemWidth,
+        siblings: siblings.map(s => ({ name: s.name, wordCount: s.wordCount }))
+      })
+      
       return { 
         startPosition: startPos * pixelsPerUnit, 
         width: itemWidth * pixelsPerUnit 
@@ -142,6 +151,13 @@ function StructureTrackLane({
     
     const startPosition = startPos * pixelsPerUnit
     const width = itemWidth * pixelsPerUnit
+    
+    console.log(`📊 Top-level segment [${item.name}]:`, {
+      wordCount,
+      startPos,
+      width: itemWidth,
+      allTopLevel: topLevelSiblings.map(s => ({ name: s.name, wordCount: s.wordCount }))
+    })
     
     return { startPosition, width }
   }
