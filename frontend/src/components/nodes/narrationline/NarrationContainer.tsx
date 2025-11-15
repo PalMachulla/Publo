@@ -78,6 +78,7 @@ function NarrationContainer({
   const zoomCenterUnitsRef = useRef<number | null>(null) // Lock the center point during zoom
   const isZoomingRef = useRef(false) // Track if we're in an active zoom session
   const currentZoomRef = useRef(zoom) // Track current zoom for event handler
+  const accumulatedDeltaRef = useRef(0) // Accumulate tiny trackpad deltaY values
   
   // Keep zoom ref in sync
   useEffect(() => {
@@ -101,31 +102,33 @@ function NarrationContainer({
         
         const currentZoom = currentZoomRef.current // Get current zoom from ref
         
-        // For trackpads that send tiny deltaY values, apply a minimum step
-        let zoomDelta: number
-        if (Math.abs(e.deltaY) < 1) {
-          // Very small deltaY (trackpad with fine precision)
-          // Apply minimum zoom step based on direction
-          const direction = e.deltaY === 0 ? 0 : Math.sign(e.deltaY)
-          zoomDelta = -direction * 0.01 // Minimum 1% zoom step
-        } else {
-          // Normal mouse wheel or larger trackpad values
-          zoomDelta = -e.deltaY * 0.01
-        }
+        // Accumulate tiny deltaY values from trackpad
+        // Object.is distinguishes -0 from +0
+        const actualDelta = Object.is(e.deltaY, -0) ? -0.1 : (Object.is(e.deltaY, 0) ? 0 : e.deltaY)
+        accumulatedDeltaRef.current += actualDelta
         
-        const newZoom = Math.max(0.001, Math.min(10, currentZoom + zoomDelta))
-        
-        console.log('🔍 Zooming:', { 
-          oldZoom: currentZoom, 
-          newZoom, 
-          delta: zoomDelta, 
+        console.log('🔍 Accumulating:', { 
           rawDeltaY: e.deltaY,
-          wasSmall: Math.abs(e.deltaY) < 1
+          actualDelta,
+          accumulated: accumulatedDeltaRef.current,
+          isNegativeZero: Object.is(e.deltaY, -0),
+          isPositiveZero: Object.is(e.deltaY, 0)
         }) // DEBUG
         
-        // Only update if there's a meaningful change
-        if (Math.abs(newZoom - currentZoom) > 0.0001) {
+        // Apply zoom when accumulated value is meaningful (threshold: 1.0)
+        if (Math.abs(accumulatedDeltaRef.current) >= 1.0) {
+          const zoomDelta = -accumulatedDeltaRef.current * 0.01
+          const newZoom = Math.max(0.001, Math.min(10, currentZoom + zoomDelta))
+          
+          console.log('✅ Applying zoom:', { 
+            oldZoom: currentZoom, 
+            newZoom, 
+            delta: zoomDelta, 
+            accumulated: accumulatedDeltaRef.current
+          }) // DEBUG
+          
           setZoom(newZoom)
+          accumulatedDeltaRef.current = 0 // Reset accumulator
         }
       } else {
         // Regular wheel = Horizontal scroll
