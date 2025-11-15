@@ -622,6 +622,7 @@ function NarrationContainer({
         touchAction: 'none' // Prevent touch gestures from reaching ReactFlow
       }}
       data-nodrag="true"
+      onClick={(e) => e.stopPropagation()} // Prevent clicks from opening the side panel
       // Note: onMouseDownCapture removed to allow segment clicks to work
       // ReactFlow interference is prevented by nodrag/nopan classes and our wheel handler
     >
