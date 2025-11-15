@@ -110,18 +110,22 @@ function NarrationContainer({
         
         const currentZoom = currentZoomRef.current
         
-        // Normalize deltaY based on deltaMode for consistent behavior
-        let normalizedDelta = e.deltaY
+        // Mac trackpads send horizontal scroll in deltaX when Shift is held
+        // Use deltaX if deltaY is zero/tiny
+        const primaryDelta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX
+        
+        // Normalize based on deltaMode for consistent behavior
+        let normalizedDelta = primaryDelta
         
         switch (e.deltaMode) {
           case WheelEvent.DOM_DELTA_PIXEL: // 0x00 (most common for trackpads)
-            normalizedDelta = e.deltaY
+            normalizedDelta = primaryDelta
             break
           case WheelEvent.DOM_DELTA_LINE: // 0x01 (mouse wheel)
-            normalizedDelta = e.deltaY * 16 // Approximate line height
+            normalizedDelta = primaryDelta * 16 // Approximate line height
             break
           case WheelEvent.DOM_DELTA_PAGE: // 0x02 (rare)
-            normalizedDelta = e.deltaY * (container?.clientHeight || 100)
+            normalizedDelta = primaryDelta * (container?.clientHeight || 100)
             break
         }
         
@@ -140,8 +144,10 @@ function NarrationContainer({
           oldZoom: currentZoom, 
           newZoom, 
           zoomDelta,
+          primaryDelta,
           normalizedDelta,
-          direction: Math.sign(normalizedDelta)
+          direction: Math.sign(normalizedDelta),
+          usedDeltaX: Math.abs(e.deltaX) > Math.abs(e.deltaY)
         })
         
         setZoom(newZoom)
