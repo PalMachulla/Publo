@@ -65,12 +65,16 @@ export async function getStory(storyId: string) {
       
       // Debug log for structure nodes with contentMap
       if (validatedNode.type === 'storyStructureNode' && validatedNode.data?.contentMap) {
+        const contentMapKeys = Object.keys(validatedNode.data.contentMap)
+        const firstKey = contentMapKeys[0]
+        const contentMap = validatedNode.data.contentMap as Record<string, string>
+        
         console.log('📥 Loaded structure node with contentMap from DB:', {
           nodeId: validatedNode.id,
-          contentMapKeys: Object.keys(validatedNode.data.contentMap),
-          contentMapSize: Object.keys(validatedNode.data.contentMap).length,
-          sampleKey: Object.keys(validatedNode.data.contentMap)[0],
-          sampleContent: validatedNode.data.contentMap[Object.keys(validatedNode.data.contentMap)[0]]?.substring(0, 100)
+          contentMapKeys,
+          contentMapSize: contentMapKeys.length,
+          sampleKey: firstKey,
+          sampleContent: firstKey ? contentMap[firstKey]?.substring(0, 100) : undefined
         })
       }
       
