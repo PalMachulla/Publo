@@ -17,9 +17,9 @@
   font-family: 'Courier New', Courier, monospace;
   font-size: 12pt;
   line-height: 1.7;
-  max-width: 6.5in; /* Standard screenplay width */
-  margin: 0 auto;
-  padding: 2rem;
+  max-width: 100%; /* Full width of container */
+  margin: 0;
+  padding: 3rem 4rem; /* Generous padding for proper spacing */
   color: #1a1a1a;
   background-color: transparent; /* Transparent to show grid background */
 }

@@ -1085,7 +1085,7 @@ export default function AIDocumentPanel({
                 {/* Scrollable Container with Document */}
                 <div ref={editorContainerRef} className="flex-1 overflow-y-auto relative z-10 p-8">
                   {/* Document Container - Like a real paper with shadow */}
-                  <div className="max-w-5xl mx-auto bg-white shadow-lg rounded-lg">
+                  <div className="max-w-7xl mx-auto bg-white shadow-lg rounded-lg">
                     <MarkdownEditor
                       content={content}
                       onUpdate={handleEditorUpdate}
