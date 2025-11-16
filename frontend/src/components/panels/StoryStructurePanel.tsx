@@ -1,22 +1,40 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Node } from 'reactflow'
-import { StoryStructureNodeData, StoryStructureItem } from '@/types/nodes'
+import { useState, useEffect, useMemo } from 'react'
+import { Node, Edge } from 'reactflow'
+import { StoryStructureNodeData, StoryStructureItem, TestNodeData } from '@/types/nodes'
 import { getDocumentHierarchy } from '@/lib/documentHierarchy'
 import { getFormatIcon } from '@/components/menus/StoryFormatMenu'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
+import { parseMarkdownStructure } from '@/lib/markdownParser'
 
 interface StoryStructurePanelProps {
   node: Node<StoryStructureNodeData>
   onUpdate: (nodeId: string, updates: Partial<StoryStructureNodeData>) => void
   onDelete: (nodeId: string) => void
+  edges?: Edge[]
+  nodes?: Node[]
 }
 
-export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryStructurePanelProps) {
+export default function StoryStructurePanel({ node, onUpdate, onDelete, edges = [], nodes = [] }: StoryStructurePanelProps) {
   const { format, items } = node.data
   
   const hierarchy = getDocumentHierarchy(format)
+
+  // Detect test nodes connected to orchestrator
+  const connectedTestNode = useMemo(() => {
+    const orchestratorId = 'context'
+    const testEdges = edges.filter(edge => edge.target === orchestratorId)
+    
+    for (const edge of testEdges) {
+      const sourceNode = nodes.find(n => n.id === edge.source)
+      if (sourceNode?.data?.nodeType === 'test') {
+        return sourceNode as Node<TestNodeData>
+      }
+    }
+    
+    return null
+  }, [edges, nodes])
   
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
@@ -47,6 +65,41 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete }: StoryS
 
   // Generate default structure based on format with realistic, varied word counts
   const handleGenerateStructure = () => {
+    // Check if test node is connected - if so, parse its markdown
+    if (connectedTestNode) {
+      try {
+        const markdown = connectedTestNode.data.markdown || ''
+        console.log('🎬 Generating structure from test node markdown:', {
+          nodeId: connectedTestNode.id,
+          markdownLength: markdown.length,
+        })
+        
+        const { items: parsedItems, contentMap } = parseMarkdownStructure(markdown)
+        
+        // Update node with parsed structure
+        onUpdate(node.id, { items: parsedItems })
+        
+        // TODO: Store contentMap for later use when creating sections in Supabase
+        // For now, we'll just log it
+        console.log('📝 Content map:', {
+          sections: contentMap.size,
+          sectionIds: Array.from(contentMap.keys()),
+        })
+        
+        console.log('✅ Structure generated from test markdown:', {
+          itemsCount: parsedItems.length,
+          levels: [...new Set(parsedItems.map(i => i.level))],
+        })
+        
+        return
+      } catch (error) {
+        console.error('❌ Failed to parse test node markdown:', error)
+        alert('Failed to parse test node markdown. Using default template instead.')
+        // Fall through to template generation
+      }
+    }
+    
+    // Default template-based generation
     const newItems: StoryStructureItem[] = []
     let itemCounter = 0
     

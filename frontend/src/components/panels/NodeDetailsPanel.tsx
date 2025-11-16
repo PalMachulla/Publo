@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Node, Edge } from 'reactflow'
-import { AnyNodeData, Comment, StoryStructureItem } from '@/types/nodes'
+import { AnyNodeData, Comment, StoryStructureItem, TestNodeData } from '@/types/nodes'
 import { useAuth } from '@/contexts/AuthContext'
 import StoryBookPanel from './StoryBookPanel'
 import CharacterPanel from './CharacterPanel'
@@ -11,6 +11,7 @@ import ClusterPanel from './ClusterPanel'
 import CreateStoryPanel from './CreateStoryPanel'
 import StoryStructurePanel from './StoryStructurePanel'
 import { PASTEL_COLORS } from '@/components/nodes/narrationline/NarrationSegment'
+import { parseMarkdownStructure } from '@/lib/markdownParser'
 
 // Helper function to lighten a hex color for cascading
 function lightenColor(hex: string, depth: number): string {
@@ -418,6 +419,21 @@ export default function NodeDetailsPanel({
   const nodeData = node.data as any
   const nodeType = nodeData.nodeType || 'story'
   
+  // Detect test nodes connected to orchestrator
+  const connectedTestNode = useMemo(() => {
+    const orchestratorId = 'context'
+    const testEdges = edges.filter(edge => edge.target === orchestratorId)
+    
+    for (const edge of testEdges) {
+      const sourceNode = nodes.find(n => n.id === edge.source)
+      if (sourceNode?.data?.nodeType === 'test') {
+        return sourceNode as Node<TestNodeData>
+      }
+    }
+    
+    return null
+  }, [edges, nodes])
+
   // Debug logging
   console.log('NodeDetailsPanel - Node clicked:', {
     nodeId: node.id,
@@ -425,7 +441,8 @@ export default function NodeDetailsPanel({
     dataNodeType: nodeData.nodeType,
     resolvedNodeType: nodeType,
     format: nodeData.format,
-    allData: nodeData
+    allData: nodeData,
+    hasTestNode: !!connectedTestNode
   })
   
   // Don't show panel for story-draft nodes - they open the AI Document Panel
@@ -583,6 +600,40 @@ export default function NodeDetailsPanel({
                     </p>
                     <button
                       onClick={() => {
+                        // Check if test node is connected - if so, parse its markdown
+                        if (connectedTestNode) {
+                          try {
+                            const markdown = connectedTestNode.data.markdown || ''
+                            console.log('🎬 Generating structure from test node markdown:', {
+                              nodeId: connectedTestNode.id,
+                              markdownLength: markdown.length,
+                            })
+                            
+                            const { items: parsedItems, contentMap } = parseMarkdownStructure(markdown)
+                            
+                            // Update node with parsed structure
+                            onUpdate(node.id, { items: parsedItems })
+                            
+                            // TODO: Store contentMap for later use when creating sections in Supabase
+                            console.log('📝 Content map:', {
+                              sections: contentMap.size,
+                              sectionIds: Array.from(contentMap.keys()),
+                            })
+                            
+                            console.log('✅ Structure generated from test markdown:', {
+                              itemsCount: parsedItems.length,
+                              levels: [...new Set(parsedItems.map(i => i.level))],
+                            })
+                            
+                            return
+                          } catch (error) {
+                            console.error('❌ Failed to parse test node markdown:', error)
+                            alert('Failed to parse test node markdown. Using default template instead.')
+                            // Fall through to template generation
+                          }
+                        }
+
+                        // Default template-based generation
                         const format = nodeData.format || 'screenplay'
                         const template = structureTemplates[format] || structureTemplates['screenplay']
                         
