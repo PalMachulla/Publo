@@ -351,12 +351,17 @@ export default function CanvasPage() {
             }
           }
         }
-        // Migrate old createStoryNode type to orchestratorNode (loading already activated above)
-        if (node.id === 'context' && node.type === 'createStoryNode') {
-          console.log('Migrating old createStoryNode to orchestratorNode')
+        // Migrate old createStoryNode and contextCanvas types to orchestratorNode
+        if (node.id === 'context' && (node.type === 'createStoryNode' || node.type === 'contextCanvas')) {
+          console.log(`Migrating old ${node.type} to orchestratorNode`)
           return {
             ...node,
-            type: 'orchestratorNode'
+            type: 'orchestratorNode',
+            data: {
+              ...node.data,
+              label: node.data.label || 'Orchestrator',
+              nodeType: 'create-story'
+            }
           }
         }
         return node

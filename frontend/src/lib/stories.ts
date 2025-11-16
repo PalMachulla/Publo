@@ -126,14 +126,18 @@ export async function createStory(title: string = 'Untitled Story') {
 
   if (error) throw error
 
-  // Always create the context canvas node for new stories
+  // Always create the orchestrator node for new stories
   const contextNode = {
     id: 'context',
     story_id: data.id,
-    type: 'contextCanvas',
-    position_x: 200,
-    position_y: 350,
-    data: { placeholder: "What's your story, Morning Glory?", comments: [] }
+    type: 'orchestratorNode',
+    position_x: 250,
+    position_y: 500,
+    data: { 
+      label: 'Orchestrator',
+      comments: [],
+      nodeType: 'create-story'
+    }
   }
 
   const { error: nodeError } = await supabase
