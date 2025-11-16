@@ -18,6 +18,7 @@ export interface StructureTrackLaneProps {
   levelName?: string // e.g., "Acts", "Chapters", "Scenes"
   availableAgents?: AgentOption[]
   onAgentAssign?: (itemId: string, agentId: string | null) => void
+  connectionCounts?: Map<string, number> // Connection count per item ID
 }
 
 function StructureTrackLane({
@@ -33,7 +34,8 @@ function StructureTrackLane({
   onColorChange,
   levelName,
   availableAgents = [],
-  onAgentAssign
+  onAgentAssign,
+  connectionCounts
 }: StructureTrackLaneProps) {
   // Uniform height for all track levels
   const trackHeight = 40
@@ -223,6 +225,7 @@ function StructureTrackLane({
                 onColorChange={onColorChange ? (color) => onColorChange(item.id, color) : undefined}
                 availableAgents={availableAgents}
                 onAgentAssign={onAgentAssign ? (agentId) => onAgentAssign(item.id, agentId) : undefined}
+                connectionCount={connectionCounts?.get(item.id) || 0}
               />
             )
           })}

@@ -5,10 +5,12 @@ import dynamic from 'next/dynamic'
 import { useDocumentSections } from '@/hooks/useDocumentSections'
 import { useDocumentEditor } from '@/hooks/useDocumentEditor'
 import EditorToolbar from '../editor/EditorToolbar'
+import NarrationArrangementView from '../document/NarrationArrangementView'
 import type { StoryStructureItem } from '@/types/nodes'
 import type { Editor } from '@tiptap/react'
 import type { DocumentSection } from '@/types/document'
 import type { ProseMirrorEditorProps, ProseMirrorEditorRef } from '../editor/ProseMirrorEditor'
+import type { Edge, Node } from 'reactflow'
 
 // Dynamically import ProseMirrorEditor to avoid SSR issues
 const ProseMirrorEditor = dynamic<ProseMirrorEditorProps>(
@@ -41,6 +43,8 @@ interface AIDocumentPanelProps {
   structureItems?: StoryStructureItem[]
   initialSectionId?: string | null
   onUpdateStructure?: (nodeId: string, updatedItems: StoryStructureItem[]) => void
+  canvasEdges?: Edge[]
+  canvasNodes?: Node[]
 }
 
 export default function AIDocumentPanel({
@@ -51,6 +55,8 @@ export default function AIDocumentPanel({
   structureItems = [],
   initialSectionId = null,
   onUpdateStructure,
+  canvasEdges = [],
+  canvasNodes = [],
 }: AIDocumentPanelProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -63,6 +69,7 @@ export default function AIDocumentPanel({
   const [newSectionTitle, setNewSectionTitle] = useState('')
   const [newSectionParentId, setNewSectionParentId] = useState<string | null>(null)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
+  const [isArrangementCollapsed, setIsArrangementCollapsed] = useState(true) // Collapsed by default
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -829,8 +836,10 @@ export default function AIDocumentPanel({
           </div>
         </div>
 
-        {/* Split Content */}
-        <div className="flex h-[calc(100vh-4rem)]" ref={containerRef}>
+        {/* Split Content with Arrangement View */}
+        <div className="flex flex-col h-[calc(100vh-4rem)]">
+          {/* Top: Existing split view (Editor + Chat) */}
+          <div className="flex flex-1 min-h-0" ref={containerRef}>
           {/* Left Side - Document Editor + Section Nav */}
           <div className="flex flex-col bg-white" style={{ width: `${100 - leftPanelWidth}%` }}>
             <div className="flex h-full">
@@ -1049,6 +1058,20 @@ export default function AIDocumentPanel({
               </form>
             </div>
           </div>
+          </div>
+          
+          {/* Bottom: Narration Arrangement View */}
+          <NarrationArrangementView
+            sections={sections}
+            structureItems={structureItems}
+            activeSectionId={activeSectionId}
+            onSectionClick={handleSectionClick}
+            format={structureItems[0]?.level === 1 ? 'screenplay' : undefined} // TODO: Derive format properly
+            isCollapsed={isArrangementCollapsed}
+            onToggleCollapse={() => setIsArrangementCollapsed(!isArrangementCollapsed)}
+            canvasEdges={canvasEdges}
+            canvasNodes={canvasNodes}
+          />
         </div>
       </div>
 

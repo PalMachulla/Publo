@@ -1605,6 +1605,8 @@ export default function CanvasPage() {
           structureItems={currentStructureItems}
           initialSectionId={initialSectionId}
           onUpdateStructure={handleStructureItemsUpdate}
+          canvasEdges={edges}
+          canvasNodes={nodes}
         />
       </div>
     </div>

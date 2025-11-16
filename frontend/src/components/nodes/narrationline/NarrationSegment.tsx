@@ -32,6 +32,7 @@ export interface NarrationSegmentProps {
   onColorChange?: (color: string | null) => void // Handler for color picker
   availableAgents?: AgentOption[] // Available agents for assignment
   onAgentAssign?: (agentId: string | null) => void // Handler for agent assignment
+  connectionCount?: number // Number of connected resources/agents from canvas
 }
 
 function NarrationSegment({
@@ -48,6 +49,7 @@ function NarrationSegment({
   onEdit,
   onColorChange,
   availableAgents = [],
+  connectionCount = 0,
   onAgentAssign
 }: NarrationSegmentProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -197,6 +199,15 @@ function NarrationSegment({
       }}
       title={item.name} // Tooltip for narrow segments
     >
+      {/* Connection count badge - always visible in top-right corner */}
+      {connectionCount > 0 && (
+        <div className="absolute top-1 right-1 flex items-center gap-0.5 text-xs pointer-events-none z-10">
+          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md font-medium shadow-sm border border-blue-200 flex items-center gap-0.5">
+            🔗 {connectionCount}
+          </span>
+        </div>
+      )}
+      
       {/* Segment label - only show if wide enough */}
       {width >= minWidthForText && (
         <div className="h-full px-2 flex items-center justify-between gap-2">
