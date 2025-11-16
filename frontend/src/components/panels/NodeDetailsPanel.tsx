@@ -414,13 +414,10 @@ export default function NodeDetailsPanel({
   const { user } = useAuth()
   const [commentText, setCommentText] = useState('')
 
-  if (!node) return null
-  
-  const nodeData = node.data as any
-  const nodeType = nodeData.nodeType || 'story'
-  
-  // Detect test nodes connected to orchestrator
+  // Detect test nodes connected to orchestrator (MUST be before any early returns)
   const connectedTestNode = useMemo(() => {
+    if (!node) return null
+    
     const orchestratorId = 'context'
     const testEdges = edges.filter(edge => edge.target === orchestratorId)
     
@@ -432,8 +429,14 @@ export default function NodeDetailsPanel({
     }
     
     return null
-  }, [edges, nodes])
+  }, [edges, nodes, node])
 
+  // Early returns AFTER all hooks
+  if (!node) return null
+  
+  const nodeData = node.data as any
+  const nodeType = nodeData.nodeType || 'story'
+  
   // Debug logging
   console.log('NodeDetailsPanel - Node clicked:', {
     nodeId: node.id,
