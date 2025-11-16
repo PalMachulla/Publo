@@ -100,14 +100,12 @@ export function parseMarkdownStructure(markdown: string): ParsedMarkdownStructur
         currentItemId = matchingItem.id
         currentContent = []
       } else {
-        // If no match, continue adding to current content
+        // If no match, this is a sub-header (like scene headings), add to content
         currentContent.push(line)
       }
     } else {
-      // Add line to current content
-      if (line.trim()) {
-        currentContent.push(line)
-      }
+      // Add ALL lines to current content, including blank lines (for proper paragraph separation)
+      currentContent.push(line)
     }
   }
   
