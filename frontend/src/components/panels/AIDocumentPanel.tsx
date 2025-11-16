@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import { useDocumentSections } from '@/hooks/useDocumentSections'
 import { useDocumentEditor } from '@/hooks/useDocumentEditor'
 import EditorToolbar from '../editor/EditorToolbar'
 import NarrationArrangementView from '../document/NarrationArrangementView'
-import type { StoryStructureItem } from '@/types/nodes'
+import type { StoryStructureItem, TestNodeData } from '@/types/nodes'
 import type { Editor } from '@tiptap/react'
 import type { DocumentSection } from '@/types/document'
 import type { ProseMirrorEditorProps, ProseMirrorEditorRef } from '../editor/ProseMirrorEditor'
@@ -146,6 +146,25 @@ export default function AIDocumentPanel({
     autoSaveDelay: 999999, // Effectively disable auto-save (manual save only)
     enabled: !!activeSection,
   })
+
+  // Detect test nodes connected to orchestrator
+  const connectedTestNode = useMemo(() => {
+    // Find orchestrator node (id 'context')
+    const orchestratorId = 'context'
+    
+    // Find edges where target is orchestrator
+    const testEdges = canvasEdges.filter(edge => edge.target === orchestratorId)
+    
+    // Find test nodes among those connected
+    for (const edge of testEdges) {
+      const sourceNode = canvasNodes.find(n => n.id === edge.source)
+      if (sourceNode?.data?.nodeType === 'test') {
+        return sourceNode as Node<TestNodeData>
+      }
+    }
+    
+    return null
+  }, [canvasEdges, canvasNodes])
 
   // Update content when active section changes (without remounting editor)
   useEffect(() => {
@@ -430,15 +449,80 @@ export default function AIDocumentPanel({
     }, 500)
   }
 
+  // Aggregate content hierarchically for a structure item
+  const aggregateHierarchicalContent = (itemId: string): string => {
+    const item = structureItems.find(i => i.id === itemId)
+    if (!item) return ''
+    
+    const children = structureItems
+      .filter(i => i.parentId === itemId)
+      .sort((a, b) => a.order - b.order)
+    
+    // If no children, return the section's own content
+    if (children.length === 0) {
+      const section = sections.find(s => s.structure_item_id === itemId)
+      return section?.content || ''
+    }
+    
+    // Aggregate children with headers
+    const aggregatedContent: string[] = []
+    
+    for (const child of children) {
+      const childSection = sections.find(s => s.structure_item_id === child.id)
+      const childContent = aggregateHierarchicalContent(child.id)
+      
+      if (childContent) {
+        // Add header based on level
+        const headerLevel = Math.min(child.level, 6) // HTML only supports h1-h6
+        const headerTag = '#'.repeat(headerLevel)
+        const headerText = child.title ? `${child.name}: ${child.title}` : child.name
+        
+        aggregatedContent.push(`${headerTag} ${headerText}\n\n${childContent}`)
+      }
+    }
+    
+    return aggregatedContent.join('\n\n')
+  }
+
   // Handle section click
   const handleSectionClick = (section: DocumentSection) => {
     setActiveSectionId(section.id)
+    
+    // Load aggregated content for this section
+    const structureItem = structureItems.find(i => i.id === section.structure_item_id)
+    if (structureItem) {
+      const aggregatedContent = aggregateHierarchicalContent(structureItem.id)
+      if (aggregatedContent && editor) {
+        editor.commands.setContent(aggregatedContent)
+      }
+    }
+    
     if (editor) {
       const element = editor.view.dom.querySelector(`[data-section-id="${section.structure_item_id}"]`)
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }
     }
+  }
+
+  // Handle generating content from test node
+  const handleGenerateFromTest = () => {
+    if (!connectedTestNode || !structureItems.length) return
+    
+    const markdown = connectedTestNode.data.markdown || ''
+    
+    // Parse markdown and aggregate hierarchical content
+    // For now, we'll display the full markdown for testing
+    // In the future, this will be parsed by structure level
+    if (editor) {
+      editor.commands.setContent(markdown)
+    }
+    
+    console.log('📄 Generating from test markdown:', {
+      testNodeId: connectedTestNode.id,
+      markdownLength: markdown.length,
+      structureItemsCount: structureItems.length,
+    })
   }
 
   // Toggle section expansion
@@ -791,6 +875,22 @@ export default function AIDocumentPanel({
             <div className="text-sm text-gray-500">{wordCount} words</div>
           </div>
           <div className="flex items-center gap-3">
+            {/* Generate from Test Format Button - only shown when test node is connected */}
+            {connectedTestNode && (
+              <button
+                onClick={handleGenerateFromTest}
+                className="px-4 py-2 rounded-full text-sm font-medium bg-purple-500 hover:bg-purple-600 text-white transition-all"
+                title="Generate content from connected test node"
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span>Generate from Test</span>
+                </div>
+              </button>
+            )}
+            
             {/* Save Button */}
             <button
               onClick={saveNow}

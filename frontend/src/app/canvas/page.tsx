@@ -22,6 +22,7 @@ import OrchestratorNode from '@/components/nodes/OrchestratorNode'
 import StoryDraftNode from '@/components/nodes/StoryDraftNode'
 import StoryStructureNode from '@/components/nodes/StoryStructureNode'
 import ClusterNode from '@/components/nodes/ClusterNode'
+import TestNode, { EXAMPLE_SCREENPLAY_MARKDOWN } from '@/components/nodes/TestNode'
 import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
 import NodeTypeMenu from '@/components/menus/NodeTypeMenu'
 import AIDocumentPanel from '@/components/panels/AIDocumentPanel'
@@ -38,6 +39,7 @@ const nodeTypes = {
   storyDraftNode: StoryDraftNode,
   storyStructureNode: StoryStructureNode,
   clusterNode: ClusterNode,
+  testNode: TestNode,
 }
 
 // Only Orchestrator node on fresh canvas
@@ -1098,10 +1100,16 @@ export default function CanvasPage() {
         nodeData.isActive = true
         nodeData.agentNumber = nextAgentNumber
         break
+      case 'test':
+        nodeData.label = 'TEST CONTENT'
+        nodeData.description = 'Example markdown for testing'
+        nodeData.markdown = EXAMPLE_SCREENPLAY_MARKDOWN
+        nodeData.format = 'screenplay'
+        break
     }
     
     // Determine the node type for rendering
-    const nodeRenderType = nodeType === 'cluster' ? 'clusterNode' : 'storyNode'
+    const nodeRenderType = nodeType === 'cluster' ? 'clusterNode' : nodeType === 'test' ? 'testNode' : 'storyNode'
     
     const newNode: Node = {
       id: newNodeId,

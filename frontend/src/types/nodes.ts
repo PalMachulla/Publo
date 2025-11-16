@@ -6,7 +6,7 @@ export interface Comment {
   created_at: string
 }
 
-export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'research' | 'context' | 'create-story' | 'story-draft' | 'cluster' | 'story-structure'
+export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'research' | 'context' | 'create-story' | 'story-draft' | 'cluster' | 'story-structure' | 'test'
 
 export interface BaseNodeData {
   label: string
@@ -247,7 +247,13 @@ export interface StoryStructureNodeData extends BaseNodeData {
   onAgentAssign?: (itemId: string, agentId: string | null) => void // Callback when agent is assigned/unassigned
 }
 
-export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData | ClusterNodeData | StoryStructureNodeData
+export interface TestNodeData extends BaseNodeData {
+  nodeType: 'test'
+  markdown?: string // Pre-defined markdown content for testing
+  format?: StoryFormat // Format of the test content (screenplay, podcast, etc.)
+}
+
+export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData | ClusterNodeData | StoryStructureNodeData | TestNodeData
 
 export interface Story {
   id: string
