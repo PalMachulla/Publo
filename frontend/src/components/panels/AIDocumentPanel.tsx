@@ -1068,7 +1068,7 @@ export default function AIDocumentPanel({
               )}
 
               {/* Editor Area */}
-              <div className="flex-1 flex flex-col relative">
+              <div className="flex-1 flex flex-col relative bg-gray-100">
                 {/* Grid Background */}
                 <div
                   className="absolute inset-0 z-0 pointer-events-none"
@@ -1082,14 +1082,17 @@ export default function AIDocumentPanel({
                   }}
                 />
                 
-                {/* Markdown Editor with ref for TOC scrolling */}
-                <div ref={editorContainerRef} className="flex-1 overflow-y-auto relative z-10">
-                  <MarkdownEditor
-                    content={content}
-                    onUpdate={handleEditorUpdate}
-                    placeholder="Click to start writing..."
-                    className="h-full"
-                  />
+                {/* Scrollable Container with Document */}
+                <div ref={editorContainerRef} className="flex-1 overflow-y-auto relative z-10 p-8">
+                  {/* Document Container - Like a real paper with shadow */}
+                  <div className="max-w-5xl mx-auto bg-white shadow-lg rounded-lg">
+                    <MarkdownEditor
+                      content={content}
+                      onUpdate={handleEditorUpdate}
+                      placeholder="Click to start writing..."
+                      className="min-h-[calc(100vh-8rem)]"
+                    />
+                  </div>
                 </div>
 
                 {/* Sidebar Expand Button (when collapsed) */}
