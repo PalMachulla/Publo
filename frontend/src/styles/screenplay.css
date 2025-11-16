@@ -71,6 +71,7 @@
   font-size: 12pt;
   letter-spacing: 0.5px;
   color: #000;
+  text-align: left; /* Force left alignment */
 }
 
 /* Screenplay paragraphs (divs) - general spacing */
@@ -89,6 +90,7 @@
   margin: 1.5em 0;
   padding: 0;
   max-width: 100%;
+  text-align: left; /* Ensure action lines are left-aligned */
 }
 
 /* Dialogue blocks (paragraphs containing character names) */
@@ -110,7 +112,8 @@
   letter-spacing: 0.5px;
   margin-top: 2em; /* Large space above to separate from previous dialogue */
   margin-bottom: 0.5em; /* Small space below to stay close to own dialogue */
-  margin-left: 25%; /* Responsive character name positioning */
+  margin-left: 0; /* Reset margin */
+  text-align: center; /* Center character names */
   padding: 0;
 }
 
@@ -132,8 +135,9 @@
 /* Text following character names (dialogue) */
 .screenplay-document .screenplay-paragraph:has(> strong),
 .screenplay-document p:has(> strong) {
-  padding-left: 15%; /* Responsive dialogue indentation */
-  padding-right: 20%; /* Responsive right margin */
+  padding-left: 20%; /* Dialogue indentation from left */
+  padding-right: 20%; /* Dialogue indentation from right */
+  text-align: left; /* Ensure dialogue text is left-aligned */
 }
 
 /* Parentheticals (em tags within dialogue) */
@@ -142,7 +146,8 @@
   display: block;
   font-style: italic;
   margin: 0.5em 0;
-  margin-left: 3%; /* Slight additional indent */
+  margin-left: 5%; /* Indent slightly more than dialogue */
+  text-align: left;
   color: #374151;
 }
 
