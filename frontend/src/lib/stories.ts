@@ -62,6 +62,18 @@ export async function getStory(storyId: string) {
   const nodes: Node[] = (nodesResult.data || []).map(node => {
     try {
       const validatedNode = DatabaseNodeSchema.parse(node)
+      
+      // Debug log for structure nodes with contentMap
+      if (validatedNode.type === 'storyStructureNode' && validatedNode.data?.contentMap) {
+        console.log('📥 Loaded structure node with contentMap from DB:', {
+          nodeId: validatedNode.id,
+          contentMapKeys: Object.keys(validatedNode.data.contentMap),
+          contentMapSize: Object.keys(validatedNode.data.contentMap).length,
+          sampleKey: Object.keys(validatedNode.data.contentMap)[0],
+          sampleContent: validatedNode.data.contentMap[Object.keys(validatedNode.data.contentMap)[0]]?.substring(0, 100)
+        })
+      }
+      
       return {
         id: validatedNode.id,
         type: validatedNode.type,
@@ -165,14 +177,25 @@ export async function saveCanvas(
     const upsertPromises = []
 
     if (nodes.length > 0) {
-      const nodeRecords = nodes.map(node => ({
-        id: node.id,
-        story_id: storyId,
-        type: node.type || 'storyNode',
-        position_x: node.position.x,
-        position_y: node.position.y,
-        data: node.data
-      }))
+      const nodeRecords = nodes.map(node => {
+        // Debug log for structure nodes with contentMap
+        if (node.type === 'storyStructureNode' && node.data?.contentMap) {
+          console.log('💾 Saving structure node with contentMap:', {
+            nodeId: node.id,
+            contentMapKeys: Object.keys(node.data.contentMap),
+            contentMapSize: Object.keys(node.data.contentMap).length
+          })
+        }
+        
+        return {
+          id: node.id,
+          story_id: storyId,
+          type: node.type || 'storyNode',
+          position_x: node.position.x,
+          position_y: node.position.y,
+          data: node.data
+        }
+      })
 
       upsertPromises.push(
         supabase.from('nodes').upsert(nodeRecords, { onConflict: 'id' })

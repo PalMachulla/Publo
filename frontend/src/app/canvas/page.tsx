@@ -117,6 +117,7 @@ export default function CanvasPage() {
   const [currentStoryStructureNodeId, setCurrentStoryStructureNodeId] = useState<string | null>(null)
   const [currentStructureItems, setCurrentStructureItems] = useState<any[]>([])
   const [currentStructureFormat, setCurrentStructureFormat] = useState<StoryFormat | undefined>(undefined)
+  const [currentContentMap, setCurrentContentMap] = useState<Record<string, string>>({})
   const [initialSectionId, setInitialSectionId] = useState<string | null>(null)
   
   // TEMPORARY: Force admin for your email while debugging
@@ -517,24 +518,62 @@ export default function CanvasPage() {
     format: StoryFormat,
     nodeId: string
   ) => {
-    console.log('Structure item clicked:', { clickedItem, allItems, format, nodeId })
+    console.log('🎯 Structure item clicked:', { clickedItem, allItems, format, nodeId })
     
-    // Node is saved immediately when created, so no need to check/save here
+    // CRITICAL: Use setNodes to get the LATEST nodes (not stale closure)
+    let latestContentMap: Record<string, string> = {}
+    
+    setNodes((currentNodes) => {
+      const structureNode = currentNodes.find(n => n.id === nodeId)
+      
+      console.log('🔍 Looking for structure node in LATEST state:', {
+        searchingForNodeId: nodeId,
+        availableNodes: currentNodes.map(n => ({ id: n.id, type: n.type })),
+        foundNode: structureNode ? 'YES' : 'NO'
+      })
+      
+      latestContentMap = (structureNode?.data as StoryStructureNodeData)?.contentMap || {}
+      
+      console.log('📦 ContentMap from LATEST node state:', {
+        nodeId,
+        structureNode: structureNode ? 'found' : 'not found',
+        structureNodeType: structureNode?.type,
+        dataKeys: structureNode?.data ? Object.keys(structureNode.data) : [],
+        hasContentMapProperty: structureNode?.data ? 'contentMap' in structureNode.data : false,
+        contentMapType: typeof latestContentMap,
+        hasContentMap: Object.keys(latestContentMap).length > 0,
+        contentMapKeys: Object.keys(latestContentMap),
+        firstContentKey: Object.keys(latestContentMap)[0],
+        firstContentPreview: latestContentMap[Object.keys(latestContentMap)[0]]?.substring(0, 100)
+      })
+      
+      return currentNodes // Don't modify nodes, just read from them
+    })
     
     // Set initial prompt
     setInitialPrompt(`Write content for ${clickedItem.name}${clickedItem.title ? `: ${clickedItem.title}` : ''}`)
     
     // Store the structure details for AI Document Panel
+    console.log('💾 Setting state for AI Document Panel:', {
+      nodeId,
+      itemsCount: allItems.length,
+      format,
+      contentMapKeys: Object.keys(latestContentMap).length
+    })
+    
     setCurrentStoryStructureNodeId(nodeId)
     setCurrentStructureItems(allItems)
     setCurrentStructureFormat(format)
+    setCurrentContentMap(latestContentMap)
+    
+    console.log('✅ State set complete')
     setInitialSectionId(clickedItem.id)
     
     // Open AI Document Panel
     setIsAIDocPanelOpen(true)
     
     console.log('Opening AI Document Panel with nodeId:', nodeId, 'clickedItem:', clickedItem.id)
-  }, [])
+  }, [setNodes])
   
   // Handle story structure items update (e.g., expanded state changes)
   const handleStructureItemsUpdate = useCallback((nodeId: string, updatedItems: any[]) => {
@@ -962,7 +1001,13 @@ export default function CanvasPage() {
 
   // Handle node update from panel
   const handleNodeUpdate = useCallback((nodeId: string, newData: any) => {
-    console.log('handleNodeUpdate called:', { nodeId, newData })
+    console.log('🔄 handleNodeUpdate called:', { 
+      nodeId, 
+      newDataKeys: Object.keys(newData),
+      hasContentMap: 'contentMap' in newData,
+      contentMapKeys: newData.contentMap ? Object.keys(newData.contentMap).length : 0
+    })
+    
     setNodes((nds) => {
       // First pass: check if this is an agent color update
       const updatingNode = nds.find(n => n.id === nodeId)
@@ -970,9 +1015,20 @@ export default function CanvasPage() {
                                   newData.color && 
                                   newData.color !== updatingNode.data.color
       
-      return nds.map((node) => {
+      const updatedNodes = nds.map((node) => {
         if (node.id === nodeId) {
           const mergedData = { ...node.data, ...newData }
+          
+          console.log('✏️ Merging data for node:', {
+            nodeId,
+            oldDataKeys: Object.keys(node.data),
+            newDataKeys: Object.keys(newData),
+            mergedDataKeys: Object.keys(mergedData),
+            hasContentMapInOld: 'contentMap' in node.data,
+            hasContentMapInNew: 'contentMap' in newData,
+            hasContentMapInMerged: 'contentMap' in mergedData,
+            contentMapKeysInMerged: mergedData.contentMap ? Object.keys(mergedData.contentMap).length : 0
+          })
           
           // Inject callbacks for story structure nodes
           if (mergedData.nodeType === 'story-structure' || node.type === 'storyStructureNode') {
@@ -984,7 +1040,11 @@ export default function CanvasPage() {
           }
           
           const updatedNode = { ...node, data: mergedData }
-          console.log('Node updated - merged data:', updatedNode.data)
+          console.log('✅ Node updated successfully:', {
+            nodeId,
+            hasContentMap: 'contentMap' in updatedNode.data,
+            contentMapKeys: updatedNode.data.contentMap ? Object.keys(updatedNode.data.contentMap).length : 0
+          })
           return updatedNode
         }
         
@@ -1016,6 +1076,8 @@ export default function CanvasPage() {
         
         return node
       })
+      
+      return updatedNodes
     })
     // Update selected node to reflect changes in panel
     setSelectedNode((prev) => {
@@ -1039,8 +1101,25 @@ export default function CanvasPage() {
     // Mark as having unsaved changes
     if (!isLoadingRef.current) {
       hasUnsavedChangesRef.current = true
+      
+      // CRITICAL: If contentMap was updated, save immediately to persist it
+      if (newData.contentMap && storyId) {
+        console.log('💾 Triggering immediate save for contentMap update')
+        // Use setTimeout to ensure the state has updated before saving
+        setTimeout(() => {
+          setNodes((currentNodes) => {
+            console.log('📤 Saving nodes with updated contentMap to database')
+            saveCanvas(storyId, currentNodes, edges).then(() => {
+              console.log('✅ ContentMap saved to database successfully')
+            }).catch(err => {
+              console.error('❌ Failed to save contentMap to database:', err)
+            })
+            return currentNodes // Don't modify nodes, just trigger save
+          })
+        }, 100)
+      }
     }
-  }, [setNodes, handleStructureItemClick, handleStructureItemsUpdate, availableAgents, handleAgentAssign])
+  }, [setNodes, handleStructureItemClick, handleStructureItemsUpdate, availableAgents, handleAgentAssign, storyId, edges])
 
   // Handle node deletion
   const handleNodeDelete = useCallback((nodeId: string) => {
@@ -1611,11 +1690,13 @@ export default function CanvasPage() {
             setCurrentStoryStructureNodeId(null)
             setCurrentStructureItems([])
             setCurrentStructureFormat(undefined)
+            setCurrentContentMap({})
             setInitialSectionId(null)
           }}
           initialPrompt={initialPrompt}
           storyStructureNodeId={currentStoryStructureNodeId}
           structureItems={currentStructureItems}
+          contentMap={currentContentMap}
           initialSectionId={initialSectionId}
           onUpdateStructure={handleStructureItemsUpdate}
           canvasEdges={edges}

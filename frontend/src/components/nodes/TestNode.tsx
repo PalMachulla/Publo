@@ -4,9 +4,13 @@ import { memo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { TestNodeData } from '@/types/nodes'
 import { FileTextIcon } from '@radix-ui/react-icons'
+import { PUBLO_SCREENPLAY } from '@/data/publoScreenplay'
 
-// Pre-defined example markdown content for a screenplay
-export const EXAMPLE_SCREENPLAY_MARKDOWN = `---
+// Export for backward compatibility
+export const EXAMPLE_SCREENPLAY_MARKDOWN = PUBLO_SCREENPLAY
+
+// Legacy example (keeping for reference but using PUBLO_SCREENPLAY by default)
+const LEGACY_EXAMPLE = `---
 format: screenplay
 title: The Last Signal
 structure:

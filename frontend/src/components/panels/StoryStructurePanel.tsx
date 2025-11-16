@@ -76,14 +76,25 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete, edges = 
         
         const { items: parsedItems, contentMap } = parseMarkdownStructure(markdown)
         
-        // Update node with parsed structure
-        onUpdate(node.id, { items: parsedItems })
+        // Convert contentMap (Map) to plain object for storage
+        const contentMapObject: Record<string, string> = {}
+        contentMap.forEach((value, key) => {
+          contentMapObject[key] = value
+        })
         
-        // TODO: Store contentMap for later use when creating sections in Supabase
-        // For now, we'll just log it
-        console.log('📝 Content map:', {
+        // Update node with parsed structure AND content map
+        onUpdate(node.id, { 
+          items: parsedItems,
+          contentMap: contentMapObject 
+        })
+        
+        console.log('📝 Content map SAVED TO NODE:', {
+          nodeId: node.id,
           sections: contentMap.size,
           sectionIds: Array.from(contentMap.keys()),
+          contentMapObjectKeys: Object.keys(contentMapObject),
+          contentMapObject,
+          sampleContent: contentMapObject[Object.keys(contentMapObject)[0]]?.substring(0, 100)
         })
         
         console.log('✅ Structure generated from test markdown:', {

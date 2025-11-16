@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Editor } from '@tiptap/react'
 import { calculateWordCount } from '@/types/document'
 import type { SaveStatus } from '@/types/document'
 
@@ -17,7 +16,7 @@ interface UseDocumentEditorReturn {
   saveStatus: SaveStatus
   lastSaved: Date | null
   saveError: string | null
-  handleEditorUpdate: (editor: Editor) => void
+  handleEditorUpdate: (content: string) => void
   saveNow: () => Promise<void>
   isDirty: boolean
 }
@@ -90,12 +89,12 @@ export function useDocumentEditor({
     }
   }, [content, isDirty, save])
 
-  // Handle editor updates
+  // Handle editor updates (now receives plain markdown string)
   const handleEditorUpdate = useCallback(
-    (editor: Editor) => {
-      const newContent = editor.getHTML()
+    (newContent: string) => {
       setContent(newContent)
-      setWordCount(editor.storage.characterCount?.words() || 0)
+      const words = calculateWordCount(newContent)
+      setWordCount(words)
 
       // Check if content has changed
       if (newContent !== lastSavedContentRef.current) {

@@ -1,25 +1,13 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
-import dynamic from 'next/dynamic'
 import { useDocumentSections } from '@/hooks/useDocumentSections'
 import { useDocumentEditor } from '@/hooks/useDocumentEditor'
-import EditorToolbar from '../editor/EditorToolbar'
+import MarkdownEditor from '../editor/MarkdownEditor'
 import NarrationArrangementView from '../document/NarrationArrangementView'
 import type { StoryStructureItem, TestNodeData } from '@/types/nodes'
-import type { Editor } from '@tiptap/react'
 import type { DocumentSection } from '@/types/document'
-import type { ProseMirrorEditorProps, ProseMirrorEditorRef } from '../editor/ProseMirrorEditor'
 import type { Edge, Node } from 'reactflow'
-
-// Dynamically import ProseMirrorEditor to avoid SSR issues
-const ProseMirrorEditor = dynamic<ProseMirrorEditorProps>(
-  () => import('../editor/ProseMirrorEditor'),
-  { 
-    ssr: false, 
-    loading: () => <div className="flex items-center justify-center h-full"><div className="text-gray-400">Loading editor...</div></div>
-  }
-)
 
 interface Task {
   id: string
@@ -45,6 +33,7 @@ interface AIDocumentPanelProps {
   onUpdateStructure?: (nodeId: string, updatedItems: StoryStructureItem[]) => void
   canvasEdges?: Edge[]
   canvasNodes?: Node[]
+  contentMap?: Record<string, string> // Map of structure item ID to markdown content
 }
 
 export default function AIDocumentPanel({
@@ -57,6 +46,7 @@ export default function AIDocumentPanel({
   onUpdateStructure,
   canvasEdges = [],
   canvasNodes = [],
+  contentMap = {},
 }: AIDocumentPanelProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -73,7 +63,6 @@ export default function AIDocumentPanel({
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [editor, setEditor] = useState<Editor | null>(null)
   const hasProcessedInitialPrompt = useRef(false)
 
   // Fetch and manage document sections
@@ -99,6 +88,12 @@ export default function AIDocumentPanel({
     }
   }, [structureItems])
 
+  // Track if full document has been loaded to avoid re-loading on every render
+  const [hasLoadedFullDocument, setHasLoadedFullDocument] = useState(false)
+  
+  // Ref to the editor's scrollable container for TOC scrolling
+  const editorContainerRef = useRef<HTMLDivElement>(null)
+
   // Re-initialize sections when structure items change
   useEffect(() => {
     if (isOpen && storyStructureNodeId && structureItems.length > 0 && sections.length > 0) {
@@ -110,7 +105,6 @@ export default function AIDocumentPanel({
       const hasRemovedItems = sections.some(s => !structureItemIds.has(s.structure_item_id))
       
       if (hasNewItems || hasRemovedItems) {
-        console.log('Structure items changed, re-syncing sections...')
         initializeSections()
       }
     }
@@ -166,15 +160,8 @@ export default function AIDocumentPanel({
     return null
   }, [canvasEdges, canvasNodes])
 
-  // Update content when active section changes (without remounting editor)
-  useEffect(() => {
-    if (activeSection) {
-      setContent(activeSection.content)
-    }
-  }, [activeSection?.id, activeSection?.content, setContent])
-  
-  // Note: We deliberately don't include 'content' from editor state in deps
-  // to avoid resetting the editor while the user is typing
+  // Note: We don't auto-load individual sections - the full document is loaded once
+  // and users navigate via TOC scrolling
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -322,20 +309,15 @@ export default function AIDocumentPanel({
     }
   }, [sections, activeSectionId, initialSectionId])
 
-  // Scroll to initial section
+  // Load initial section content
   useEffect(() => {
-    if (isOpen && initialSectionId && editor && sections.length > 0) {
-      setTimeout(() => {
-        const structureItem = structureItems.find(item => item.id === initialSectionId)
-        if (structureItem) {
-          const element = editor.view.dom.querySelector(`[data-section-id="${initialSectionId}"]`)
-          if (element) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          }
-        }
-      }, 500)
+    if (isOpen && initialSectionId && sections.length > 0) {
+      const section = sections.find(s => s.structure_item_id === initialSectionId)
+      if (section) {
+        handleSectionClick(section)
+      }
     }
-  }, [isOpen, initialSectionId, editor, structureItems, sections])
+  }, [isOpen, initialSectionId, sections])
 
   // Handle mouse drag for resizing
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -450,7 +432,7 @@ export default function AIDocumentPanel({
   }
 
   // Aggregate content hierarchically for a structure item
-  const aggregateHierarchicalContent = (itemId: string): string => {
+  const aggregateHierarchicalContent = (itemId: string, includeHeaders: boolean = true): string => {
     const item = structureItems.find(i => i.id === itemId)
     if (!item) return ''
     
@@ -458,33 +440,55 @@ export default function AIDocumentPanel({
       .filter(i => i.parentId === itemId)
       .sort((a, b) => a.order - b.order)
     
-    // If no children, return the section's own content
-    if (children.length === 0) {
-      const section = sections.find(s => s.structure_item_id === itemId)
-      return section?.content || ''
-    }
-    
-    // Aggregate children with headers
+    // Build the aggregated content
     const aggregatedContent: string[] = []
     
-    for (const child of children) {
-      const childSection = sections.find(s => s.structure_item_id === child.id)
-      const childContent = aggregateHierarchicalContent(child.id)
+    // Add header for this item if requested (with anchor ID for TOC linking)
+    if (includeHeaders) {
+      const headerLevel = Math.min(item.level, 6)
+      const headerTag = '#'.repeat(headerLevel)
+      const headerText = item.title ? `${item.title}` : item.name
       
+      // Add HTML anchor for scroll-to functionality (separate from header for proper parsing)
+      const anchorDiv = `<div id="section-${itemId}"></div>`
+      aggregatedContent.push(anchorDiv)
+      aggregatedContent.push(`${headerTag} ${headerText}`)
+    }
+    
+    // If no children, return the section's own content
+    if (children.length === 0) {
+      // First try contentMap (from test markdown), then Supabase section
+      const contentFromMap = contentMap[itemId]
+      if (contentFromMap) {
+        aggregatedContent.push(contentFromMap)
+        return aggregatedContent.join('\n\n')
+      }
+      
+      const section = sections.find(s => s.structure_item_id === itemId)
+      if (section?.content) {
+        aggregatedContent.push(section.content)
+      }
+      return aggregatedContent.join('\n\n')
+    }
+    
+    // Include this item's content if it exists (for parent items with children)
+    const parentContent = contentMap[itemId]
+    if (parentContent) {
+      aggregatedContent.push(parentContent)
+    }
+    
+    // Recursively aggregate children (inherit includeHeaders setting)
+    for (const child of children) {
+      const childContent = aggregateHierarchicalContent(child.id, includeHeaders)
       if (childContent) {
-        // Add header based on level
-        const headerLevel = Math.min(child.level, 6) // HTML only supports h1-h6
-        const headerTag = '#'.repeat(headerLevel)
-        const headerText = child.title ? `${child.name}: ${child.title}` : child.name
-        
-        aggregatedContent.push(`${headerTag} ${headerText}\n\n${childContent}`)
+        aggregatedContent.push(childContent)
       }
     }
     
     return aggregatedContent.join('\n\n')
   }
 
-  // Handle section click
+  // Handle section click (from sidebar)
   const handleSectionClick = (section: DocumentSection) => {
     setActiveSectionId(section.id)
     
@@ -492,17 +496,31 @@ export default function AIDocumentPanel({
     const structureItem = structureItems.find(i => i.id === section.structure_item_id)
     if (structureItem) {
       const aggregatedContent = aggregateHierarchicalContent(structureItem.id)
-      if (aggregatedContent && editor) {
-        editor.commands.setContent(aggregatedContent)
+      if (aggregatedContent) {
+        setContent(aggregatedContent)
+      }
+    }
+  }
+  
+  // Handle segment click (from Narration Arrangement View timeline)
+  // Timeline shows focused content (summaries for high-level, full content for low-level)
+  const handleSegmentClick = (item: StoryStructureItem) => {
+    // For high-level segments (1-3), show summary if available
+    // For detailed segments (4+), show full content
+    if (item.level <= 3 && item.summary) {
+      setContent(`# ${item.name}\n\n**Summary:**\n\n${item.summary}`)
+    } else {
+      const aggregatedContent = aggregateHierarchicalContent(item.id)
+      
+      if (aggregatedContent) {
+        setContent(aggregatedContent)
+      } else {
+        console.warn('⚠️ No content found for segment:', item.name)
+        setContent(`_No content yet for ${item.name}_`)
       }
     }
     
-    if (editor) {
-      const element = editor.view.dom.querySelector(`[data-section-id="${section.structure_item_id}"]`)
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-    }
+    setActiveSectionId(item.id)
   }
 
   // Handle generating content from test node
@@ -511,18 +529,8 @@ export default function AIDocumentPanel({
     
     const markdown = connectedTestNode.data.markdown || ''
     
-    // Parse markdown and aggregate hierarchical content
-    // For now, we'll display the full markdown for testing
-    // In the future, this will be parsed by structure level
-    if (editor) {
-      editor.commands.setContent(markdown)
-    }
-    
-    console.log('📄 Generating from test markdown:', {
-      testNodeId: connectedTestNode.id,
-      markdownLength: markdown.length,
-      structureItemsCount: structureItems.length,
-    })
+    // Display the full markdown for testing
+    setContent(markdown)
   }
 
   // Toggle section expansion
@@ -675,7 +683,46 @@ export default function AIDocumentPanel({
 
               {/* Section Name & Title */}
               <button
-                onClick={() => section && handleSectionClick(section)}
+                onClick={() => {
+                  // Sidebar acts as table of contents
+                  const sectionId = `section-${item.id}`
+                  const container = editorContainerRef.current
+                  
+                  // Helper function to scroll to the section
+                  const scrollToSection = () => {
+                    const element = document.getElementById(sectionId)
+                    if (element && container) {
+                      const containerRect = container.getBoundingClientRect()
+                      const elementRect = element.getBoundingClientRect()
+                      const offsetTop = elementRect.top - containerRect.top + container.scrollTop - 20
+                      
+                      container.scrollTo({
+                        top: offsetTop,
+                        behavior: 'smooth'
+                      })
+                      return true
+                    }
+                    return false
+                  }
+                  
+                  // Try to scroll immediately
+                  const scrolled = scrollToSection()
+                  
+                  // If the element wasn't found, reload the full document first
+                  if (!scrolled) {
+                    const rootItems = structureItems.filter(i => i.level === 1).sort((a, b) => a.order - b.order)
+                    const fullDocContent = rootItems.map(rootItem => 
+                      aggregateHierarchicalContent(rootItem.id, true)
+                    ).join('\n\n')
+                    
+                    setContent(fullDocContent)
+                    
+                    // Wait for React to update the DOM, then scroll
+                    setTimeout(() => {
+                      scrollToSection()
+                    }, 100)
+                  }
+                }}
                 className="flex-1 text-left text-sm truncate min-w-0 px-1"
               >
                 <span className="font-normal">{item.name}</span>
@@ -850,6 +897,34 @@ export default function AIDocumentPanel({
     )
   }
 
+  // Load full document when panel opens (after aggregateHierarchicalContent is defined)
+  useEffect(() => {
+    if (isOpen && structureItems.length > 0 && Object.keys(contentMap).length > 0 && !hasLoadedFullDocument) {
+      // Build the complete document from all root-level structure items
+      const rootItems = structureItems.filter(item => !item.parentId)
+      const fullDocument = rootItems
+        .sort((a, b) => a.order - b.order)
+        .map(item => aggregateHierarchicalContent(item.id, true))
+        .filter(Boolean)
+        .join('\n\n')
+      
+      if (fullDocument) {
+        setContent(fullDocument)
+        setHasLoadedFullDocument(true)
+      } else {
+        console.warn('⚠️ No full document content generated')
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, structureItems, contentMap, hasLoadedFullDocument, setContent])
+
+  // Reset loaded flag when panel closes
+  useEffect(() => {
+    if (!isOpen) {
+      setHasLoadedFullDocument(false)
+    }
+  }, [isOpen])
+
   // Save status indicator
 
   return (
@@ -875,22 +950,6 @@ export default function AIDocumentPanel({
             <div className="text-sm text-gray-500">{wordCount} words</div>
           </div>
           <div className="flex items-center gap-3">
-            {/* Generate from Test Format Button - only shown when test node is connected */}
-            {connectedTestNode && (
-              <button
-                onClick={handleGenerateFromTest}
-                className="px-4 py-2 rounded-full text-sm font-medium bg-purple-500 hover:bg-purple-600 text-white transition-all"
-                title="Generate content from connected test node"
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <span>Generate from Test</span>
-                </div>
-              </button>
-            )}
-            
             {/* Save Button */}
             <button
               onClick={saveNow}
@@ -963,24 +1022,22 @@ export default function AIDocumentPanel({
               )}
 
               {/* Editor Area */}
-              <div className="flex-1 flex flex-col">
-                {/* Toolbar */}
-                <EditorToolbar editor={editor} />
-
-                {/* Editor */}
-                <ProseMirrorEditor
-                  content={content}
-                  onUpdate={handleEditorUpdate}
-                  onEditorReady={setEditor}
-                  placeholder="Start writing..."
-                  className="flex-1"
-                />
+              <div className="flex-1 flex flex-col relative">
+                {/* Markdown Editor with ref for TOC scrolling */}
+                <div ref={editorContainerRef} className="flex-1 overflow-y-auto">
+                  <MarkdownEditor
+                    content={content}
+                    onUpdate={handleEditorUpdate}
+                    placeholder="Click to start writing..."
+                    className="h-full"
+                  />
+                </div>
 
                 {/* Sidebar Expand Button (when collapsed) */}
                 {isSidebarCollapsed && (
                   <button
                     onClick={() => setIsSidebarCollapsed(false)}
-                    className="absolute top-20 left-0 p-2 bg-white border border-gray-200 rounded-r-lg hover:bg-gray-50 transition-colors shadow-sm"
+                    className="absolute top-4 left-0 p-2 bg-white border border-gray-200 rounded-r-lg hover:bg-gray-50 transition-colors shadow-sm"
                     title="Show sections"
                   >
                     <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1166,6 +1223,7 @@ export default function AIDocumentPanel({
             structureItems={structureItems}
             activeSectionId={activeSectionId}
             onSectionClick={handleSectionClick}
+            onItemClick={handleSegmentClick}
             format={structureItems[0]?.level === 1 ? 'screenplay' : undefined} // TODO: Derive format properly
             isCollapsed={isArrangementCollapsed}
             onToggleCollapse={() => setIsArrangementCollapsed(!isArrangementCollapsed)}

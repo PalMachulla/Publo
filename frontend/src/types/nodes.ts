@@ -210,6 +210,7 @@ export interface StoryStructureItem {
   name: string // e.g., "Chapter 1", "Act I", "Episode 1"
   title?: string
   description?: string
+  summary?: string // AI-generated summary for timeline display (levels 1-3 only)
   order: number
   completed?: boolean
   content?: string
@@ -245,6 +246,7 @@ export interface StoryStructureNodeData extends BaseNodeData {
   showAgentRows?: boolean // Toggle state for agent assignment UI
   availableAgents?: AgentOption[] // List of available agent nodes
   onAgentAssign?: (itemId: string, agentId: string | null) => void // Callback when agent is assigned/unassigned
+  contentMap?: Record<string, string> // Map of structure item ID to markdown content (from test node)
 }
 
 export interface TestNodeData extends BaseNodeData {

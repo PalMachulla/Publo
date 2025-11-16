@@ -603,6 +603,26 @@ export default function NodeDetailsPanel({
                     </p>
                     <button
                       onClick={() => {
+                        // Find the structure node to update (not the orchestrator!)
+                        console.log('🔍 Looking for structure node. Available nodes:', {
+                          allNodes: nodes.map(n => ({ id: n.id, type: n.type }))
+                        })
+                        
+                        const structureNode = nodes.find((n) => n.type === 'storyStructureNode')
+                        
+                        if (!structureNode) {
+                          console.error('❌ No structure node found. Available nodes:', {
+                            nodeTypes: nodes.map(n => n.type)
+                          })
+                          alert('No structure node found. Please create a structure node first.')
+                          return
+                        }
+                        
+                        console.log('🎯 Found structure node to update:', {
+                          structureNodeId: structureNode.id,
+                          orchestratorNodeId: node.id
+                        })
+                        
                         // Check if test node is connected - if so, parse its markdown
                         if (connectedTestNode) {
                           try {
@@ -614,13 +634,31 @@ export default function NodeDetailsPanel({
                             
                             const { items: parsedItems, contentMap } = parseMarkdownStructure(markdown)
                             
-                            // Update node with parsed structure
-                            onUpdate(node.id, { items: parsedItems })
+                            // Convert contentMap (Map) to plain object for storage
+                            const contentMapObject: Record<string, string> = {}
+                            contentMap.forEach((value, key) => {
+                              contentMapObject[key] = value
+                            })
                             
-                            // TODO: Store contentMap for later use when creating sections in Supabase
-                            console.log('📝 Content map:', {
+                            // Update STRUCTURE NODE (not orchestrator) with parsed structure AND content map
+                            console.log('💾 Updating structure node with contentMap:', {
+                              structureNodeId: structureNode.id,
+                              sections: contentMap.size,
+                              sectionIds: Array.from(contentMap.keys())
+                            })
+                            
+                            onUpdate(structureNode.id, { 
+                              items: parsedItems,
+                              contentMap: contentMapObject 
+                            })
+                            
+                            console.log('📝 Content map SAVED TO NODE:', {
+                              nodeId: structureNode.id,
                               sections: contentMap.size,
                               sectionIds: Array.from(contentMap.keys()),
+                              contentMapObjectKeys: Object.keys(contentMapObject),
+                              contentMapObject,
+                              sampleContent: contentMapObject[Object.keys(contentMapObject)[0]]?.substring(0, 100)
                             })
                             
                             console.log('✅ Structure generated from test markdown:', {
@@ -694,7 +732,8 @@ export default function NodeDetailsPanel({
                           allItems: newItems
                         })
                         
-                        onUpdate(node.id, { items: newItems })
+                        // Update STRUCTURE NODE (not orchestrator)
+                        onUpdate(structureNode.id, { items: newItems })
                       }}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-400 text-black rounded-lg font-medium text-sm hover:bg-yellow-500 transition-colors"
                     >

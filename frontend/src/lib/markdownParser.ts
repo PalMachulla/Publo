@@ -11,6 +11,7 @@ interface YAMLStructureItem {
   level: number
   name: string
   title?: string
+  summary?: string
   parentId?: string
   wordCount?: number
   order?: number
@@ -57,6 +58,7 @@ export function parseMarkdownStructure(markdown: string): ParsedMarkdownStructur
     level: item.level,
     name: item.name,
     title: item.title,
+    summary: item.summary, // AI-generated summary from YAML
     description: '',
     order: item.order ?? index,
     completed: false,

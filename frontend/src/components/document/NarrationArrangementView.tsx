@@ -17,6 +17,7 @@ export interface NarrationArrangementViewProps {
   structureItems: StoryStructureItem[]
   activeSectionId: string | null
   onSectionClick: (section: DocumentSection) => void
+  onItemClick?: (item: StoryStructureItem) => void // For direct structure item clicks (from timeline)
   format?: string
   isCollapsed?: boolean
   onToggleCollapse?: () => void
@@ -29,6 +30,7 @@ function NarrationArrangementView({
   structureItems,
   activeSectionId,
   onSectionClick,
+  onItemClick,
   format,
   isCollapsed = false,
   onToggleCollapse,
@@ -67,12 +69,20 @@ function NarrationArrangementView({
 
   // Handle section click
   const handleSegmentClick = useCallback((item: StoryStructureItem) => {
+    setFocusedSegmentId(item.id)
+    
+    // Prioritize onItemClick (for test markdown content) over section-based navigation
+    if (onItemClick) {
+      onItemClick(item)
+      return
+    }
+    
+    // Fall back to section-based navigation (for Supabase content)
     const section = sections.find(s => s.structure_item_id === item.id)
     if (section) {
-      setFocusedSegmentId(item.id)
       onSectionClick(section)
     }
-  }, [sections, onSectionClick])
+  }, [sections, onSectionClick, onItemClick])
 
   // Handle zoom to segment
   const handleSegmentDoubleClick = useCallback((item: StoryStructureItem) => {
