@@ -86,7 +86,17 @@ function NarrationArrangementView({
 
   // Handle zoom to segment
   const handleSegmentDoubleClick = useCallback((item: StoryStructureItem) => {
-    zoomToSegment(item.id, structureItems)
+    // Calculate the segment's start position by summing word counts of all previous siblings
+    const parent = item.parentId ? structureItems.find(i => i.id === item.parentId) : null
+    const siblings = parent 
+      ? structureItems.filter(i => i.parentId === parent.id && i.level === item.level).sort((a, b) => a.order - b.order)
+      : structureItems.filter(i => !i.parentId && i.level === item.level).sort((a, b) => a.order - b.order)
+    
+    const itemIndex = siblings.findIndex(s => s.id === item.id)
+    const segmentStart = siblings.slice(0, itemIndex).reduce((sum, s) => sum + (s.wordCount || 0), 0)
+    const segmentWordCount = item.wordCount || 0
+    
+    zoomToSegment(segmentStart, segmentWordCount)
   }, [zoomToSegment, structureItems])
 
   // Calculate connection counts
