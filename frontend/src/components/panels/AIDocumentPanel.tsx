@@ -1144,18 +1144,19 @@ export default function AIDocumentPanel({
           {/* Right Side - AI Chat */}
           {!isAIChatCollapsed && (
             <div
-              className="border-l border-gray-200 flex flex-col bg-gray-50 relative overflow-hidden"
+              className="border-l border-gray-200 flex flex-col bg-gray-100 relative overflow-hidden"
               style={{ width: `${leftPanelWidth}%` }}
             >
-              {/* Grid background */}
+              {/* Grid background - matches document area */}
               <div
-                className="absolute inset-0 z-0"
+                className="absolute inset-0 z-0 pointer-events-none"
                 style={{
                   backgroundImage: `
-                  linear-gradient(to right, #e5e7eb 1px, transparent 1px),
-                  linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
-                `,
+                    linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px)
+                  `,
                   backgroundSize: '24px 24px',
+                  opacity: 0.5,
                 }}
               />
 
