@@ -1,0 +1,242 @@
+/* Screenplay Document Styling 
+ * 
+ * NOTE: This stylesheet is specifically for screenplay format.
+ * Similar stylesheets will be needed for:
+ * - podcast.css (interview/transcript format)
+ * - article.css (blog post/article format)  
+ * - report.css (business report format)
+ * - novel.css (prose/fiction format)
+ * 
+ * Each format should follow the same pattern:
+ * - Use a unique class name (.screenplay-document, .podcast-document, etc.)
+ * - Define typography, spacing, and layout specific to that format
+ * - Maintain consistent anchor div styling for TOC navigation
+ */
+
+.screenplay-document {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12pt;
+  line-height: 1.7;
+  max-width: 6.5in; /* Standard screenplay width */
+  margin: 0 auto;
+  padding: 2rem;
+  color: #1a1a1a;
+  background-color: transparent; /* Transparent to show grid background */
+}
+
+/* Anchor divs (invisible scroll targets) */
+.screenplay-document div[id^="section-"] {
+  position: relative;
+  top: -80px; /* Offset for header */
+  visibility: hidden;
+  height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+/* Act headings (h1) - Centered and prominent */
+.screenplay-document .screenplay-act,
+.screenplay-document h1 {
+  font-weight: bold;
+  text-align: center;
+  margin: 3em 0 2em 0;
+  font-size: 16pt;
+  letter-spacing: 1.5px;
+  color: #000;
+  text-transform: none; /* Keep original casing for titles */
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0.5em;
+}
+
+/* Sequence headings (h2) - Slightly less prominent */
+.screenplay-document .screenplay-sequence,
+.screenplay-document h2 {
+  font-weight: bold;
+  margin: 2.5em 0 1.5em 0;
+  font-size: 14pt;
+  letter-spacing: 1px;
+  color: #000;
+  text-transform: none;
+  border-left: 4px solid #fbbf24;
+  padding-left: 0.75em;
+}
+
+/* Scene Headings (h3) - Classic screenplay format */
+.screenplay-document .screenplay-scene,
+.screenplay-document h3 {
+  font-weight: bold;
+  text-transform: uppercase;
+  margin-top: 2em;
+  margin-bottom: 1em;
+  font-size: 12pt;
+  letter-spacing: 0.5px;
+  color: #000;
+}
+
+/* Screenplay paragraphs (divs) - general spacing */
+.screenplay-document .screenplay-paragraph,
+.screenplay-document p {
+  margin: 1.5em 0;
+  padding: 0;
+  font-size: 12pt;
+  line-height: 1.8;
+  color: #000;
+}
+
+/* Action paragraphs (without character names) - full width */
+.screenplay-document .screenplay-paragraph:not(:has(> strong)),
+.screenplay-document p:not(:has(> strong)) {
+  margin: 1.5em 0;
+  padding: 0;
+  max-width: 100%;
+}
+
+/* Dialogue blocks (paragraphs containing character names) */
+.screenplay-document .screenplay-paragraph:has(> strong),
+.screenplay-document p:has(> strong) {
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;
+}
+
+/* Character names (strong tags within dialogue blocks) */
+.screenplay-document .screenplay-paragraph > strong,
+.screenplay-document p > strong {
+  display: block;
+  text-transform: uppercase;
+  font-weight: 900; /* Extra bold */
+  font-size: 12pt;
+  color: #000;
+  letter-spacing: 0.5px;
+  margin-top: 2em; /* Large space above to separate from previous dialogue */
+  margin-bottom: 0.5em; /* Small space below to stay close to own dialogue */
+  margin-left: 2.2in; /* Center character name */
+  padding: 0;
+}
+
+/* Force line break before character names */
+.screenplay-document .screenplay-paragraph > strong::before,
+.screenplay-document p > strong::before {
+  content: "";
+  display: block;
+  height: 0;
+  margin-bottom: 1em;
+}
+
+/* Remove extra break before first character name in paragraph */
+.screenplay-document .screenplay-paragraph > strong:first-child::before,
+.screenplay-document p > strong:first-child::before {
+  display: none;
+}
+
+/* Text following character names (dialogue) */
+.screenplay-document .screenplay-paragraph:has(> strong),
+.screenplay-document p:has(> strong) {
+  padding-left: 1.5in;
+  padding-right: 2in;
+}
+
+/* Parentheticals (em tags within dialogue) */
+.screenplay-document .screenplay-paragraph > em,
+.screenplay-document p > em {
+  display: block;
+  font-style: italic;
+  margin: 0.5em 0;
+  margin-left: 0.3in; /* Slight additional indent */
+  color: #374151;
+}
+
+/* Line breaks within dialogue */
+.screenplay-document .screenplay-paragraph br,
+.screenplay-document p br {
+  display: block;
+  content: "";
+  margin: 0.25em 0;
+  line-height: 1;
+}
+
+/* Horizontal rules for scene breaks */
+.screenplay-document hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 3em 0;
+}
+
+/* Block quotes for centered text */
+.screenplay-document blockquote {
+  text-align: center;
+  font-style: italic;
+  margin: 2em 0;
+  padding: 0;
+  border: none;
+  color: #6b7280;
+}
+
+/* Lists */
+.screenplay-document ul,
+.screenplay-document ol {
+  margin: 1em 0;
+  padding-left: 2em;
+}
+
+.screenplay-document li {
+  margin: 0.5em 0;
+}
+
+/* Links */
+.screenplay-document a {
+  color: #fbbf24;
+  text-decoration: none;
+  border-bottom: 1px solid #fbbf24;
+}
+
+.screenplay-document a:hover {
+  color: #f59e0b;
+  border-bottom-color: #f59e0b;
+}
+
+/* Code blocks (for technical notes) */
+.screenplay-document code {
+  background-color: #f3f4f6;
+  padding: 0.125em 0.25em;
+  border-radius: 0.25em;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 11pt;
+}
+
+.screenplay-document pre {
+  background-color: #f3f4f6;
+  padding: 1em;
+  border-radius: 0.5em;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.screenplay-document pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+/* Page breaks (for print/PDF) */
+@media print {
+  .screenplay-document {
+    max-width: 100%;
+    padding: 0.5in;
+  }
+  
+  .screenplay-document h1,
+  .screenplay-document h2,
+  .screenplay-document h3 {
+    page-break-after: avoid;
+  }
+  
+  .screenplay-document p {
+    page-break-inside: avoid;
+  }
+}
+
+/* Hover state for editing */
+.screenplay-document:hover {
+  cursor: text;
+}
+

@@ -53,13 +53,38 @@ export default function AIDocumentPanel({
   const [leftPanelWidth, setLeftPanelWidth] = useState(35) // Percentage (for right-side chat, editor gets 100 - this)
   const [isDragging, setIsDragging] = useState(false)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(initialSectionId)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  
+  // Persist panel collapse states to localStorage
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('publo-sections-collapsed')
+      return saved ? JSON.parse(saved) : false
+    }
+    return false
+  })
+  
+  const [isAIChatCollapsed, setIsAIChatCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('publo-ai-chat-collapsed')
+      return saved ? JSON.parse(saved) : false
+    }
+    return false
+  })
+  
   const [showAddSectionModal, setShowAddSectionModal] = useState(false)
   const [newSectionName, setNewSectionName] = useState('')
   const [newSectionTitle, setNewSectionTitle] = useState('')
   const [newSectionParentId, setNewSectionParentId] = useState<string | null>(null)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
-  const [isArrangementCollapsed, setIsArrangementCollapsed] = useState(true) // Collapsed by default
+  
+  // Persist arrangement view collapse state
+  const [isArrangementCollapsed, setIsArrangementCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('publo-arrangement-collapsed')
+      return saved ? JSON.parse(saved) : true // Default: collapsed
+    }
+    return true
+  })
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -87,6 +112,27 @@ export default function AIDocumentPanel({
       setExpandedSections(allItemIds)
     }
   }, [structureItems])
+
+  // Persist sections sidebar collapse state
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('publo-sections-collapsed', JSON.stringify(isSidebarCollapsed))
+    }
+  }, [isSidebarCollapsed])
+
+  // Persist AI chat collapse state
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('publo-ai-chat-collapsed', JSON.stringify(isAIChatCollapsed))
+    }
+  }, [isAIChatCollapsed])
+
+  // Persist arrangement view collapse state
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('publo-arrangement-collapsed', JSON.stringify(isArrangementCollapsed))
+    }
+  }, [isArrangementCollapsed])
 
   // Track if full document has been loaded to avoid re-loading on every render
   const [hasLoadedFullDocument, setHasLoadedFullDocument] = useState(false)
@@ -1000,7 +1046,7 @@ export default function AIDocumentPanel({
           {/* Top: Existing split view (Editor + Chat) */}
           <div className="flex flex-1 min-h-0" ref={containerRef}>
           {/* Left Side - Document Editor + Section Nav */}
-          <div className="flex flex-col bg-white" style={{ width: `${100 - leftPanelWidth}%` }}>
+          <div className="flex flex-col bg-white relative" style={{ width: isAIChatCollapsed ? '100%' : `${100 - leftPanelWidth}%` }}>
             <div className="flex h-full">
               {/* Section Navigation Sidebar */}
               {!isSidebarCollapsed && (
@@ -1023,8 +1069,21 @@ export default function AIDocumentPanel({
 
               {/* Editor Area */}
               <div className="flex-1 flex flex-col relative">
+                {/* Grid Background */}
+                <div
+                  className="absolute inset-0 z-0 pointer-events-none"
+                  style={{
+                    backgroundImage: `
+                      linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                      linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px)
+                    `,
+                    backgroundSize: '24px 24px',
+                    opacity: 0.5,
+                  }}
+                />
+                
                 {/* Markdown Editor with ref for TOC scrolling */}
-                <div ref={editorContainerRef} className="flex-1 overflow-y-auto">
+                <div ref={editorContainerRef} className="flex-1 overflow-y-auto relative z-10">
                   <MarkdownEditor
                     content={content}
                     onUpdate={handleEditorUpdate}
@@ -1037,7 +1096,7 @@ export default function AIDocumentPanel({
                 {isSidebarCollapsed && (
                   <button
                     onClick={() => setIsSidebarCollapsed(false)}
-                    className="absolute top-4 left-0 p-2 bg-white border border-gray-200 rounded-r-lg hover:bg-gray-50 transition-colors shadow-sm"
+                    className="absolute top-4 left-0 p-2 bg-white border border-gray-200 rounded-r-lg hover:bg-gray-50 transition-colors shadow-sm z-20"
                     title="Show sections"
                   >
                     <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1047,39 +1106,69 @@ export default function AIDocumentPanel({
                 )}
               </div>
             </div>
+
+            {/* AI Chat Expand Button (when AI panel collapsed) */}
+            {isAIChatCollapsed && (
+              <button
+                onClick={() => setIsAIChatCollapsed(false)}
+                className="absolute top-4 right-4 p-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors shadow-sm z-20"
+                title="Show AI Assistant"
+              >
+                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
           </div>
 
           {/* Resize Handle */}
-          <div
-            className={`relative w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors group ${
-              isDragging ? 'bg-blue-500' : ''
-            }`}
-            onMouseDown={handleMouseDown}
-          >
-            {/* Center Handle Bar */}
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-6 h-12 bg-gray-300 group-hover:bg-blue-500 rounded-full flex items-center justify-center shadow-md transition-colors">
-              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-              </svg>
+          {!isAIChatCollapsed && (
+            <div
+              className={`relative w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors group ${
+                isDragging ? 'bg-blue-500' : ''
+              }`}
+              onMouseDown={handleMouseDown}
+            >
+              {/* Center Handle Bar */}
+              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-6 h-12 bg-gray-300 group-hover:bg-blue-500 rounded-full flex items-center justify-center shadow-md transition-colors">
+                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+                </svg>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Right Side - AI Chat */}
-          <div
-            className="border-l border-gray-200 flex flex-col bg-gray-50 relative overflow-hidden"
-            style={{ width: `${leftPanelWidth}%` }}
-          >
-            {/* Grid background */}
+          {!isAIChatCollapsed && (
             <div
-              className="absolute inset-0 z-0"
-              style={{
-                backgroundImage: `
-                linear-gradient(to right, #e5e7eb 1px, transparent 1px),
-                linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
-              `,
-                backgroundSize: '24px 24px',
-              }}
-            />
+              className="border-l border-gray-200 flex flex-col bg-gray-50 relative overflow-hidden"
+              style={{ width: `${leftPanelWidth}%` }}
+            >
+              {/* Grid background */}
+              <div
+                className="absolute inset-0 z-0"
+                style={{
+                  backgroundImage: `
+                  linear-gradient(to right, #e5e7eb 1px, transparent 1px),
+                  linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
+                `,
+                  backgroundSize: '24px 24px',
+                }}
+              />
+
+              {/* AI Chat Header */}
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gray-50 relative z-10">
+                <h3 className="font-semibold text-gray-900">AI Assistant</h3>
+                <button
+                  onClick={() => setIsAIChatCollapsed(true)}
+                  className="p-1 hover:bg-gray-200 rounded transition-colors"
+                  title="Collapse AI chat"
+                >
+                  <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
 
             {/* Chat Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6 relative z-10">
@@ -1190,31 +1279,32 @@ export default function AIDocumentPanel({
               )}
             </div>
 
-            {/* Input Area */}
-            <div className="p-4 bg-white border-t border-gray-200 relative z-10">
-              <form onSubmit={handleSubmit} className="flex gap-2">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  placeholder="What's your story, Morning Glory?"
-                  maxLength={1000}
-                  className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm placeholder:text-gray-400"
-                  aria-label="Message input"
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim()}
-                  className="p-3 bg-yellow-400 hover:bg-yellow-500 disabled:bg-gray-200 disabled:cursor-not-allowed rounded-xl transition-colors"
-                  aria-label="Send message"
-                >
-                  <svg className="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                  </svg>
-                </button>
-              </form>
+              {/* Input Area */}
+              <div className="p-4 bg-white border-t border-gray-200 relative z-10">
+                <form onSubmit={handleSubmit} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    placeholder="What's your story, Morning Glory?"
+                    maxLength={1000}
+                    className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm placeholder:text-gray-400"
+                    aria-label="Message input"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!input.trim()}
+                    className="p-3 bg-yellow-400 hover:bg-yellow-500 disabled:bg-gray-200 disabled:cursor-not-allowed rounded-xl transition-colors"
+                    aria-label="Send message"
+                  >
+                    <svg className="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                  </button>
+                </form>
+              </div>
             </div>
-          </div>
+          )}
           </div>
           
           {/* Bottom: Narration Arrangement View */}

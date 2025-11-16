@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
+import '@/styles/screenplay.css'
 
 interface MarkdownEditorProps {
   content: string
@@ -74,22 +75,45 @@ export default function MarkdownEditor({
     )
   }
 
+  // Custom components for better semantic HTML structure
+  const components = {
+    // Wrap paragraphs in divs for better structure
+    p: ({ children, ...props }: any) => {
+      return (
+        <div className="screenplay-paragraph" {...props}>
+          {children}
+        </div>
+      )
+    },
+    // Ensure headings are properly structured
+    h1: ({ children, ...props }: any) => (
+      <h1 className="screenplay-act" {...props}>{children}</h1>
+    ),
+    h2: ({ children, ...props }: any) => (
+      <h2 className="screenplay-sequence" {...props}>{children}</h2>
+    ),
+    h3: ({ children, ...props }: any) => (
+      <h3 className="screenplay-scene" {...props}>{children}</h3>
+    ),
+  }
+
   return (
     <div
       onClick={() => setIsEditing(true)}
-      className={`cursor-text p-6 hover:bg-gray-50 transition-colors min-h-full ${className}`}
+      className={`cursor-text min-h-full ${className}`}
     >
       {content ? (
-        <div className="prose prose-lg max-w-none prose-headings:font-semibold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-p:text-gray-700 prose-strong:text-gray-900 prose-em:text-gray-600">
+        <div className="screenplay-document">
           <ReactMarkdown 
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw]}
+            components={components}
           >
             {content}
           </ReactMarkdown>
         </div>
       ) : (
-        <div className="text-gray-400 italic">{placeholder}</div>
+        <div className="text-gray-400 italic p-6">{placeholder}</div>
       )}
     </div>
   )
