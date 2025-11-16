@@ -110,7 +110,7 @@
   letter-spacing: 0.5px;
   margin-top: 2em; /* Large space above to separate from previous dialogue */
   margin-bottom: 0.5em; /* Small space below to stay close to own dialogue */
-  margin-left: 2.2in; /* Center character name */
+  margin-left: 25%; /* Responsive character name positioning */
   padding: 0;
 }
 
@@ -132,8 +132,8 @@
 /* Text following character names (dialogue) */
 .screenplay-document .screenplay-paragraph:has(> strong),
 .screenplay-document p:has(> strong) {
-  padding-left: 1.5in;
-  padding-right: 2in;
+  padding-left: 15%; /* Responsive dialogue indentation */
+  padding-right: 20%; /* Responsive right margin */
 }
 
 /* Parentheticals (em tags within dialogue) */
@@ -142,7 +142,7 @@
   display: block;
   font-style: italic;
   margin: 0.5em 0;
-  margin-left: 0.3in; /* Slight additional indent */
+  margin-left: 3%; /* Slight additional indent */
   color: #374151;
 }
 
