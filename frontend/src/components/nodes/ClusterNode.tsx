@@ -39,10 +39,10 @@ function ClusterNode({ data, selected, id }: NodeProps<ClusterNodeData>) {
       {/* Top handle for incoming connections - invisible but functional */}
       <Handle type="target" position={Position.Top} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
       
-      {/* Resource count badge (shown when resources are hidden) - positioned on top like connector dot */}
+      {/* Resource count badge (shown when resources are hidden) - pill-shaped */}
       {showResourceBadge ? (
         <div 
-          className="absolute -top-16 left-1/2 -translate-x-1/2 w-16 h-16 rounded-full shadow-lg flex items-center justify-center"
+          className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full shadow-md flex items-center justify-center"
           style={{ 
             pointerEvents: 'none', 
             zIndex: 10, 
@@ -50,7 +50,7 @@ function ClusterNode({ data, selected, id }: NodeProps<ClusterNodeData>) {
           }}
           title={`${connectedResourceCount} connected ${connectedResourceCount === 1 ? 'resource' : 'resources'}`}
         >
-          <span className="text-white font-bold text-xl" style={{ color: textColor }}>
+          <span className="font-bold text-sm" style={{ color: textColor }}>
             {connectedResourceCount}
           </span>
         </div>
