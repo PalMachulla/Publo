@@ -449,6 +449,23 @@ export default function NodeDetailsPanel({
     return null
   }, [edges, nodes, node])
 
+  // Detect Structure node connected to orchestrator's output (MUST be before any early returns)
+  const connectedStructureNode = useMemo(() => {
+    if (!node) return null
+    
+    // Find edges where this orchestrator is the source
+    const outgoingEdges = edges.filter(edge => edge.source === node.id)
+    
+    for (const edge of outgoingEdges) {
+      const targetNode = nodes.find(n => n.id === edge.target)
+      if (targetNode?.type === 'storyStructureNode') {
+        return targetNode as Node<StoryStructureNodeData>
+      }
+    }
+    
+    return null
+  }, [edges, nodes, node])
+
   // Early returns AFTER all hooks
   if (!node) return null
   
@@ -737,30 +754,26 @@ export default function NodeDetailsPanel({
                     </p>
                     <button
                       onClick={() => {
-                        // Find the structure node to update (not the orchestrator!)
-                        console.log('🔍 Looking for structure node. Available nodes:', {
-                          allNodes: nodes.map(n => ({ id: n.id, type: n.type }))
-                        })
-                        
-                        const structureNode = nodes.find((n) => n.type === 'storyStructureNode')
+                        // Use the connected structure node (not just any structure node!)
+                        const structureNode = connectedStructureNode
                         
                         if (!structureNode) {
-                          console.error('❌ No structure node found. Available nodes:', {
-                            nodeTypes: nodes.map(n => n.type)
-                          })
-                          alert('No structure node found. Please create a structure node first.')
+                          console.error('❌ No structure node connected to this orchestrator')
+                          alert('No structure node found. Please connect a Structure node to this Orchestrator first.')
                           return
                         }
                         
-                        console.log('🎯 Found structure node to update:', {
+                        console.log('🎯 Found connected structure node:', {
                           structureNodeId: structureNode.id,
-                          orchestratorNodeId: node.id
+                          orchestratorNodeId: node.id,
+                          hasExistingItems: (structureNode.data.items?.length || 0) > 0,
+                          existingFormat: structureNode.data.format
                         })
                         
                         // Check if AI Prompt node is connected - if so, generate with Groq API
                         if (connectedAIPromptNode) {
                           const promptNode = connectedAIPromptNode
-                          const userPrompt = promptNode.data.userPrompt
+                          let userPrompt = promptNode.data.userPrompt
                           const maxTokens = promptNode.data.maxTokens || 2000
                           
                           if (!userPrompt || userPrompt.trim() === '') {
@@ -772,8 +785,69 @@ export default function NodeDetailsPanel({
                           const selectedModel = (node.data as any).selectedModel || 'llama-3.1-8b-instant'
                           const selectedFormat: StoryFormat = nodeData.format || 'screenplay'
                           
+                          // Check if structure node has existing content
+                          const hasExistingContent = structureNode.data.items && 
+                                                    structureNode.data.items.length > 0
+                          const existingFormat = structureNode.data.format
+                          const isReformatting = hasExistingContent && existingFormat && existingFormat !== selectedFormat
+                          const isRegenerating = hasExistingContent && existingFormat === selectedFormat
+                          
+                          // Confirm before overwriting same format
+                          if (isRegenerating) {
+                            if (!confirm(`This will overwrite the existing ${existingFormat} structure. Continue?`)) {
+                              return
+                            }
+                          }
+                          
                           // Get system prompt for the format
-                          const systemPrompt = getFormatSystemPrompt(selectedFormat)
+                          let systemPrompt = getFormatSystemPrompt(selectedFormat)
+                          
+                          // If reformatting, enhance the prompt with existing structure
+                          if (isReformatting) {
+                            console.log('🔄 Reformatting existing content:', {
+                              from: existingFormat,
+                              to: selectedFormat,
+                              existingItemsCount: structureNode.data.items?.length
+                            })
+                            
+                            // Build a summary of existing structure using summaries (levels 1-3)
+                            const structureSummary = structureNode.data.items!
+                              .filter(item => item.level <= 3 && item.summary)
+                              .map(item => {
+                                const indent = '  '.repeat(item.level - 1)
+                                return `${indent}${item.name}: ${item.summary}`
+                              })
+                              .join('\n')
+                            
+                            // Get a sample of existing content (first 2000 chars)
+                            let contentSample = ''
+                            if (structureNode.data.contentMap) {
+                              const allContent = Object.values(structureNode.data.contentMap).join('\n\n')
+                              contentSample = allContent.substring(0, 2000)
+                              if (allContent.length > 2000) {
+                                contentSample += '\n\n[Content continues...]'
+                              }
+                            }
+                            
+                            // Enhance user prompt with existing content context
+                            userPrompt = `REFORMAT REQUEST: Convert the following ${existingFormat} into a ${selectedFormat} format.
+
+ORIGINAL STRUCTURE SUMMARY:
+${structureSummary}
+
+${contentSample ? `CONTENT SAMPLE:\n${contentSample}\n\n` : ''}INSTRUCTIONS: ${userPrompt}
+
+IMPORTANT: Preserve the core story, themes, and narrative arc while adapting the structure to fit the ${selectedFormat} format. Maintain the essence of the story.`
+                            
+                            // Enhance system prompt to emphasize reformatting
+                            systemPrompt = `${systemPrompt}
+
+CRITICAL: You are REFORMATTING existing content from ${existingFormat} to ${selectedFormat}, not creating from scratch.
+- Preserve the story's core narrative and themes
+- Adapt the structure to fit ${selectedFormat} conventions
+- Maintain character development and plot progression
+- Adjust pacing and formatting to suit the new format`
+                          }
                           
                           console.log('🤖 Generating structure with Groq AI:', {
                             model: selectedModel,
@@ -827,10 +901,14 @@ export default function NodeDetailsPanel({
                               
                               onUpdate(structureNode.id, { 
                                 items: parsedItems,
-                                contentMap: contentMapObject 
+                                contentMap: contentMapObject,
+                                format: selectedFormat // Save the new format!
                               })
                               
-                              console.log('✅ Structure node update called successfully')
+                              console.log('✅ Structure node update called successfully', {
+                                format: selectedFormat,
+                                itemsCount: parsedItems.length
+                              })
                               
                               // Update AI Prompt node with last generation info
                               if (promptNode.data.onUpdate) {
@@ -847,9 +925,13 @@ export default function NodeDetailsPanel({
                               console.log('✅ AI structure generated successfully:', {
                                 itemsCount: parsedItems.length,
                                 levels: [...new Set(parsedItems.map(i => i.level))],
+                                wasReformatting: isReformatting
                               })
                               
-                              alert('Structure generated successfully with AI!')
+                              const successMessage = isReformatting 
+                                ? `✅ Content reformatted from ${existingFormat} to ${selectedFormat}!`
+                                : '✅ Structure generated successfully with AI!'
+                              alert(successMessage)
                             } else {
                               throw new Error(data.error || 'Failed to generate structure')
                             }
