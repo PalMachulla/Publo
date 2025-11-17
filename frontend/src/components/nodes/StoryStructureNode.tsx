@@ -23,6 +23,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
   } = data
   const primaryLevel = format ? (getPrimaryStructuralLevel(format) || 'Item') : 'Item'
   const [viewMode, setViewMode] = useState<'cards' | 'narration'>('narration')
+  const [isExpanded, setIsExpanded] = useState(false) // Collapsed by default
   
   // Get only top-level items (level 1)
   const topLevelItems = items.filter(item => item.level === 1).sort((a, b) => a.order - b.order)
@@ -30,6 +31,16 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
 
   // Get format-specific icon
   const formatIcon = getFormatIcon(format)
+  
+  // Calculate total word count
+  const totalWordCount = items.reduce((sum, item) => sum + (item.wordCount || 0), 0)
+  
+  // Format last updated date (placeholder for now)
+  const lastUpdated = new Date().toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric', 
+    year: 'numeric' 
+  })
   
   // Handle narration width change
   const handleNarrationWidthChange = (newWidth: number) => {
@@ -241,17 +252,36 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
       <div className="relative transition-all duration-300 ease-in-out flex-shrink-0" style={{ 
         borderRadius: '16px 16px 24px 24px',
         zIndex: 5,
-        width: nodeWidth
+        width: isExpanded ? nodeWidth : 320
       }}>
         {/* Label above node with tab-like background */}
-        <div className="flex justify-center -mb-1 transition-all duration-300 ease-in-out" style={{ width: nodeWidth }}>
+        <div className="flex justify-center -mb-1 transition-all duration-300 ease-in-out" style={{ width: isExpanded ? nodeWidth : 320 }}>
           <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all  ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'}`}>
             <div className="text-sm text-gray-700 uppercase tracking-widest font-sans font-bold">
               {label || (format ? format.toUpperCase() : 'STORY')}
             </div>
             
-            {/* View mode toggle */}
-            {hasItems && (
+            {/* Expand/Collapse toggle */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsExpanded(!isExpanded)
+              }}
+              className="p-1 rounded hover:bg-gray-500 transition-colors"
+              title={isExpanded ? 'Collapse' : 'Expand'}
+              aria-label="Toggle expand"
+            >
+              {isExpanded ? (
+                /* Collapse icon */
+                <ChevronDownIcon className="w-4 h-4 text-gray-700" />
+              ) : (
+                /* Expand icon */
+                <ChevronRightIcon className="w-4 h-4 text-gray-700" />
+              )}
+            </button>
+            
+            {/* View mode toggle - only show when expanded */}
+            {isExpanded && hasItems && (
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -309,21 +339,70 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         {/* Main Container - positioned in front of connector dots */}
         <div
           className={`relative transition-all duration-300 ease-in-out ${
-            viewMode === 'narration' 
-              ? '' 
-              : `rounded-2xl overflow-visible ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'} ${selected ? 'shadow-2xl' : 'shadow-md'}`
+            isExpanded ? (
+              viewMode === 'narration' 
+                ? '' 
+                : `rounded-2xl overflow-visible ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'} ${selected ? 'shadow-2xl' : 'shadow-md'}`
+            ) : `rounded-2xl overflow-visible ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'} ${selected ? 'shadow-2xl' : 'shadow-md'}`
           }`}
           style={{
-            width: nodeWidth,
-            minHeight: viewMode === 'narration' ? 'auto' : 200,
-            paddingLeft: viewMode === 'narration' ? 0 : sidePadding,
-            paddingRight: viewMode === 'narration' ? 0 : sidePadding,
-            paddingTop: viewMode === 'narration' ? 0 : 20,
-            paddingBottom: viewMode === 'narration' ? 0 : 20,
+            width: isExpanded ? nodeWidth : 320,
+            minHeight: isExpanded ? (viewMode === 'narration' ? 'auto' : 200) : 'auto',
+            paddingLeft: isExpanded ? (viewMode === 'narration' ? 0 : sidePadding) : 24,
+            paddingRight: isExpanded ? (viewMode === 'narration' ? 0 : sidePadding) : 24,
+            paddingTop: isExpanded ? (viewMode === 'narration' ? 0 : 20) : 20,
+            paddingBottom: isExpanded ? (viewMode === 'narration' ? 0 : 20) : 20,
             boxSizing: 'border-box'
           }}
         >
-        {viewMode === 'narration' ? (
+        {!isExpanded ? (
+          /* Collapsed View - Simple Metadata Card */
+          <div className="flex flex-col gap-4">
+            {/* Cover Image Placeholder */}
+            <div className="w-full aspect-[3/2] rounded-lg bg-gray-300 flex items-center justify-center border-2 border-gray-500">
+              <div className="text-center text-gray-600">
+                <svg className="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                </svg>
+                <div className="text-xs font-medium">Cover Image</div>
+                <div className="text-xs opacity-60">(Coming Soon)</div>
+              </div>
+            </div>
+            
+            {/* Story Name */}
+            <div>
+              <div className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-1">Story Name</div>
+              <div className="text-base font-bold text-gray-900">
+                {label || (format ? `${format} Story` : 'Untitled Story')}
+              </div>
+            </div>
+            
+            {/* Metadata Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-1">Last Updated</div>
+                <div className="text-sm font-medium text-gray-800">{lastUpdated}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-1">Total Words</div>
+                <div className="text-sm font-medium text-gray-800">{totalWordCount.toLocaleString()}</div>
+              </div>
+            </div>
+            
+            {/* Open Content Canvas Button */}
+            <button
+              onClick={(e) => {
+                // Don't stop propagation - let it bubble to open the panel
+              }}
+              className="w-full py-2.5 px-4 bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              </svg>
+              Open Content Canvas
+            </button>
+          </div>
+        ) : viewMode === 'narration' ? (
           /* Narration Arrangement View - DAW-style horizontal layout */
           <NarrationContainer
             items={items}
