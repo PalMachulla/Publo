@@ -42,7 +42,7 @@ function ClusterNode({ data, selected, id }: NodeProps<ClusterNodeData>) {
       {/* Resource count badge (shown when resources are hidden) - pill-shaped */}
       {showResourceBadge ? (
         <div 
-          className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full shadow-md flex items-center justify-center"
+          className="absolute -top-8 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full shadow-md flex items-center justify-center"
           style={{ 
             pointerEvents: 'none', 
             zIndex: 10, 
@@ -50,7 +50,7 @@ function ClusterNode({ data, selected, id }: NodeProps<ClusterNodeData>) {
           }}
           title={`${connectedResourceCount} connected ${connectedResourceCount === 1 ? 'resource' : 'resources'}`}
         >
-          <span className="font-bold text-sm" style={{ color: textColor }}>
+          <span className="font-bold text-xs" style={{ color: textColor }}>
             {connectedResourceCount}
           </span>
         </div>
