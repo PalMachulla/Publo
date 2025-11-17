@@ -2,9 +2,7 @@
 
 import { memo, useState } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
-import { StoryStructureNodeData, StoryStructureItem } from '@/types/nodes'
-import { getFormatIcon } from '@/components/menus/StoryFormatMenu'
-import { getPrimaryStructuralLevel, getDocumentHierarchy } from '@/lib/documentHierarchy'
+import { StoryStructureNodeData } from '@/types/nodes'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { NarrationContainer } from './narrationline'
 
@@ -12,25 +10,16 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
   const { 
     format, 
     items = [], 
-    label, 
-    onItemClick, 
-    onItemsUpdate, 
-    onWidthUpdate, 
-    isLoading = false, 
+    label,
+    onItemClick,
+    onItemsUpdate,
+    onWidthUpdate,
+    isLoading = false,
     customNarrationWidth = 1200,
     availableAgents = [],
     onAgentAssign
   } = data
-  const primaryLevel = format ? (getPrimaryStructuralLevel(format) || 'Item') : 'Item'
-  const [viewMode, setViewMode] = useState<'cards' | 'narration'>('narration')
   const [isExpanded, setIsExpanded] = useState(false) // Collapsed by default
-  
-  // Get only top-level items (level 1)
-  const topLevelItems = items.filter(item => item.level === 1).sort((a, b) => a.order - b.order)
-  const hasItems = topLevelItems.length > 0
-
-  // Get format-specific icon
-  const formatIcon = getFormatIcon(format)
   
   // Calculate total word count
   const totalWordCount = items.reduce((sum, item) => sum + (item.wordCount || 0), 0)
@@ -49,190 +38,8 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
     }
   }
   
-  // Helper function to get children of an item
-  const getChildren = (parentId: string): StoryStructureItem[] => {
-    return items
-      .filter(item => item.parentId === parentId)
-      .sort((a, b) => a.order - b.order)
-  }
-  
-  // Helper function to check if item has children
-  const hasChildren = (itemId: string): boolean => {
-    return items.some(item => item.parentId === itemId)
-  }
-  
-  // Toggle expanded state of an item
-  const toggleExpanded = (itemId: string, event: React.MouseEvent) => {
-    event.stopPropagation()
-    
-    const updatedItems = items.map(item =>
-      item.id === itemId ? { ...item, expanded: !item.expanded } : item
-    )
-    
-    if (onItemsUpdate) {
-      onItemsUpdate(updatedItems)
-    }
-  }
-  
-  // Handle item click
-  const handleItemClick = (item: StoryStructureItem, event: React.MouseEvent) => {
-    event.stopPropagation()
-    console.log('Story structure item clicked:', { item, nodeId: id, allItems: items })
-    
-    // Call the callback if provided
-    if (onItemClick) {
-      onItemClick(item, items, format, id) // Pass node ID as 4th parameter
-    }
-  }
-  
-  // Node width - uses custom width for narration view, dynamic for cards
-  const nodeWidth = viewMode === 'narration' ? customNarrationWidth : (() => {
-    const cardWidth = 240
-    const levelGap = 20
-    const sidePadding = 24
-    
-    if (!hasItems) return 200
-    
-    const countHorizontalCards = (): number => {
-      let totalCards = 0
-      
-      const traverse = (parentId: string | undefined): number => {
-        const children = items.filter(item => item.parentId === parentId)
-        if (children.length === 0) return 0
-        
-        let horizontalSum = 0
-        children.forEach(child => {
-          horizontalSum += 1
-          if (child.expanded) {
-            horizontalSum += traverse(child.id)
-          }
-        })
-        return horizontalSum
-      }
-      
-      totalCards = topLevelItems.length
-      topLevelItems.forEach(item => {
-        if (item.expanded) {
-          totalCards += traverse(item.id)
-        }
-      })
-      return totalCards
-    }
-    
-    const columns = countHorizontalCards()
-    return (columns * cardWidth) + ((columns - 1) * levelGap) + (sidePadding * 2)
-  })()
-  
-  const sidePadding = 24
-  
-  // Helper to get background color based on level
-  const getBackgroundColor = (level: number): string => {
-    switch (level) {
-      case 1: return 'bg-white'
-      case 2: return 'bg-gray-100'
-      case 3: return 'bg-gray-200'
-      default: return 'bg-gray-100'
-    }
-  }
-  
-  // Helper to get level name from document hierarchy
-  const getLevelName = (level: number): string => {
-    if (!format) return 'Item'
-    const hierarchy = getDocumentHierarchy(format)
-    if (!hierarchy || level > hierarchy.length) return 'Item'
-    return hierarchy[level - 1]?.name || 'Item'
-  }
-  
-  // Recursive component to render item with its children horizontally
-  const renderHorizontalTree = (item: StoryStructureItem): JSX.Element => {
-    const children = getChildren(item.id)
-    const itemHasChildren = children.length > 0
-    const canHaveChildren = item.level < 3
-    const nextLevelName = canHaveChildren ? getLevelName(item.level + 1) : ''
-    
-    return (
-      <div key={item.id} className="flex flex-nowrap gap-5 items-start transition-all duration-300 ease-in-out flex-shrink-0">
-        {/* Current item card */}
-        <div
-          className={`flex-shrink-0 ${getBackgroundColor(item.level)} rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer group`}
-          style={{ width: 240, minHeight: 160 }}
-        >
-          <div className="w-full h-full p-4 flex flex-col gap-2">
-            {/* Header with chevron */}
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1" onClick={(e) => handleItemClick(item, e)}>
-                <div className="flex items-center gap-2">
-                  <div className="text-sm font-bold text-gray-900 flex-1">
-                    {item.name}
-                  </div>
-                </div>
-                {item.title && (
-                  <div className="text-xs text-gray-600 mt-1">
-                    {item.title}
-                  </div>
-                )}
-              </div>
-              {(itemHasChildren || canHaveChildren) && (
-                <button
-                  onClick={(e) => toggleExpanded(item.id, e)}
-                  className="p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
-                >
-                  <ChevronRightIcon className={`w-4 h-4 text-gray-600 transition-transform duration-200 ${
-                    item.expanded ? 'rotate-90' : ''
-                  }`} />
-                </button>
-              )}
-            </div>
-            
-            {/* Description and action */}
-            <div onClick={(e) => handleItemClick(item, e)} className="flex-1 flex flex-col">
-              {item.description && (
-                <div className="text-xs text-gray-500 line-clamp-2 mb-2">
-                  {item.description}
-                </div>
-              )}
-              <div className="text-xs text-gray-400 mt-auto">
-                Click to Write
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Children rendered to the right - slide in/out */}
-        {item.expanded && (
-          <div className="flex flex-row flex-nowrap gap-5 flex-shrink-0 items-start animate-in slide-in-from-left-2 duration-200">
-            {itemHasChildren ? (
-              // Render existing children horizontally
-              children.map((child) => renderHorizontalTree(child))
-            ) : canHaveChildren ? (
-              // Show placeholder to add first child
-              <div 
-                className={`flex-shrink-0 ${getBackgroundColor(item.level + 1)} rounded-xl border-2 border-dashed border-gray-300 hover:border-yellow-400 transition-all cursor-pointer`}
-                style={{ width: 240, minHeight: 160 }}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  // This will be handled by the panel - for now just show message
-                  console.log(`Add ${nextLevelName} to ${item.name}`)
-                }}
-              >
-                <div className="w-full h-full p-4 flex flex-col items-center justify-center gap-2">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  <div className="text-sm font-medium text-gray-600 text-center">
-                    Add {nextLevelName}
-                  </div>
-                  <div className="text-xs text-gray-400 text-center">
-                    Click to create
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
-    )
-  }
+  // Node width
+  const nodeWidth = isExpanded ? customNarrationWidth : 320
 
   return (
     <div className="relative">
@@ -252,10 +59,10 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
       <div className="relative transition-all duration-300 ease-in-out flex-shrink-0" style={{ 
         borderRadius: '16px 16px 24px 24px',
         zIndex: 5,
-        width: isExpanded ? nodeWidth : 320
+        width: nodeWidth
       }}>
         {/* Label above node with tab-like background */}
-        <div className="flex justify-center -mb-1 transition-all duration-300 ease-in-out" style={{ width: isExpanded ? nodeWidth : 320 }}>
+        <div className="flex justify-center -mb-1 transition-all duration-300 ease-in-out" style={{ width: nodeWidth }}>
           <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all  ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'}`}>
             <div className="text-sm text-gray-700 uppercase tracking-widest font-sans font-bold">
               {label || (format ? format.toUpperCase() : 'STORY')}
@@ -268,47 +75,15 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
                 setIsExpanded(!isExpanded)
               }}
               className="p-1 rounded hover:bg-gray-500 transition-colors"
-              title={isExpanded ? 'Collapse' : 'Expand'}
-              aria-label="Toggle expand"
+              title={isExpanded ? 'Collapse' : 'Expand timeline'}
+              aria-label="Toggle timeline"
             >
               {isExpanded ? (
-                /* Collapse icon */
                 <ChevronDownIcon className="w-4 h-4 text-gray-700" />
               ) : (
-                /* Expand icon */
                 <ChevronRightIcon className="w-4 h-4 text-gray-700" />
               )}
             </button>
-            
-            {/* View mode toggle - only show when expanded */}
-            {isExpanded && hasItems && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setViewMode(viewMode === 'narration' ? 'cards' : 'narration')
-                }}
-                className="p-1 rounded hover:bg-gray-500 transition-colors"
-                title={`Switch to ${viewMode === 'narration' ? 'card' : 'narration'} view`}
-                aria-label="Toggle view mode"
-              >
-                {viewMode === 'narration' ? (
-                  /* Cards icon */
-                  <svg className="w-3.5 h-3.5 text-gray-700" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <rect x="3" y="3" width="7" height="7" rx="1" />
-                    <rect x="14" y="3" width="7" height="7" rx="1" />
-                    <rect x="3" y="14" width="7" height="7" rx="1" />
-                    <rect x="14" y="14" width="7" height="7" rx="1" />
-                  </svg>
-                ) : (
-                  /* Timeline icon */
-                  <svg className="w-3.5 h-3.5 text-gray-700" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <line x1="3" y1="6" x2="21" y2="6" strokeLinecap="round" />
-                    <line x1="3" y1="12" x2="21" y2="12" strokeLinecap="round" />
-                    <line x1="3" y1="18" x2="21" y2="18" strokeLinecap="round" />
-                  </svg>
-                )}
-              </button>
-            )}
             
             {/* Panel indicator icon - three dots vertical - clickable */}
             <button
@@ -339,19 +114,15 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         {/* Main Container - positioned in front of connector dots */}
         <div
           className={`relative transition-all duration-300 ease-in-out ${
-            isExpanded ? (
-              viewMode === 'narration' 
-                ? '' 
-                : `rounded-2xl overflow-visible ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'} ${selected ? 'shadow-2xl' : 'shadow-md'}`
-            ) : `rounded-2xl overflow-visible ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'} ${selected ? 'shadow-2xl' : 'shadow-md'}`
+            isExpanded ? '' : `rounded-2xl overflow-visible ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'} ${selected ? 'shadow-2xl' : 'shadow-md'}`
           }`}
           style={{
-            width: isExpanded ? nodeWidth : 320,
-            minHeight: isExpanded ? (viewMode === 'narration' ? 'auto' : 200) : 'auto',
-            paddingLeft: isExpanded ? (viewMode === 'narration' ? 0 : sidePadding) : 24,
-            paddingRight: isExpanded ? (viewMode === 'narration' ? 0 : sidePadding) : 24,
-            paddingTop: isExpanded ? (viewMode === 'narration' ? 0 : 20) : 20,
-            paddingBottom: isExpanded ? (viewMode === 'narration' ? 0 : 20) : 20,
+            width: nodeWidth,
+            minHeight: isExpanded ? 'auto' : 'auto',
+            paddingLeft: isExpanded ? 0 : 24,
+            paddingRight: isExpanded ? 0 : 24,
+            paddingTop: isExpanded ? 0 : 20,
+            paddingBottom: isExpanded ? 0 : 20,
             boxSizing: 'border-box'
           }}
         >
@@ -402,8 +173,8 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
               Open Content Canvas
             </button>
           </div>
-        ) : viewMode === 'narration' ? (
-          /* Narration Arrangement View - DAW-style horizontal layout */
+        ) : (
+          /* Expanded View - Narration Timeline */
           <NarrationContainer
             items={items}
             onItemClick={(item) => {
@@ -420,23 +191,6 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             availableAgents={availableAgents}
             onAgentAssign={onAgentAssign}
           />
-        ) : hasItems ? (
-          /* Card View - Horizontal tree structure */
-          <div className="flex flex-nowrap gap-4 items-start">
-            {topLevelItems.map((item) => renderHorizontalTree(item))}
-          </div>
-        ) : (
-          /* Empty state - show format icon */
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-            <div className="w-12 h-12 text-yellow-600">
-              <div className="w-full h-full flex items-center justify-center scale-[2.4]">
-                {formatIcon}
-              </div>
-            </div>
-            <div className="text-[9px] text-gray-600 font-medium text-center">
-              Click to Add {primaryLevel}s
-            </div>
-          </div>
         )}
         </div>
       </div>
