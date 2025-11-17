@@ -33,7 +33,9 @@ function ClusterNode({ data, selected, id }: NodeProps<ClusterNodeData>) {
     edge => edge.target === id && edge.source !== 'orchestrator'
   ).length
   
-  const showResourceBadge = !data.showConnectedResources && connectedResourceCount > 0
+  // Show badge when resources are HIDDEN on canvas (showConnectedResources = false)
+  // Default to true (resources shown) if undefined
+  const showResourceBadge = (data.showConnectedResources === false) && connectedResourceCount > 0
   
   return (
     <div className="relative">
