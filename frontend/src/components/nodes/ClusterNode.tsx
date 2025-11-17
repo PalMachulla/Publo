@@ -39,11 +39,29 @@ function ClusterNode({ data, selected, id }: NodeProps<ClusterNodeData>) {
       {/* Top handle for incoming connections - invisible but functional */}
       <Handle type="target" position={Position.Top} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
       
-      {/* Large connector dot behind node - half covered */}
-      <div 
-        className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full shadow-lg"
-        style={{ pointerEvents: 'none', zIndex: 0, backgroundColor: bgColor }}
-      />
+      {/* Resource count badge (shown when resources are hidden) - positioned on top like connector dot */}
+      {showResourceBadge ? (
+        <div 
+          className="absolute -top-8 left-1/2 -translate-x-1/2 w-16 h-16 rounded-full shadow-lg flex items-center justify-center"
+          style={{ 
+            pointerEvents: 'none', 
+            zIndex: 10, 
+            backgroundColor: bgColor,
+            border: '3px solid white'
+          }}
+          title={`${connectedResourceCount} connected ${connectedResourceCount === 1 ? 'resource' : 'resources'}`}
+        >
+          <span className="text-white font-bold text-xl" style={{ color: textColor }}>
+            {connectedResourceCount}
+          </span>
+        </div>
+      ) : (
+        /* Regular small connector dot when resources are shown */
+        <div 
+          className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full shadow-lg"
+          style={{ pointerEvents: 'none', zIndex: 0, backgroundColor: bgColor }}
+        />
+      )}
       
       {/* Circular node */}
       <div
@@ -81,18 +99,6 @@ function ClusterNode({ data, selected, id }: NodeProps<ClusterNodeData>) {
             {isActive ? 'ACTIVE' : 'PASSIVE'}
           </div>
         </div>
-        
-        {/* Connected Resources Badge (shown when resources are hidden) */}
-        {showResourceBadge && (
-          <div className="mt-2 flex justify-center">
-            <div 
-              className="w-12 h-12 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold text-sm shadow-md border-2 border-gray-300"
-              title={`${connectedResourceCount} connected ${connectedResourceCount === 1 ? 'resource' : 'resources'}`}
-            >
-              {connectedResourceCount}
-            </div>
-          </div>
-        )}
       </div>
       
       {/* Bottom handle for outgoing connections - invisible but functional */}
