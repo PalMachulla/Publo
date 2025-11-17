@@ -175,6 +175,10 @@ export interface ClusterNodeData extends BaseNodeData {
   // Agent Identity
   specialization?: AgentSpecialization
   
+  // NEW: Assignment & Consultation
+  assignmentMode?: 'manual' | 'autonomous' // How agent is assigned to segments
+  consultationLevel?: 'active' | 'advisory' | 'background' // Level of agent involvement
+  
   // Consultation Behavior
   consultationTriggers?: ConsultationTriggers
   consultationDepth?: ConsultationDepth

@@ -49,6 +49,14 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
     node.data.specialization || 'custom'
   )
   
+  // NEW: Assignment Mode & Level
+  const [assignmentMode, setAssignmentMode] = useState<'manual' | 'autonomous'>(
+    node.data.assignmentMode || 'manual'
+  )
+  const [consultationLevel, setConsultationLevel] = useState<'active' | 'advisory' | 'background'>(
+    node.data.consultationLevel || 'active'
+  )
+  
   // Consultation Behavior
   const [consultationTriggers, setConsultationTriggers] = useState(
     node.data.consultationTriggers || {
@@ -302,12 +310,172 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
           </div>
         </CollapsibleSection>
 
-        {/* === SECTION 2: Consultation Behavior === */}
+        {/* === SECTION 2: Assignment === */}
         <CollapsibleSection 
-          title="Consultation Behavior" 
-          defaultOpen={false}
-          icon={<ChatBubbleIcon className="w-4 h-4 text-gray-600" />}
+          title="Assignment" 
+          defaultOpen={true}
+          icon={<BookmarkIcon className="w-4 h-4 text-gray-600" />}
         >
+          {/* Assignment Mode */}
+          <div>
+            <Label>Assignment Mode</Label>
+            <p className="text-xs text-gray-500 mb-3">How should this agent be assigned to segments?</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setAssignmentMode('manual')
+                  onUpdate(node.id, { ...node.data, assignmentMode: 'manual' })
+                }}
+                className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all text-sm font-medium ${
+                  assignmentMode === 'manual'
+                    ? 'border-yellow-400 bg-yellow-50 text-gray-900'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                }`}
+              >
+                <div className="text-left">
+                  <div className="font-semibold">Manual</div>
+                  <div className="text-xs opacity-75">You assign to specific segments</div>
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setAssignmentMode('autonomous')
+                  onUpdate(node.id, { ...node.data, assignmentMode: 'autonomous' })
+                }}
+                className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all text-sm font-medium ${
+                  assignmentMode === 'autonomous'
+                    ? 'border-yellow-400 bg-yellow-50 text-gray-900'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                }`}
+              >
+                <div className="text-left">
+                  <div className="font-semibold">Autonomous</div>
+                  <div className="text-xs opacity-75">AI suggests where to contribute</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Consultation Level */}
+          <div>
+            <Label>Consultation Level</Label>
+            <p className="text-xs text-gray-500 mb-3">How involved should this agent be?</p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all hover:border-gray-300 ${consultationLevel === 'active' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}">
+                <input
+                  type="radio"
+                  name="consultationLevel"
+                  checked={consultationLevel === 'active'}
+                  onChange={() => {
+                    setConsultationLevel('active')
+                    onUpdate(node.id, { ...node.data, consultationLevel: 'active' })
+                  }}
+                  className="w-4 h-4 text-yellow-400"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-sm">Active Consultant</div>
+                  <div className="text-xs text-gray-500">Writes and generates content</div>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all hover:border-gray-300 ${consultationLevel === 'advisory' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}">
+                <input
+                  type="radio"
+                  name="consultationLevel"
+                  checked={consultationLevel === 'advisory'}
+                  onChange={() => {
+                    setConsultationLevel('advisory')
+                    onUpdate(node.id, { ...node.data, consultationLevel: 'advisory' })
+                  }}
+                  className="w-4 h-4 text-yellow-400"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-sm">Advisory</div>
+                  <div className="text-xs text-gray-500">Reviews and suggests improvements</div>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all hover:border-gray-300 ${consultationLevel === 'background' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}">
+                <input
+                  type="radio"
+                  name="consultationLevel"
+                  checked={consultationLevel === 'background'}
+                  onChange={() => {
+                    setConsultationLevel('background')
+                    onUpdate(node.id, { ...node.data, consultationLevel: 'background' })
+                  }}
+                  className="w-4 h-4 text-yellow-400"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-sm">Background Research</div>
+                  <div className="text-xs text-gray-500">Provides reference material only</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Assigned Segments (if manual mode) */}
+          {assignmentMode === 'manual' && (
+            <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+              <div className="text-sm font-medium text-gray-700 mb-1">Assigned Segments</div>
+              <div className="text-xs text-gray-500">
+                Use the agent menu on timeline segments to assign this agent
+              </div>
+            </div>
+          )}
+        </CollapsibleSection>
+
+        {/* === SECTION 3: Connected Resources === */}
+        <CollapsibleSection 
+          title="Connected Resources" 
+          defaultOpen={false}
+          icon={<Link2Icon className="w-4 h-4 text-gray-600" />}
+        >
+          {connectedResources.length > 0 ? (
+            <div className="space-y-2">
+              {connectedResources.map((resource) => (
+                <div
+                  key={resource.id}
+                  className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white"
+                >
+                  <div
+                    className="w-8 h-8 rounded flex items-center justify-center text-white text-sm font-medium"
+                    style={{ backgroundColor: resource.color }}
+                  >
+                    {resource.type === 'test' ? '📄' : '📚'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-gray-900 truncate">
+                      {resource.name}
+                    </div>
+                    <div className="text-xs text-gray-500 capitalize">
+                      {resource.type === 'test' ? 'Test Content' : resource.type}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 text-gray-400 text-sm">
+              No resources connected yet
+            </div>
+          )}
+        </CollapsibleSection>
+
+        {/* === SECTION 4: Advanced Settings (collapsed by default) === */}
+        <CollapsibleSection 
+          title="Advanced Settings" 
+          defaultOpen={false}
+          icon={<GearIcon className="w-4 h-4 text-gray-600" />}
+        >
+          <div className="mb-4 p-3 rounded-lg brand-info-banner">
+            <p className="text-xs leading-relaxed">
+              Fine-tune advanced agent behavior and model parameters
+            </p>
+          </div>
+
+          {/* All the original detailed settings go here */}
+          {/* Consultation Behavior (detailed) */}
+        <div className="space-y-4">
+          <div className="text-sm font-medium text-gray-700">Consultation Behavior (Detailed)</div>
           <div className="mb-4 p-3 rounded-lg brand-info-banner">
             <p className="text-xs leading-relaxed">
               Control how the orchestrator interacts with this agent during the writing process
@@ -458,14 +626,11 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
             maxLabel="Volunteers insights"
             valueFormatter={(v) => `${v}%`}
           />
-        </CollapsibleSection>
+          </div>
 
-        {/* === SECTION 3: Knowledge & Resources === */}
-        <CollapsibleSection 
-          title="Knowledge & Resources" 
-          defaultOpen={false}
-          icon={<BookmarkIcon className="w-4 h-4 text-gray-600" />}
-        >
+          {/* Knowledge & Resources (Advanced) */}
+          <div className="space-y-4">
+            <div className="text-sm font-medium text-gray-700">Knowledge & Resources (Detailed)</div>
           {/* Context Awareness */}
           <Slider
             label="Context Awareness"
@@ -564,14 +729,11 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
               </div>
             )}
           </div>
-        </CollapsibleSection>
+          </div>
 
-        {/* === SECTION 4: Interaction Model === */}
-        <CollapsibleSection 
-          title="Interaction Model" 
-          defaultOpen={false}
-          icon={<MixIcon className="w-4 h-4 text-gray-600" />}
-        >
+          {/* Interaction Model (Advanced) */}
+          <div className="space-y-4">
+            <div className="text-sm font-medium text-gray-700">Interaction Model (Detailed)</div>
           {/* Example Queries */}
           <div>
             <Label>Example Queries (one per line)</Label>
@@ -655,14 +817,11 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
               </SelectContent>
             </Select>
           </div>
-        </CollapsibleSection>
+          </div>
 
-        {/* === SECTION 5: Advanced Settings === */}
-        <CollapsibleSection 
-          title="Advanced Settings" 
-          defaultOpen={false}
-          icon={<GearIcon className="w-4 h-4 text-gray-600" />}
-        >
+          {/* Model & Voice (Advanced) */}
+          <div className="space-y-4">
+            <div className="text-sm font-medium text-gray-700">Model & Voice (Detailed)</div>
           {/* Model Selection */}
           <div>
             <Label>AI Model</Label>
@@ -778,6 +937,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
             <p className="mt-1 text-xs text-gray-500">
               Leave empty for unlimited consultations
             </p>
+          </div>
           </div>
         </CollapsibleSection>
       </div>
