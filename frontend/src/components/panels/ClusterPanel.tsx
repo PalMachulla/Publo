@@ -301,15 +301,31 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
             />
           </div>
 
-          {/* Color Picker */}
-          <ColorPicker
-            label="Agent Color"
-            value={color}
-            onChange={(newColor) => {
-              setColor(newColor)
-              onUpdate(node.id, { ...node.data, color: newColor })
-            }}
-          />
+          {/* Color Picker in Accordion */}
+          <CollapsibleSection
+            title={
+              <div className="flex items-center justify-between w-full">
+                <span className="text-sm font-medium text-gray-700">Agent Color</span>
+                <div 
+                  className="w-8 h-8 rounded-lg border-2 border-gray-200 shadow-sm"
+                  style={{ backgroundColor: color }}
+                />
+              </div>
+            }
+            defaultOpen={false}
+            icon={null}
+          >
+            <div className="pt-2">
+              <ColorPicker
+                value={color}
+                onChange={(newColor) => {
+                  setColor(newColor)
+                  onUpdate(node.id, { ...node.data, color: newColor })
+                }}
+                hideHex
+              />
+            </div>
+          </CollapsibleSection>
 
           {/* Status Toggle */}
           <div className="flex items-center justify-between py-2">

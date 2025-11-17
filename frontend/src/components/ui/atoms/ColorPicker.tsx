@@ -9,6 +9,7 @@ interface ColorPickerProps {
   onChange: (color: string) => void
   label?: string
   presets?: string[]
+  hideHex?: boolean
 }
 
 const DEFAULT_PRESETS = [
@@ -19,7 +20,7 @@ const DEFAULT_PRESETS = [
 ]
 
 const ColorPicker = React.forwardRef<HTMLDivElement, ColorPickerProps>(
-  ({ value, onChange, label, presets = DEFAULT_PRESETS }, ref) => {
+  ({ value, onChange, label, presets = DEFAULT_PRESETS, hideHex = false }, ref) => {
     const [isOpen, setIsOpen] = React.useState(false)
     const [localValue, setLocalValue] = React.useState(value)
     const popoverRef = React.useRef<HTMLDivElement>(null)
@@ -65,37 +66,11 @@ const ColorPicker = React.forwardRef<HTMLDivElement, ColorPickerProps>(
       <div ref={ref} className="relative">
         {label && <Label className="mb-2">{label}</Label>}
         
-        <div className="flex items-center gap-3">
-          {/* Color Swatch Button */}
-          <button
-            type="button"
-            onClick={() => setIsOpen(!isOpen)}
-            className="w-14 h-10 rounded-lg border-2 border-gray-300 hover:border-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-offset-2 shadow-sm overflow-hidden"
-            style={{ backgroundColor: localValue }}
-          >
-            <span className="sr-only">Pick color</span>
-          </button>
-
-          {/* Hex Input */}
-          <Input
-            type="text"
-            value={localValue}
-            onChange={handleInputChange}
-            placeholder="#000000"
-            pattern="^#[0-9A-Fa-f]{6}$"
-            maxLength={7}
-            className="flex-1 font-mono uppercase"
-          />
-        </div>
-
-        {/* Color Picker Popover */}
-        {isOpen && (
-          <div
-            ref={popoverRef}
-            className="absolute z-50 mt-2 p-4 bg-white border border-gray-200 rounded-xl shadow-xl"
-          >
+        {hideHex ? (
+          /* Direct color picker (no hex input) */
+          <div className="space-y-4">
             {/* Color Wheel */}
-            <div className="mb-4">
+            <div>
               <HexColorPicker color={localValue} onChange={handleColorChange} />
             </div>
 
@@ -122,6 +97,68 @@ const ColorPicker = React.forwardRef<HTMLDivElement, ColorPickerProps>(
               </div>
             </div>
           </div>
+        ) : (
+          /* Original button + input combo */
+          <>
+            <div className="flex items-center gap-3">
+              {/* Color Swatch Button */}
+              <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-14 h-10 rounded-lg border-2 border-gray-300 hover:border-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-offset-2 shadow-sm overflow-hidden"
+                style={{ backgroundColor: localValue }}
+              >
+                <span className="sr-only">Pick color</span>
+              </button>
+
+              {/* Hex Input */}
+              <Input
+                type="text"
+                value={localValue}
+                onChange={handleInputChange}
+                placeholder="#000000"
+                pattern="^#[0-9A-Fa-f]{6}$"
+                maxLength={7}
+                className="flex-1 font-mono uppercase"
+              />
+            </div>
+
+            {/* Color Picker Popover */}
+            {isOpen && (
+              <div
+                ref={popoverRef}
+                className="absolute z-50 mt-2 p-4 bg-white border border-gray-200 rounded-xl shadow-xl"
+              >
+                {/* Color Wheel */}
+                <div className="mb-4">
+                  <HexColorPicker color={localValue} onChange={handleColorChange} />
+                </div>
+
+                {/* Preset Colors */}
+                <div className="space-y-2">
+                  <Label className="text-xs">Quick Colors</Label>
+                  <div className="grid grid-cols-10 gap-2">
+                    {presets.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleColorChange(preset)}
+                        className={cn(
+                          'w-6 h-6 rounded-md border-2 transition-all hover:scale-110',
+                          preset === localValue
+                            ? 'border-gray-900 ring-2 ring-yellow-400 ring-offset-1'
+                            : 'border-gray-300 hover:border-gray-400'
+                        )}
+                        style={{ backgroundColor: preset }}
+                      >
+                        <span className="sr-only">{preset}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Custom Styles for react-colorful */}

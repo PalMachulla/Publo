@@ -3,7 +3,7 @@ import { ChevronDownIcon } from '@radix-ui/react-icons'
 import { cn } from '@/lib/utils'
 
 export interface CollapsibleSectionProps {
-  title: string
+  title: React.ReactNode
   defaultOpen?: boolean
   children: React.ReactNode
   icon?: React.ReactNode
@@ -20,13 +20,17 @@ const CollapsibleSection = React.forwardRef<HTMLDivElement, CollapsibleSectionPr
           onClick={() => setIsOpen(!isOpen)}
           className="w-full px-0 py-4 hover:bg-gray-50/50 transition-all flex items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-inset rounded-lg group"
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-1">
             {icon && (
               <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors">
                 {icon}
               </div>
             )}
-            <span className="font-semibold text-gray-900 text-base">{title}</span>
+            {typeof title === 'string' ? (
+              <span className="font-semibold text-gray-900 text-base">{title}</span>
+            ) : (
+              title
+            )}
           </div>
           <ChevronDownIcon
             className={cn(
