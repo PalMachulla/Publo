@@ -761,6 +761,30 @@ export default function NodeDetailsPanel({
                         // Use the connected structure node, or auto-create one if it doesn't exist
                         let structureNode = connectedStructureNode
                         
+                        // Double-check: also look for any structure node connected via outgoing edges
+                        // (in case the useMemo hasn't updated yet)
+                        if (!structureNode) {
+                          console.log('🔍 Double-checking for structure node:', {
+                            orchestratorId: node.id,
+                            totalEdges: edges.length,
+                            outgoingEdgesFromOrchestrator: edges.filter(e => e.source === node.id).length,
+                            allStructureNodes: nodes.filter(n => n.type === 'storyStructureNode').map(n => ({ id: n.id, type: n.type }))
+                          })
+                          
+                          const outgoingEdges = edges.filter(e => e.source === node.id)
+                          console.log('🔍 Outgoing edges from orchestrator:', outgoingEdges.map(e => ({ id: e.id, source: e.source, target: e.target })))
+                          
+                          for (const edge of outgoingEdges) {
+                            const targetNode = nodes.find(n => n.id === edge.target)
+                            console.log('🔍 Checking target node:', { edgeTarget: edge.target, foundNode: targetNode?.id, nodeType: targetNode?.type })
+                            if (targetNode?.type === 'storyStructureNode') {
+                              structureNode = targetNode as Node<StoryStructureNodeData>
+                              console.log('✅ Found structure node via edge check:', structureNode.id)
+                              break
+                            }
+                          }
+                        }
+                        
                         if (!structureNode) {
                           console.log('📦 No structure node connected. Auto-creating one...')
                           

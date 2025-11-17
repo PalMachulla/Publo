@@ -195,12 +195,9 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   }
 
   const handleCreateStory = () => {
-    if (selectedFormat && selectedTemplate) {
-      onCreateStory(selectedFormat, selectedTemplate)
-      setSelectedFormat(null) // Reset selection after creating
-      setSelectedTemplate(null)
-      onClose() // Close the panel after creating
-    }
+    // Deprecated: Structure nodes are now auto-created when clicking "Generate Structure"
+    // This function remains for backward compatibility but does nothing
+    console.warn('handleCreateStory called - this is deprecated, structure nodes are auto-created during generation')
   }
 
   return (
