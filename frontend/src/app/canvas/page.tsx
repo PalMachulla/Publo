@@ -1805,6 +1805,8 @@ export default function CanvasPage() {
           onUpdate={handleNodeUpdate}
           onDelete={handleNodeDelete}
           onCreateStory={handleCreateStory}
+          onAddNode={(newNode) => setNodes((nds) => [...nds, newNode])}
+          onAddEdge={(newEdge) => setEdges((eds) => [...eds, newEdge])}
           edges={edges}
           nodes={nodes}
         />

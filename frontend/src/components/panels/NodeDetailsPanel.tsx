@@ -398,6 +398,8 @@ interface NodeDetailsPanelProps {
   onUpdate: (nodeId: string, data: any) => void
   onDelete: (nodeId: string) => void
   onCreateStory?: (format: any) => void
+  onAddNode?: (node: Node) => void
+  onAddEdge?: (edge: Edge) => void
   edges?: Edge[]
   nodes?: Node[]
 }
@@ -409,6 +411,8 @@ export default function NodeDetailsPanel({
   onUpdate,
   onDelete,
   onCreateStory,
+  onAddNode,
+  onAddEdge,
   edges = [],
   nodes = []
 }: NodeDetailsPanelProps) {
@@ -754,16 +758,71 @@ export default function NodeDetailsPanel({
                     </p>
                     <button
                       onClick={() => {
-                        // Use the connected structure node (not just any structure node!)
-                        const structureNode = connectedStructureNode
+                        // Use the connected structure node, or auto-create one if it doesn't exist
+                        let structureNode = connectedStructureNode
                         
                         if (!structureNode) {
-                          console.error('❌ No structure node connected to this orchestrator')
-                          alert('No structure node found. Please connect a Structure node to this Orchestrator first.')
-                          return
+                          console.log('📦 No structure node connected. Auto-creating one...')
+                          
+                          // Auto-create structure node if callbacks are provided
+                          if (!onAddNode || !onAddEdge) {
+                            console.error('❌ Cannot auto-create structure node: missing callbacks')
+                            alert('No structure node found. Please connect a Structure node to this Orchestrator first.')
+                            return
+                          }
+                          
+                          // Get format from orchestrator
+                          const selectedFormat: StoryFormat = nodeData.format || 'screenplay'
+                          
+                          // Create structure node ID
+                          const structureNodeId = `structure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+                          
+                          // Calculate position (below orchestrator)
+                          const orchestratorPosition = node.position
+                          const newStructureNode: Node<StoryStructureNodeData> = {
+                            id: structureNodeId,
+                            type: 'storyStructureNode',
+                            position: {
+                              x: orchestratorPosition.x - 50,
+                              y: orchestratorPosition.y + 200
+                            },
+                            data: {
+                              nodeType: 'story-structure',
+                              label: selectedFormat.toUpperCase(),
+                              description: 'Generated structure',
+                              format: selectedFormat,
+                              items: [],
+                              comments: [],
+                              onItemClick: () => {}, // Will be set by canvas
+                              onItemsUpdate: () => {}, // Will be set by canvas
+                              onWidthUpdate: () => {}, // Will be set by canvas
+                              availableAgents: [],
+                              customNarrationWidth: 1200
+                            }
+                          }
+                          
+                          // Create edge from orchestrator to structure
+                          const newEdge: Edge = {
+                            id: `edge-${node.id}-${structureNodeId}`,
+                            source: node.id,
+                            target: structureNodeId,
+                            type: 'smoothstep'
+                          }
+                          
+                          // Add node and edge
+                          onAddNode(newStructureNode)
+                          onAddEdge(newEdge)
+                          
+                          // Use the newly created node
+                          structureNode = newStructureNode
+                          
+                          console.log('✅ Auto-created and connected structure node:', {
+                            structureNodeId,
+                            orchestratorId: node.id
+                          })
                         }
                         
-                        console.log('🎯 Found connected structure node:', {
+                        console.log('🎯 Using structure node:', {
                           structureNodeId: structureNode.id,
                           orchestratorNodeId: node.id,
                           hasExistingItems: (structureNode.data.items?.length || 0) > 0,
