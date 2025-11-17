@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
 import { GroqModelWithPricing } from '@/lib/groq/types'
+import CollapsibleSection from '@/components/ui/molecules/CollapsibleSection'
 
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
@@ -138,6 +139,8 @@ const storyFormats: Array<{ type: StoryFormat; label: string; description: strin
 ]
 
 export default function CreateStoryPanel({ node, onCreateStory, onClose }: CreateStoryPanelProps) {
+  const [isModelSectionOpen, setIsModelSectionOpen] = useState(true)
+  const [isFormatSectionOpen, setIsFormatSectionOpen] = useState(true)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
   const [models, setModels] = useState<GroqModelWithPricing[]>([])
   const [loadingModels, setLoadingModels] = useState(true)
@@ -221,11 +224,11 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {/* Model Selection Section */}
-        <div className="mb-8">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wider">
-            1. Select Model
-          </h3>
-
+        <CollapsibleSection
+          title="1. Select Model"
+          isOpen={isModelSectionOpen}
+          onToggle={() => setIsModelSectionOpen(!isModelSectionOpen)}
+        >
           {loadingModels && (
             <div className="text-center py-8">
               <div className="inline-block w-6 h-6 border-3 border-gray-200 border-t-yellow-400 rounded-full animate-spin" />
@@ -247,7 +250,7 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
 
           {!loadingModels && !modelsError && models.length > 0 && (
             <div className="space-y-2">
-              {models.slice(0, 5).map((model) => (
+              {models.map((model) => (
                 <button
                   key={model.id}
                   onClick={() => setSelectedModel(model.id)}
@@ -325,17 +328,17 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
               ))}
             </div>
           )}
-        </div>
+        </CollapsibleSection>
 
         {/* Format Selection Section */}
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wider">
-            2. Choose Format
-          </h3>
-        </div>
-
-        <div className="space-y-2">
-          {storyFormats.map((format) => {
+        <CollapsibleSection
+          title="2. Choose Format"
+          isOpen={isFormatSectionOpen}
+          onToggle={() => setIsFormatSectionOpen(!isFormatSectionOpen)}
+          className="mt-6"
+        >
+          <div className="space-y-2">
+            {storyFormats.map((format) => {
             const isExpanded = selectedFormat === format.type
             const formatTemplates = templates[format.type]
 
@@ -417,7 +420,8 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
               </div>
             )
           })}
-        </div>
+          </div>
+        </CollapsibleSection>
       </div>
 
       {/* Footer with Create Button */}
