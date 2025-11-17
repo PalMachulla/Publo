@@ -57,6 +57,9 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
     node.data.consultationLevel || 'active'
   )
   
+  // Show/Hide Connected Resources
+  const [showConnectedResources, setShowConnectedResources] = useState(true)
+  
   // Consultation Behavior
   const [consultationTriggers, setConsultationTriggers] = useState(
     node.data.consultationTriggers || {
@@ -443,33 +446,64 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
           defaultOpen={false}
           icon={<Link2Icon className="w-4 h-4 text-gray-600" />}
         >
-          {connectedResources.length > 0 ? (
-            <div className="space-y-2">
-              {connectedResources.map((resource) => (
-                <div
-                  key={resource.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white"
-                >
+          {/* Toggle button */}
+          <div className="mb-3">
+            <button
+              onClick={() => setShowConnectedResources(!showConnectedResources)}
+              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+            >
+              {showConnectedResources ? 'Hide' : 'Show'} resources
+              <svg 
+                className={`w-3 h-3 transition-transform ${showConnectedResources ? 'rotate-180' : ''}`}
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+
+          {showConnectedResources ? (
+            /* Show full list */
+            connectedResources.length > 0 ? (
+              <div className="space-y-2">
+                {connectedResources.map((resource) => (
                   <div
-                    className="w-8 h-8 rounded flex items-center justify-center text-white text-sm font-medium"
-                    style={{ backgroundColor: resource.color }}
+                    key={resource.id}
+                    className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white"
                   >
-                    {resource.type === 'test' ? '📄' : '📚'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm text-gray-900 truncate">
-                      {resource.name}
+                    <div
+                      className="w-8 h-8 rounded flex items-center justify-center text-white text-sm font-medium"
+                      style={{ backgroundColor: resource.color }}
+                    >
+                      {resource.type === 'test' ? '📄' : '📚'}
                     </div>
-                    <div className="text-xs text-gray-500 capitalize">
-                      {resource.type === 'test' ? 'Test Content' : resource.type}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm text-gray-900 truncate">
+                        {resource.name}
+                      </div>
+                      <div className="text-xs text-gray-500 capitalize">
+                        {resource.type === 'test' ? 'Test Content' : resource.type}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-gray-400 text-sm">
+                No resources connected yet
+              </div>
+            )
           ) : (
-            <div className="text-center py-6 text-gray-400 text-sm">
-              No resources connected yet
+            /* Show circular badge with count */
+            <div className="flex justify-center py-4">
+              <div 
+                className="w-16 h-16 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold text-xl shadow-md"
+                title={`${connectedResources.length} connected ${connectedResources.length === 1 ? 'resource' : 'resources'}`}
+              >
+                {connectedResources.length}
+              </div>
             </div>
           )}
         </CollapsibleSection>
