@@ -616,7 +616,8 @@ export default function CanvasPage() {
         agentNumber: n.data.agentNumber || 0,
         color: n.data.color || '#9ca3af',
         label: n.data.label || 'Agent',
-        isActive: n.data.isActive ?? true
+        isActive: n.data.isActive ?? true,
+        assignmentMode: n.data.assignmentMode || 'manual'
       }))
       .sort((a, b) => a.agentNumber - b.agentNumber)
   }, [nodes])

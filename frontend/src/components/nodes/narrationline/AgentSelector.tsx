@@ -50,6 +50,10 @@ function AgentSelector({
   
   const selectedAgent = availableAgents.find(a => a.id === selectedAgentId)
   
+  // Group agents by assignment mode
+  const manualAgents = availableAgents.filter(a => a.assignmentMode !== 'autonomous')
+  const autonomousAgents = availableAgents.filter(a => a.assignmentMode === 'autonomous')
+  
   // Get agent number from the data or generate from name
   const getAgentNumber = (agent: AgentOption): string => {
     // If agent has an agentNumber, use it
@@ -156,8 +160,8 @@ function AgentSelector({
             <div className="border-t border-gray-100 my-1" />
           )}
           
-          {/* Agent options */}
-          {availableAgents.map((agent) => {
+          {/* Manual Agent options */}
+          {manualAgents.map((agent) => {
             const isSelected = agent.id === selectedAgentId
             const agentNumber = getAgentNumber(agent)
             const isActive = (agent as any).isActive !== false
@@ -209,6 +213,56 @@ function AgentSelector({
               </button>
             )
           })}
+          
+          {/* Autonomous agents separator and list */}
+          {autonomousAgents.length > 0 && (
+            <>
+              <div className="border-t border-gray-200 my-1" />
+              <div className="px-3 py-1.5 text-xs font-medium text-gray-400 uppercase tracking-wide">
+                Autonomous
+              </div>
+              
+              {autonomousAgents.map((agent) => {
+                const isSelected = agent.id === selectedAgentId
+                const agentNumber = getAgentNumber(agent)
+                const isActive = (agent as any).isActive !== false
+                
+                return (
+                  <div
+                    key={agent.id}
+                    className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 opacity-40 cursor-not-allowed"
+                    title="This agent is in autonomous mode and cannot be manually assigned"
+                  >
+                    {/* Agent pill with color and number */}
+                    <div 
+                      className={`
+                        flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-mono font-semibold
+                        ${isActive ? '' : 'opacity-50'}
+                      `}
+                      style={{ 
+                        backgroundColor: agent.color || '#9ca3af',
+                        color: '#ffffff'
+                      }}
+                    >
+                      {agentNumber}
+                    </div>
+                    
+                    {/* Agent name */}
+                    <span className={`flex-1 font-medium truncate ${
+                      isActive ? 'text-gray-900' : 'text-gray-500'
+                    }`}>
+                      {agent.label}
+                    </span>
+                    
+                    {/* Autonomous indicator */}
+                    <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                )
+              })}
+            </>
+          )}
           
           {/* Empty state */}
           {availableAgents.length === 0 && (

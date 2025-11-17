@@ -233,6 +233,7 @@ export interface AgentOption {
   color: string
   label: string
   isActive?: boolean
+  assignmentMode?: 'manual' | 'autonomous'
 }
 
 export interface StoryStructureNodeData extends BaseNodeData {
