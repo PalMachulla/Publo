@@ -448,11 +448,16 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
           defaultOpen={false}
           icon={<Link2Icon className="w-4 h-4 text-gray-600" />}
         >
-          {/* Toggle switch */}
+          {/* Toggle switch - controls canvas visibility only */}
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
-            <Label className="text-sm font-medium text-gray-700">
-              {showConnectedResources ? 'Hide resources' : 'Show resources'}
-            </Label>
+            <div className="flex-1">
+              <Label className="text-sm font-medium text-gray-700">
+                Show on canvas
+              </Label>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {showConnectedResources ? 'Resources visible on canvas' : 'Resources hidden on canvas'}
+              </p>
+            </div>
             <Switch
               checked={showConnectedResources}
               onCheckedChange={(checked) => {
@@ -462,46 +467,34 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
             />
           </div>
 
-          {showConnectedResources ? (
-            /* Show full list */
-            connectedResources.length > 0 ? (
-              <div className="space-y-2">
-                {connectedResources.map((resource) => (
+          {/* Always show resource list in panel */}
+          {connectedResources.length > 0 ? (
+            <div className="space-y-2">
+              {connectedResources.map((resource) => (
+                <div
+                  key={resource.id}
+                  className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white"
+                >
                   <div
-                    key={resource.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white"
+                    className="w-8 h-8 rounded flex items-center justify-center text-white text-sm font-medium"
+                    style={{ backgroundColor: resource.color }}
                   >
-                    <div
-                      className="w-8 h-8 rounded flex items-center justify-center text-white text-sm font-medium"
-                      style={{ backgroundColor: resource.color }}
-                    >
-                      {resource.type === 'test' ? '📄' : '📚'}
+                    {resource.type === 'test' ? '📄' : '📚'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-gray-900 truncate">
+                      {resource.name}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm text-gray-900 truncate">
-                        {resource.name}
-                      </div>
-                      <div className="text-xs text-gray-500 capitalize">
-                        {resource.type === 'test' ? 'Test Content' : resource.type}
-                      </div>
+                    <div className="text-xs text-gray-500 capitalize">
+                      {resource.type === 'test' ? 'Test Content' : resource.type}
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-6 text-gray-400 text-sm">
-                No resources connected yet
-              </div>
-            )
+                </div>
+              ))}
+            </div>
           ) : (
-            /* Show circular badge with count */
-            <div className="flex justify-center py-4">
-              <div 
-                className="w-16 h-16 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold text-xl shadow-md"
-                title={`${connectedResources.length} connected ${connectedResources.length === 1 ? 'resource' : 'resources'}`}
-              >
-                {connectedResources.length}
-              </div>
+            <div className="text-center py-6 text-gray-400 text-sm">
+              No resources connected yet
             </div>
           )}
         </CollapsibleSection>
