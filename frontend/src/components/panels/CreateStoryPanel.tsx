@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
+import { GroqModelWithPricing } from '@/lib/groq/types'
 
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
@@ -137,8 +138,43 @@ const storyFormats: Array<{ type: StoryFormat; label: string; description: strin
 ]
 
 export default function CreateStoryPanel({ node, onCreateStory, onClose }: CreateStoryPanelProps) {
+  const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [models, setModels] = useState<GroqModelWithPricing[]>([])
+  const [loadingModels, setLoadingModels] = useState(true)
+  const [modelsError, setModelsError] = useState<string | null>(null)
   const [selectedFormat, setSelectedFormat] = useState<StoryFormat | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
+
+  // Fetch Groq models on mount
+  useEffect(() => {
+    fetchModels()
+  }, [])
+
+  const fetchModels = async () => {
+    setLoadingModels(true)
+    setModelsError(null)
+    
+    try {
+      const response = await fetch('/api/groq/models')
+      const data = await response.json()
+      
+      if (data.success) {
+        setModels(data.data)
+        // Auto-select first production model
+        const firstProduction = data.data.find((m: GroqModelWithPricing) => m.category === 'production')
+        if (firstProduction) {
+          setSelectedModel(firstProduction.id)
+        }
+      } else {
+        setModelsError(data.error || 'Failed to load models')
+      }
+    } catch (err) {
+      setModelsError('Failed to fetch models')
+      console.error('Error fetching models:', err)
+    } finally {
+      setLoadingModels(false)
+    }
+  }
 
   const handleFormatClick = (format: StoryFormat) => {
     if (selectedFormat === format) {
@@ -184,6 +220,120 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
+        {/* Model Selection Section */}
+        <div className="mb-8">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wider">
+            1. Select Model
+          </h3>
+
+          {loadingModels && (
+            <div className="text-center py-8">
+              <div className="inline-block w-6 h-6 border-3 border-gray-200 border-t-yellow-400 rounded-full animate-spin" />
+              <p className="text-xs text-gray-500 mt-3">Loading models...</p>
+            </div>
+          )}
+
+          {modelsError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+              <p className="text-xs text-red-600">{modelsError}</p>
+              <button
+                onClick={fetchModels}
+                className="text-xs text-red-700 font-medium mt-1 underline"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
+          {!loadingModels && !modelsError && models.length > 0 && (
+            <div className="space-y-2">
+              {models.slice(0, 5).map((model) => (
+                <button
+                  key={model.id}
+                  onClick={() => setSelectedModel(model.id)}
+                  className={`w-full text-left p-3 rounded-lg border transition-all ${
+                    selectedModel === model.id
+                      ? 'border-yellow-400 bg-yellow-50 shadow-sm'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    {/* Model Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="text-sm font-semibold text-gray-900 truncate">
+                          {model.id}
+                        </h4>
+                        {model.category && (
+                          <span
+                            className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                              model.category === 'production'
+                                ? 'bg-green-100 text-green-700'
+                                : model.category === 'preview'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {model.category}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {/* Pricing & Speed */}
+                      <div className="flex items-center gap-3 text-[11px]">
+                        {model.price_per_1m_input !== undefined && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-500">In:</span>
+                            <span className="font-mono font-medium text-gray-900">
+                              ${model.price_per_1m_input.toFixed(3)}
+                            </span>
+                          </div>
+                        )}
+                        {model.price_per_1m_output !== undefined && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-500">Out:</span>
+                            <span className="font-mono font-medium text-gray-900">
+                              ${model.price_per_1m_output.toFixed(3)}
+                            </span>
+                          </div>
+                        )}
+                        {model.speed_tokens_per_sec && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-500">Speed:</span>
+                            <span className="font-mono font-medium text-gray-900">
+                              {model.speed_tokens_per_sec} t/s
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Selection Indicator */}
+                    {selectedModel === model.id && (
+                      <div className="flex-shrink-0 w-4 h-4 rounded-full bg-yellow-400 flex items-center justify-center">
+                        <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Format Selection Section */}
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wider">
+            2. Choose Format
+          </h3>
+        </div>
+
         <div className="space-y-2">
           {storyFormats.map((format) => {
             const isExpanded = selectedFormat === format.type
