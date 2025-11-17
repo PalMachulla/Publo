@@ -23,6 +23,7 @@ import StoryDraftNode from '@/components/nodes/StoryDraftNode'
 import StoryStructureNode from '@/components/nodes/StoryStructureNode'
 import ClusterNode from '@/components/nodes/ClusterNode'
 import TestNode, { EXAMPLE_SCREENPLAY_MARKDOWN } from '@/components/nodes/TestNode'
+import AIPromptNode from '@/components/nodes/AIPromptNode'
 import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
 import NodeTypeMenu from '@/components/menus/NodeTypeMenu'
 import AIDocumentPanel from '@/components/panels/AIDocumentPanel'
@@ -40,6 +41,7 @@ const nodeTypes = {
   storyStructureNode: StoryStructureNode,
   clusterNode: ClusterNode,
   testNode: TestNode,
+  aiPromptNode: AIPromptNode,
 }
 
 // Only Orchestrator node on fresh canvas
@@ -1248,10 +1250,16 @@ export default function CanvasPage() {
         nodeData.markdown = EXAMPLE_SCREENPLAY_MARKDOWN
         nodeData.format = 'screenplay'
         break
+      case 'aiPrompt':
+        nodeData.label = 'AI PROMPT'
+        nodeData.description = 'Generate structure with AI'
+        nodeData.userPrompt = ''
+        nodeData.maxTokens = 2000
+        break
     }
     
     // Determine the node type for rendering
-    const nodeRenderType = nodeType === 'cluster' ? 'clusterNode' : nodeType === 'test' ? 'testNode' : 'storyNode'
+    const nodeRenderType = nodeType === 'cluster' ? 'clusterNode' : nodeType === 'test' ? 'testNode' : nodeType === 'aiPrompt' ? 'aiPromptNode' : 'storyNode'
     
     const newNode: Node = {
       id: newNodeId,

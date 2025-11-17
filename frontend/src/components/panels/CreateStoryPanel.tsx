@@ -10,6 +10,7 @@ interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
   onCreateStory: (format: StoryFormat, template?: string) => void
   onClose: () => void
+  onUpdate?: (nodeId: string, data: Partial<CreateStoryNodeData>) => void
 }
 
 interface Template {
@@ -138,8 +139,8 @@ const storyFormats: Array<{ type: StoryFormat; label: string; description: strin
   }
 ]
 
-export default function CreateStoryPanel({ node, onCreateStory, onClose }: CreateStoryPanelProps) {
-  const [selectedModel, setSelectedModel] = useState<string | null>(null)
+export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdate }: CreateStoryPanelProps) {
+  const [selectedModel, setSelectedModel] = useState<string | null>((node.data as any).selectedModel || null)
   const [models, setModels] = useState<GroqModelWithPricing[]>([])
   const [loadingModels, setLoadingModels] = useState(true)
   const [modelsError, setModelsError] = useState<string | null>(null)
@@ -250,7 +251,13 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
               {models.map((model) => (
                 <button
                   key={model.id}
-                  onClick={() => setSelectedModel(model.id)}
+                  onClick={() => {
+                    setSelectedModel(model.id)
+                    // Store selected model in node data
+                    if (onUpdate) {
+                      onUpdate(node.id, { selectedModel: model.id } as any)
+                    }
+                  }}
                   className={`w-full text-left p-3 rounded-lg border transition-all ${
                     selectedModel === model.id
                       ? 'border-yellow-400 bg-yellow-50 shadow-sm'

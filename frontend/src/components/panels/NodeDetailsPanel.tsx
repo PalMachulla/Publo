@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { Node, Edge } from 'reactflow'
-import { AnyNodeData, Comment, StoryStructureItem, TestNodeData } from '@/types/nodes'
+import { AnyNodeData, Comment, StoryStructureItem, TestNodeData, AIPromptNodeData, StoryFormat } from '@/types/nodes'
 import { useAuth } from '@/contexts/AuthContext'
 import StoryBookPanel from './StoryBookPanel'
 import CharacterPanel from './CharacterPanel'
@@ -12,6 +12,7 @@ import CreateStoryPanel from './CreateStoryPanel'
 import StoryStructurePanel from './StoryStructurePanel'
 import { PASTEL_COLORS } from '@/components/nodes/narrationline/NarrationSegment'
 import { parseMarkdownStructure } from '@/lib/markdownParser'
+import { getFormatSystemPrompt } from '@/lib/groq/formatPrompts'
 
 // Helper function to lighten a hex color for cascading
 function lightenColor(hex: string, depth: number): string {
@@ -431,6 +432,23 @@ export default function NodeDetailsPanel({
     return null
   }, [edges, nodes, node])
 
+  // Detect AI Prompt nodes connected to orchestrator (MUST be before any early returns)
+  const connectedAIPromptNode = useMemo(() => {
+    if (!node) return null
+    
+    const orchestratorId = 'context'
+    const promptEdges = edges.filter(edge => edge.target === orchestratorId)
+    
+    for (const edge of promptEdges) {
+      const sourceNode = nodes.find(n => n.id === edge.source)
+      if (sourceNode?.data?.nodeType === 'aiPrompt') {
+        return sourceNode as Node<AIPromptNodeData>
+      }
+    }
+    
+    return null
+  }, [edges, nodes, node])
+
   // Early returns AFTER all hooks
   if (!node) return null
   
@@ -520,6 +538,7 @@ export default function NodeDetailsPanel({
               node={node as any} 
               onCreateStory={onCreateStory || (() => console.warn('onCreateStory not provided'))} 
               onClose={onClose}
+              onUpdate={onUpdate}
             />
           ) : nodeType === 'story-structure' ? (
             // Story Structure Metadata Panel
@@ -622,6 +641,113 @@ export default function NodeDetailsPanel({
                           structureNodeId: structureNode.id,
                           orchestratorNodeId: node.id
                         })
+                        
+                        // Check if AI Prompt node is connected - if so, generate with Groq API
+                        if (connectedAIPromptNode) {
+                          const promptNode = connectedAIPromptNode
+                          const userPrompt = promptNode.data.userPrompt
+                          const maxTokens = promptNode.data.maxTokens || 2000
+                          
+                          if (!userPrompt || userPrompt.trim() === '') {
+                            alert('Please enter a prompt in the AI Prompt node first.')
+                            return
+                          }
+                          
+                          // Get selected model and format from orchestrator node data
+                          const selectedModel = (node.data as any).selectedModel || 'llama-3.1-8b-instant'
+                          const selectedFormat: StoryFormat = nodeData.format || 'screenplay'
+                          
+                          // Get system prompt for the format
+                          const systemPrompt = getFormatSystemPrompt(selectedFormat)
+                          
+                          console.log('🤖 Generating structure with Groq AI:', {
+                            model: selectedModel,
+                            format: selectedFormat,
+                            userPromptLength: userPrompt.length,
+                            maxTokens
+                          })
+                          
+                          // Show loading state
+                          const generateButton = document.activeElement as HTMLButtonElement
+                          if (generateButton) {
+                            generateButton.disabled = true
+                            generateButton.textContent = 'Generating...'
+                          }
+                          
+                          // Call Groq API
+                          fetch('/api/groq/chat', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              model: selectedModel,
+                              systemPrompt,
+                              userPrompt,
+                              maxTokens
+                            })
+                          })
+                          .then(res => res.json())
+                          .then(data => {
+                            if (data.success && data.markdown) {
+                              console.log('✅ Received AI-generated markdown:', {
+                                markdownLength: data.markdown.length,
+                                usage: data.usage
+                              })
+                              
+                              // Parse the generated markdown
+                              const { items: parsedItems, contentMap } = parseMarkdownStructure(data.markdown)
+                              
+                              // Convert contentMap to plain object
+                              const contentMapObject: Record<string, string> = {}
+                              contentMap.forEach((value, key) => {
+                                contentMapObject[key] = value
+                              })
+                              
+                              // Update structure node with parsed structure AND content map
+                              onUpdate(structureNode.id, { 
+                                items: parsedItems,
+                                contentMap: contentMapObject 
+                              })
+                              
+                              // Update AI Prompt node with last generation info
+                              if (promptNode.data.onUpdate) {
+                                promptNode.data.onUpdate(promptNode.id, {
+                                  lastGeneration: {
+                                    timestamp: new Date().toISOString(),
+                                    model: selectedModel,
+                                    format: selectedFormat,
+                                    markdown: data.markdown
+                                  }
+                                })
+                              }
+                              
+                              console.log('✅ AI structure generated successfully:', {
+                                itemsCount: parsedItems.length,
+                                levels: [...new Set(parsedItems.map(i => i.level))],
+                              })
+                              
+                              alert('Structure generated successfully with AI!')
+                            } else {
+                              throw new Error(data.error || 'Failed to generate structure')
+                            }
+                          })
+                          .catch(error => {
+                            console.error('❌ Failed to generate with AI:', error)
+                            alert(`Failed to generate structure: ${error.message}\n\nFalling back to default template.`)
+                            
+                            // Fall through to template generation as fallback
+                            // (code below will execute after this catch block)
+                          })
+                          .finally(() => {
+                            if (generateButton) {
+                              generateButton.disabled = false
+                              generateButton.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg> Generate Structure`
+                            }
+                          })
+                          
+                          return // Exit early after initiating AI generation
+                        }
                         
                         // Check if test node is connected - if so, parse its markdown
                         if (connectedTestNode) {

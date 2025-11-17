@@ -6,7 +6,7 @@ export interface Comment {
   created_at: string
 }
 
-export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'research' | 'context' | 'create-story' | 'story-draft' | 'cluster' | 'story-structure' | 'test'
+export type NodeType = 'story' | 'docs' | 'character' | 'location' | 'research' | 'context' | 'create-story' | 'story-draft' | 'cluster' | 'story-structure' | 'test' | 'aiPrompt'
 
 export interface BaseNodeData {
   label: string
@@ -262,7 +262,20 @@ export interface TestNodeData extends BaseNodeData {
   format?: StoryFormat // Format of the test content (screenplay, podcast, etc.)
 }
 
-export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData | ClusterNodeData | StoryStructureNodeData | TestNodeData
+export interface AIPromptNodeData extends BaseNodeData {
+  nodeType: 'aiPrompt'
+  userPrompt: string // User's prompt for generating structure
+  maxTokens: number // Maximum tokens for generation (default: 2000)
+  lastGeneration?: {
+    timestamp: string
+    model: string
+    format: string
+    markdown: string
+  }
+  onUpdate?: (nodeId: string, data: Partial<AIPromptNodeData>) => void
+}
+
+export type AnyNodeData = StoryNodeData | DocsNodeData | CharacterNodeData | LocationNodeData | ResearchNodeData | ContextCanvasData | CreateStoryNodeData | StoryDraftNodeData | ClusterNodeData | StoryStructureNodeData | TestNodeData | AIPromptNodeData
 
 export interface Story {
   id: string
