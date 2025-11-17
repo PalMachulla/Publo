@@ -35,10 +35,7 @@ const AIPromptNode = memo(({ data, id }: NodeProps<AIPromptNodeData>) => {
       </div>
 
       {/* Content */}
-      <div 
-        className="p-4 space-y-3"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+      <div className="p-4 space-y-3">
         {/* User Prompt */}
         <div>
           <label className="block text-xs font-medium text-purple-100 mb-1.5">
