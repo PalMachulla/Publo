@@ -3,7 +3,7 @@
  * Server-side only - uses API key from environment
  */
 
-import { GroqModelsResponse, GroqModelWithPricing, enrichModelWithPricing } from './types'
+import { GroqModelsResponse, GroqModelWithPricing, enrichModelWithPricing, isChatModel } from './types'
 
 const GROQ_API_BASE = 'https://api.groq.com/openai/v1'
 
@@ -39,10 +39,11 @@ export class GroqClient {
 
       const data: GroqModelsResponse = await response.json()
       
-      // Enrich models with pricing information
+      // Enrich models with pricing information and filter for chat models
       const enrichedModels = data.data
         .filter(model => model.active) // Only return active models
         .map(model => enrichModelWithPricing(model))
+        .filter(model => isChatModel(model)) // Only return chat/text generation models
         .sort((a, b) => {
           // Sort by category: production first, then preview, then others
           const categoryOrder = { production: 0, preview: 1, deprecated: 2 }

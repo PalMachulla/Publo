@@ -172,3 +172,27 @@ export function enrichModelWithPricing(model: GroqModel): GroqModelWithPricing {
   }
 }
 
+/**
+ * Check if a model supports chat/text generation (not STT, TTS, or moderation)
+ */
+export function isChatModel(model: GroqModelWithPricing): boolean {
+  const modelId = model.id.toLowerCase()
+  
+  // Exclude speech-to-text models
+  if (modelId.includes('whisper')) return false
+  
+  // Exclude text-to-speech models
+  if (modelId.includes('tts') || modelId.includes('playai')) return false
+  
+  // Exclude moderation/safety models
+  if (modelId.includes('guard') || modelId.includes('safeguard')) return false
+  
+  // Exclude system models without clear pricing (compound models are experimental)
+  if (modelId.includes('compound') && !model.price_per_1m_input) return false
+  
+  // Must have pricing information for input/output
+  if (!model.price_per_1m_input || !model.price_per_1m_output) return false
+  
+  return true
+}
+
