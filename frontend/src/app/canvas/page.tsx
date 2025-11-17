@@ -26,6 +26,7 @@ import TestNode, { EXAMPLE_SCREENPLAY_MARKDOWN } from '@/components/nodes/TestNo
 import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
 import NodeTypeMenu from '@/components/menus/NodeTypeMenu'
 import AIDocumentPanel from '@/components/panels/AIDocumentPanel'
+import GhostwriterPanel from '@/components/panels/GhostwriterPanel'
 import { CanvasProvider } from '@/contexts/CanvasContext'
 import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/lib/stories'
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
@@ -168,6 +169,7 @@ export default function CanvasPage() {
   const [userAvatar, setUserAvatar] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<'prospect' | 'admin' | 'user' | null>(null)
   const [isAIDocPanelOpen, setIsAIDocPanelOpen] = useState(false)
+  const [isGhostwriterPanelOpen, setIsGhostwriterPanelOpen] = useState(false)
   const [initialPrompt, setInitialPrompt] = useState('')
   const [currentStoryDraftId, setCurrentStoryDraftId] = useState<string | null>(null)
   const [initialDocumentContent, setInitialDocumentContent] = useState('')
@@ -1742,8 +1744,18 @@ export default function CanvasPage() {
           {/* Canvas Area with React Flow */}
           <div className="flex-1 relative bg-gray-50">
             {/* Floating Add Node Menu */}
-            <div className="absolute top-6 left-6 z-10">
+            <div className="absolute top-6 left-6 z-10 flex gap-3">
               <NodeTypeMenu onSelectNodeType={addNewNode} />
+              
+              {/* Ghostwriter Button */}
+              <button
+                onClick={() => setIsGhostwriterPanelOpen(true)}
+                className="px-4 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-white font-medium rounded-lg shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
+                title="Open Ghostwriter"
+              >
+                <span className="text-lg">✨</span>
+                <span>Ghostwriter</span>
+              </button>
             </div>
             
             <ReactFlow
@@ -1831,6 +1843,12 @@ export default function CanvasPage() {
           onUpdateStructure={handleStructureItemsUpdate}
           canvasEdges={edges}
           canvasNodes={nodes}
+        />
+
+        {/* Ghostwriter Panel */}
+        <GhostwriterPanel
+          isOpen={isGhostwriterPanelOpen}
+          onClose={() => setIsGhostwriterPanelOpen(false)}
         />
       </div>
     </div>
