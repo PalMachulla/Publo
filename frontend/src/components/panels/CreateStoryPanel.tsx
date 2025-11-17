@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
 import { GroqModelWithPricing } from '@/lib/groq/types'
-import CollapsibleSection from '@/components/ui/molecules/CollapsibleSection'
+import { CollapsibleSection } from '@/components/ui/molecules/CollapsibleSection'
 
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
@@ -139,8 +139,6 @@ const storyFormats: Array<{ type: StoryFormat; label: string; description: strin
 ]
 
 export default function CreateStoryPanel({ node, onCreateStory, onClose }: CreateStoryPanelProps) {
-  const [isModelSectionOpen, setIsModelSectionOpen] = useState(true)
-  const [isFormatSectionOpen, setIsFormatSectionOpen] = useState(true)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
   const [models, setModels] = useState<GroqModelWithPricing[]>([])
   const [loadingModels, setLoadingModels] = useState(true)
@@ -226,8 +224,7 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
         {/* Model Selection Section */}
         <CollapsibleSection
           title="1. Select Model"
-          isOpen={isModelSectionOpen}
-          onToggle={() => setIsModelSectionOpen(!isModelSectionOpen)}
+          defaultOpen={true}
         >
           {loadingModels && (
             <div className="text-center py-8">
@@ -333,8 +330,7 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
         {/* Format Selection Section */}
         <CollapsibleSection
           title="2. Choose Format"
-          isOpen={isFormatSectionOpen}
-          onToggle={() => setIsFormatSectionOpen(!isFormatSectionOpen)}
+          defaultOpen={true}
           className="mt-6"
         >
           <div className="space-y-2">
