@@ -818,10 +818,19 @@ export default function NodeDetailsPanel({
                               })
                               
                               // Update structure node with parsed structure AND content map
+                              console.log('💾 Updating structure node with AI-generated items:', {
+                                structureNodeId: structureNode.id,
+                                itemsCount: parsedItems.length,
+                                items: parsedItems,
+                                contentMapKeys: Object.keys(contentMapObject)
+                              })
+                              
                               onUpdate(structureNode.id, { 
                                 items: parsedItems,
                                 contentMap: contentMapObject 
                               })
+                              
+                              console.log('✅ Structure node update called successfully')
                               
                               // Update AI Prompt node with last generation info
                               if (promptNode.data.onUpdate) {
