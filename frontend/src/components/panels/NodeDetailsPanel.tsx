@@ -744,18 +744,30 @@ export default function NodeDetailsPanel({
                   </div>
                 </div>
 
-                {/* Generate Structure Button (if no items) */}
+                {/* Info Message (if no items) */}
                 {(!nodeData.items || nodeData.items.length === 0) && (
-                  <div className="bg-yellow-50 border-2 border-yellow-300 border-dashed rounded-lg p-6 text-center">
-                    <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-yellow-100 flex items-center justify-center">
-                      <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  <div className="bg-blue-50 border-2 border-blue-200 border-dashed rounded-lg p-6 text-center">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-blue-100 flex items-center justify-center">
+                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
-                    <h4 className="text-sm font-semibold text-gray-900 mb-1">No Structure Yet</h4>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-1">No Content Generated Yet</h4>
                     <p className="text-xs text-gray-600 mb-4">
-                      Generate a default structure to get started quickly
+                      To generate content, click the Orchestrator node above and select "Create [Format]"
                     </p>
+                    <button
+                      disabled
+                      className="px-4 py-2 bg-gray-200 text-gray-500 rounded-lg text-sm cursor-not-allowed"
+                    >
+                      Waiting for generation...
+                    </button>
+                  </div>
+                )}
+                
+                {/* OLD GENERATE BUTTON - DEPRECATED, kept for reference but hidden */}
+                {false && (!nodeData.items || nodeData.items.length === 0) && (
+                  <div className="hidden">
                     <button
                       onClick={() => {
                         // Use the connected structure node, or auto-create one if it doesn't exist

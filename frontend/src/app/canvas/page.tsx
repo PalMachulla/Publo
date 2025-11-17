@@ -879,8 +879,113 @@ export default function CanvasPage() {
       )
     }
     
+    // AUTO-GENERATE: Check if AI Prompt node is connected, trigger immediate generation
+    const aiPromptNode = nodes.find(n => 
+      n.data?.nodeType === 'aiPrompt' && 
+      edges.some(e => e.source === n.id && e.target === 'context')
+    )
+    
+    if (aiPromptNode) {
+      console.log('🚀 Auto-generating structure with AI after node creation')
+      // Trigger AI generation after a brief delay to ensure node is added
+      setTimeout(() => {
+        triggerAIGeneration(structureId, format, aiPromptNode)
+      }, 100)
+    }
+    
     saveAndFinalize()
   }, [nodes, edges, setNodes, setEdges, handleSave])
+  
+  // Helper function to trigger AI generation for a structure node
+  const triggerAIGeneration = async (
+    structureNodeId: string,
+    format: StoryFormat,
+    aiPromptNode: Node
+  ) => {
+    const userPrompt = (aiPromptNode.data as any).userPrompt
+    const maxTokens = (aiPromptNode.data as any).maxTokens || 2000
+    
+    if (!userPrompt || userPrompt.trim() === '') {
+      alert('Please enter a prompt in the AI Prompt node first.')
+      return
+    }
+    
+    // Import system prompt dynamically
+    const { getFormatSystemPrompt } = await import('@/lib/groq/formatPrompts')
+    const systemPrompt = getFormatSystemPrompt(format)
+    
+    // Import markdown parser
+    const { parseMarkdownStructure } = await import('@/lib/markdownParser')
+    
+    try {
+      console.log('🤖 Calling Groq API for auto-generation')
+      const response = await fetch('/api/groq/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant', // Default model
+          systemPrompt,
+          userPrompt,
+          maxTokens
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success && data.markdown) {
+        const { items: parsedItems, contentMap } = parseMarkdownStructure(data.markdown)
+        
+        // Convert contentMap to plain object
+        const contentMapObject: Record<string, string> = {}
+        contentMap.forEach((value, key) => {
+          contentMapObject[key] = value
+        })
+        
+        // Update structure node
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === structureNodeId
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    items: parsedItems,
+                    contentMap: contentMapObject,
+                    format: format,
+                    isLoading: false
+                  }
+                }
+              : n
+          )
+        )
+        
+        console.log('✅ Auto-generation complete:', {
+          structureNodeId,
+          itemsCount: parsedItems.length
+        })
+        
+        // Trigger save
+        hasUnsavedChangesRef.current = true
+        await handleSave()
+        
+        alert(`✅ ${format.charAt(0).toUpperCase() + format.slice(1)} structure generated successfully!`)
+      } else {
+        throw new Error(data.error || 'Failed to generate structure')
+      }
+    } catch (error: any) {
+      console.error('❌ Auto-generation failed:', error)
+      alert(`Failed to generate structure: ${error.message}`)
+      
+      // Remove loading state on error
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === structureNodeId
+            ? { ...n, data: { ...n.data, isLoading: false } }
+            : n
+        )
+      )
+    }
+  }
   
   // Handle Story Draft node click - open in AI Document Panel
   const handleStoryDraftClick = useCallback((node: Node) => {
