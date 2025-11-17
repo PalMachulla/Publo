@@ -88,7 +88,13 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
             {/* Edit Content Button - Opens Content Canvas */}
             <button
               onClick={(e) => {
-                // Don't stop propagation - let it bubble to React Flow's node click handler to open AIDocumentPanel
+                e.stopPropagation() // Stop it from opening structure panel
+                // Open Content Canvas by triggering onItemClick with first item (or a dummy item to show full document)
+                if (onItemClick && items.length > 0) {
+                  // Get the first top-level item to open the document at the start
+                  const firstItem = items.find(item => item.level === 1) || items[0]
+                  onItemClick(firstItem, items, format, id)
+                }
               }}
               className="p-1 rounded hover:bg-gray-500 transition-colors"
               title="Edit content in Content Canvas"
