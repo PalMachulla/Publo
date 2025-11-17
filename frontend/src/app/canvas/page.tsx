@@ -1246,6 +1246,17 @@ export default function CanvasPage() {
     
     if (clusterNodesWithHiddenResources.length === 0) return nodes
     
+    // Calculate hidden resource counts for each cluster
+    const hiddenResourceCounts = new Map<string, number>()
+    clusterNodesWithHiddenResources.forEach(clusterId => {
+      const count = edges.filter(e => 
+        e.target === clusterId && 
+        e.source !== 'orchestrator' &&
+        e.source !== 'context'
+      ).length
+      hiddenResourceCounts.set(clusterId, count)
+    })
+    
     // Get IDs of resource nodes to hide
     const resourceNodesToHide = new Set(
       edges
@@ -1257,8 +1268,19 @@ export default function CanvasPage() {
         .map(e => e.source)
     )
     
-    // Filter out hidden resource nodes
-    return nodes.filter(n => !resourceNodesToHide.has(n.id))
+    // Filter out hidden resource nodes and add count to cluster nodes
+    return nodes.map(n => {
+      if (n.type === 'clusterNode' && hiddenResourceCounts.has(n.id)) {
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            hiddenResourceCount: hiddenResourceCounts.get(n.id)
+          }
+        }
+      }
+      return n
+    }).filter(n => !resourceNodesToHide.has(n.id))
   }, [nodes, edges])
 
   const filteredEdges = useMemo(() => {
@@ -1280,7 +1302,7 @@ export default function CanvasPage() {
         .map(e => e.source)
     )
     
-    // Filter out edges to/from hidden resource nodes
+    // Filter out all edges to/from hidden resource nodes
     return edges.filter(e => 
       !resourceNodesToHide.has(e.source) && 
       !resourceNodesToHide.has(e.target)

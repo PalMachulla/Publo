@@ -179,6 +179,7 @@ export interface ClusterNodeData extends BaseNodeData {
   assignmentMode?: 'manual' | 'autonomous' // How agent is assigned to segments
   consultationLevel?: 'active' | 'advisory' | 'background' // Level of agent involvement
   showConnectedResources?: boolean // Whether to show connected resources on canvas (default: true)
+  hiddenResourceCount?: number // Count of hidden resources (calculated by canvas)
   
   // Consultation Behavior
   consultationTriggers?: ConsultationTriggers

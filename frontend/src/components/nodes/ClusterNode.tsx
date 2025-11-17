@@ -1,7 +1,7 @@
 'use client'
 
 import { memo } from 'react'
-import { Handle, Position, NodeProps, useEdges } from 'reactflow'
+import { Handle, Position, NodeProps } from 'reactflow'
 import { ClusterNodeData } from '@/types/nodes'
 import { getNodeIcon } from '@/lib/nodeIcons'
 
@@ -19,7 +19,6 @@ function isLightColor(color: string): boolean {
 }
 
 function ClusterNode({ data, selected, id }: NodeProps<ClusterNodeData>) {
-  const edges = useEdges()
   const icon = getNodeIcon('cluster')
   const bgColor = data.color || '#9ca3af'
   const isLight = isLightColor(bgColor)
@@ -28,10 +27,8 @@ function ClusterNode({ data, selected, id }: NodeProps<ClusterNodeData>) {
   const isActive = data.isActive ?? true
   const agentName = data.agentNumber ? `AG${String(data.agentNumber).padStart(3, '0')}` : 'AGENT'
   
-  // Calculate connected resources (incoming edges from non-orchestrator nodes)
-  const connectedResourceCount = edges.filter(
-    edge => edge.target === id && edge.source !== 'orchestrator'
-  ).length
+  // Use the hidden resource count provided by the canvas (pre-calculated)
+  const connectedResourceCount = data.hiddenResourceCount || 0
   
   // Show badge when resources are HIDDEN on canvas (showConnectedResources = false)
   // Default to true (resources shown) if undefined
