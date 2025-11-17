@@ -448,26 +448,18 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
           defaultOpen={false}
           icon={<Link2Icon className="w-4 h-4 text-gray-600" />}
         >
-          {/* Toggle button */}
-          <div className="mb-3">
-            <button
-              onClick={() => {
-                const newValue = !showConnectedResources
-                setShowConnectedResources(newValue)
-                onUpdate(node.id, { ...node.data, showConnectedResources: newValue })
+          {/* Toggle switch */}
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+            <Label className="text-sm font-medium text-gray-700">
+              {showConnectedResources ? 'Hide resources' : 'Show resources'}
+            </Label>
+            <Switch
+              checked={showConnectedResources}
+              onCheckedChange={(checked) => {
+                setShowConnectedResources(checked)
+                onUpdate(node.id, { ...node.data, showConnectedResources: checked })
               }}
-              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
-            >
-              {showConnectedResources ? 'Hide' : 'Show'} resources
-              <svg 
-                className={`w-3 h-3 transition-transform ${showConnectedResources ? 'rotate-180' : ''}`}
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+            />
           </div>
 
           {showConnectedResources ? (
