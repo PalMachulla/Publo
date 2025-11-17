@@ -75,7 +75,7 @@ export default function CanvasPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
-  // Wrapper to prevent context node deletion
+  // Wrapper to prevent context node deletion and handle cluster node dragging
   const handleNodesChange = useCallback((changes: any) => {
     // Filter out any removal of the context node
     const safeChanges = changes.filter((change: any) => {
@@ -90,8 +90,65 @@ export default function CanvasPage() {
       hasUnsavedChangesRef.current = true
     }
     
+    // Handle cluster node position changes - move connected resources with it
+    const positionChanges = safeChanges.filter((change: any) => change.type === 'position')
+    const clusterPositionChanges = positionChanges.filter((change: any) => {
+      const node = nodes.find(n => n.id === change.id)
+      return node?.type === 'clusterNode' && change.dragging
+    })
+    
+    if (clusterPositionChanges.length > 0) {
+      // Calculate position deltas for each moving cluster
+      const deltas = clusterPositionChanges.map((change: any) => {
+        const node = nodes.find(n => n.id === change.id)
+        if (!node || !change.position) return null
+        
+        return {
+          clusterId: change.id,
+          deltaX: change.position.x - node.position.x,
+          deltaY: change.position.y - node.position.y
+        }
+      }).filter(Boolean)
+      
+      // Find connected resource nodes and create position updates for them
+      const additionalChanges: any[] = []
+      deltas.forEach((delta: any) => {
+        if (!delta) return
+        
+        // Find resources connected to this cluster
+        const connectedResourceIds = edges
+          .filter(e => 
+            e.target === delta.clusterId && 
+            e.source !== 'orchestrator' &&
+            e.source !== 'context'
+          )
+          .map(e => e.source)
+        
+        // Create position updates for connected resources
+        connectedResourceIds.forEach(resourceId => {
+          const resourceNode = nodes.find(n => n.id === resourceId)
+          if (resourceNode) {
+            additionalChanges.push({
+              id: resourceId,
+              type: 'position',
+              position: {
+                x: resourceNode.position.x + delta.deltaX,
+                y: resourceNode.position.y + delta.deltaY
+              },
+              dragging: false
+            })
+          }
+        })
+      })
+      
+      // Add the additional changes
+      if (additionalChanges.length > 0) {
+        safeChanges.push(...additionalChanges)
+      }
+    }
+    
     onNodesChange(safeChanges)
-  }, [onNodesChange])
+  }, [onNodesChange, nodes, edges])
 
   // Wrapper for edges to track changes
   const handleEdgesChange = useCallback((changes: any) => {

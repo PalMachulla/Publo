@@ -42,7 +42,7 @@ function ClusterNode({ data, selected, id }: NodeProps<ClusterNodeData>) {
       {/* Resource count badge (shown when resources are hidden) - circular */}
       {showResourceBadge ? (
         <div 
-          className="absolute -top-8 left-1/2 -translate-x-1/2 w-10 h-10 rounded-full shadow-md flex items-center justify-center"
+          className="absolute -top-10 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full shadow-md flex items-center justify-center"
           style={{ 
             pointerEvents: 'none', 
             zIndex: 10, 
