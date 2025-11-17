@@ -134,7 +134,9 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
     setColor(node.data.color || '#9ca3af')
     setIsActive(node.data.isActive ?? true)
     setSpecialization(node.data.specialization || 'custom')
-  }, [node.data.label, node.data.description, node.data.color, node.data.isActive, node.data.specialization])
+    setAssignmentMode(node.data.assignmentMode || 'manual')
+    setConsultationLevel(node.data.consultationLevel || 'active')
+  }, [node.data.label, node.data.description, node.data.color, node.data.isActive, node.data.specialization, node.data.assignmentMode, node.data.consultationLevel])
 
   const handleSave = () => {
     onUpdate(node.id, {
@@ -143,6 +145,8 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
       color,
       isActive,
       specialization,
+      assignmentMode,
+      consultationLevel,
       consultationTriggers,
       consultationDepth,
       responseStyle,
@@ -184,6 +188,16 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
   }, [edges, nodes, node.id])
   
   const nodeCount = connectedNodes.length
+  
+  // Map connected nodes to resource format for display
+  const connectedResources = useMemo(() => {
+    return connectedNodes.map(n => ({
+      id: n.id,
+      name: n.data.label || 'Untitled',
+      type: n.type || 'unknown',
+      color: n.data.color || '#9ca3af'
+    }))
+  }, [connectedNodes])
   
   // Calculate estimated token usage
   const estimatedTokenUsage = useMemo(() => {
@@ -361,7 +375,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
             <Label>Consultation Level</Label>
             <p className="text-xs text-gray-500 mb-3">How involved should this agent be?</p>
             <div className="space-y-2">
-              <label className="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all hover:border-gray-300 ${consultationLevel === 'active' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}">
+              <label className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all hover:border-gray-300 ${consultationLevel === 'active' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}`}>
                 <input
                   type="radio"
                   name="consultationLevel"
@@ -377,7 +391,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
                   <div className="text-xs text-gray-500">Writes and generates content</div>
                 </div>
               </label>
-              <label className="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all hover:border-gray-300 ${consultationLevel === 'advisory' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}">
+              <label className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all hover:border-gray-300 ${consultationLevel === 'advisory' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}`}>
                 <input
                   type="radio"
                   name="consultationLevel"
@@ -393,7 +407,7 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
                   <div className="text-xs text-gray-500">Reviews and suggests improvements</div>
                 </div>
               </label>
-              <label className="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all hover:border-gray-300 ${consultationLevel === 'background' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}">
+              <label className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all hover:border-gray-300 ${consultationLevel === 'background' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white'}`}>
                 <input
                   type="radio"
                   name="consultationLevel"
