@@ -1832,12 +1832,6 @@ export default function CanvasPage() {
           canvasEdges={edges}
           canvasNodes={nodes}
         />
-
-        {/* Ghostwriter Panel */}
-        <GhostwriterPanel
-          isOpen={isGhostwriterPanelOpen}
-          onClose={() => setIsGhostwriterPanelOpen(false)}
-        />
       </div>
     </div>
   )
