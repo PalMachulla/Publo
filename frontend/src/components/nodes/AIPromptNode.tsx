@@ -35,7 +35,7 @@ const AIPromptNode = memo(({ data, id }: NodeProps<AIPromptNodeData>) => {
       </div>
 
       {/* Content */}
-      <div className="p-4 space-y-3">
+      <div className="nodrag p-4 space-y-3">
         {/* User Prompt */}
         <div>
           <label className="block text-xs font-medium text-purple-100 mb-1.5">
@@ -44,11 +44,8 @@ const AIPromptNode = memo(({ data, id }: NodeProps<AIPromptNodeData>) => {
           <textarea
             value={data.userPrompt || ''}
             onChange={handlePromptChange}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onFocus={(e) => e.stopPropagation()}
             placeholder="Describe your story... (e.g., A thriller about AI gone wrong)"
-            className="w-full px-3 py-2 bg-white/10 border border-purple-300/30 rounded-lg text-sm text-white placeholder-purple-200/50 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent resize-none"
+            className="nodrag w-full px-3 py-2 bg-white/10 border border-purple-300/30 rounded-lg text-sm text-white placeholder-purple-200/50 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent resize-none"
             rows={3}
           />
         </div>
@@ -62,13 +59,10 @@ const AIPromptNode = memo(({ data, id }: NodeProps<AIPromptNodeData>) => {
             type="number"
             value={data.maxTokens || 2000}
             onChange={handleMaxTokensChange}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onFocus={(e) => e.stopPropagation()}
             min={100}
             max={16000}
             step={100}
-            className="w-full px-3 py-2 bg-white/10 border border-purple-300/30 rounded-lg text-sm text-white placeholder-purple-200/50 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent"
+            className="nodrag w-full px-3 py-2 bg-white/10 border border-purple-300/30 rounded-lg text-sm text-white placeholder-purple-200/50 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent"
           />
           <div className="text-xs text-purple-200/70 mt-1">
             Default: 2000 • Max: 16000
