@@ -1618,8 +1618,53 @@ export default function CanvasPage() {
             </div>
             
             <ReactFlow
-            nodes={nodes}
-            edges={edges}
+            nodes={useMemo(() => {
+              // Hide resource nodes that are connected to cluster nodes with showConnectedResources: false
+              const clusterNodesWithHiddenResources = nodes
+                .filter(n => n.type === 'clusterNode' && n.data.showConnectedResources === false)
+                .map(n => n.id)
+              
+              if (clusterNodesWithHiddenResources.length === 0) return nodes
+              
+              // Get IDs of resource nodes to hide
+              const resourceNodesToHide = new Set(
+                edges
+                  .filter(e => 
+                    clusterNodesWithHiddenResources.includes(e.target) && 
+                    e.source !== 'orchestrator' &&
+                    e.source !== 'context'
+                  )
+                  .map(e => e.source)
+              )
+              
+              // Filter out hidden resource nodes
+              return nodes.filter(n => !resourceNodesToHide.has(n.id))
+            }, [nodes, edges])}
+            edges={useMemo(() => {
+              // Hide edges to resource nodes that are hidden
+              const clusterNodesWithHiddenResources = nodes
+                .filter(n => n.type === 'clusterNode' && n.data.showConnectedResources === false)
+                .map(n => n.id)
+              
+              if (clusterNodesWithHiddenResources.length === 0) return edges
+              
+              // Get IDs of resource nodes to hide
+              const resourceNodesToHide = new Set(
+                edges
+                  .filter(e => 
+                    clusterNodesWithHiddenResources.includes(e.target) && 
+                    e.source !== 'orchestrator' &&
+                    e.source !== 'context'
+                  )
+                  .map(e => e.source)
+              )
+              
+              // Filter out edges to/from hidden resource nodes
+              return edges.filter(e => 
+                !resourceNodesToHide.has(e.source) && 
+                !resourceNodesToHide.has(e.target)
+              )
+            }, [nodes, edges])}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onConnect={onConnect}

@@ -58,7 +58,9 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
   )
   
   // Show/Hide Connected Resources
-  const [showConnectedResources, setShowConnectedResources] = useState(true)
+  const [showConnectedResources, setShowConnectedResources] = useState(
+    node.data.showConnectedResources ?? true
+  )
   
   // Consultation Behavior
   const [consultationTriggers, setConsultationTriggers] = useState(
@@ -449,7 +451,11 @@ export default function ClusterPanel({ node, onUpdate, onDelete, edges = [], nod
           {/* Toggle button */}
           <div className="mb-3">
             <button
-              onClick={() => setShowConnectedResources(!showConnectedResources)}
+              onClick={() => {
+                const newValue = !showConnectedResources
+                setShowConnectedResources(newValue)
+                onUpdate(node.id, { ...node.data, showConnectedResources: newValue })
+              }}
               className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
             >
               {showConnectedResources ? 'Hide' : 'Show'} resources

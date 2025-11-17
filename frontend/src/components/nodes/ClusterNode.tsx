@@ -1,7 +1,7 @@
 'use client'
 
 import { memo } from 'react'
-import { Handle, Position, NodeProps } from 'reactflow'
+import { Handle, Position, NodeProps, useEdges } from 'reactflow'
 import { ClusterNodeData } from '@/types/nodes'
 import { getNodeIcon } from '@/lib/nodeIcons'
 
@@ -18,7 +18,8 @@ function isLightColor(color: string): boolean {
   return luminance > 0.5
 }
 
-function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
+function ClusterNode({ data, selected, id }: NodeProps<ClusterNodeData>) {
+  const edges = useEdges()
   const icon = getNodeIcon('cluster')
   const bgColor = data.color || '#9ca3af'
   const isLight = isLightColor(bgColor)
@@ -26,6 +27,13 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
   const label = data.label || 'CLUSTER'
   const isActive = data.isActive ?? true
   const agentName = data.agentNumber ? `AG${String(data.agentNumber).padStart(3, '0')}` : 'AGENT'
+  
+  // Calculate connected resources (incoming edges from non-orchestrator nodes)
+  const connectedResourceCount = edges.filter(
+    edge => edge.target === id && edge.source !== 'orchestrator'
+  ).length
+  
+  const showResourceBadge = !data.showConnectedResources && connectedResourceCount > 0
   
   return (
     <div className="relative">
@@ -74,7 +82,22 @@ function ClusterNode({ data, selected }: NodeProps<ClusterNodeData>) {
             {isActive ? 'ACTIVE' : 'PASSIVE'}
           </div>
         </div>
+        
+        {/* Connected Resources Badge (shown when resources are hidden) */}
+        {showResourceBadge && (
+          <div className="mt-2 flex justify-center">
+            <div 
+              className="w-12 h-12 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold text-sm shadow-md border-2 border-gray-300"
+              title={`${connectedResourceCount} connected ${connectedResourceCount === 1 ? 'resource' : 'resources'}`}
+            >
+              {connectedResourceCount}
+            </div>
+          </div>
+        )}
       </div>
+      
+      {/* Bottom handle for outgoing connections - invisible but functional */}
+      <Handle type="source" position={Position.Bottom} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
     </div>
   )
 }
