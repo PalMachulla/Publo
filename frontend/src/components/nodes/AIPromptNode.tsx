@@ -12,7 +12,12 @@ const AIPromptNode = memo(({ data, selected }: NodeProps<AIPromptNodeData>) => {
   return (
     <div className="relative">
       {/* Top handle - invisible but functional */}
-      <Handle type="target" position={Position.Top} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
+      <Handle 
+        type="target" 
+        position={Position.Top}
+        id="top"
+        className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" 
+      />
       
       {/* Label and status above node */}
       <div className="flex flex-col items-center mb-2" style={{ width: 100 }}>
@@ -50,8 +55,13 @@ const AIPromptNode = memo(({ data, selected }: NodeProps<AIPromptNodeData>) => {
         style={{ pointerEvents: 'none', zIndex: 0 }}
       />
       
-      {/* Bottom handle - invisible but functional */}
-      <Handle type="source" position={Position.Bottom} className="!bg-transparent !w-3 !h-3 !border-0 opacity-0" />
+      {/* Bottom handle - invisible but functional, ONLY source handle */}
+      <Handle 
+        type="source" 
+        position={Position.Bottom}
+        id="bottom"
+        className="!bg-transparent !w-3 !h-3 !border-0 opacity-0"
+      />
     </div>
   )
 })
