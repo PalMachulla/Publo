@@ -902,11 +902,16 @@ export default function CanvasPage() {
     format: StoryFormat,
     aiPromptNode: Node
   ) => {
+    const isActive = (aiPromptNode.data as any).isActive !== false
     const userPrompt = (aiPromptNode.data as any).userPrompt
     const maxTokens = (aiPromptNode.data as any).maxTokens || 2000
     
-    if (!userPrompt || userPrompt.trim() === '') {
-      alert('Please enter a prompt in the AI Prompt node first.')
+    // Determine the actual prompt to send based on active/passive mode
+    const effectiveUserPrompt = isActive ? userPrompt : ''
+    
+    // Only validate prompt if in active mode
+    if (isActive && (!userPrompt || userPrompt.trim() === '')) {
+      alert('Please enter a prompt in the AI Prompt node first, or set it to Passive mode.')
       return
     }
     
@@ -918,14 +923,18 @@ export default function CanvasPage() {
     const { parseMarkdownStructure } = await import('@/lib/markdownParser')
     
     try {
-      console.log('🤖 Calling Groq API for auto-generation')
+      console.log('🤖 Calling Groq API for auto-generation', {
+        isActive,
+        mode: isActive ? 'Active (with user prompt)' : 'Passive (system prompt only)',
+        userPromptLength: effectiveUserPrompt.length
+      })
       const response = await fetch('/api/groq/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'llama-3.1-8b-instant', // Default model
           systemPrompt,
-          userPrompt,
+          userPrompt: effectiveUserPrompt,
           maxTokens
         })
       })
@@ -1360,6 +1369,7 @@ export default function CanvasPage() {
         nodeData.description = 'Generate structure with AI'
         nodeData.userPrompt = ''
         nodeData.maxTokens = 2000
+        nodeData.isActive = true
         break
     }
     

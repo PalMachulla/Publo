@@ -574,20 +574,56 @@ export default function NodeDetailsPanel({
 
               {/* Content */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Active/Passive Toggle */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-1">Mode</h4>
+                      <p className="text-xs text-gray-600">
+                        {(nodeData as AIPromptNodeData).isActive !== false 
+                          ? 'Active: User prompt will be sent to AI' 
+                          : 'Passive: Only system prompt (no user input)'}
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <span className={`text-sm font-medium ${
+                        (nodeData as AIPromptNodeData).isActive !== false ? 'text-green-600' : 'text-gray-500'
+                      }`}>
+                        {(nodeData as AIPromptNodeData).isActive !== false ? 'Active' : 'Passive'}
+                      </span>
+                      <button
+                        onClick={() => onUpdate(node.id, { isActive: !((nodeData as AIPromptNodeData).isActive !== false) })}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          (nodeData as AIPromptNodeData).isActive !== false ? 'bg-green-500' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            (nodeData as AIPromptNodeData).isActive !== false ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </label>
+                  </div>
+                </div>
+
                 {/* User Prompt */}
-                <div>
+                <div className={`${(nodeData as AIPromptNodeData).isActive === false ? 'opacity-50' : ''}`}>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Your Prompt
                   </label>
                   <textarea
                     value={(nodeData as AIPromptNodeData).userPrompt || ''}
                     onChange={(e) => onUpdate(node.id, { userPrompt: e.target.value })}
+                    disabled={(nodeData as AIPromptNodeData).isActive === false}
                     placeholder="Describe your story... (e.g., A thriller about AI gone wrong in a small coastal town)"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none disabled:bg-gray-100 disabled:cursor-not-allowed"
                     rows={6}
                   />
                   <p className="mt-2 text-xs text-gray-500">
-                    This prompt will be sent to the AI model to generate your story structure.
+                    {(nodeData as AIPromptNodeData).isActive !== false 
+                      ? 'This prompt will be sent to the AI model to generate your story structure.' 
+                      : 'Disabled in passive mode. AI will generate based on system prompt only.'}
                   </p>
                 </div>
 
