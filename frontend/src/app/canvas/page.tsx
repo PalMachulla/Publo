@@ -14,6 +14,7 @@ import ReactFlow, {
   addEdge,
   Connection,
   BackgroundVariant,
+  ConnectionMode,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
@@ -1881,7 +1882,7 @@ export default function CanvasPage() {
             defaultViewport={{ x: 0, y: 0, zoom: 0.75 }}
             fitViewOptions={{ padding: 0.2, maxZoom: 0.75 }}
             className="bg-gray-50"
-            connectionMode="strict"
+            connectionMode={ConnectionMode.Strict}
             defaultEdgeOptions={{
               type: 'default', // Default type uses smooth bezier curves
               animated: false,
