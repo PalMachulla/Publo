@@ -266,6 +266,7 @@ export interface AIPromptNodeData extends BaseNodeData {
   nodeType: 'aiPrompt'
   userPrompt: string // User's prompt for generating structure
   maxTokens: number // Maximum tokens for generation (default: 2000)
+  isActive?: boolean // Active: sends user prompt, Passive: system prompt only (default: true)
   lastGeneration?: {
     timestamp: string
     model: string
