@@ -939,8 +939,14 @@ export default function CanvasPage() {
     const { parseMarkdownStructure } = await import('@/lib/markdownParser')
     
     try {
-      // Get selected model and key from orchestrator node (if set)
-      const orchestratorNode = nodes.find(n => n.id === structureNodeId.split('-structure')[0])
+      // Find orchestrator node connected to the structure node
+      const structureNodeEdges = edges.filter(e => e.target === structureNodeId)
+      const orchestratorEdge = structureNodeEdges.find(e => {
+        const sourceNode = nodes.find(n => n.id === e.source)
+        return sourceNode?.type === 'orchestratorNode' || sourceNode?.type === 'createStoryNode'
+      })
+      
+      const orchestratorNode = orchestratorEdge ? nodes.find(n => n.id === orchestratorEdge.source) : null
       const selectedModel = (orchestratorNode?.data as any)?.selectedModel || 'llama-3.1-8b-instant'
       const selectedKeyId = (orchestratorNode?.data as any)?.selectedKeyId || null
 
@@ -949,7 +955,9 @@ export default function CanvasPage() {
         mode: isActive ? 'Active (with user prompt)' : 'Passive (system prompt only)',
         userPromptLength: effectiveUserPrompt.length,
         model: selectedModel,
-        keyId: selectedKeyId || 'Publo default'
+        keyId: selectedKeyId || 'No key - will try user keys',
+        orchestratorFound: !!orchestratorNode,
+        orchestratorId: orchestratorNode?.id
       })
       
       const response = await fetch('/api/generate', {
