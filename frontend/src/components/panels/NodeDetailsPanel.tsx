@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { Node, Edge } from 'reactflow'
-import { AnyNodeData, Comment, StoryStructureItem, TestNodeData, AIPromptNodeData, StoryFormat } from '@/types/nodes'
+import { AnyNodeData, Comment, StoryStructureItem, StoryStructureNodeData, TestNodeData, AIPromptNodeData, StoryFormat } from '@/types/nodes'
 import { useAuth } from '@/contexts/AuthContext'
 import StoryBookPanel from './StoryBookPanel'
 import CharacterPanel from './CharacterPanel'
