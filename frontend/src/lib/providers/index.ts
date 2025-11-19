@@ -42,17 +42,30 @@ export function getProviderAdapter(provider: LLMProvider): LLMProviderAdapter {
  * @returns Detected provider or null if unknown
  */
 export function detectProviderFromModel(modelId: string): LLMProvider | null {
-  // OpenAI models
-  if (modelId.startsWith('gpt-')) {
+  // OpenAI models (native OpenAI API)
+  if (modelId.startsWith('gpt-') && !modelId.includes('/')) {
     return 'openai'
   }
   
-  // Groq models (Llama, Mixtral, Gemma)
+  // Groq models - comprehensive list
   if (
+    // Llama models
     modelId.startsWith('llama') ||
+    modelId.startsWith('meta-llama/') ||
+    // Mixtral models
     modelId.startsWith('mixtral') ||
+    // Gemma models
     modelId.startsWith('gemma') ||
-    modelId.startsWith('meta-llama')
+    // Groq's OpenAI models (e.g., openai/gpt-oss-120b)
+    modelId.startsWith('openai/gpt-oss') ||
+    // Groq's Whisper models
+    modelId.startsWith('whisper-') ||
+    // Groq's Qwen models
+    modelId.startsWith('qwen/') ||
+    // Groq's Moonshot AI models
+    modelId.startsWith('moonshotai/') ||
+    // Groq Compound system
+    modelId.startsWith('groq/compound')
   ) {
     return 'groq'
   }
