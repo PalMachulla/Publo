@@ -291,6 +291,14 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
                       <button
                         key={model.id}
                         onClick={() => {
+                          console.log('🎯 Model selected:', {
+                            model: model.id,
+                            provider: group.provider,
+                            keyId: group.key_id,
+                            keyNickname: group.key_nickname,
+                            source: group.source
+                          })
+                          
                           setSelectedModel(model.id)
                           setSelectedKeyId(group.key_id || null)
                           // Store selected model and key in node data

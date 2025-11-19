@@ -104,7 +104,15 @@ export async function POST(request: Request) {
       keyId = user_key_id
       keyOwnerId = userKey.user_id
       provider = userKey.provider as LLMProvider
-      console.log(`✅ Using API key: ${user_key_id} for provider: ${provider}`)
+      
+      console.log(`✅ Using API key:`, {
+        keyId: user_key_id,
+        provider,
+        model,
+        detectedProvider: detectProviderFromModel(model),
+        keyProviderFromDB: userKey.provider,
+        isProviderMismatch: detectProviderFromModel(model) !== userKey.provider
+      })
     } else if (user) {
       // Try to find user's key for this provider automatically
       const { data: userKeys } = await supabase
