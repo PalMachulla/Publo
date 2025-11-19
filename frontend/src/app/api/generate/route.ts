@@ -14,15 +14,20 @@ import type { GenerateRequest, GenerateResponse, LLMProvider } from '@/types/api
 
 export async function POST(request: Request) {
   try {
+    // Parse request body first (before auth, so we can check for key_id)
+    const body: GenerateRequest = await request.json()
+    const { model, system_prompt, user_prompt, max_tokens, user_key_id, temperature, top_p } = body
+    
     const supabase = await createClient()
 
-    // Authentication is REQUIRED - no free rides with Publo's keys!
+    // Try to get user, but don't fail if session is invalid (Vercel cookie issues)
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser()
 
-    if (authError || !user) {
+    // If no user AND no key_id provided, reject the request
+    if (!user && !user_key_id) {
       console.error('❌ Authentication required in /api/generate:', authError?.message)
       return NextResponse.json({ 
         error: 'Authentication required. Please log in to use AI generation.',
@@ -30,11 +35,11 @@ export async function POST(request: Request) {
       }, { status: 401 })
     }
 
-    console.log(`✅ Authenticated user: ${user.email}`)
-
-    // Parse request body
-    const body: GenerateRequest = await request.json()
-    const { model, system_prompt, user_prompt, max_tokens, user_key_id, temperature, top_p } = body
+    if (user) {
+      console.log(`✅ Authenticated user: ${user.email}`)
+    } else {
+      console.log(`⚠️ No user session, but key_id provided: ${user_key_id}`)
+    }
 
     // Validate input
     if (!model || !system_prompt) {
@@ -56,20 +61,28 @@ export async function POST(request: Request) {
     // Get API key to use - User MUST provide their own key
     let apiKey: string
     let keyId: string | null = null
+    let keyOwnerId: string | null = null
 
     if (user_key_id) {
-      // Use user's specified key
+      // Use specified key (works with or without user session)
       const { data: userKey, error: keyError } = await supabase
         .from('user_api_keys')
-        .select('encrypted_key, provider, is_active, validation_status')
+        .select('encrypted_key, provider, is_active, validation_status, user_id')
         .eq('id', user_key_id)
-        .eq('user_id', user.id)
         .single()
 
       if (keyError || !userKey) {
         return NextResponse.json(
           { error: 'API key not found or you don\'t have access' },
           { status: 404 }
+        )
+      }
+
+      // If we have a user session, verify ownership
+      if (user && userKey.user_id !== user.id) {
+        return NextResponse.json(
+          { error: 'You don\'t have access to this API key' },
+          { status: 403 }
         )
       }
 
@@ -89,8 +102,10 @@ export async function POST(request: Request) {
 
       apiKey = decryptAPIKey(userKey.encrypted_key)
       keyId = user_key_id
+      keyOwnerId = userKey.user_id
       provider = userKey.provider as LLMProvider
-    } else {
+      console.log(`✅ Using API key: ${user_key_id} for provider: ${provider}`)
+    } else if (user) {
       // Try to find user's key for this provider automatically
       const { data: userKeys } = await supabase
         .from('user_api_keys')
@@ -107,6 +122,7 @@ export async function POST(request: Request) {
         console.log(`Using user's ${provider} key (${userKeys.nickname || 'unnamed'})`)
         apiKey = decryptAPIKey(userKeys.encrypted_key)
         keyId = userKeys.id
+        keyOwnerId = user.id
       } else {
         // No key found - user MUST add their own
         return NextResponse.json(
@@ -118,6 +134,12 @@ export async function POST(request: Request) {
           { status: 400 }
         )
       }
+    } else {
+      // No user session and no key_id - this shouldn't happen due to earlier check
+      return NextResponse.json(
+        { error: 'Authentication required and no API key provided' },
+        { status: 401 }
+      )
     }
 
     // Get provider adapter
@@ -171,11 +193,11 @@ export async function POST(request: Request) {
 
     console.log(`✅ Generation complete. Tokens: ${generationResult.usage.total_tokens}, Cost: $${cost.total_cost.toFixed(4)}`)
 
-    // Track usage in database (always track for authenticated users)
+    // Track usage in database (use key owner's ID for tracking)
     const { error: usageError } = await supabase
       .from('ai_usage_history')
       .insert({
-        user_id: user.id,
+        user_id: keyOwnerId,
         key_id: keyId,
         provider,
         model,
