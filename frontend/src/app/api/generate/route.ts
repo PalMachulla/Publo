@@ -145,16 +145,47 @@ export async function POST(request: Request) {
     const adapter = getProviderAdapter(provider)
 
     // Generate content
-    console.log(`🤖 Generating with ${provider} model ${model}`)
-    
-    const generationResult = await adapter.generate(apiKey, {
-      model,
-      system_prompt,
-      user_prompt,
-      max_tokens,
-      temperature,
-      top_p,
+    console.log(`🤖 Generating with ${provider} model ${model}`, {
+      keyLength: apiKey.length,
+      keyPreview: `${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)}`,
+      keyId: keyId || 'publo-default'
     })
+    
+    let generationResult
+    try {
+      generationResult = await adapter.generate(apiKey, {
+        model,
+        system_prompt,
+        user_prompt,
+        max_tokens,
+        temperature,
+        top_p,
+      })
+    } catch (error: any) {
+      console.error('❌ Generation failed:', {
+        provider,
+        model,
+        error: error.message,
+        status: error.status,
+        details: error
+      })
+      
+      // Return user-friendly error
+      if (error.status === 401 || error.message?.includes('API key') || error.message?.includes('authentication')) {
+        return NextResponse.json(
+          { error: 'Invalid API key. Please check your key and try again.' },
+          { status: 401 }
+        )
+      }
+      
+      return NextResponse.json(
+        { 
+          error: error.message || 'Generation failed',
+          details: error.details || undefined
+        },
+        { status: 500 }
+      )
+    }
 
     // Calculate cost
     const cost = await adapter.calculateCost(model, generationResult.usage)
