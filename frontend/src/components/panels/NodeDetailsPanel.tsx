@@ -843,6 +843,13 @@ export default function NodeDetailsPanel({
                             return
                           }
                           
+                          // Check if node exists before accessing properties
+                          if (!node) {
+                            console.error('❌ Cannot auto-create structure node: orchestrator node not found')
+                            alert('Orchestrator node not found.')
+                            return
+                          }
+                          
                           // Get format from orchestrator
                           const selectedFormat: StoryFormat = nodeData.format || 'screenplay'
                           
