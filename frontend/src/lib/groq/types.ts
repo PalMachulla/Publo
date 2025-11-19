@@ -20,6 +20,7 @@ export interface GroqModelsResponse {
 
 export interface GroqModelWithPricing extends GroqModel {
   // Pricing information (manually maintained from docs)
+  name?: string // Optional display name (fallback to id)
   speed_tokens_per_sec?: number
   price_per_1m_input?: number
   price_per_1m_output?: number

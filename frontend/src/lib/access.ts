@@ -14,7 +14,7 @@ export interface UserProfile {
 }
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
-  const supabase = createClient()
+  const supabase = await createClient()
   
   const { data, error } = await supabase
     .from('user_profiles')
@@ -36,9 +36,9 @@ export async function checkUserAccess(userId: string): Promise<boolean> {
 }
 
 export async function joinWaitlist(email: string, fullName?: string, reason?: string) {
-  const supabase = createClient()
+  const supabase = await createClient()
   
-  const { data, error } = await supabase
+  const { data, error} = await supabase
     .from('waitlist')
     .insert({
       email,
@@ -56,7 +56,7 @@ export async function joinWaitlist(email: string, fullName?: string, reason?: st
 }
 
 export async function createUserProfile(userId: string, email: string, fullName?: string) {
-  const supabase = createClient()
+  const supabase = await createClient()
   
   const { data, error } = await supabase
     .from('user_profiles')

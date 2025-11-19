@@ -59,7 +59,7 @@ export class GroqAdapter implements LLMProviderAdapter {
         .map((model: any) => enrichModelWithPricing(model))
         .filter((model: GroqModelWithPricing) => isChatModel(model))
 
-      return enrichedModels.map(model => this.normalizeModel(model))
+      return enrichedModels.map((model: GroqModelWithPricing) => this.normalizeModel(model))
     } catch (error) {
       if (error instanceof ProviderError) {
         throw error

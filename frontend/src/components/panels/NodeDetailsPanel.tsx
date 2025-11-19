@@ -904,13 +904,13 @@ export default function NodeDetailsPanel({
                         
                         console.log('🎯 Using structure node:', {
                           structureNodeId: structureNode.id,
-                          orchestratorNodeId: node.id,
+                          orchestratorNodeId: node?.id,
                           hasExistingItems: (structureNode.data.items?.length || 0) > 0,
                           existingFormat: structureNode.data.format
                         })
                         
                         // Check if AI Prompt node is connected - if so, generate with Groq API
-                        if (connectedAIPromptNode) {
+                        if (connectedAIPromptNode && node) {
                           const promptNode = connectedAIPromptNode
                           let userPrompt = promptNode.data.userPrompt
                           const maxTokens = promptNode.data.maxTokens || 2000
