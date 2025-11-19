@@ -22,9 +22,22 @@ export async function POST(request: Request) {
       error: authError,
     } = await supabase.auth.getUser()
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (authError) {
+      console.error('Auth error in /api/generate:', authError)
+      return NextResponse.json({ 
+        error: 'Authentication error. Please log in again.',
+        details: authError.message 
+      }, { status: 401 })
     }
+
+    if (!user) {
+      console.error('No user found in /api/generate')
+      return NextResponse.json({ 
+        error: 'Not authenticated. Please log in at /auth',
+      }, { status: 401 })
+    }
+
+    console.log(`✅ Authenticated user: ${user.email}`)
 
     // Parse request body
     const body: GenerateRequest = await request.json()

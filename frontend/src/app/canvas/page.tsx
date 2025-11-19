@@ -903,6 +903,21 @@ export default function CanvasPage() {
     format: StoryFormat,
     aiPromptNode: Node
   ) => {
+    // Check authentication first
+    if (!user) {
+      alert('❌ You must be logged in to generate content.\n\nPlease log in at http://localhost:3002/auth and try again.')
+      
+      // Remove loading state
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === structureNodeId
+            ? { ...n, data: { ...n.data, isLoading: false } }
+            : n
+        )
+      )
+      return
+    }
+    
     const isActive = (aiPromptNode.data as any).isActive !== false
     const userPrompt = (aiPromptNode.data as any).userPrompt
     const maxTokens = (aiPromptNode.data as any).maxTokens || 2000

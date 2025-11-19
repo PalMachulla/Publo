@@ -89,14 +89,22 @@ export class OpenAIAdapter implements LLMProviderAdapter {
       const response = await client.models.list()
 
       // Filter for chat/text generation models only
-      const chatModels = response.data.filter(model => 
-        model.id.startsWith('gpt-') &&
-        !model.id.includes('instruct') &&
-        !model.id.includes('vision') &&
-        !model.id.includes('whisper') &&
-        !model.id.includes('tts') &&
-        !model.id.includes('dall-e')
-      )
+      const chatModels = response.data.filter(model => {
+        const id = model.id.toLowerCase()
+        
+        // Exclude non-text models
+        if (id.includes('whisper')) return false // Speech-to-text
+        if (id.includes('tts')) return false // Text-to-speech
+        if (id.includes('dall-e')) return false // Image generation
+        if (id.includes('davinci-002')) return false // Legacy completion
+        if (id.includes('babbage-002')) return false // Legacy completion
+        if (id.includes('embedding')) return false // Embeddings
+        if (id.includes('moderation')) return false // Moderation
+        if (id.includes('audio')) return false // Audio models
+        
+        // Only include GPT chat models
+        return id.startsWith('gpt-') || id.startsWith('chatgpt')
+      })
 
       return chatModels.map(model => this.normalizeModel(model))
     } catch (error: any) {
