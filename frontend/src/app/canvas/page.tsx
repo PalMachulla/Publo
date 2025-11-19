@@ -924,19 +924,29 @@ export default function CanvasPage() {
     const { parseMarkdownStructure } = await import('@/lib/markdownParser')
     
     try {
-      console.log('🤖 Calling Groq API for auto-generation', {
+      // Get selected model and key from orchestrator node (if set)
+      const orchestratorNode = nodes.find(n => n.id === structureNodeId.split('-structure')[0])
+      const selectedModel = (orchestratorNode?.data as any)?.selectedModel || 'llama-3.1-8b-instant'
+      const selectedKeyId = (orchestratorNode?.data as any)?.selectedKeyId || null
+
+      console.log('🤖 Calling Generate API for auto-generation', {
         isActive,
         mode: isActive ? 'Active (with user prompt)' : 'Passive (system prompt only)',
-        userPromptLength: effectiveUserPrompt.length
+        userPromptLength: effectiveUserPrompt.length,
+        model: selectedModel,
+        keyId: selectedKeyId || 'Publo default'
       })
-      const response = await fetch('/api/groq/chat', {
+      
+      const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'llama-3.1-8b-instant', // Default model
-          systemPrompt,
-          userPrompt: effectiveUserPrompt,
-          maxTokens
+          model: selectedModel,
+          system_prompt: systemPrompt,
+          user_prompt: effectiveUserPrompt,
+          max_tokens: maxTokens,
+          user_key_id: selectedKeyId,
+          format
         })
       })
       

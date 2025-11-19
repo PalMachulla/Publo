@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
-import { GroqModelWithPricing } from '@/lib/groq/types'
+import { NormalizedModel, LLMProvider } from '@/types/api-keys'
 import { CollapsibleSection } from '@/components/ui/molecules/CollapsibleSection'
 
 interface CreateStoryPanelProps {
@@ -139,15 +139,24 @@ const storyFormats: Array<{ type: StoryFormat; label: string; description: strin
   }
 ]
 
+interface GroupedModels {
+  provider: LLMProvider
+  source: 'user' | 'publo'
+  key_id?: string
+  key_nickname?: string
+  models: NormalizedModel[]
+}
+
 export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdate }: CreateStoryPanelProps) {
   const [selectedModel, setSelectedModel] = useState<string | null>((node.data as any).selectedModel || null)
-  const [models, setModels] = useState<GroqModelWithPricing[]>([])
+  const [selectedKeyId, setSelectedKeyId] = useState<string | null>((node.data as any).selectedKeyId || null)
+  const [groupedModels, setGroupedModels] = useState<GroupedModels[]>([])
   const [loadingModels, setLoadingModels] = useState(true)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [selectedFormat, setSelectedFormat] = useState<StoryFormat | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
 
-  // Fetch Groq models on mount
+  // Fetch models from all sources on mount
   useEffect(() => {
     fetchModels()
   }, [])
@@ -157,15 +166,18 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
     setModelsError(null)
     
     try {
-      const response = await fetch('/api/groq/models')
+      const response = await fetch('/api/models')
       const data = await response.json()
       
       if (data.success) {
-        setModels(data.data)
-        // Auto-select first production model
-        const firstProduction = data.data.find((m: GroqModelWithPricing) => m.category === 'production')
-        if (firstProduction) {
+        setGroupedModels(data.grouped)
+        // Auto-select first production model from first group
+        if (data.grouped.length > 0 && data.grouped[0].models.length > 0) {
+          const firstGroup = data.grouped[0]
+          const firstProduction = firstGroup.models.find((m: NormalizedModel) => m.category === 'production') 
+            || firstGroup.models[0]
           setSelectedModel(firstProduction.id)
+          setSelectedKeyId(firstGroup.key_id || null)
         }
       } else {
         setModelsError(data.error || 'Failed to load models')
@@ -246,18 +258,49 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
             </div>
           )}
 
-          {!loadingModels && !modelsError && models.length > 0 && (
-            <div className="space-y-2">
-              {models.map((model) => (
-                <button
-                  key={model.id}
-                  onClick={() => {
-                    setSelectedModel(model.id)
-                    // Store selected model in node data
-                    if (onUpdate) {
-                      onUpdate(node.id, { selectedModel: model.id } as any)
-                    }
-                  }}
+          {!loadingModels && !modelsError && groupedModels.length > 0 && (
+            <div className="space-y-4">
+              {groupedModels.map((group, groupIndex) => (
+                <div key={`${group.provider}-${group.key_id || 'publo'}`}>
+                  {/* Provider Group Header */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      group.provider === 'groq' ? 'bg-purple-100 text-purple-700' :
+                      group.provider === 'openai' ? 'bg-green-100 text-green-700' :
+                      group.provider === 'anthropic' ? 'bg-orange-100 text-orange-700' :
+                      'bg-blue-100 text-blue-700'
+                    }`}>
+                      {group.provider.toUpperCase()}
+                    </span>
+                    {group.source === 'user' && (
+                      <span className="text-xs text-gray-600">
+                        {group.key_nickname ? `(${group.key_nickname})` : '(Your Key)'}
+                      </span>
+                    )}
+                    {group.source === 'publo' && (
+                      <span className="text-xs text-gray-500">(Publo Default)</span>
+                    )}
+                    <span className="text-xs text-gray-400">
+                      {group.models.length} model{group.models.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {/* Models in this group */}
+                  <div className="space-y-2">
+                    {group.models.map((model) => (
+                      <button
+                        key={model.id}
+                        onClick={() => {
+                          setSelectedModel(model.id)
+                          setSelectedKeyId(group.key_id || null)
+                          // Store selected model and key in node data
+                          if (onUpdate) {
+                            onUpdate(node.id, { 
+                              selectedModel: model.id,
+                              selectedKeyId: group.key_id || null 
+                            } as any)
+                          }
+                        }}
                   className={`w-full text-left p-3 rounded-lg border transition-all ${
                     selectedModel === model.id
                       ? 'border-yellow-400 bg-yellow-50 shadow-sm'
@@ -288,19 +331,19 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
                       
                       {/* Pricing & Speed */}
                       <div className="flex items-center gap-3 text-[11px]">
-                        {model.price_per_1m_input !== undefined && (
+                        {model.input_price_per_1m !== null && model.input_price_per_1m !== undefined && (
                           <div className="flex items-center gap-1">
                             <span className="text-gray-500">In:</span>
                             <span className="font-mono font-medium text-gray-900">
-                              ${model.price_per_1m_input.toFixed(3)}
+                              ${model.input_price_per_1m.toFixed(3)}
                             </span>
                           </div>
                         )}
-                        {model.price_per_1m_output !== undefined && (
+                        {model.output_price_per_1m !== null && model.output_price_per_1m !== undefined && (
                           <div className="flex items-center gap-1">
                             <span className="text-gray-500">Out:</span>
                             <span className="font-mono font-medium text-gray-900">
-                              ${model.price_per_1m_output.toFixed(3)}
+                              ${model.output_price_per_1m.toFixed(3)}
                             </span>
                           </div>
                         )}
@@ -329,6 +372,9 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
                     )}
                   </div>
                 </button>
+              ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}
