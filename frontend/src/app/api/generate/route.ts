@@ -16,40 +16,21 @@ export async function POST(request: Request) {
   try {
     const supabase = await createClient()
 
-    // Try to get user from session first
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession()
-
-    console.log('🔐 Session check:', {
-      hasSession: !!session,
-      hasUser: !!session?.user,
-      sessionError: sessionError?.message
-    })
-
-    // Get current user
+    // Try to get user from session (but don't require it)
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser()
 
-    if (authError) {
-      console.error('❌ Auth error in /api/generate:', authError)
-      return NextResponse.json({ 
-        error: 'Authentication error. Please log in again.',
-        details: authError.message 
-      }, { status: 401 })
+    // Log authentication status
+    if (user) {
+      console.log(`✅ Authenticated user: ${user.email}`)
+    } else {
+      console.log('⚠️ No authenticated user - will use default Publo keys only')
+      if (authError) {
+        console.log('Auth check error (non-fatal):', authError.message)
+      }
     }
-
-    if (!user) {
-      console.error('❌ No user found in /api/generate (session may have expired)')
-      return NextResponse.json({ 
-        error: 'Session expired or invalid. Please log in again at /auth',
-      }, { status: 401 })
-    }
-
-    console.log(`✅ Authenticated user: ${user.email}`)
 
     // Parse request body
     const body: GenerateRequest = await request.json()
@@ -76,8 +57,8 @@ export async function POST(request: Request) {
     let apiKey: string
     let keyId: string | null = null
 
-    if (user_key_id) {
-      // Use user's specified key
+    if (user_key_id && user) {
+      // Use user's specified key (requires authentication)
       const { data: userKey, error: keyError } = await supabase
         .from('user_api_keys')
         .select('encrypted_key, provider, is_active, validation_status')
@@ -109,7 +90,7 @@ export async function POST(request: Request) {
       apiKey = decryptAPIKey(userKey.encrypted_key)
       keyId = user_key_id
       provider = userKey.provider as LLMProvider
-    } else {
+    } else if (user) {
       // Try to find user's key for this provider as fallback
       const { data: userKeys } = await supabase
         .from('user_api_keys')
@@ -133,10 +114,24 @@ export async function POST(request: Request) {
       } else {
         return NextResponse.json(
           { 
-            error: `No ${provider.toUpperCase()} API key available. Please add your own key at /test-api`,
+            error: `No ${provider.toUpperCase()} API key available. Please add your own key at /settings/api-keys`,
             provider 
           },
           { status: 400 }
+        )
+      }
+    } else {
+      // No user authenticated - use Publo's default key only
+      if (provider === 'groq' && process.env.GROQ_PUBLO_KEY) {
+        console.log('Using Publo default Groq key (unauthenticated request)')
+        apiKey = process.env.GROQ_PUBLO_KEY
+      } else {
+        return NextResponse.json(
+          { 
+            error: `Authentication required. No default key available for ${provider.toUpperCase()}.`,
+            provider 
+          },
+          { status: 401 }
         )
       }
     }
@@ -192,26 +187,30 @@ export async function POST(request: Request) {
 
     console.log(`✅ Generation complete. Tokens: ${generationResult.usage.total_tokens}, Cost: $${cost.total_cost.toFixed(4)}`)
 
-    // Track usage in database
-    const { error: usageError } = await supabase
-      .from('ai_usage_history')
-      .insert({
-        user_id: user.id,
-        key_id: keyId,
-        provider,
-        model,
-        format: (body as any).format || null, // Optional format tracking
-        prompt_tokens: generationResult.usage.prompt_tokens,
-        completion_tokens: generationResult.usage.completion_tokens,
-        total_tokens: generationResult.usage.total_tokens,
-        input_cost: cost.input_cost,
-        output_cost: cost.output_cost,
-        total_cost: cost.total_cost,
-      })
+    // Track usage in database (only if user is authenticated)
+    if (user) {
+      const { error: usageError } = await supabase
+        .from('ai_usage_history')
+        .insert({
+          user_id: user.id,
+          key_id: keyId,
+          provider,
+          model,
+          format: (body as any).format || null, // Optional format tracking
+          prompt_tokens: generationResult.usage.prompt_tokens,
+          completion_tokens: generationResult.usage.completion_tokens,
+          total_tokens: generationResult.usage.total_tokens,
+          input_cost: cost.input_cost,
+          output_cost: cost.output_cost,
+          total_cost: cost.total_cost,
+        })
 
-    if (usageError) {
-      console.error('Failed to track usage:', usageError)
-      // Continue anyway - don't fail the generation
+      if (usageError) {
+        console.error('Failed to track usage:', usageError)
+        // Continue anyway - don't fail the generation
+      }
+    } else {
+      console.log('⚠️ Skipping usage tracking (unauthenticated request)')
     }
 
     // Return response
