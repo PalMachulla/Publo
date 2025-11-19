@@ -87,8 +87,13 @@ export async function GET(request: Request) {
                 models_cached_at: new Date().toISOString(),
               })
               .eq('id', key.id)
-              .then(() => console.log(`Updated model cache for ${key.provider} key ${key.id}`))
-              .catch(err => console.error('Failed to update model cache:', err))
+              .then((result) => {
+                if (result.error) {
+                  console.error('Failed to update model cache:', result.error)
+                } else {
+                  console.log(`Updated model cache for ${key.provider} key ${key.id}`)
+                }
+              })
           }
 
           grouped.push({
