@@ -16,6 +16,18 @@ export async function POST(request: Request) {
   try {
     const supabase = await createClient()
 
+    // Try to get user from session first
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession()
+
+    console.log('🔐 Session check:', {
+      hasSession: !!session,
+      hasUser: !!session?.user,
+      sessionError: sessionError?.message
+    })
+
     // Get current user
     const {
       data: { user },
@@ -23,7 +35,7 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser()
 
     if (authError) {
-      console.error('Auth error in /api/generate:', authError)
+      console.error('❌ Auth error in /api/generate:', authError)
       return NextResponse.json({ 
         error: 'Authentication error. Please log in again.',
         details: authError.message 
@@ -31,9 +43,9 @@ export async function POST(request: Request) {
     }
 
     if (!user) {
-      console.error('No user found in /api/generate')
+      console.error('❌ No user found in /api/generate (session may have expired)')
       return NextResponse.json({ 
-        error: 'Not authenticated. Please log in at /auth',
+        error: 'Session expired or invalid. Please log in again at /auth',
       }, { status: 401 })
     }
 
