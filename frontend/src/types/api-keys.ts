@@ -4,6 +4,9 @@
 
 export type LLMProvider = 'groq' | 'openai' | 'anthropic' | 'google'
 
+// Alias for convenience
+export type Provider = LLMProvider
+
 export type KeyValidationStatus = 'pending' | 'valid' | 'invalid' | 'expired'
 
 /**
