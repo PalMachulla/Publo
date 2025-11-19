@@ -699,7 +699,7 @@ export default function NodeDetailsPanel({
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="font-bold text-blue-600">4.</span>
-                      <span>Click <strong>"Generate Structure"</strong> in the Orchestrator panel</span>
+                      <span>Click <strong>&quot;Generate Structure&quot;</strong> in the Orchestrator panel</span>
                     </li>
                   </ol>
                 </div>
@@ -790,7 +790,7 @@ export default function NodeDetailsPanel({
                     </div>
                     <h4 className="text-sm font-semibold text-gray-900 mb-1">No Content Generated Yet</h4>
                     <p className="text-xs text-gray-600 mb-4">
-                      To generate content, click the Orchestrator node above and select "Create [Format]"
+                      To generate content, click the Orchestrator node above and select &quot;Create [Format]&quot;
                     </p>
                     <button
                       disabled
