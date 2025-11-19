@@ -865,17 +865,18 @@ export default function NodeDetailsPanel({
                               x: orchestratorPosition.x - 50,
                               y: orchestratorPosition.y + 200
                             },
-                            data: {
-                              nodeType: 'story-structure',
-                              label: selectedFormat.toUpperCase(),
-                              description: 'Generated structure',
-                              format: selectedFormat,
-                              items: [],
-                              comments: [],
-                              onItemClick: () => {}, // Will be set by canvas
-                              onItemsUpdate: () => {}, // Will be set by canvas
-                              onWidthUpdate: () => {}, // Will be set by canvas
-                              availableAgents: [],
+                          data: {
+                            nodeType: 'story-structure',
+                            label: selectedFormat.toUpperCase(),
+                            description: 'Generated structure',
+                            format: selectedFormat,
+                            items: [],
+                            activeLevel: 1, // Start at top level
+                            comments: [],
+                            onItemClick: () => {}, // Will be set by canvas
+                            onItemsUpdate: () => {}, // Will be set by canvas
+                            onWidthUpdate: () => {}, // Will be set by canvas
+                            availableAgents: [],
                               customNarrationWidth: 1200
                             }
                           }
