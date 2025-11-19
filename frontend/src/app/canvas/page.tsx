@@ -14,6 +14,7 @@ import ReactFlow, {
   addEdge,
   Connection,
   BackgroundVariant,
+  ConnectionMode,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
@@ -23,6 +24,7 @@ import StoryDraftNode from '@/components/nodes/StoryDraftNode'
 import StoryStructureNode from '@/components/nodes/StoryStructureNode'
 import ClusterNode from '@/components/nodes/ClusterNode'
 import TestNode, { EXAMPLE_SCREENPLAY_MARKDOWN } from '@/components/nodes/TestNode'
+import AIPromptNode from '@/components/nodes/AIPromptNode'
 import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
 import NodeTypeMenu from '@/components/menus/NodeTypeMenu'
 import AIDocumentPanel from '@/components/panels/AIDocumentPanel'
@@ -40,6 +42,7 @@ const nodeTypes = {
   storyStructureNode: StoryStructureNode,
   clusterNode: ClusterNode,
   testNode: TestNode,
+  aiPromptNode: AIPromptNode,
 }
 
 // Only Orchestrator node on fresh canvas
@@ -877,8 +880,167 @@ export default function CanvasPage() {
       )
     }
     
+    // AUTO-GENERATE: Check if AI Prompt node is connected, trigger immediate generation
+    const aiPromptNode = nodes.find(n => 
+      n.data?.nodeType === 'aiPrompt' && 
+      edges.some(e => e.source === n.id && e.target === 'context')
+    )
+    
+    if (aiPromptNode) {
+      console.log('🚀 Auto-generating structure with AI after node creation')
+      // Trigger AI generation after a brief delay to ensure node is added
+      // Pass 'context' as the orchestrator ID since that's where the model selection is stored
+      setTimeout(() => {
+        triggerAIGeneration(structureId, format, aiPromptNode, 'context')
+      }, 100)
+    }
+    
     saveAndFinalize()
   }, [nodes, edges, setNodes, setEdges, handleSave])
+  
+  // Helper function to trigger AI generation for a structure node
+  const triggerAIGeneration = async (
+    structureNodeId: string,
+    format: StoryFormat,
+    aiPromptNode: Node,
+    orchestratorNodeId: string
+  ) => {
+    // Check authentication first
+    if (!user) {
+      alert('❌ You must be logged in to generate content.\n\nPlease log in at http://localhost:3002/auth and try again.')
+      
+      // Remove loading state
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === structureNodeId
+            ? { ...n, data: { ...n.data, isLoading: false } }
+            : n
+        )
+      )
+      return
+    }
+    
+    const isActive = (aiPromptNode.data as any).isActive !== false
+    const userPrompt = (aiPromptNode.data as any).userPrompt
+    const maxTokens = (aiPromptNode.data as any).maxTokens || 2000
+    
+    // Determine the actual prompt to send based on active/passive mode
+    const effectiveUserPrompt = isActive ? userPrompt : ''
+    
+    // Only validate prompt if in active mode
+    if (isActive && (!userPrompt || userPrompt.trim() === '')) {
+      alert('Please enter a prompt in the AI Prompt node first, or set it to Passive mode.')
+      return
+    }
+    
+    // Import system prompt dynamically
+    const { getFormatSystemPrompt } = await import('@/lib/groq/formatPrompts')
+    const systemPrompt = getFormatSystemPrompt(format)
+    
+    // Import markdown parser
+    const { parseMarkdownStructure } = await import('@/lib/markdownParser')
+    
+    try {
+      // Get orchestrator node data using setNodes callback to access latest state
+      let selectedModel = 'llama-3.1-8b-instant'
+      let selectedKeyId: string | null = null
+      
+      setNodes((currentNodes) => {
+        const orchestratorNode = currentNodes.find(n => n.id === orchestratorNodeId)
+        selectedModel = (orchestratorNode?.data as any)?.selectedModel || 'llama-3.1-8b-instant'
+        selectedKeyId = (orchestratorNode?.data as any)?.selectedKeyId || null
+
+        console.log('🤖 Calling Generate API for auto-generation', {
+          isActive,
+          mode: isActive ? 'Active (with user prompt)' : 'Passive (system prompt only)',
+          userPromptLength: effectiveUserPrompt.length,
+          model: selectedModel,
+          keyId: selectedKeyId || 'No key - will try user keys',
+          orchestratorFound: !!orchestratorNode,
+          orchestratorId: orchestratorNode?.id,
+          selectedModelInData: (orchestratorNode?.data as any)?.selectedModel,
+          selectedKeyIdInData: (orchestratorNode?.data as any)?.selectedKeyId
+        })
+        
+        return currentNodes
+      })
+      
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: selectedModel,
+          system_prompt: systemPrompt,
+          user_prompt: effectiveUserPrompt,
+          max_tokens: maxTokens,
+          user_key_id: selectedKeyId,
+          format
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success && data.markdown) {
+        const { items: parsedItems, contentMap } = parseMarkdownStructure(data.markdown)
+        
+        // Convert contentMap to plain object
+        const contentMapObject: Record<string, string> = {}
+        contentMap.forEach((value, key) => {
+          contentMapObject[key] = value
+        })
+        
+        // Update structure node
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === structureNodeId
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    items: parsedItems,
+                    contentMap: contentMapObject,
+                    format: format,
+                    isLoading: false
+                  }
+                }
+              : n
+          )
+        )
+        
+        console.log('✅ Auto-generation complete:', {
+          structureNodeId,
+          itemsCount: parsedItems.length
+        })
+        
+        // Trigger save
+        hasUnsavedChangesRef.current = true
+        await handleSave()
+        
+        alert(`✅ ${format.charAt(0).toUpperCase() + format.slice(1)} structure generated successfully!`)
+      } else {
+        throw new Error(data.error || 'Failed to generate structure')
+      }
+    } catch (error: any) {
+      console.error('❌ Auto-generation failed:', error)
+      
+      // Provide helpful error message
+      let errorMessage = error.message || 'Unknown error'
+      if (errorMessage.includes('No API key available') || errorMessage.includes('No') && errorMessage.includes('API key')) {
+        errorMessage = `❌ ${errorMessage}\n\n💡 To fix this:\n1. Go to http://localhost:3002/test-api\n2. Add your API key for this provider\n3. Try generating again`
+      }
+      
+      alert(`Failed to generate structure:\n\n${errorMessage}`)
+      
+      // Remove loading state on error
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === structureNodeId
+            ? { ...n, data: { ...n.data, isLoading: false } }
+            : n
+        )
+      )
+    }
+  }
   
   // Handle Story Draft node click - open in AI Document Panel
   const handleStoryDraftClick = useCallback((node: Node) => {
@@ -1248,10 +1410,17 @@ export default function CanvasPage() {
         nodeData.markdown = EXAMPLE_SCREENPLAY_MARKDOWN
         nodeData.format = 'screenplay'
         break
+      case 'aiPrompt':
+        nodeData.label = 'AI PROMPT'
+        nodeData.description = 'Generate structure with AI'
+        nodeData.userPrompt = ''
+        nodeData.maxTokens = 2000
+        nodeData.isActive = true
+        break
     }
     
     // Determine the node type for rendering
-    const nodeRenderType = nodeType === 'cluster' ? 'clusterNode' : nodeType === 'test' ? 'testNode' : 'storyNode'
+    const nodeRenderType = nodeType === 'cluster' ? 'clusterNode' : nodeType === 'test' ? 'testNode' : nodeType === 'aiPrompt' ? 'aiPromptNode' : 'storyNode'
     
     const newNode: Node = {
       id: newNodeId,
@@ -1758,6 +1927,7 @@ export default function CanvasPage() {
             defaultViewport={{ x: 0, y: 0, zoom: 0.75 }}
             fitViewOptions={{ padding: 0.2, maxZoom: 0.75 }}
             className="bg-gray-50"
+            connectionMode={ConnectionMode.Strict}
             defaultEdgeOptions={{
               type: 'default', // Default type uses smooth bezier curves
               animated: false,
@@ -1797,6 +1967,8 @@ export default function CanvasPage() {
           onUpdate={handleNodeUpdate}
           onDelete={handleNodeDelete}
           onCreateStory={handleCreateStory}
+          onAddNode={(newNode) => setNodes((nds) => [...nds, newNode])}
+          onAddEdge={(newEdge) => setEdges((eds) => [...eds, newEdge])}
           edges={edges}
           nodes={nodes}
         />

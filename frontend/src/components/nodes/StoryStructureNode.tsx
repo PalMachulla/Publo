@@ -21,6 +21,16 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
   } = data
   const [isExpanded, setIsExpanded] = useState(false) // Collapsed by default
   
+  // Debug logging
+  console.log('📊 StoryStructureNode render:', {
+    nodeId: id,
+    itemsCount: items.length,
+    isExpanded,
+    hasItems: items.length > 0,
+    firstItem: items[0],
+    format
+  })
+  
   // Calculate total word count
   const totalWordCount = items.reduce((sum, item) => sum + (item.wordCount || 0), 0)
   

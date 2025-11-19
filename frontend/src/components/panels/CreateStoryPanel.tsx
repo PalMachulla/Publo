@@ -1,13 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
+import { NormalizedModel, LLMProvider } from '@/types/api-keys'
+import { CollapsibleSection } from '@/components/ui/molecules/CollapsibleSection'
 
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
   onCreateStory: (format: StoryFormat, template?: string) => void
   onClose: () => void
+  onUpdate?: (nodeId: string, data: Partial<CreateStoryNodeData>) => void
 }
 
 interface Template {
@@ -136,9 +139,56 @@ const storyFormats: Array<{ type: StoryFormat; label: string; description: strin
   }
 ]
 
-export default function CreateStoryPanel({ node, onCreateStory, onClose }: CreateStoryPanelProps) {
+interface GroupedModels {
+  provider: LLMProvider
+  source: 'user' | 'publo'
+  key_id?: string
+  key_nickname?: string
+  models: NormalizedModel[]
+}
+
+export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdate }: CreateStoryPanelProps) {
+  const [selectedModel, setSelectedModel] = useState<string | null>((node.data as any).selectedModel || null)
+  const [selectedKeyId, setSelectedKeyId] = useState<string | null>((node.data as any).selectedKeyId || null)
+  const [groupedModels, setGroupedModels] = useState<GroupedModels[]>([])
+  const [loadingModels, setLoadingModels] = useState(true)
+  const [modelsError, setModelsError] = useState<string | null>(null)
   const [selectedFormat, setSelectedFormat] = useState<StoryFormat | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
+
+  // Fetch models from all sources on mount
+  useEffect(() => {
+    fetchModels()
+  }, [])
+
+  const fetchModels = async () => {
+    setLoadingModels(true)
+    setModelsError(null)
+    
+    try {
+      const response = await fetch('/api/models')
+      const data = await response.json()
+      
+      if (data.success) {
+        setGroupedModels(data.grouped)
+        // Auto-select first production model from first group
+        if (data.grouped.length > 0 && data.grouped[0].models.length > 0) {
+          const firstGroup = data.grouped[0]
+          const firstProduction = firstGroup.models.find((m: NormalizedModel) => m.category === 'production') 
+            || firstGroup.models[0]
+          setSelectedModel(firstProduction.id)
+          setSelectedKeyId(firstGroup.key_id || null)
+        }
+      } else {
+        setModelsError(data.error || 'Failed to load models')
+      }
+    } catch (err) {
+      setModelsError('Failed to fetch models')
+      console.error('Error fetching models:', err)
+    } finally {
+      setLoadingModels(false)
+    }
+  }
 
   const handleFormatClick = (format: StoryFormat) => {
     if (selectedFormat === format) {
@@ -184,8 +234,160 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="space-y-2">
-          {storyFormats.map((format) => {
+        {/* Model Selection Section */}
+        <CollapsibleSection
+          title="1. Select Model"
+          defaultOpen={true}
+        >
+          {loadingModels && (
+            <div className="text-center py-8">
+              <div className="inline-block w-6 h-6 border-3 border-gray-200 border-t-yellow-400 rounded-full animate-spin" />
+              <p className="text-xs text-gray-500 mt-3">Loading models...</p>
+            </div>
+          )}
+
+          {modelsError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+              <p className="text-xs text-red-600">{modelsError}</p>
+              <button
+                onClick={fetchModels}
+                className="text-xs text-red-700 font-medium mt-1 underline"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
+          {!loadingModels && !modelsError && groupedModels.length > 0 && (
+            <div className="space-y-4">
+              {groupedModels.map((group, groupIndex) => (
+                <div key={`${group.provider}-${group.key_id || 'publo'}`}>
+                  {/* Provider Group Header */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      group.provider === 'groq' ? 'bg-purple-100 text-purple-700' :
+                      group.provider === 'openai' ? 'bg-green-100 text-green-700' :
+                      group.provider === 'anthropic' ? 'bg-orange-100 text-orange-700' :
+                      'bg-blue-100 text-blue-700'
+                    }`}>
+                      {group.provider.toUpperCase()}
+                    </span>
+                    {group.source === 'user' && (
+                      <span className="text-xs text-gray-600">
+                        {group.key_nickname ? `(${group.key_nickname})` : '(Your Key)'}
+                      </span>
+                    )}
+                    {group.source === 'publo' && (
+                      <span className="text-xs text-gray-500">(Publo Default)</span>
+                    )}
+                    <span className="text-xs text-gray-400">
+                      {group.models.length} model{group.models.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {/* Models in this group */}
+                  <div className="space-y-2">
+                    {group.models.map((model) => (
+                      <button
+                        key={model.id}
+                        onClick={() => {
+                          setSelectedModel(model.id)
+                          setSelectedKeyId(group.key_id || null)
+                          // Store selected model and key in node data
+                          if (onUpdate) {
+                            onUpdate(node.id, { 
+                              selectedModel: model.id,
+                              selectedKeyId: group.key_id || null 
+                            } as any)
+                          }
+                        }}
+                  className={`w-full text-left p-3 rounded-lg border transition-all ${
+                    selectedModel === model.id
+                      ? 'border-yellow-400 bg-yellow-50 shadow-sm'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    {/* Model Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="text-sm font-semibold text-gray-900 truncate">
+                          {model.id}
+                        </h4>
+                        {model.category && (
+                          <span
+                            className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                              model.category === 'production'
+                                ? 'bg-green-100 text-green-700'
+                                : model.category === 'preview'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {model.category}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {/* Pricing & Speed */}
+                      <div className="flex items-center gap-3 text-[11px]">
+                        {model.input_price_per_1m !== null && model.input_price_per_1m !== undefined && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-500">In:</span>
+                            <span className="font-mono font-medium text-gray-900">
+                              ${model.input_price_per_1m.toFixed(3)}
+                            </span>
+                          </div>
+                        )}
+                        {model.output_price_per_1m !== null && model.output_price_per_1m !== undefined && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-500">Out:</span>
+                            <span className="font-mono font-medium text-gray-900">
+                              ${model.output_price_per_1m.toFixed(3)}
+                            </span>
+                          </div>
+                        )}
+                        {model.speed_tokens_per_sec && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-500">Speed:</span>
+                            <span className="font-mono font-medium text-gray-900">
+                              {model.speed_tokens_per_sec} t/s
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Selection Indicator */}
+                    {selectedModel === model.id && (
+                      <div className="flex-shrink-0 w-4 h-4 rounded-full bg-yellow-400 flex items-center justify-center">
+                        <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CollapsibleSection>
+
+        {/* Format Selection Section */}
+        <CollapsibleSection
+          title="2. Choose Format"
+          defaultOpen={true}
+          className="mt-6"
+        >
+          <div className="space-y-2">
+            {storyFormats.map((format) => {
             const isExpanded = selectedFormat === format.type
             const formatTemplates = templates[format.type]
 
@@ -267,7 +469,8 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose }: Creat
               </div>
             )
           })}
-        </div>
+          </div>
+        </CollapsibleSection>
       </div>
 
       {/* Footer with Create Button */}
