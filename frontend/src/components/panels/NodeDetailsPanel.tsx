@@ -811,7 +811,7 @@ export default function NodeDetailsPanel({
                         
                         // Double-check: also look for any structure node connected via outgoing edges
                         // (in case the useMemo hasn't updated yet)
-                        if (!structureNode) {
+                        if (!structureNode && node) {
                           console.log('🔍 Double-checking for structure node:', {
                             orchestratorId: node.id,
                             totalEdges: edges.length,
