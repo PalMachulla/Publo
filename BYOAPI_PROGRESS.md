@@ -65,26 +65,36 @@ ENCRYPTION_KEY=<64-character-hex-string>
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-## 🚧 Next Steps (Phase 2)
+## ✅ Completed (Phase 2: Integration)
 
 ### 7. Unified API Routes
-- ⏳ `app/api/models/route.ts` - Fetch models from all user's providers
-- ⏳ `app/api/generate/route.ts` - Generate using user's keys
+- ✅ `app/api/models/route.ts` - Fetch models from all user's providers
+- ✅ `app/api/generate/route.ts` - Generate using user's keys
+- ✅ Auto-fallback to user keys when no key ID specified
+- ✅ Usage tracking with `ai_usage_history` table
 
-### 8. Frontend UI
-- ⏳ `app/settings/page.tsx` - Main settings page
-- ⏳ `app/settings/api-keys/page.tsx` - API keys management UI
-- ⏳ Components: AddKeyModal, KeyCard, UsageStats
+### 8. Frontend Integration
+- ✅ `CreateStoryPanel` shows all user's models grouped by provider
+- ✅ Model selector displays pricing, speed, category
+- ✅ Generation flow uses selected model and key
+- ✅ Automatic usage and cost tracking
+- ✅ Better error messages with helpful instructions
 
-### 9. Integration
-- ⏳ Update `CreateStoryPanel` to show user's models
-- ⏳ Update generation flow to use user's keys
-- ⏳ Add usage tracking and cost display
+### 9. Testing & Polish
+- ✅ Smart fallback: prefers user keys over Publo default
+- ✅ Error handling with actionable messages
+- ✅ Console logging for debugging
+- ⏳ End-to-end user testing (ready now!)
 
-### 10. Testing
-- ⏳ End-to-end flow testing
-- ⏳ Error handling verification
-- ⏳ Security audit
+## 🚧 Future Enhancements (Phase 3 - Optional)
+
+### 10. Settings Page UI
+- ⏳ `/settings/api-keys` - Beautiful UI for key management
+- ⏳ Usage dashboard with charts
+- ⏳ Cost tracking visualization
+- ⏳ Spending limits and alerts
+
+*Note: Core BYOAPI functionality is complete! Settings UI is a nice-to-have for better UX.*
 
 ## 📊 Implementation Status
 
