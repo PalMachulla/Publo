@@ -889,8 +889,9 @@ export default function CanvasPage() {
     if (aiPromptNode) {
       console.log('🚀 Auto-generating structure with AI after node creation')
       // Trigger AI generation after a brief delay to ensure node is added
+      // Pass 'context' as the orchestrator ID since that's where the model selection is stored
       setTimeout(() => {
-        triggerAIGeneration(structureId, format, aiPromptNode)
+        triggerAIGeneration(structureId, format, aiPromptNode, 'context')
       }, 100)
     }
     
@@ -901,7 +902,8 @@ export default function CanvasPage() {
   const triggerAIGeneration = async (
     structureNodeId: string,
     format: StoryFormat,
-    aiPromptNode: Node
+    aiPromptNode: Node,
+    orchestratorNodeId: string
   ) => {
     // Check authentication first
     if (!user) {
@@ -939,25 +941,28 @@ export default function CanvasPage() {
     const { parseMarkdownStructure } = await import('@/lib/markdownParser')
     
     try {
-      // Find orchestrator node connected to the structure node
-      const structureNodeEdges = edges.filter(e => e.target === structureNodeId)
-      const orchestratorEdge = structureNodeEdges.find(e => {
-        const sourceNode = nodes.find(n => n.id === e.source)
-        return sourceNode?.type === 'orchestratorNode' || sourceNode?.type === 'createStoryNode'
-      })
+      // Get orchestrator node data using setNodes callback to access latest state
+      let selectedModel = 'llama-3.1-8b-instant'
+      let selectedKeyId: string | null = null
       
-      const orchestratorNode = orchestratorEdge ? nodes.find(n => n.id === orchestratorEdge.source) : null
-      const selectedModel = (orchestratorNode?.data as any)?.selectedModel || 'llama-3.1-8b-instant'
-      const selectedKeyId = (orchestratorNode?.data as any)?.selectedKeyId || null
+      setNodes((currentNodes) => {
+        const orchestratorNode = currentNodes.find(n => n.id === orchestratorNodeId)
+        selectedModel = (orchestratorNode?.data as any)?.selectedModel || 'llama-3.1-8b-instant'
+        selectedKeyId = (orchestratorNode?.data as any)?.selectedKeyId || null
 
-      console.log('🤖 Calling Generate API for auto-generation', {
-        isActive,
-        mode: isActive ? 'Active (with user prompt)' : 'Passive (system prompt only)',
-        userPromptLength: effectiveUserPrompt.length,
-        model: selectedModel,
-        keyId: selectedKeyId || 'No key - will try user keys',
-        orchestratorFound: !!orchestratorNode,
-        orchestratorId: orchestratorNode?.id
+        console.log('🤖 Calling Generate API for auto-generation', {
+          isActive,
+          mode: isActive ? 'Active (with user prompt)' : 'Passive (system prompt only)',
+          userPromptLength: effectiveUserPrompt.length,
+          model: selectedModel,
+          keyId: selectedKeyId || 'No key - will try user keys',
+          orchestratorFound: !!orchestratorNode,
+          orchestratorId: orchestratorNode?.id,
+          selectedModelInData: (orchestratorNode?.data as any)?.selectedModel,
+          selectedKeyIdInData: (orchestratorNode?.data as any)?.selectedKeyId
+        })
+        
+        return currentNodes
       })
       
       const response = await fetch('/api/generate', {
