@@ -994,7 +994,14 @@ export default function CanvasPage() {
       }
     } catch (error: any) {
       console.error('❌ Auto-generation failed:', error)
-      alert(`Failed to generate structure: ${error.message}`)
+      
+      // Provide helpful error message
+      let errorMessage = error.message || 'Unknown error'
+      if (errorMessage.includes('No API key available') || errorMessage.includes('No') && errorMessage.includes('API key')) {
+        errorMessage = `❌ ${errorMessage}\n\n💡 To fix this:\n1. Go to http://localhost:3002/test-api\n2. Add your API key for this provider\n3. Try generating again`
+      }
+      
+      alert(`Failed to generate structure:\n\n${errorMessage}`)
       
       // Remove loading state on error
       setNodes((nds) =>

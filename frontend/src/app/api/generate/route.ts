@@ -85,15 +85,35 @@ export async function POST(request: Request) {
       keyId = user_key_id
       provider = userKey.provider as LLMProvider
     } else {
-      // Use Publo's default key (Groq only for now)
-      if (provider !== 'groq' || !process.env.GROQ_PUBLO_KEY) {
+      // Try to find user's key for this provider as fallback
+      const { data: userKeys } = await supabase
+        .from('user_api_keys')
+        .select('id, encrypted_key, provider, is_active, validation_status, nickname')
+        .eq('user_id', user.id)
+        .eq('provider', provider)
+        .eq('is_active', true)
+        .eq('validation_status', 'valid')
+        .limit(1)
+        .single()
+
+      if (userKeys) {
+        // Use user's key
+        console.log(`Using user's ${provider} key (${userKeys.nickname || 'unnamed'}) as fallback`)
+        apiKey = decryptAPIKey(userKeys.encrypted_key)
+        keyId = userKeys.id
+      } else if (provider === 'groq' && process.env.GROQ_PUBLO_KEY) {
+        // Fall back to Publo's default Groq key
+        console.log('Using Publo default Groq key')
+        apiKey = process.env.GROQ_PUBLO_KEY
+      } else {
         return NextResponse.json(
-          { error: 'No API key available for this provider. Please add your own key.' },
+          { 
+            error: `No ${provider.toUpperCase()} API key available. Please add your own key at /test-api`,
+            provider 
+          },
           { status: 400 }
         )
       }
-
-      apiKey = process.env.GROQ_PUBLO_KEY
     }
 
     // Get provider adapter
