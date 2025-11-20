@@ -933,9 +933,10 @@ export default function CanvasPage() {
       return
     }
     
-    // Import system prompt dynamically
-    const { getFormatSystemPrompt } = await import('@/lib/groq/formatPrompts')
+    // Import system prompt and token calculation dynamically
+    const { getFormatSystemPrompt, getRecommendedTokens } = await import('@/lib/groq/formatPrompts')
     const systemPrompt = getFormatSystemPrompt(format)
+    const recommendedTokens = getRecommendedTokens(format)
     
     // Import markdown parser
     const { parseMarkdownStructure } = await import('@/lib/markdownParser')
@@ -973,6 +974,9 @@ export default function CanvasPage() {
         hasUserPrompt: !!effectiveUserPrompt
       })
       
+      // Use user's custom maxTokens if set, otherwise use recommended based on format
+      const effectiveMaxTokens = maxTokens && maxTokens !== 2000 ? maxTokens : recommendedTokens
+      
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -980,7 +984,7 @@ export default function CanvasPage() {
           model: selectedModel,
           system_prompt: systemPrompt,
           user_prompt: effectiveUserPrompt,
-          max_tokens: maxTokens,
+          max_tokens: effectiveMaxTokens,
           user_key_id: selectedKeyId,
           format
         })
