@@ -22,6 +22,12 @@ INDENTATION RULES (count spaces carefully):
 - Each "- id:" starts at column 2 (2 spaces before the dash)
 - Properties like "level:", "name:", etc. start at column 4 (4 spaces total)
 
+VALUE RULES (critical for parsing):
+- ALL string values (name, summary, title) MUST be quoted with double quotes
+- Keep ALL values on a SINGLE line (no line breaks within values)
+- If a summary is long, keep it on one line anyway (do NOT wrap to next line)
+- Example: summary: "This is a long summary that stays on one line even though it's very long"
+
 CORRECT FORMAT EXAMPLE (count the spaces):
 ---
 format: novel
@@ -31,12 +37,12 @@ structure:
     level: 1
     name: "Chapter 1"
     wordCount: 2000
-    summary: "Chapter summary"
+    summary: "This is a chapter summary that must stay on a single line no matter how long it gets because line breaks will cause parsing errors"
   - id: chapter2
     level: 1
     name: "Chapter 2"
     wordCount: 2000
-    summary: "Chapter summary"
+    summary: "Another single-line summary with proper double quotes around the entire text"
 ---
 
 WRONG (will fail):

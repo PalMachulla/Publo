@@ -96,6 +96,25 @@ function repairYAMLIndentation(markdown: string): string {
       // Property under a list item - ensure exactly 4 spaces
       if (trimmed.includes(':')) {
         const originalIndent = line.length - line.trimStart().length
+        
+        // Ensure multi-line strings are properly quoted
+        const colonIndex = trimmed.indexOf(':')
+        const key = trimmed.substring(0, colonIndex).trim()
+        let value = trimmed.substring(colonIndex + 1).trim()
+        
+        // If value contains quotes but they're not balanced, or has special chars, ensure it's quoted
+        if (value && !value.startsWith('"') && !value.startsWith("'")) {
+          // Check if it needs quoting (has special chars, multiple lines, etc)
+          if (value.includes('#') || value.includes(':') || value.includes('[') || value.includes(']')) {
+            value = `"${value.replace(/"/g, '\\"')}"`
+            const fixedLine = `    ${key}: ${value}`
+            fixed.push(fixedLine)
+            issuesFixed++
+            console.log(`  ✓ Fixed and quoted value at line ${i + 1}: "${key}: ${value.substring(0, 20)}..."`)
+            continue
+          }
+        }
+        
         if (originalIndent !== 4) {
           fixed.push('    ' + trimmed)
           issuesFixed++
@@ -104,6 +123,23 @@ function repairYAMLIndentation(markdown: string): string {
           fixed.push(line)
         }
         continue
+      }
+      
+      // Continuation line (part of a multi-line value) - ensure proper indentation
+      if (!trimmed.startsWith('-') && !trimmed.includes(':')) {
+        // This is likely a continuation of a previous value
+        // Should be indented more than the property (6+ spaces)
+        const originalIndent = line.length - line.trimStart().length
+        if (originalIndent < 6) {
+          // This is problematic - append it to previous line instead
+          if (fixed.length > 0) {
+            const prevLine = fixed[fixed.length - 1]
+            fixed[fixed.length - 1] = prevLine + ' ' + trimmed
+            issuesFixed++
+            console.log(`  ✓ Merged continuation line ${i + 1} into previous: "${trimmed.substring(0, 30)}..."`)
+          }
+          continue
+        }
       }
     }
     
