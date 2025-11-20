@@ -61,7 +61,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
 
       {/* Bottom connector dot - positioned behind the shape */}
       <div
-        className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-400 shadow-lg"
+        className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-gray-100 shadow-lg"
         style={{ bottom: '-10px', pointerEvents: 'none', zIndex: 0 }}
       />
 
@@ -73,7 +73,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
       }}>
         {/* Label above node with tab-like background */}
         <div className="flex justify-center -mb-1 transition-all duration-300 ease-in-out" style={{ width: nodeWidth }}>
-          <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all  ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'}`}>
+          <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all  ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-100 border-2 border-gray-400 shadow-xl'}`}>
             <div className="text-sm text-gray-700 uppercase tracking-widest font-sans font-bold">
               {label || (format ? format.toUpperCase() : 'STORY')}
             </div>
@@ -162,15 +162,15 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
 
         {/* Main Container - positioned in front of connector dots */}
         <div
-          className={`relative transition-all duration-300 ease-in-out ${
-            isExpanded ? '' : `rounded-2xl overflow-visible ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-400'} ${selected ? 'shadow-2xl' : 'shadow-md'}`
+          className={`relative transition-all  duration-300 ease-in-out ${
+            isExpanded ? '' : `rounded-2xl overflow-visible ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-white border-2 border-gray-400'} ${selected ? 'shadow-2xl' : 'shadow-md'}`
           }`}
           style={{
             width: nodeWidth,
             minHeight: isExpanded ? 'auto' : 'auto',
-            paddingLeft: isExpanded ? 0 : 24,
-            paddingRight: isExpanded ? 0 : 24,
-            paddingTop: isExpanded ? 0 : 20,
+            paddingLeft: isExpanded ? 0 : 12,
+            paddingRight: isExpanded ? 0 : 12,
+            paddingTop: isExpanded ? 0 : 12,
             paddingBottom: isExpanded ? 0 : 20,
             boxSizing: 'border-box'
           }}
@@ -179,7 +179,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
           /* Collapsed View - Simple Metadata Card */
           <div className="flex flex-col gap-4">
             {/* Cover Image Placeholder */}
-            <div className="w-full aspect-[3/2] rounded-lg bg-gray-300 flex items-center justify-center border-2 border-gray-500">
+            <div className="w-full aspect-[3/2] rounded-lg bg-gray-300 flex items-center justify-center border-2 border-gray-300">
               <div className="text-center text-gray-600">
                 <svg className="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />

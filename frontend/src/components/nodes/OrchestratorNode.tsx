@@ -93,7 +93,7 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
         </svg>
         
         {/* Content centered over circle */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-2">
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-4">
           {/* Publo Logo */}
           <div className="w-14 h-14 flex items-center justify-center">
             <svg
