@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     // Fetch user's API keys (without the encrypted_key field for security)
     const { data: keys, error: keysError } = await supabase
       .from('user_api_keys')
-      .select('id, provider, nickname, is_active, last_validated_at, validation_status, models_cache, models_cached_at, usage_count, last_used_at, created_at, updated_at')
+      .select('id, provider, nickname, is_active, last_validated_at, validation_status, models_cache, models_cached_at, model_preferences, usage_count, last_used_at, created_at, updated_at')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 

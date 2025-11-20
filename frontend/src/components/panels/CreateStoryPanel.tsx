@@ -4,7 +4,14 @@ import { useState, useEffect } from 'react'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
 import { NormalizedModel, LLMProvider } from '@/types/api-keys'
-import { CollapsibleSection } from '@/components/ui/molecules/CollapsibleSection'
+import { 
+  CollapsibleSection,
+  Card,
+  Badge,
+  RadioGroup,
+  RadioItem,
+  Button
+} from '@/components/ui'
 
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
@@ -166,16 +173,54 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
     setModelsError(null)
     
     try {
+      console.log('[CreateStoryPanel] Fetching models from /api/models')
       const response = await fetch('/api/models')
       const data = await response.json()
       
+      console.log('[CreateStoryPanel] Models API response:', {
+        success: data.success,
+        groupCount: data.grouped?.length,
+        totalModels: data.total_count,
+        rawGroups: data.grouped?.map((g: any) => ({
+          provider: g.provider,
+          source: g.source,
+          keyId: g.key_id,
+          modelCount: g.models?.length,
+          firstModel: g.models?.[0],
+          allModels: g.models?.map((m: any) => ({ id: m.id, name: m.name, supports_chat: m.supports_chat }))
+        }))
+      })
+      
       if (data.success) {
-        setGroupedModels(data.grouped)
+        // Filter to only show chat-compatible models
+        const filteredGroups = data.grouped.map((group: GroupedModels) => ({
+          ...group,
+          models: group.models.filter((m: NormalizedModel) => m.supports_chat)
+        })).filter((group: GroupedModels) => group.models.length > 0)
+        
+        console.log('[CreateStoryPanel] After filtering:', {
+          groups: filteredGroups.map((g: GroupedModels) => ({
+            provider: g.provider,
+            modelCount: g.models.length,
+            models: g.models.map((m: NormalizedModel) => m.name)
+          }))
+        })
+        
+        setGroupedModels(filteredGroups)
+        
         // Auto-select first production model from first group
-        if (data.grouped.length > 0 && data.grouped[0].models.length > 0) {
-          const firstGroup = data.grouped[0]
+        if (filteredGroups.length > 0 && filteredGroups[0].models.length > 0) {
+          const firstGroup = filteredGroups[0]
           const firstProduction = firstGroup.models.find((m: NormalizedModel) => m.category === 'production') 
             || firstGroup.models[0]
+          
+          console.log('[CreateStoryPanel] Auto-selected model:', {
+            model: firstProduction.name,
+            id: firstProduction.id,
+            provider: firstGroup.provider,
+            keyId: firstGroup.key_id
+          })
+          
           setSelectedModel(firstProduction.id)
           setSelectedKeyId(firstGroup.key_id || null)
         }
@@ -184,7 +229,7 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
       }
     } catch (err) {
       setModelsError('Failed to fetch models')
-      console.error('Error fetching models:', err)
+      console.error('[CreateStoryPanel] Error fetching models:', err)
     } finally {
       setLoadingModels(false)
     }
@@ -216,7 +261,7 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   }
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center gap-3">
@@ -259,37 +304,41 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
           )}
 
           {!loadingModels && !modelsError && groupedModels.length > 0 && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               {groupedModels.map((group, groupIndex) => (
                 <div key={`${group.provider}-${group.key_id || 'publo'}`}>
                   {/* Provider Group Header */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      group.provider === 'groq' ? 'bg-purple-100 text-purple-700' :
-                      group.provider === 'openai' ? 'bg-green-100 text-green-700' :
-                      group.provider === 'anthropic' ? 'bg-orange-100 text-orange-700' :
-                      'bg-blue-100 text-blue-700'
-                    }`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Badge 
+                      variant={
+                        group.provider === 'groq' ? 'purple' :
+                        group.provider === 'openai' ? 'success' :
+                        group.provider === 'anthropic' ? 'warning' :
+                        'info'
+                      }
+                      size="md"
+                    >
                       {group.provider.toUpperCase()}
-                    </span>
+                    </Badge>
                     {group.source === 'user' && (
-                      <span className="text-xs text-gray-600">
-                        {group.key_nickname ? `(${group.key_nickname})` : '(Your Key)'}
+                      <span className="text-xs text-gray-600 font-medium">
+                        {group.key_nickname || 'Your Key'}
                       </span>
                     )}
                     {group.source === 'publo' && (
-                      <span className="text-xs text-gray-500">(Publo Default)</span>
+                      <Badge variant="outline" size="sm">Publo Default</Badge>
                     )}
                     <span className="text-xs text-gray-400">
-                      {group.models.length} model{group.models.length !== 1 ? 's' : ''}
+                      {group.models.length} {group.models.length === 1 ? 'model' : 'models'}
                     </span>
                   </div>
 
                   {/* Models in this group */}
                   <div className="space-y-2">
                     {group.models.map((model) => (
-                      <button
+                      <Card
                         key={model.id}
+                        variant={selectedModel === model.id ? 'selected' : 'interactive'}
                         onClick={() => {
                           console.log('🎯 Model selected:', {
                             model: model.id,
@@ -309,78 +358,64 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
                             } as any)
                           }
                         }}
-                  className={`w-full text-left p-3 rounded-lg border transition-all ${
-                    selectedModel === model.id
-                      ? 'border-yellow-400 bg-yellow-50 shadow-sm'
-                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    {/* Model Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="text-sm font-semibold text-gray-900 truncate">
-                          {model.id}
-                        </h4>
-                        {model.category && (
-                          <span
-                            className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                              model.category === 'production'
-                                ? 'bg-green-100 text-green-700'
-                                : model.category === 'preview'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-gray-100 text-gray-600'
-                            }`}
-                          >
-                            {model.category}
-                          </span>
-                        )}
-                      </div>
-                      
-                      {/* Pricing & Speed */}
-                      <div className="flex items-center gap-3 text-[11px]">
-                        {model.input_price_per_1m !== null && model.input_price_per_1m !== undefined && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-gray-500">In:</span>
-                            <span className="font-mono font-medium text-gray-900">
-                              ${model.input_price_per_1m.toFixed(3)}
-                            </span>
+                        className="relative"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          {/* Model Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2 flex-wrap">
+                              <h4 className="text-sm font-semibold text-gray-900">
+                                {model.id}
+                              </h4>
+                              {model.category && (
+                                <Badge 
+                                  variant={
+                                    model.category === 'production' ? 'success' :
+                                    model.category === 'preview' ? 'info' :
+                                    'default'
+                                  }
+                                  size="sm"
+                                >
+                                  {model.category}
+                                </Badge>
+                              )}
+                            </div>
+                            
+                            {/* Pricing & Speed */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {model.input_price_per_1m !== null && model.input_price_per_1m !== undefined && (
+                                <Badge variant="outline" size="sm">
+                                  💵 In: ${model.input_price_per_1m.toFixed(3)}/1M
+                                </Badge>
+                              )}
+                              {model.output_price_per_1m !== null && model.output_price_per_1m !== undefined && (
+                                <Badge variant="outline" size="sm">
+                                  💵 Out: ${model.output_price_per_1m.toFixed(3)}/1M
+                                </Badge>
+                              )}
+                              {model.speed_tokens_per_sec && (
+                                <Badge variant="outline" size="sm">
+                                  ⚡ {model.speed_tokens_per_sec} t/s
+                                </Badge>
+                              )}
+                            </div>
                           </div>
-                        )}
-                        {model.output_price_per_1m !== null && model.output_price_per_1m !== undefined && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-gray-500">Out:</span>
-                            <span className="font-mono font-medium text-gray-900">
-                              ${model.output_price_per_1m.toFixed(3)}
-                            </span>
-                          </div>
-                        )}
-                        {model.speed_tokens_per_sec && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-gray-500">Speed:</span>
-                            <span className="font-mono font-medium text-gray-900">
-                              {model.speed_tokens_per_sec} t/s
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Selection Indicator */}
-                    {selectedModel === model.id && (
-                      <div className="flex-shrink-0 w-4 h-4 rounded-full bg-yellow-400 flex items-center justify-center">
-                        <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path
-                            fillRule="evenodd"
-                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                </button>
-              ))}
+                          {/* Selection Indicator */}
+                          {selectedModel === model.id && (
+                            <div className="flex-shrink-0 w-5 h-5 rounded-full bg-yellow-400 flex items-center justify-center">
+                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                      </Card>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -396,108 +431,108 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
         >
           <div className="space-y-2">
             {storyFormats.map((format) => {
-            const isExpanded = selectedFormat === format.type
-            const formatTemplates = templates[format.type]
-
-            return (
-              <div key={format.type} className="border border-gray-200 rounded-lg overflow-hidden">
-                {/* Format Header (Accordion Trigger) */}
-                <button
-                  onClick={() => handleFormatClick(format.type)}
-                  className={`w-full p-4 transition-all text-left ${
-                    isExpanded
-                      ? 'bg-yellow-50 border-b border-yellow-100'
-                      : 'hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    {/* Chevron */}
-                    <svg
-                      className={`w-5 h-5 text-gray-500 transition-transform flex-shrink-0 mt-0.5 ${
-                        isExpanded ? 'rotate-90' : ''
-                      }`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-
-                    {/* Icon */}
-                    <div className={`mt-0.5 ${isExpanded ? 'text-yellow-600' : 'text-gray-500'}`}>
-                      {format.icon}
-                    </div>
-
-                    {/* Text */}
-                    <div className="flex-1 min-w-0">
-                      <div className={`text-sm font-medium ${isExpanded ? 'text-yellow-900' : 'text-gray-900'}`}>
-                        {format.label}
+              const isSelected = selectedFormat === format.type
+              const formatTemplates = templates[format.type]
+              
+              return (
+                <div key={format.type}>
+                  {/* Format Card */}
+                  <Card
+                    variant={isSelected ? 'selected' : 'interactive'}
+                    onClick={() => handleFormatClick(format.type)}
+                    className="relative transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`flex-shrink-0 transition-colors ${isSelected ? 'text-yellow-600' : 'text-gray-500'}`}>
+                        {format.icon}
                       </div>
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        {format.description}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-
-                {/* Templates (Accordion Content) */}
-                {isExpanded && (
-                  <div className="bg-white p-3 space-y-2">
-                    {formatTemplates.map((template) => (
-                      <button
-                        key={template.id}
-                        onClick={() => handleTemplateSelect(template.id)}
-                        className={`w-full p-3 rounded-md border transition-all text-left ${
-                          selectedTemplate === template.id
-                            ? 'border-yellow-400 bg-yellow-50'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        <div className="flex items-start gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className={`text-sm font-medium ${
-                              selectedTemplate === template.id ? 'text-yellow-900' : 'text-gray-900'
-                            }`}>
-                              {template.name}
-                            </div>
-                            <div className="text-xs text-gray-500 mt-0.5">
-                              {template.description}
-                            </div>
-                          </div>
-                          {selectedTemplate === template.id && (
-                            <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                            </svg>
-                          )}
+                      <div className="flex-1 text-left">
+                        <div className={`text-sm font-semibold transition-colors ${isSelected ? 'text-yellow-900' : 'text-gray-900'}`}>
+                          {format.label}
                         </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+                        <div className="text-xs text-gray-500">
+                          {format.description}
+                        </div>
+                      </div>
+                      {/* Chevron indicator */}
+                      <div className={`flex-shrink-0 transition-transform ${isSelected ? 'rotate-90' : ''}`}>
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Template Selection (expands directly below format) */}
+                  {isSelected && (
+                    <div className="mt-2 ml-8 space-y-1 animate-in slide-in-from-top-2 duration-200">
+                      {formatTemplates.map((template) => (
+                        <button
+                          key={template.id}
+                          onClick={() => handleTemplateSelect(template.id)}
+                          className={`w-full text-left p-3 rounded-lg border transition-all ${
+                            selectedTemplate === template.id
+                              ? 'border-yellow-400 bg-yellow-50 shadow-sm'
+                              : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1">
+                              <div className={`text-sm font-medium ${
+                                selectedTemplate === template.id ? 'text-yellow-900' : 'text-gray-900'
+                              }`}>
+                                {template.name}
+                              </div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                {template.description}
+                              </div>
+                            </div>
+                            {selectedTemplate === template.id && (
+                              <div className="flex-shrink-0 w-4 h-4 rounded-full bg-yellow-400 flex items-center justify-center">
+                                <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </CollapsibleSection>
       </div>
 
       {/* Footer with Create Button */}
-      <div className="p-6 border-t border-gray-200">
-        <button
+      <div className="p-6 border-t border-gray-200 bg-gray-50">
+        <Button
           onClick={handleCreateStory}
           disabled={!selectedFormat || !selectedTemplate}
-          className={`w-full px-4 py-3 rounded-lg font-medium text-white transition-colors ${
-            selectedFormat && selectedTemplate
-              ? 'bg-yellow-500 hover:bg-yellow-600'
-              : 'bg-gray-300 cursor-not-allowed'
-          }`}
+          variant="primary"
+          size="lg"
+          className="w-full"
         >
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
           {selectedFormat && selectedTemplate
             ? `Create ${storyFormats.find(f => f.type === selectedFormat)?.label}`
             : selectedFormat
             ? 'Select a Template'
             : 'Select a Format'}
-        </button>
+        </Button>
+        {selectedFormat && selectedTemplate && (
+          <p className="text-xs text-gray-500 text-center mt-3">
+            This will create a new story structure on the canvas
+          </p>
+        )}
       </div>
     </div>
   )

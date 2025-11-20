@@ -180,6 +180,109 @@ import { Label } from '@/components/ui'
 <Label required>Email</Label>
 ```
 
+### Badge
+
+Compact status/tag indicator with multiple variants.
+
+```tsx
+import { Badge } from '@/components/ui'
+
+// Variants
+<Badge variant="default">Default</Badge>
+<Badge variant="primary">Primary</Badge>
+<Badge variant="success">Success</Badge>
+<Badge variant="warning">Warning</Badge>
+<Badge variant="danger">Danger</Badge>
+<Badge variant="info">Info</Badge>
+<Badge variant="purple">Purple</Badge>
+<Badge variant="outline">Outline</Badge>
+
+// Sizes
+<Badge size="sm">Small</Badge>
+<Badge size="md">Medium</Badge>
+<Badge size="lg">Large</Badge>
+
+// Example: Model pricing
+<Badge variant="outline" size="sm">
+  💵 $0.10/1M tokens
+</Badge>
+```
+
+### Card
+
+Versatile container component for grouping content.
+
+```tsx
+import { 
+  Card, 
+  CardHeader, 
+  CardTitle, 
+  CardDescription, 
+  CardContent, 
+  CardFooter 
+} from '@/components/ui'
+
+// Basic card
+<Card>
+  <CardHeader>
+    <CardTitle>Card Title</CardTitle>
+    <CardDescription>Card description text</CardDescription>
+  </CardHeader>
+  <CardContent>
+    Main content here
+  </CardContent>
+  <CardFooter>
+    Footer content
+  </CardFooter>
+</Card>
+
+// Interactive card with selection
+<Card 
+  variant="interactive" 
+  onClick={handleClick}
+>
+  Clickable card
+</Card>
+
+<Card variant="selected">
+  Selected state
+</Card>
+```
+
+### Radio
+
+Radio button group for single selection.
+
+```tsx
+import { RadioGroup, RadioItem } from '@/components/ui'
+
+<RadioGroup 
+  value={selected} 
+  onValueChange={setSelected}
+>
+  <RadioItem 
+    value="option1" 
+    label="Option 1" 
+    description="Description for option 1" 
+  />
+  <RadioItem 
+    value="option2" 
+    label="Option 2" 
+    description="Description for option 2" 
+  />
+</RadioGroup>
+
+// Horizontal orientation
+<RadioGroup 
+  value={selected} 
+  onValueChange={setSelected}
+  orientation="horizontal"
+>
+  <RadioItem value="yes" label="Yes" />
+  <RadioItem value="no" label="No" />
+</RadioGroup>
+```
+
 ## Molecules
 
 ### FormField

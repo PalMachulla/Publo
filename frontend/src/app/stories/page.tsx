@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { getStories, createStory, deleteStory } from '@/lib/stories'
 import { Story } from '@/types/nodes'
 import { createClient } from '@/lib/supabase/client'
+import AppHeader from '@/components/layout/AppHeader'
 
 export default function StoriesPage() {
   const { user, loading, signOut } = useAuth()
@@ -13,13 +14,8 @@ export default function StoriesPage() {
   const [stories, setStories] = useState<Story[]>([])
   const [loadingStories, setLoadingStories] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
-  const [userAvatar, setUserAvatar] = useState<string | null>(null)
   const [checkingAccess, setCheckingAccess] = useState(true)
   const [hasAccess, setHasAccess] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const profileMenuRef = useRef<HTMLDivElement>(null)
   
   // TEMPORARY: Force admin for your email while debugging
   const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
@@ -79,26 +75,8 @@ export default function StoriesPage() {
   useEffect(() => {
     if (!loading && user && hasAccess) {
       loadStories()
-      // Get user avatar from metadata (social login)
-      const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture
-      setUserAvatar(avatar)
     }
   }, [user, loading, hasAccess])
-
-  // Close menus when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as HTMLElement)) {
-        setIsMenuOpen(false)
-      }
-      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as HTMLElement)) {
-        setIsProfileMenuOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
 
   const loadStories = async () => {
     try {
@@ -175,124 +153,7 @@ export default function StoriesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="border-b border-gray-200 bg-white shadow-sm">
-        <div className="px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/publo_logo.svg" alt="PUBLO" className="h-6" />
-          </div>
-          <div className="flex items-center gap-4">
-            {/* Burger Menu */}
-            <div className="relative" ref={menuRef}>
-              <button
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="p-2 hover:bg-gray-100 rounded-md transition-colors"
-                title="Menu"
-              >
-                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-
-              {/* Burger Dropdown Menu */}
-              {isMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                  {/* My Characters */}
-                  <button
-                    onClick={() => {
-                      router.push('/characters')
-                      setIsMenuOpen(false)
-                    }}
-                    className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3"
-                  >
-                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                    My Characters
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Profile Picture Dropdown */}
-            <div className="relative" ref={profileMenuRef}>
-              <button
-                onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold hover:shadow-lg transition-shadow overflow-hidden"
-                title="Profile"
-              >
-                {userAvatar ? (
-                  <img src={userAvatar} alt="Profile" className="w-full h-full object-cover" />
-                ) : (
-                  user?.email?.[0].toUpperCase() || 'U'
-                )}
-              </button>
-
-              {/* Profile Dropdown Menu */}
-              {isProfileMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                  {/* Profile */}
-                  <button
-                    onClick={() => {
-                      alert('Profile page coming soon!')
-                      setIsProfileMenuOpen(false)
-                    }}
-                    className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3"
-                  >
-                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    Profile
-                  </button>
-
-                  {/* BYOAPI Settings */}
-                  <button
-                    onClick={() => {
-                      router.push('/settings/api-keys')
-                      setIsProfileMenuOpen(false)
-                    }}
-                    className="w-full px-4 py-3 text-left text-sm text-yellow-600 hover:bg-yellow-50 transition-colors flex items-center gap-3"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                    </svg>
-                    BYOAPI
-                  </button>
-
-                  {/* Admin Panel - Only show for admins */}
-                  {isForceAdmin && (
-                    <button
-                      onClick={() => {
-                        router.push('/admin')
-                        setIsProfileMenuOpen(false)
-                      }}
-                      className="w-full px-4 py-3 text-left text-sm text-purple-600 hover:bg-purple-50 transition-colors flex items-center gap-3"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
-                      Admin Panel
-                    </button>
-                  )}
-
-                  <div className="border-t border-gray-200 my-2"></div>
-
-                  {/* Logout */}
-                  <button
-                    onClick={handleLogout}
-                    className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-3"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    Log Out
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppHeader title="My Canvases" />
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-12 pb-24">

@@ -14,7 +14,7 @@ import {
   ProviderError,
 } from './types'
 import { NormalizedModel } from '@/types/api-keys'
-import { GroqModelWithPricing, enrichModelWithPricing, isChatModel } from '../groq/types'
+import { GroqModelWithPricing, enrichModelWithPricing, isChatModel, GROQ_MODEL_PRICING } from '../groq/types'
 
 const GROQ_API_BASE = 'https://api.groq.com/openai/v1'
 
@@ -163,18 +163,16 @@ export class GroqAdapter implements LLMProviderAdapter {
    * Get pricing for a specific Groq model
    */
   async getModelPricing(modelId: string): Promise<ModelPricing | null> {
-    // Use static pricing data from enrichModelWithPricing
-    // In a real implementation, this could fetch from an API or database
-    const models = await this.fetchModels(process.env.GROQ_PUBLO_KEY || '')
-    const model = models.find(m => m.id === modelId)
+    // Use static pricing data directly (no API call needed)
+    const pricingData = GROQ_MODEL_PRICING[modelId]
 
-    if (!model || !model.input_price_per_1m || !model.output_price_per_1m) {
+    if (!pricingData || !pricingData.price_per_1m_input || !pricingData.price_per_1m_output) {
       return null
     }
 
     return {
-      input_price_per_1m: model.input_price_per_1m,
-      output_price_per_1m: model.output_price_per_1m,
+      input_price_per_1m: pricingData.price_per_1m_input,
+      output_price_per_1m: pricingData.price_per_1m_output,
     }
   }
 
@@ -213,6 +211,7 @@ export class GroqAdapter implements LLMProviderAdapter {
       speed_tokens_per_sec: model.speed_tokens_per_sec || null,
       category: model.category || 'production',
       supports_system_prompt: true, // Groq supports system prompts
+      supports_chat: true, // All Groq models we fetch support chat completions
       description: model.description,
     }
   }

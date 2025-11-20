@@ -249,6 +249,7 @@ export class OpenAIAdapter implements LLMProviderAdapter {
       speed_tokens_per_sec: null, // OpenAI doesn't publish speed metrics
       category,
       supports_system_prompt: true,
+      supports_chat: true, // All OpenAI chat models support chat completions
       description: this.getModelDescription(model.id),
     }
   }

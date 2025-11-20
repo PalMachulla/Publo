@@ -23,6 +23,7 @@ export interface UserAPIKey {
   validation_status: KeyValidationStatus
   models_cache: NormalizedModel[] | null
   models_cached_at: string | null
+  model_preferences?: Record<string, boolean> | null  // model_id -> enabled (requires migration)
   usage_count: number
   last_used_at: string | null
   created_at: string
@@ -75,7 +76,9 @@ export interface NormalizedModel {
   speed_tokens_per_sec: number | null
   category: 'production' | 'preview' | 'deprecated'
   supports_system_prompt: boolean
+  supports_chat: boolean  // true = v1/chat/completions, false = v1/completions only
   description?: string
+  user_enabled?: boolean  // User preference for showing this model
 }
 
 /**

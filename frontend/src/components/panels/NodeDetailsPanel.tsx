@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Node, Edge } from 'reactflow'
 import { AnyNodeData, Comment, StoryStructureItem, StoryStructureNodeData, TestNodeData, AIPromptNodeData, StoryFormat } from '@/types/nodes'
 import { useAuth } from '@/contexts/AuthContext'
@@ -31,365 +31,21 @@ function lightenColor(hex: string, depth: number): string {
   return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`
 }
 
-// Define realistic structure templates with proportional word counts
-// These templates are used when clicking "Generate Structure" button in the NodeDetailsPanel
-// IMPORTANT: These must match the templates in StoryStructurePanel.tsx
-const structureTemplates: Record<string, any> = {
-  'screenplay': {
-    // Classic 3-act structure: 25% / 50% / 25% with Beats
-    level1: [
-      { name: 'Act 1', wordCount: 3750, children: [
-        { name: 'Sequence 1', wordCount: 1500, children: [
-          { name: 'Scene 1', wordCount: 600, children: [
-            { name: 'Beat 1', wordCount: 300 },
-            { name: 'Beat 2', wordCount: 300 }
-          ]},
-          { name: 'Scene 2', wordCount: 500, children: [
-            { name: 'Beat 1', wordCount: 250 },
-            { name: 'Beat 2', wordCount: 250 }
-          ]},
-          { name: 'Scene 3', wordCount: 400, children: [
-            { name: 'Beat 1', wordCount: 200 },
-            { name: 'Beat 2', wordCount: 200 }
-          ]}
-        ]},
-        { name: 'Sequence 2', wordCount: 1250, children: [
-          { name: 'Scene 1', wordCount: 500, children: [
-            { name: 'Beat 1', wordCount: 250 },
-            { name: 'Beat 2', wordCount: 250 }
-          ]},
-          { name: 'Scene 2', wordCount: 750, children: [
-            { name: 'Beat 1', wordCount: 400 },
-            { name: 'Beat 2', wordCount: 350 }
-          ]}
-        ]},
-        { name: 'Sequence 3', wordCount: 1000, children: [
-          { name: 'Scene 1', wordCount: 1000, children: [
-            { name: 'Beat 1', wordCount: 500 },
-            { name: 'Beat 2', wordCount: 500 }
-          ]}
-        ]}
-      ]},
-      { name: 'Act 2', wordCount: 7500, children: [
-        { name: 'Sequence 1', wordCount: 2250, children: [
-          { name: 'Scene 1', wordCount: 750, children: [
-            { name: 'Beat 1', wordCount: 400 },
-            { name: 'Beat 2', wordCount: 350 }
-          ]},
-          { name: 'Scene 2', wordCount: 1000, children: [
-            { name: 'Beat 1', wordCount: 500 },
-            { name: 'Beat 2', wordCount: 500 }
-          ]},
-          { name: 'Scene 3', wordCount: 500, children: [
-            { name: 'Beat 1', wordCount: 250 },
-            { name: 'Beat 2', wordCount: 250 }
-          ]}
-        ]},
-        { name: 'Sequence 2', wordCount: 3000, children: [
-          { name: 'Scene 1', wordCount: 1200, children: [
-            { name: 'Beat 1', wordCount: 600 },
-            { name: 'Beat 2', wordCount: 600 }
-          ]},
-          { name: 'Scene 2', wordCount: 1800, children: [
-            { name: 'Beat 1', wordCount: 900 },
-            { name: 'Beat 2', wordCount: 900 }
-          ]}
-        ]},
-        { name: 'Sequence 3', wordCount: 2250, children: [
-          { name: 'Scene 1', wordCount: 900, children: [
-            { name: 'Beat 1', wordCount: 450 },
-            { name: 'Beat 2', wordCount: 450 }
-          ]},
-          { name: 'Scene 2', wordCount: 1350, children: [
-            { name: 'Beat 1', wordCount: 700 },
-            { name: 'Beat 2', wordCount: 650 }
-          ]}
-        ]}
-      ]},
-      { name: 'Act 3', wordCount: 3750, children: [
-        { name: 'Sequence 1', wordCount: 2250, children: [
-          { name: 'Scene 1', wordCount: 1350, children: [
-            { name: 'Beat 1', wordCount: 700 },
-            { name: 'Beat 2', wordCount: 650 }
-          ]},
-          { name: 'Scene 2', wordCount: 900, children: [
-            { name: 'Beat 1', wordCount: 450 },
-            { name: 'Beat 2', wordCount: 450 }
-          ]}
-        ]},
-        { name: 'Sequence 2', wordCount: 1500, children: [
-          { name: 'Scene 1', wordCount: 1500, children: [
-            { name: 'Beat 1', wordCount: 750 },
-            { name: 'Beat 2', wordCount: 750 }
-          ]}
-        ]}
-      ]}
-    ]
-  },
-  'novel': {
-    // 3 Parts with varied chapter lengths
-    level1: [
-      { name: 'Part 1', wordCount: 25000, children: [
-        { name: 'Chapter 1', wordCount: 6000, children: [
-          { name: 'Scene 1', wordCount: 2500 },
-          { name: 'Scene 2', wordCount: 2000 },
-          { name: 'Scene 3', wordCount: 1500 }
-        ]},
-        { name: 'Chapter 2', wordCount: 5500, children: [
-          { name: 'Scene 1', wordCount: 2500 },
-          { name: 'Scene 2', wordCount: 3000 }
-        ]},
-        { name: 'Chapter 3', wordCount: 6500, children: [
-          { name: 'Scene 1', wordCount: 3500 },
-          { name: 'Scene 2', wordCount: 3000 }
-        ]},
-        { name: 'Chapter 4', wordCount: 7000, children: [
-          { name: 'Scene 1', wordCount: 3500 },
-          { name: 'Scene 2', wordCount: 3500 }
-        ]}
-      ]},
-      { name: 'Part 2', wordCount: 35000, children: [
-        { name: 'Chapter 5', wordCount: 7000, children: [
-          { name: 'Scene 1', wordCount: 3500 },
-          { name: 'Scene 2', wordCount: 3500 }
-        ]},
-        { name: 'Chapter 6', wordCount: 8000, children: [
-          { name: 'Scene 1', wordCount: 4000 },
-          { name: 'Scene 2', wordCount: 4000 }
-        ]},
-        { name: 'Chapter 7', wordCount: 10000, children: [
-          { name: 'Scene 1', wordCount: 5000 },
-          { name: 'Scene 2', wordCount: 5000 }
-        ]},
-        { name: 'Chapter 8', wordCount: 10000, children: [
-          { name: 'Scene 1', wordCount: 5000 },
-          { name: 'Scene 2', wordCount: 5000 }
-        ]}
-      ]},
-      { name: 'Part 3', wordCount: 20000, children: [
-        { name: 'Chapter 9', wordCount: 8000, children: [
-          { name: 'Scene 1', wordCount: 4000 },
-          { name: 'Scene 2', wordCount: 4000 }
-        ]},
-        { name: 'Chapter 10', wordCount: 12000, children: [
-          { name: 'Scene 1', wordCount: 6000 },
-          { name: 'Scene 2', wordCount: 6000 }
-        ]}
-      ]}
-    ]
-  },
-  'short-story': {
-    // 3 Acts with scenes
-    level1: [
-      { name: 'Act 1', wordCount: 1000, children: [
-        { name: 'Scene 1', wordCount: 400 },
-        { name: 'Scene 2', wordCount: 600 }
-      ]},
-      { name: 'Act 2', wordCount: 2500, children: [
-        { name: 'Scene 1', wordCount: 800 },
-        { name: 'Scene 2', wordCount: 1200 },
-        { name: 'Scene 3', wordCount: 500 }
-      ]},
-      { name: 'Act 3', wordCount: 1500, children: [
-        { name: 'Scene 1', wordCount: 1000 },
-        { name: 'Scene 2', wordCount: 500 }
-      ]}
-    ]
-  },
-  'podcast': {
-    // 1 Season with 3 episodes, segments, and topics
-    level1: [
-      { name: 'Season 1', wordCount: 15000, children: [
-        { name: 'Episode 1', wordCount: 4500, children: [
-          { name: 'Segment 1', wordCount: 2000, children: [
-            { name: 'Topic 1', wordCount: 800 },
-            { name: 'Topic 2', wordCount: 1200 }
-          ]},
-          { name: 'Segment 2', wordCount: 2500, children: [
-            { name: 'Topic 1', wordCount: 1000 },
-            { name: 'Topic 2', wordCount: 1500 }
-          ]}
-        ]},
-        { name: 'Episode 2', wordCount: 5500, children: [
-          { name: 'Segment 1', wordCount: 3000, children: [
-            { name: 'Topic 1', wordCount: 1200 },
-            { name: 'Topic 2', wordCount: 1800 }
-          ]},
-          { name: 'Segment 2', wordCount: 2500, children: [
-            { name: 'Topic 1', wordCount: 1000 },
-            { name: 'Topic 2', wordCount: 1500 }
-          ]}
-        ]},
-        { name: 'Episode 3', wordCount: 5000, children: [
-          { name: 'Segment 1', wordCount: 2500, children: [
-            { name: 'Topic 1', wordCount: 1000 },
-            { name: 'Topic 2', wordCount: 1500 }
-          ]},
-          { name: 'Segment 2', wordCount: 2500, children: [
-            { name: 'Topic 1', wordCount: 1250 },
-            { name: 'Topic 2', wordCount: 1250 }
-          ]}
-        ]}
-      ]}
-    ]
-  },
-  'article': {
-    // 4 Sections with subsections
-    level1: [
-      { name: 'Section 1', wordCount: 1500, children: [
-        { name: 'Subsection 1', wordCount: 600 },
-        { name: 'Subsection 2', wordCount: 900 }
-      ]},
-      { name: 'Section 2', wordCount: 2500, children: [
-        { name: 'Subsection 1', wordCount: 1000 },
-        { name: 'Subsection 2', wordCount: 800 },
-        { name: 'Subsection 3', wordCount: 700 }
-      ]},
-      { name: 'Section 3', wordCount: 2000, children: [
-        { name: 'Subsection 1', wordCount: 1200 },
-        { name: 'Subsection 2', wordCount: 800 }
-      ]},
-      { name: 'Section 4', wordCount: 1000, children: [
-        { name: 'Subsection 1', wordCount: 1000 }
-      ]}
-    ]
-  },
-  'essay': {
-    // 3 Sections with paragraphs
-    level1: [
-      { name: 'Section 1', wordCount: 1200, children: [
-        { name: 'Paragraph 1', wordCount: 400 },
-        { name: 'Paragraph 2', wordCount: 500 },
-        { name: 'Paragraph 3', wordCount: 300 }
-      ]},
-      { name: 'Section 2', wordCount: 2000, children: [
-        { name: 'Paragraph 1', wordCount: 700 },
-        { name: 'Paragraph 2', wordCount: 800 },
-        { name: 'Paragraph 3', wordCount: 500 }
-      ]},
-      { name: 'Section 3', wordCount: 1800, children: [
-        { name: 'Paragraph 1', wordCount: 600 },
-        { name: 'Paragraph 2', wordCount: 700 },
-        { name: 'Paragraph 3', wordCount: 500 }
-      ]}
-    ]
-  },
-  'report': {
-    // 5 Chapters with sections, subsections, and sub-subsections
-    level1: [
-      { name: 'Chapter 1', wordCount: 3000, children: [
-        { name: 'Section 1', wordCount: 1000, children: [
-          { name: 'Subsection 1', wordCount: 600, children: [
-            { name: 'Sub-subsection 1', wordCount: 300 },
-            { name: 'Sub-subsection 2', wordCount: 300 }
-          ]},
-          { name: 'Subsection 2', wordCount: 400, children: [
-            { name: 'Sub-subsection 1', wordCount: 200 },
-            { name: 'Sub-subsection 2', wordCount: 200 }
-          ]}
-        ]},
-        { name: 'Section 2', wordCount: 2000, children: [
-          { name: 'Subsection 1', wordCount: 1200, children: [
-            { name: 'Sub-subsection 1', wordCount: 600 },
-            { name: 'Sub-subsection 2', wordCount: 600 }
-          ]},
-          { name: 'Subsection 2', wordCount: 800, children: [
-            { name: 'Sub-subsection 1', wordCount: 400 },
-            { name: 'Sub-subsection 2', wordCount: 400 }
-          ]}
-        ]}
-      ]},
-      { name: 'Chapter 2', wordCount: 4500, children: [
-        { name: 'Section 1', wordCount: 2250, children: [
-          { name: 'Subsection 1', wordCount: 1350, children: [
-            { name: 'Sub-subsection 1', wordCount: 700 },
-            { name: 'Sub-subsection 2', wordCount: 650 }
-          ]},
-          { name: 'Subsection 2', wordCount: 900, children: [
-            { name: 'Sub-subsection 1', wordCount: 450 },
-            { name: 'Sub-subsection 2', wordCount: 450 }
-          ]}
-        ]},
-        { name: 'Section 2', wordCount: 2250, children: [
-          { name: 'Subsection 1', wordCount: 1350, children: [
-            { name: 'Sub-subsection 1', wordCount: 700 },
-            { name: 'Sub-subsection 2', wordCount: 650 }
-          ]},
-          { name: 'Subsection 2', wordCount: 900, children: [
-            { name: 'Sub-subsection 1', wordCount: 450 },
-            { name: 'Sub-subsection 2', wordCount: 450 }
-          ]}
-        ]}
-      ]},
-      { name: 'Chapter 3', wordCount: 4000, children: [
-        { name: 'Section 1', wordCount: 2000, children: [
-          { name: 'Subsection 1', wordCount: 1200, children: [
-            { name: 'Sub-subsection 1', wordCount: 600 },
-            { name: 'Sub-subsection 2', wordCount: 600 }
-          ]},
-          { name: 'Subsection 2', wordCount: 800, children: [
-            { name: 'Sub-subsection 1', wordCount: 400 },
-            { name: 'Sub-subsection 2', wordCount: 400 }
-          ]}
-        ]},
-        { name: 'Section 2', wordCount: 2000, children: [
-          { name: 'Subsection 1', wordCount: 1200, children: [
-            { name: 'Sub-subsection 1', wordCount: 600 },
-            { name: 'Sub-subsection 2', wordCount: 600 }
-          ]},
-          { name: 'Subsection 2', wordCount: 800, children: [
-            { name: 'Sub-subsection 1', wordCount: 400 },
-            { name: 'Sub-subsection 2', wordCount: 400 }
-          ]}
-        ]}
-      ]},
-      { name: 'Chapter 4', wordCount: 3500, children: [
-        { name: 'Section 1', wordCount: 1750, children: [
-          { name: 'Subsection 1', wordCount: 1050, children: [
-            { name: 'Sub-subsection 1', wordCount: 550 },
-            { name: 'Sub-subsection 2', wordCount: 500 }
-          ]},
-          { name: 'Subsection 2', wordCount: 700, children: [
-            { name: 'Sub-subsection 1', wordCount: 350 },
-            { name: 'Sub-subsection 2', wordCount: 350 }
-          ]}
-        ]},
-        { name: 'Section 2', wordCount: 1750, children: [
-          { name: 'Subsection 1', wordCount: 1050, children: [
-            { name: 'Sub-subsection 1', wordCount: 550 },
-            { name: 'Sub-subsection 2', wordCount: 500 }
-          ]},
-          { name: 'Subsection 2', wordCount: 700, children: [
-            { name: 'Sub-subsection 1', wordCount: 350 },
-            { name: 'Sub-subsection 2', wordCount: 350 }
-          ]}
-        ]}
-      ]},
-      { name: 'Chapter 5', wordCount: 2500, children: [
-        { name: 'Section 1', wordCount: 1250, children: [
-          { name: 'Subsection 1', wordCount: 750, children: [
-            { name: 'Sub-subsection 1', wordCount: 400 },
-            { name: 'Sub-subsection 2', wordCount: 350 }
-          ]},
-          { name: 'Subsection 2', wordCount: 500, children: [
-            { name: 'Sub-subsection 1', wordCount: 250 },
-            { name: 'Sub-subsection 2', wordCount: 250 }
-          ]}
-        ]},
-        { name: 'Section 2', wordCount: 1250, children: [
-          { name: 'Subsection 1', wordCount: 750, children: [
-            { name: 'Sub-subsection 1', wordCount: 400 },
-            { name: 'Sub-subsection 2', wordCount: 350 }
-          ]},
-          { name: 'Subsection 2', wordCount: 500, children: [
-            { name: 'Sub-subsection 1', wordCount: 250 },
-            { name: 'Sub-subsection 2', wordCount: 250 }
-          ]}
-        ]}
-      ]}
-    ]
-  }
-}
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🗑️ REMOVED: structureTemplates (360+ lines)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+// Template-based structure generation has been REMOVED to enforce generator node workflow.
+//
+// Users MUST now connect one of these nodes to create a structure:
+//   • Test Node (for development/testing with predefined markdown)
+//   • AI Prompt Node (for real AI-powered generation via Groq API)
+//
+// See: /atomic-design-ui-system.plan.md for AI Prompt Node implementation details
+//
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// structureTemplates removed (was ~360 lines containing: screenplay, novel, short-story, podcast, article, essay, report)
 
 interface NodeDetailsPanelProps {
   node: Node<AnyNodeData> | null
@@ -418,6 +74,10 @@ export default function NodeDetailsPanel({
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
   const [commentText, setCommentText] = useState('')
+  
+  // Panel resize state
+  const [panelWidth, setPanelWidth] = useState(384) // 384px = w-96 default
+  const [isResizing, setIsResizing] = useState(false)
 
   // Detect test nodes connected to orchestrator (MUST be before any early returns)
   const connectedTestNode = useMemo(() => {
@@ -469,6 +129,29 @@ export default function NodeDetailsPanel({
     
     return null
   }, [edges, nodes, node])
+
+  // Handle resize drag (MUST be before any early returns)
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = window.innerWidth - e.clientX
+      // Min width 320px, max width 800px
+      setPanelWidth(Math.min(Math.max(newWidth, 320), 800))
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing])
 
   // Early returns AFTER all hooks
   if (!node) return null
@@ -523,21 +206,36 @@ export default function NodeDetailsPanel({
 
   return (
     <>
-      {/* Backdrop */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/10 z-40 transition-opacity duration-300"
-          onClick={onClose}
-        />
-      )}
-
-      {/* Sliding Panel with rounded edges and margin */}
+      {/* Full-height Panel with left border and resize handle */}
       <div
-        className={`fixed top-6 right-6 bottom-6 w-96 bg-white rounded-3xl shadow-lg border border-gray-200 transform transition-all duration-300 ease-in-out z-50 ${
-          isOpen ? 'translate-x-0 opacity-100' : 'translate-x-[420px] opacity-0'
+        className={`fixed top-16 right-0 bottom-0 bg-gray-50/95 border-l border-t border-gray-200 shadow-sm backdrop-blur-sm transform transition-all duration-300 ease-in-out z-50 ${
+          isOpen ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
         }`}
+        style={{ 
+          width: `${panelWidth}px`,
+          backgroundImage: 'radial-gradient(circle, #e5e7eb 1px, transparent 1px)',
+          backgroundSize: '20px 20px'
+        }}
       >
-        <div className="h-full flex flex-col rounded-3xl overflow-hidden">
+        {/* Resize Handle - Left Border */}
+        <div
+          className="absolute left-0 top-0 bottom-0 w-px bg-gray-200 hover:bg-yellow-400 cursor-ew-resize transition-colors z-10"
+          onMouseDown={(e) => {
+            e.preventDefault()
+            setIsResizing(true)
+          }}
+        >
+          {/* Handle Grip - Middle of border */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-16 flex items-center justify-center">
+            <div className="w-2.5 h-10 rounded-full bg-gray-300 hover:bg-yellow-400 flex items-center justify-center shadow-md transition-colors group">
+              <svg className="w-2.5 h-2.5 text-gray-600 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+              </svg>
+            </div>
+          </div>
+        </div>
+        
+        <div className="h-full flex flex-col overflow-hidden">
           {/* Header for generic panel */}
           {nodeType !== 'story' && nodeType !== 'character' && nodeType !== 'research' && nodeType !== 'cluster' && nodeType !== 'create-story' && nodeType !== 'story-structure' && (
             <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white">
@@ -1140,71 +838,34 @@ CRITICAL: You are REFORMATTING existing content from ${existingFormat} to ${sele
                             return
                           } catch (error) {
                             console.error('❌ Failed to parse test node markdown:', error)
-                            alert('Failed to parse test node markdown. Using default template instead.')
-                            // Fall through to template generation
+                            alert(
+                              '❌ Failed to parse markdown from Test Node.\n\n' +
+                              'Please check that your Test Node contains valid markdown with:\n' +
+                              '• Proper YAML frontmatter\n' +
+                              '• Correctly formatted structure sections\n\n' +
+                              'See console for detailed error information.'
+                            )
+                            return
                           }
                         }
 
-                        // Default template-based generation
-                        const format = nodeData.format || 'screenplay'
-                        const template = structureTemplates[format] || structureTemplates['screenplay']
+                        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                        // 🚫 NO GENERATOR NODE CONNECTED - SHOW ERROR
+                        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                         
-                        const newItems: StoryStructureItem[] = []
-                        let itemCounter = 0
-                        
-                        // Recursive function to generate items from template
-                        const generateFromTemplate = (templateItems: any[], parentId?: string, level: number = 1, parentColor?: string) => {
-                          for (let i = 0; i < templateItems.length; i++) {
-                            const templateItem = templateItems[i]
-                            const itemId = `item-${Date.now()}-${itemCounter++}`
-                            
-                            // Assign colors only at level 1, cascade for children
-                            let itemColor = parentColor
-                            if (level === 1) {
-                              const colorIndex = i % PASTEL_COLORS.length
-                              itemColor = PASTEL_COLORS[colorIndex].hex
-                            } else if (parentColor) {
-                              itemColor = lightenColor(parentColor, level - 1)
-                            }
-                            
-                            const item: StoryStructureItem = {
-                              id: itemId,
-                              level,
-                              parentId,
-                              name: templateItem.name,
-                              title: '',
-                              description: '',
-                              order: i,
-                              completed: false,
-                              content: '',
-                              expanded: level < 4, // Expand first 3 levels to show 4 levels
-                              wordCount: templateItem.wordCount,
-                              backgroundColor: itemColor
-                            }
-                            
-                            newItems.push(item)
-                            
-                            if (templateItem.children && templateItem.children.length > 0) {
-                              generateFromTemplate(templateItem.children, itemId, level + 1, itemColor)
-                            }
-                          }
-                        }
-                        
-                        generateFromTemplate(template.level1)
-                        
-                        console.log('📝 Generated structure (NodeDetailsPanel):', {
-                          format,
-                          totalItems: newItems.length,
-                          maxLevel: Math.max(...newItems.map(i => i.level)),
-                          level1Items: newItems.filter(i => i.level === 1).map(i => ({ name: i.name, wordCount: i.wordCount })),
-                          level2Items: newItems.filter(i => i.level === 2).map(i => ({ name: i.name, wordCount: i.wordCount, parentId: i.parentId })),
-                          level3Items: newItems.filter(i => i.level === 3).map(i => ({ name: i.name, wordCount: i.wordCount, parentId: i.parentId })),
-                          level4Items: newItems.filter(i => i.level === 4).map(i => ({ name: i.name, wordCount: i.wordCount, parentId: i.parentId })),
-                          allItems: newItems
-                        })
-                        
-                        // Update STRUCTURE NODE (not orchestrator)
-                        onUpdate(structureNode.id, { items: newItems })
+                        console.warn('⚠️ No generator node (Test or AI Prompt) connected to orchestrator')
+                        alert(
+                          '⚠️ No Generator Node Connected\n\n' +
+                          'To create a structure, you must connect one of these nodes:\n\n' +
+                          '1️⃣ Test Node (for development/testing)\n' +
+                          '   • Contains predefined markdown\n' +
+                          '   • Connect from bottom of Test Node to Orchestrator\n\n' +
+                          '2️⃣ AI Prompt Node (for AI generation)\n' +
+                          '   • Generates structure via Groq API\n' +
+                          '   • Connect from bottom of AI Prompt Node to Orchestrator\n\n' +
+                          'Add a generator node from the canvas menu (+) and connect it to the Orchestrator.'
+                        )
+                        return
                       }}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-400 text-black rounded-lg font-medium text-sm hover:bg-yellow-500 transition-colors"
                     >

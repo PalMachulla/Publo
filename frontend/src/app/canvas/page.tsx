@@ -965,6 +965,14 @@ export default function CanvasPage() {
         return currentNodes
       })
       
+      console.log('[Canvas] Calling /api/generate with:', {
+        model: selectedModel,
+        user_key_id: selectedKeyId,
+        format,
+        hasSystemPrompt: !!systemPrompt,
+        hasUserPrompt: !!effectiveUserPrompt
+      })
+      
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1558,7 +1566,7 @@ export default function CanvasPage() {
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-white z-10 shadow-sm relative">
+      <header className="border-b border-gray-200 bg-white z-[60] shadow-sm relative">
         <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-2">
             <img src="/publo_logo.svg" alt="PUBLO" className="h-6" />
@@ -1640,7 +1648,7 @@ export default function CanvasPage() {
 
               {/* Sharing Dropdown Menu */}
               {sharingDropdownOpen && (
-                <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
+                <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-[100]">
                   <div className="px-4 py-2 border-b border-gray-100">
                     <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Canvas Visibility</h3>
                   </div>
@@ -1769,7 +1777,7 @@ export default function CanvasPage() {
 
               {/* Dropdown Menu */}
               {isMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-[100]">
                 {/* New Canvas */}
                 <button
                   onClick={handleNewCanvas}
@@ -1858,8 +1866,7 @@ export default function CanvasPage() {
                   {/* Profile */}
                   <button
                     onClick={() => {
-                      // TODO: Navigate to profile page when implemented
-                      alert('Profile page coming soon!')
+                      router.push('/profile')
                       setIsProfileMenuOpen(false)
                     }}
                     className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3"

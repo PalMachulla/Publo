@@ -45,7 +45,7 @@ export async function GET(request: Request) {
     // 1. Fetch user's active API keys
     const { data: userKeys, error: keysError } = await supabase
       .from('user_api_keys')
-      .select('id, provider, nickname, encrypted_key, models_cache, models_cached_at, is_active')
+      .select('id, provider, nickname, encrypted_key, models_cache, models_cached_at, model_preferences, is_active')
       .eq('user_id', user.id)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
@@ -70,12 +70,23 @@ export async function GET(request: Request) {
           
           let models: NormalizedModel[]
           
-          if (key.models_cache && isCacheFresh) {
+          // Check if cache has required fields (supports_chat was added later)
+          const cacheHasRequiredFields = key.models_cache && 
+            Array.isArray(key.models_cache) && 
+            key.models_cache.length > 0 &&
+            'supports_chat' in key.models_cache[0]
+          
+          if (key.models_cache && isCacheFresh && cacheHasRequiredFields) {
             // Use cached models
             models = key.models_cache as NormalizedModel[]
-            console.log(`Using cached models for ${key.provider} key ${key.id}`)
+            console.log(`✅ Using cached models for ${key.provider} key ${key.id}`)
           } else {
-            // Fetch fresh models
+            // Fetch fresh models (cache miss, stale, or missing required fields)
+            const reason = !key.models_cache ? 'no cache' : 
+                          !isCacheFresh ? 'stale cache' : 
+                          'missing supports_chat field'
+            console.log(`🔄 Fetching fresh ${key.provider} models (${reason})`)
+            
             const decryptedKey = decryptAPIKey(key.encrypted_key)
             models = await adapter.fetchModels(decryptedKey)
             
@@ -96,15 +107,47 @@ export async function GET(request: Request) {
               })
           }
 
+          // Filter models based on user preferences and chat compatibility
+          const prefs = key.model_preferences as Record<string, boolean> | null
+          console.log(`[API /models] Key ${key.id} (${key.provider}) preferences:`, prefs)
+          console.log(`[API /models] Total models for ${key.provider}:`, models.length)
+          
+          const filteredModels = models.filter(model => {
+            // Only show chat-compatible models
+            if (model.supports_chat === false) {
+              return false
+            }
+            
+            // NEW BEHAVIOR: Models are DISABLED by default
+            // Must be explicitly enabled (true) to show
+            // undefined = hide (not enabled yet)
+            // true = show (explicitly enabled)
+            // false = hide (explicitly disabled)
+            const prefValue = prefs?.[model.id]
+            const isEnabled = prefValue === true
+            
+            if (key.provider === 'openai') {
+              console.log(`[API /models] ${isEnabled ? '✅' : '❌'} ${model.name} (${model.id}): pref=${prefValue}`)
+            }
+            
+            return isEnabled
+          })
+
+          console.log(`[API /models] ${key.provider}: ${models.length} total → ${filteredModels.length} enabled`)
+          
+          if (key.provider === 'openai') {
+            console.log('[API /models] OpenAI enabled models:', filteredModels.map(m => m.name))
+          }
+
           grouped.push({
             provider: key.provider as LLMProvider,
             source: 'user',
             key_id: key.id,
             key_nickname: key.nickname || undefined,
-            models,
+            models: filteredModels,
           })
 
-          allModels.push(...models)
+          allModels.push(...filteredModels)
         } catch (error) {
           console.error(`Failed to fetch models for ${key.provider} key ${key.id}:`, error)
           // Continue with other keys
@@ -112,27 +155,8 @@ export async function GET(request: Request) {
       }
     }
 
-    // 3. Add Publo's default Groq models (always available as fallback)
-    if (process.env.GROQ_PUBLO_KEY) {
-      try {
-        const groqAdapter = getProviderAdapter('groq')
-        const publoGroqModels = await groqAdapter.fetchModels(process.env.GROQ_PUBLO_KEY)
-        
-        // Only add Publo models if user doesn't have their own Groq key
-        const hasUserGroqKey = userKeys?.some(k => k.provider === 'groq')
-        
-        if (!hasUserGroqKey) {
-          grouped.push({
-            provider: 'groq',
-            source: 'publo',
-            models: publoGroqModels,
-          })
-          allModels.push(...publoGroqModels)
-        }
-      } catch (error) {
-        console.error('Failed to fetch Publo Groq models:', error)
-      }
-    }
+    // 3. NO PUBLO KEYS - User must bring their own API keys
+    // This ensures we never use .env keys for generation
 
     // 4. Sort grouped by provider order
     const providerOrder: Record<LLMProvider, number> = {
