@@ -36,7 +36,11 @@ function repairYAMLIndentation(markdown: string): string {
     
     // Track frontmatter boundaries
     if (trimmed === '---') {
-      fixed.push(line)
+      fixed.push('---')  // Ensure it's exactly '---' without extra spaces
+      if (line !== '---') {
+        issuesFixed++
+        console.log(`  ✓ Fixed delimiter at line ${i + 1}`)
+      }
       if (!inFrontmatter) {
         inFrontmatter = true
       } else {
@@ -140,15 +144,33 @@ export function parseMarkdownStructure(markdown: string): ParsedMarkdownStructur
   console.log('📄 Parsing markdown structure...')
   console.log('📄 Original markdown length:', markdown.length)
   
+  // Log the very first 500 characters to check for frontmatter start
+  console.log('📄 Markdown starts with (first 500 chars):\n', markdown.substring(0, 500))
+  
+  // Check if it starts with ---
+  const startsWithDelimiter = markdown.trimStart().startsWith('---')
+  console.log('📄 Starts with --- delimiter?', startsWithDelimiter)
+  
+  // Count how many --- delimiters exist
+  const delimiterCount = (markdown.match(/^---$/gm) || []).length
+  console.log('📄 Number of --- delimiters found:', delimiterCount)
+  
   // Log first 50 lines of YAML frontmatter for debugging
   const yamlSection = markdown.split('---')[1]
   if (yamlSection) {
     const yamlLines = yamlSection.split('\n').slice(0, 50)
     console.log('📄 YAML frontmatter (first 50 lines):', yamlLines.join('\n'))
+  } else {
+    console.error('❌ No YAML section found between --- delimiters')
   }
   
+  // Ensure markdown starts cleanly (trim leading whitespace)
+  const cleanedMarkdown = markdown.trim()
+  
   // Try to fix common YAML indentation issues before parsing
-  const fixedMarkdown = repairYAMLIndentation(markdown)
+  const fixedMarkdown = repairYAMLIndentation(cleanedMarkdown)
+  
+  console.log('📄 After repair - first 300 chars:\n', fixedMarkdown.substring(0, 300))
   
   // Parse frontmatter
   let data, content
@@ -156,6 +178,13 @@ export function parseMarkdownStructure(markdown: string): ParsedMarkdownStructur
     const parsed = matter(fixedMarkdown)
     data = parsed.data
     content = parsed.content
+    
+    console.log('📄 gray-matter parsed successfully:', {
+      dataKeys: Object.keys(data),
+      dataKeysCount: Object.keys(data).length,
+      hasContent: !!content,
+      contentLength: content?.length
+    })
   } catch (yamlError: any) {
     console.error('❌ YAML parsing failed even after repair:', yamlError)
     console.error('❌ Failed YAML section:', fixedMarkdown.split('---')[1]?.substring(0, 500))
