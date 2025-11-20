@@ -5,8 +5,23 @@
 
 import { StoryFormat } from '@/types/nodes'
 
+// Common YAML formatting instructions for all prompts
+const YAML_FORMATTING_RULES = `
+CRITICAL YAML FORMATTING RULES:
+- Use EXACTLY 2 spaces for each indentation level (not tabs, not 4 spaces)
+- List items (-) must be indented 2 spaces from 'structure:'
+- Properties under list items must be indented 4 spaces total (2 for list + 2 for properties)
+- Example of correct indentation:
+  structure:
+    - id: example
+      level: 1
+      name: "Example"
+`
+
 export const FORMAT_SYSTEM_PROMPTS: Record<StoryFormat, string> = {
-  'screenplay': `You are a screenplay structure generator. Return markdown in this EXACT format:
+  'screenplay': `You are a screenplay structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: screenplay
@@ -67,7 +82,9 @@ CRITICAL RULES:
 - Use proper screenplay formatting in content
 - Focus on structure quality over content length - concise is better`,
 
-  'novel': `You are a novel structure generator. Return markdown in this EXACT format:
+  'novel': `You are a novel structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: novel
@@ -118,7 +135,9 @@ CRITICAL RULES:
 - Write in prose, not dialogue format
 - THIS IS A STRUCTURE GENERATION - focus on comprehensive hierarchy, not full content`,
 
-  'short-story': `You are a short story structure generator. Return markdown in this EXACT format:
+  'short-story': `You are a short story structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: short-story
@@ -165,7 +184,9 @@ CRITICAL RULES:
 - Be concise and impactful
 - Focus on structure and key beats, not full narrative`,
 
-  'report': `You are a report structure generator. Return markdown in this EXACT format:
+  'report': `You are a report structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: report
@@ -215,7 +236,9 @@ CRITICAL RULES:
 - Always include summary for levels 1-2
 - Focus on complete structure hierarchy, not full section content`,
 
-  'article': `You are an article structure generator. Return markdown in this EXACT format:
+  'article': `You are an article structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: article
@@ -269,7 +292,9 @@ CRITICAL RULES:
 - Always include summary for levels 1-2
 - Focus on structure and key arguments, not full exposition`,
 
-  'essay': `You are an essay structure generator. Return markdown in this EXACT format:
+  'essay': `You are an essay structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: essay
@@ -326,7 +351,9 @@ CRITICAL RULES:
 - Always include summary for levels 1-2
 - Focus on argument structure and thesis development, not full elaboration`,
 
-  'podcast': `You are a podcast structure generator. Return markdown in this EXACT format:
+  'podcast': `You are a podcast structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: podcast

@@ -18,6 +18,65 @@ interface YAMLStructureItem {
 }
 
 /**
+ * Attempt to repair common YAML indentation issues
+ * AI models sometimes generate YAML with inconsistent spacing
+ */
+function repairYAMLIndentation(markdown: string): string {
+  const lines = markdown.split('\n')
+  const fixed: string[] = []
+  let inFrontmatter = false
+  let inStructure = false
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    
+    // Track frontmatter boundaries
+    if (line.trim() === '---') {
+      fixed.push(line)
+      if (!inFrontmatter) {
+        inFrontmatter = true
+      } else {
+        inFrontmatter = false
+        inStructure = false
+      }
+      continue
+    }
+    
+    if (!inFrontmatter) {
+      fixed.push(line)
+      continue
+    }
+    
+    // Detect structure array start
+    if (line.match(/^structure:/)) {
+      inStructure = true
+      fixed.push(line)
+      continue
+    }
+    
+    // Fix structure array items
+    if (inStructure && line.trim().startsWith('-')) {
+      // Ensure list items start with exactly 2 spaces
+      fixed.push('  ' + line.trim())
+      continue
+    }
+    
+    if (inStructure && line.trim().length > 0 && !line.trim().startsWith('-')) {
+      // Ensure properties have exactly 4 spaces
+      const trimmed = line.trim()
+      if (trimmed.includes(':')) {
+        fixed.push('    ' + trimmed)
+        continue
+      }
+    }
+    
+    fixed.push(line)
+  }
+  
+  return fixed.join('\n')
+}
+
+/**
  * Parse markdown with YAML frontmatter to extract structure and content
  * 
  * Expected format:
@@ -43,8 +102,19 @@ interface YAMLStructureItem {
  * Content here...
  */
 export function parseMarkdownStructure(markdown: string): ParsedMarkdownStructure {
+  // Try to fix common YAML indentation issues before parsing
+  const fixedMarkdown = repairYAMLIndentation(markdown)
+  
   // Parse frontmatter
-  const { data, content } = matter(markdown)
+  let data, content
+  try {
+    const parsed = matter(fixedMarkdown)
+    data = parsed.data
+    content = parsed.content
+  } catch (yamlError: any) {
+    console.error('❌ YAML parsing failed:', yamlError)
+    throw new Error(`YAML frontmatter is invalid: ${yamlError.message}\n\nPlease check the markdown format. The YAML must use exactly 2 spaces for indentation.`)
+  }
   
   const structure = data.structure as YAMLStructureItem[] | undefined
   
