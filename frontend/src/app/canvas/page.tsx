@@ -909,13 +909,16 @@ export default function CanvasPage() {
     if (!user) {
       alert('❌ You must be logged in to generate content.\n\nPlease log in at http://localhost:3002/auth and try again.')
       
-      // Remove loading state
+      // Remove loading state from both structure node and orchestrator
       setNodes((nds) =>
-        nds.map((n) =>
-          n.id === structureNodeId
-            ? { ...n, data: { ...n.data, isLoading: false } }
-            : n
-        )
+        nds.map((n) => {
+          if (n.id === structureNodeId) {
+            return { ...n, data: { ...n.data, isLoading: false } }
+          } else if (n.id === orchestratorNodeId) {
+            return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+          }
+          return n
+        })
       )
       return
     }
@@ -942,7 +945,7 @@ export default function CanvasPage() {
     const { parseMarkdownStructure } = await import('@/lib/markdownParser')
     
     try {
-      // Get orchestrator node data using setNodes callback to access latest state
+      // Get orchestrator node data and set inference loading state
       let selectedModel = 'llama-3.1-8b-instant'
       let selectedKeyId: string | null = null
       
@@ -963,7 +966,12 @@ export default function CanvasPage() {
           selectedKeyIdInData: (orchestratorNode?.data as any)?.selectedKeyId
         })
         
-        return currentNodes
+        // Update orchestrator node to show inference loading state
+        return currentNodes.map(n => 
+          n.id === orchestratorNodeId
+            ? { ...n, data: { ...n.data, isOrchestrating: true, loadingText: 'Inference' } }
+            : n
+        )
       })
       
       console.log('[Canvas] Calling /api/generate with:', {
@@ -1001,22 +1009,26 @@ export default function CanvasPage() {
           contentMapObject[key] = value
         })
         
-        // Update structure node
+        // Update structure node and clear orchestrator loading state
         setNodes((nds) =>
-          nds.map((n) =>
-            n.id === structureNodeId
-              ? {
-                  ...n,
-                  data: {
-                    ...n.data,
-                    items: parsedItems,
-                    contentMap: contentMapObject,
-                    format: format,
-                    isLoading: false
-                  }
+          nds.map((n) => {
+            if (n.id === structureNodeId) {
+              return {
+                ...n,
+                data: {
+                  ...n.data,
+                  items: parsedItems,
+                  contentMap: contentMapObject,
+                  format: format,
+                  isLoading: false
                 }
-              : n
-          )
+              }
+            } else if (n.id === orchestratorNodeId) {
+              // Clear inference loading state
+              return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+            }
+            return n
+          })
         )
         
         console.log('✅ Auto-generation complete:', {
@@ -1043,13 +1055,16 @@ export default function CanvasPage() {
       
       alert(`Failed to generate structure:\n\n${errorMessage}`)
       
-      // Remove loading state on error
+      // Remove loading state on error (both structure node and orchestrator)
       setNodes((nds) =>
-        nds.map((n) =>
-          n.id === structureNodeId
-            ? { ...n, data: { ...n.data, isLoading: false } }
-            : n
-        )
+        nds.map((n) => {
+          if (n.id === structureNodeId) {
+            return { ...n, data: { ...n.data, isLoading: false } }
+          } else if (n.id === orchestratorNodeId) {
+            return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+          }
+          return n
+        })
       )
     }
   }
