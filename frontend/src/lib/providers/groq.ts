@@ -91,8 +91,9 @@ export class GroqAdapter implements LLMProviderAdapter {
           { role: 'user', content: params.user_prompt },
         ],
         max_completion_tokens: params.max_tokens, // Groq uses OpenAI's new parameter name
-        temperature: params.temperature ?? 0.7,
-        top_p: params.top_p ?? 1,
+        // Only include temperature/top_p if explicitly provided (some models don't support them)
+        ...(params.temperature !== undefined && { temperature: params.temperature }),
+        ...(params.top_p !== undefined && { top_p: params.top_p }),
         stream: false,
         }),
       })
