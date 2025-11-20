@@ -10,6 +10,12 @@ const YAML_FORMATTING_RULES = `
 
 CRITICAL: Follow this EXACT YAML format. Any deviation will cause parsing errors.
 
+OUTPUT RULES:
+- Start IMMEDIATELY with "---" (no preamble, no explanations, no thinking tags)
+- Do NOT wrap output in <think>, <thinking>, or any XML tags
+- Do NOT add introductory text like "Here is..." or "Okay, so..."
+- ONLY return the markdown structure as shown below
+
 INDENTATION RULES (count spaces carefully):
 - Use EXACTLY 2 spaces for indentation (NO tabs, NO 4 spaces)
 - "structure:" starts at column 0 (no spaces)
@@ -34,6 +40,7 @@ structure:
 ---
 
 WRONG (will fail):
+- Starting with <think> or explanations
 - Too many spaces before dash
 - Properties not aligned at 4 spaces
 - Tabs instead of spaces

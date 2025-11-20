@@ -147,25 +147,32 @@ export function parseMarkdownStructure(markdown: string): ParsedMarkdownStructur
   // Log the very first 500 characters to check for frontmatter start
   console.log('📄 Markdown starts with (first 500 chars):\n', markdown.substring(0, 500))
   
+  // Strip Chain-of-Thought tags that some models (Qwen) add
+  let cleanedMarkdown = markdown.trim()
+  if (cleanedMarkdown.startsWith('<think>') || cleanedMarkdown.startsWith('<thinking>')) {
+    console.log('🧠 Detected CoT tags, stripping...')
+    // Remove everything up to and including </think> or </thinking>
+    cleanedMarkdown = cleanedMarkdown.replace(/^<think>[\s\S]*?<\/think>\s*/i, '')
+    cleanedMarkdown = cleanedMarkdown.replace(/^<thinking>[\s\S]*?<\/thinking>\s*/i, '')
+    console.log('✂️ After stripping CoT tags (first 300 chars):\n', cleanedMarkdown.substring(0, 300))
+  }
+  
   // Check if it starts with ---
-  const startsWithDelimiter = markdown.trimStart().startsWith('---')
+  const startsWithDelimiter = cleanedMarkdown.trimStart().startsWith('---')
   console.log('📄 Starts with --- delimiter?', startsWithDelimiter)
   
   // Count how many --- delimiters exist
-  const delimiterCount = (markdown.match(/^---$/gm) || []).length
+  const delimiterCount = (cleanedMarkdown.match(/^---$/gm) || []).length
   console.log('📄 Number of --- delimiters found:', delimiterCount)
   
   // Log first 50 lines of YAML frontmatter for debugging
-  const yamlSection = markdown.split('---')[1]
+  const yamlSection = cleanedMarkdown.split('---')[1]
   if (yamlSection) {
     const yamlLines = yamlSection.split('\n').slice(0, 50)
     console.log('📄 YAML frontmatter (first 50 lines):', yamlLines.join('\n'))
   } else {
     console.error('❌ No YAML section found between --- delimiters')
   }
-  
-  // Ensure markdown starts cleanly (trim leading whitespace)
-  const cleanedMarkdown = markdown.trim()
   
   // Try to fix common YAML indentation issues before parsing
   const fixedMarkdown = repairYAMLIndentation(cleanedMarkdown)
