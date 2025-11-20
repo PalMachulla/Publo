@@ -1038,6 +1038,11 @@ export default function CanvasPage() {
         error: data.error
       })
       
+      // Log the actual markdown for debugging (first 2000 chars)
+      if (data.markdown) {
+        console.log('📝 Generated markdown (first 2000 chars):\n', data.markdown.substring(0, 2000))
+      }
+      
       if (data.success && data.markdown) {
         console.log('🔍 Parsing markdown structure...')
         

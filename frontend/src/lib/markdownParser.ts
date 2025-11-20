@@ -164,8 +164,22 @@ export function parseMarkdownStructure(markdown: string): ParsedMarkdownStructur
   
   const structure = data.structure as YAMLStructureItem[] | undefined
   
+  console.log('📊 Parsed YAML data:', {
+    hasStructure: !!structure,
+    isArray: Array.isArray(structure),
+    structureType: typeof structure,
+    structureLength: Array.isArray(structure) ? structure.length : 'N/A',
+    allKeys: Object.keys(data),
+    dataPreview: data
+  })
+  
   if (!structure || !Array.isArray(structure)) {
-    throw new Error('Markdown must contain a "structure" array in YAML frontmatter')
+    console.error('❌ Missing or invalid structure field in YAML:', {
+      structure,
+      allData: data,
+      allKeys: Object.keys(data)
+    })
+    throw new Error(`Markdown must contain a "structure" array in YAML frontmatter. Found: ${Object.keys(data).join(', ') || 'empty YAML'}`)
   }
   
   // Convert YAML structure to StoryStructureItems
