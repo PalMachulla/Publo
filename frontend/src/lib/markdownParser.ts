@@ -22,57 +22,92 @@ interface YAMLStructureItem {
  * AI models sometimes generate YAML with inconsistent spacing
  */
 function repairYAMLIndentation(markdown: string): string {
+  console.log('🔧 Starting YAML repair...')
+  
   const lines = markdown.split('\n')
   const fixed: string[] = []
   let inFrontmatter = false
   let inStructure = false
+  let issuesFixed = 0
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+    const trimmed = line.trim()
     
     // Track frontmatter boundaries
-    if (line.trim() === '---') {
+    if (trimmed === '---') {
       fixed.push(line)
       if (!inFrontmatter) {
         inFrontmatter = true
       } else {
+        // Closing frontmatter
         inFrontmatter = false
         inStructure = false
       }
       continue
     }
     
+    // Outside frontmatter - keep as-is
     if (!inFrontmatter) {
       fixed.push(line)
       continue
     }
     
     // Detect structure array start
-    if (line.match(/^structure:/)) {
+    if (trimmed.match(/^structure:\s*$/)) {
       inStructure = true
+      fixed.push('structure:')
+      continue
+    }
+    
+    // Detect when structure array ends (non-indented key at root level)
+    if (inStructure && trimmed.length > 0 && !trimmed.startsWith('-') && trimmed.match(/^[a-z_]+:\s*/i) && !line.startsWith(' ')) {
+      // This is a new root-level YAML key, exit structure mode
+      inStructure = false
       fixed.push(line)
       continue
     }
     
-    // Fix structure array items
-    if (inStructure && line.trim().startsWith('-')) {
-      // Ensure list items start with exactly 2 spaces
-      fixed.push('  ' + line.trim())
-      continue
-    }
-    
-    if (inStructure && line.trim().length > 0 && !line.trim().startsWith('-')) {
-      // Ensure properties have exactly 4 spaces
-      const trimmed = line.trim()
+    // Inside structure array - fix indentation
+    if (inStructure) {
+      if (trimmed.length === 0) {
+        // Keep blank lines
+        fixed.push('')
+        continue
+      }
+      
+      if (trimmed.startsWith('-')) {
+        // List item - ensure exactly 2 spaces
+        const originalIndent = line.length - line.trimStart().length
+        if (originalIndent !== 2) {
+          fixed.push('  ' + trimmed)
+          issuesFixed++
+          console.log(`  ✓ Fixed list item indent at line ${i + 1}: "${trimmed.substring(0, 30)}..."`)
+        } else {
+          fixed.push(line)
+        }
+        continue
+      }
+      
+      // Property under a list item - ensure exactly 4 spaces
       if (trimmed.includes(':')) {
-        fixed.push('    ' + trimmed)
+        const originalIndent = line.length - line.trimStart().length
+        if (originalIndent !== 4) {
+          fixed.push('    ' + trimmed)
+          issuesFixed++
+          console.log(`  ✓ Fixed property indent at line ${i + 1}: "${trimmed.substring(0, 30)}..."`)
+        } else {
+          fixed.push(line)
+        }
         continue
       }
     }
     
+    // Default: keep line as-is
     fixed.push(line)
   }
   
+  console.log(`🔧 YAML repair complete: fixed ${issuesFixed} indentation issues`)
   return fixed.join('\n')
 }
 
@@ -102,6 +137,16 @@ function repairYAMLIndentation(markdown: string): string {
  * Content here...
  */
 export function parseMarkdownStructure(markdown: string): ParsedMarkdownStructure {
+  console.log('📄 Parsing markdown structure...')
+  console.log('📄 Original markdown length:', markdown.length)
+  
+  // Log first 50 lines of YAML frontmatter for debugging
+  const yamlSection = markdown.split('---')[1]
+  if (yamlSection) {
+    const yamlLines = yamlSection.split('\n').slice(0, 50)
+    console.log('📄 YAML frontmatter (first 50 lines):', yamlLines.join('\n'))
+  }
+  
   // Try to fix common YAML indentation issues before parsing
   const fixedMarkdown = repairYAMLIndentation(markdown)
   
@@ -112,7 +157,8 @@ export function parseMarkdownStructure(markdown: string): ParsedMarkdownStructur
     data = parsed.data
     content = parsed.content
   } catch (yamlError: any) {
-    console.error('❌ YAML parsing failed:', yamlError)
+    console.error('❌ YAML parsing failed even after repair:', yamlError)
+    console.error('❌ Failed YAML section:', fixedMarkdown.split('---')[1]?.substring(0, 500))
     throw new Error(`YAML frontmatter is invalid: ${yamlError.message}\n\nPlease check the markdown format. The YAML must use exactly 2 spaces for indentation.`)
   }
   

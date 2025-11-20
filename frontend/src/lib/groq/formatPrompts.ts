@@ -7,15 +7,37 @@ import { StoryFormat } from '@/types/nodes'
 
 // Common YAML formatting instructions for all prompts
 const YAML_FORMATTING_RULES = `
-CRITICAL YAML FORMATTING RULES:
-- Use EXACTLY 2 spaces for each indentation level (not tabs, not 4 spaces)
-- List items (-) must be indented 2 spaces from 'structure:'
-- Properties under list items must be indented 4 spaces total (2 for list + 2 for properties)
-- Example of correct indentation:
-  structure:
-    - id: example
-      level: 1
-      name: "Example"
+
+CRITICAL: Follow this EXACT YAML format. Any deviation will cause parsing errors.
+
+INDENTATION RULES (count spaces carefully):
+- Use EXACTLY 2 spaces for indentation (NO tabs, NO 4 spaces)
+- "structure:" starts at column 0 (no spaces)
+- Each "- id:" starts at column 2 (2 spaces before the dash)
+- Properties like "level:", "name:", etc. start at column 4 (4 spaces total)
+
+CORRECT FORMAT EXAMPLE (count the spaces):
+---
+format: novel
+title: "Story Title"
+structure:
+  - id: chapter1
+    level: 1
+    name: "Chapter 1"
+    wordCount: 2000
+    summary: "Chapter summary"
+  - id: chapter2
+    level: 1
+    name: "Chapter 2"
+    wordCount: 2000
+    summary: "Chapter summary"
+---
+
+WRONG (will fail):
+- Too many spaces before dash
+- Properties not aligned at 4 spaces
+- Tabs instead of spaces
+- Inconsistent spacing
 `
 
 export const FORMAT_SYSTEM_PROMPTS: Record<StoryFormat, string> = {
