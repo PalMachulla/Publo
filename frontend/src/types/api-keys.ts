@@ -93,6 +93,7 @@ export interface GenerateRequest {
   user_key_id?: string // If provided, use user's key; otherwise use Publo's default
   temperature?: number
   top_p?: number
+  mode?: 'orchestrator' | 'writer' | 'legacy' // NEW: Generation mode
 }
 
 /**

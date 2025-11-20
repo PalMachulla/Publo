@@ -16,7 +16,16 @@ export async function POST(request: Request) {
   try {
     // Parse request body first (before auth, so we can check for key_id)
     const body: GenerateRequest = await request.json()
-    const { model, system_prompt, user_prompt, max_tokens, user_key_id, temperature, top_p } = body
+    const { 
+      model, 
+      system_prompt, 
+      user_prompt, 
+      max_tokens, 
+      user_key_id, 
+      temperature, 
+      top_p,
+      mode = 'legacy' // NEW: orchestrator | writer | legacy (default)
+    } = body
     
     const supabase = await createClient()
 
@@ -223,18 +232,57 @@ export async function POST(request: Request) {
       // Continue anyway - don't fail the generation
     }
 
-    // Return response
-    const response: GenerateResponse = {
-      success: true,
-      markdown: generationResult.content,
-      usage: generationResult.usage,
-      cost,
-      model: generationResult.model,
-      provider,
-      timestamp: new Date().toISOString(),
-    }
+    // Return response based on mode
+    if (mode === 'orchestrator') {
+      // Orchestrator mode: expect JSON response from model
+      try {
+        const plan = JSON.parse(generationResult.content)
+        
+        return NextResponse.json({
+          success: true,
+          plan, // Parsed JSON plan
+          usage: generationResult.usage,
+          cost,
+          model: generationResult.model,
+          provider,
+          timestamp: new Date().toISOString(),
+        })
+      } catch (parseError: any) {
+        console.error('❌ Failed to parse orchestrator JSON response:', parseError)
+        return NextResponse.json(
+          { 
+            error: 'Orchestrator returned invalid JSON',
+            details: parseError.message,
+            rawContent: generationResult.content.substring(0, 500)
+          },
+          { status: 500 }
+        )
+      }
+    } else if (mode === 'writer') {
+      // Writer mode: return plain text content
+      return NextResponse.json({
+        success: true,
+        content: generationResult.content, // Plain text
+        usage: generationResult.usage,
+        cost,
+        model: generationResult.model,
+        provider,
+        timestamp: new Date().toISOString(),
+      })
+    } else {
+      // Legacy mode: return markdown (backward compatibility)
+      const response: GenerateResponse = {
+        success: true,
+        markdown: generationResult.content,
+        usage: generationResult.usage,
+        cost,
+        model: generationResult.model,
+        provider,
+        timestamp: new Date().toISOString(),
+      }
 
-    return NextResponse.json(response)
+      return NextResponse.json(response)
+    }
   } catch (error: any) {
     console.error('Error in POST /api/generate:', error)
 
