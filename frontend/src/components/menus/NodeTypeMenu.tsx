@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { NodeType } from '@/types/nodes'
+import { isTestNodeEnabled } from '@/lib/testNode'
 
 interface NodeTypeOption {
   type: NodeType
@@ -111,6 +112,14 @@ export default function NodeTypeMenu({ onSelectNodeType }: NodeTypeMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
+  // Filter out Test Node in production
+  const availableNodeTypes = nodeTypes.filter(nodeType => {
+    if (nodeType.type === 'test') {
+      return isTestNodeEnabled()
+    }
+    return true
+  })
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as HTMLElement)) {
@@ -150,7 +159,7 @@ export default function NodeTypeMenu({ onSelectNodeType }: NodeTypeMenuProps) {
         {/* Expanded node types */}
         {isOpen && (
           <div className="border-t border-gray-200">
-            {nodeTypes.map((nodeType) => (
+            {availableNodeTypes.map((nodeType) => (
               <button
                 key={nodeType.type}
                 onClick={() => handleSelect(nodeType.type)}

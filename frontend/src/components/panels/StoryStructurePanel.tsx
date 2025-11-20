@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { Node, Edge } from 'reactflow'
-import { StoryStructureNodeData, StoryStructureItem, TestNodeData } from '@/types/nodes'
+import { StoryStructureNodeData, StoryStructureItem } from '@/types/nodes'
 import { getDocumentHierarchy } from '@/lib/documentHierarchy'
 import { getFormatIcon } from '@/components/menus/StoryFormatMenu'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
-import { parseMarkdownStructure } from '@/lib/markdownParser'
+import { generateFromTestNode } from '@/lib/testNode'
 
 interface StoryStructurePanelProps {
   node: Node<StoryStructureNodeData>
@@ -20,21 +20,6 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete, edges = 
   const { format, items } = node.data
   
   const hierarchy = getDocumentHierarchy(format)
-
-  // Detect test nodes connected to orchestrator
-  const connectedTestNode = useMemo(() => {
-    const orchestratorId = 'context'
-    const testEdges = edges.filter(edge => edge.target === orchestratorId)
-    
-    for (const edge of testEdges) {
-      const sourceNode = nodes.find(n => n.id === edge.source)
-      if (sourceNode?.data?.nodeType === 'test') {
-        return sourceNode as Node<TestNodeData>
-      }
-    }
-    
-    return null
-  }, [edges, nodes])
   
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
@@ -65,52 +50,28 @@ export default function StoryStructurePanel({ node, onUpdate, onDelete, edges = 
 
   // Generate default structure based on format with realistic, varied word counts
   const handleGenerateStructure = () => {
-    // Check if test node is connected - if so, parse its markdown
-    if (connectedTestNode) {
-      try {
-        const markdown = connectedTestNode.data.markdown || ''
-        console.log('🎬 Generating structure from test node markdown:', {
-          nodeId: connectedTestNode.id,
-          markdownLength: markdown.length,
-        })
-        
-        const { items: parsedItems, contentMap } = parseMarkdownStructure(markdown)
-        
-        // Convert contentMap (Map) to plain object for storage
-        const contentMapObject: Record<string, string> = {}
-        contentMap.forEach((value, key) => {
-          contentMapObject[key] = value
-        })
-        
-        // Update node with parsed structure AND content map
-        onUpdate(node.id, { 
-          items: parsedItems,
-          contentMap: contentMapObject 
-        })
-        
-        console.log('📝 Content map SAVED TO NODE:', {
-          nodeId: node.id,
-          sections: contentMap.size,
-          sectionIds: Array.from(contentMap.keys()),
-          contentMapObjectKeys: Object.keys(contentMapObject),
-          contentMapObject,
-          sampleContent: contentMapObject[Object.keys(contentMapObject)[0]]?.substring(0, 100)
-        })
-        
-        console.log('✅ Structure generated from test markdown:', {
-          itemsCount: parsedItems.length,
-          levels: [...new Set(parsedItems.map(i => i.level))],
-        })
-        
-        return
-      } catch (error) {
-        console.error('❌ Failed to parse test node markdown:', error)
-        alert('Failed to parse test node markdown. Using default template instead.')
-        // Fall through to template generation
-      }
+    // Try to generate from Test Node first (development/testing only)
+    const testNodeResult = generateFromTestNode(edges, nodes)
+    
+    if (testNodeResult) {
+      const { items: parsedItems, contentMap: contentMapObject } = testNodeResult
+      
+      // Update node with parsed structure AND content map
+      onUpdate(node.id, { 
+        items: parsedItems,
+        contentMap: contentMapObject 
+      })
+      
+      console.log('✅ Structure generated from test node:', {
+        itemsCount: parsedItems.length,
+        levels: [...new Set(parsedItems.map(i => i.level))],
+        contentMapSize: Object.keys(contentMapObject).length
+      })
+      
+      return
     }
     
-    // Default template-based generation
+    // If no Test Node, use default template-based generation
     const newItems: StoryStructureItem[] = []
     let itemCounter = 0
     
