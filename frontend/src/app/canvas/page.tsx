@@ -189,6 +189,7 @@ export default function CanvasPage() {
   const currentStoryIdRef = useRef<string | null>(null)
   const lastLoadedStoryIdRef = useRef<string | null>(null)
   const hasUnsavedChangesRef = useRef(false) // Track if user made changes
+  const isInferencingRef = useRef(false) // Track if AI is currently generating
   const titleInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
@@ -299,6 +300,28 @@ export default function CanvasPage() {
       checkUserRole()
     }
   }, [user, loading, router, storyId, checkingAccess, hasAccess])
+
+  // Maintain inference loading state on orchestrator node
+  useEffect(() => {
+    if (isInferencingRef.current) {
+      // Ensure orchestrator node keeps showing inference state
+      setNodes((currentNodes) => {
+        const orchestratorNode = currentNodes.find(n => n.id === 'context')
+        if (!orchestratorNode) return currentNodes
+        
+        const nodeData = orchestratorNode.data as any
+        if (!nodeData.isOrchestrating || nodeData.loadingText !== 'Inference') {
+          console.log('🔄 Re-applying inference loading state (was cleared by another update)')
+          return currentNodes.map(n =>
+            n.id === 'context'
+              ? { ...n, data: { ...n.data, isOrchestrating: true, loadingText: 'Inference' } }
+              : n
+          )
+        }
+        return currentNodes
+      })
+    }
+  }, [nodes, setNodes])
 
   // Load story on mount or when storyId changes
   useEffect(() => {
@@ -907,6 +930,9 @@ export default function CanvasPage() {
   ) => {
     // Check authentication first
     if (!user) {
+      // Clear inference flag
+      isInferencingRef.current = false
+      
       alert('❌ You must be logged in to generate content.\n\nPlease log in at http://localhost:3002/auth and try again.')
       
       // Remove loading state from both structure node and orchestrator
@@ -945,6 +971,9 @@ export default function CanvasPage() {
     const { parseMarkdownStructure } = await import('@/lib/markdownParser')
     
     try {
+      // Set inference flag
+      isInferencingRef.current = true
+      
       // Get orchestrator node data and set inference loading state
       let selectedModel = 'llama-3.1-8b-instant'
       let selectedKeyId: string | null = null
@@ -985,6 +1014,8 @@ export default function CanvasPage() {
       // Use user's custom maxTokens if set, otherwise use recommended based on format
       const effectiveMaxTokens = maxTokens && maxTokens !== 2000 ? maxTokens : recommendedTokens
       
+      console.log('🎨 Inference loading state SET - pink spinner should be visible')
+      
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -998,7 +1029,9 @@ export default function CanvasPage() {
         })
       })
       
+      console.log('📡 API response received, parsing...')
       const data = await response.json()
+      console.log('✅ Data parsed, clearing loading state')
       
       if (data.success && data.markdown) {
         const { items: parsedItems, contentMap } = parseMarkdownStructure(data.markdown)
@@ -1008,6 +1041,9 @@ export default function CanvasPage() {
         contentMap.forEach((value, key) => {
           contentMapObject[key] = value
         })
+        
+        // Clear inference flag
+        isInferencingRef.current = false
         
         // Update structure node and clear orchestrator loading state
         setNodes((nds) =>
@@ -1046,6 +1082,9 @@ export default function CanvasPage() {
       }
     } catch (error: any) {
       console.error('❌ Auto-generation failed:', error)
+      
+      // Clear inference flag on error
+      isInferencingRef.current = false
       
       // Provide helpful error message
       let errorMessage = error.message || 'Unknown error'
