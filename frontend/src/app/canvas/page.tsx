@@ -1031,10 +1031,31 @@ export default function CanvasPage() {
       
       console.log('📡 API response received, parsing...')
       const data = await response.json()
-      console.log('✅ Data parsed, clearing loading state')
+      console.log('✅ Data parsed:', {
+        success: data.success,
+        hasMarkdown: !!data.markdown,
+        markdownLength: data.markdown?.length,
+        error: data.error
+      })
       
       if (data.success && data.markdown) {
-        const { items: parsedItems, contentMap } = parseMarkdownStructure(data.markdown)
+        console.log('🔍 Parsing markdown structure...')
+        
+        let parsedItems, contentMap
+        try {
+          const parseResult = parseMarkdownStructure(data.markdown)
+          parsedItems = parseResult.items
+          contentMap = parseResult.contentMap
+          
+          console.log('📊 Parsed structure:', {
+            itemCount: parsedItems.length,
+            contentMapSize: contentMap.size,
+            firstItem: parsedItems[0]
+          })
+        } catch (parseError: any) {
+          console.error('❌ Markdown parsing failed:', parseError)
+          throw new Error(`Failed to parse markdown structure: ${parseError.message}`)
+        }
         
         // Convert contentMap to plain object
         const contentMapObject: Record<string, string> = {}
@@ -1044,6 +1065,8 @@ export default function CanvasPage() {
         
         // Clear inference flag
         isInferencingRef.current = false
+        
+        console.log('📝 Updating structure node with parsed data...')
         
         // Update structure node and clear orchestrator loading state
         setNodes((nds) =>
@@ -1072,9 +1095,11 @@ export default function CanvasPage() {
           itemsCount: parsedItems.length
         })
         
+        console.log('💾 Triggering auto-save...')
         // Trigger save
         hasUnsavedChangesRef.current = true
         await handleSave()
+        console.log('💾 Auto-save complete')
         
         alert(`✅ ${format.charAt(0).toUpperCase() + format.slice(1)} structure generated successfully!`)
       } else {
@@ -1082,14 +1107,25 @@ export default function CanvasPage() {
       }
     } catch (error: any) {
       console.error('❌ Auto-generation failed:', error)
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      })
       
       // Clear inference flag on error
       isInferencingRef.current = false
       
       // Provide helpful error message
       let errorMessage = error.message || 'Unknown error'
-      if (errorMessage.includes('No API key available') || errorMessage.includes('No') && errorMessage.includes('API key')) {
-        errorMessage = `❌ ${errorMessage}\n\n💡 To fix this:\n1. Go to http://localhost:3002/test-api\n2. Add your API key for this provider\n3. Try generating again`
+      
+      // Add more specific error context
+      if (errorMessage === 'Failed to generate structure') {
+        errorMessage = 'Failed to generate structure. The AI response may be incomplete or in an unexpected format. Please try again.'
+      } else if (errorMessage.includes('Failed to parse markdown')) {
+        errorMessage = `${errorMessage}\n\nThe AI generated content but it wasn't in the expected format. Try:\n- Using a different model\n- Simplifying your prompt\n- Choosing a different format`
+      } else if (errorMessage.includes('No API key available') || errorMessage.includes('No') && errorMessage.includes('API key')) {
+        errorMessage = `❌ ${errorMessage}\n\n💡 To fix this:\n1. Go to your Profile page\n2. Add your API key for this provider\n3. Enable the model you want to use\n4. Try generating again`
       }
       
       alert(`Failed to generate structure:\n\n${errorMessage}`)
