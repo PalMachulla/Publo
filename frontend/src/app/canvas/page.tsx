@@ -912,20 +912,42 @@ export default function CanvasPage() {
       )
     }
     
-    // AUTO-GENERATE: Check if AI Prompt node is connected, trigger immediate generation
+    // AUTO-GENERATE: Check if AI Prompt node is connected OR chat prompt exists
     const aiPromptNode = nodes.find(n => 
       n.data?.nodeType === 'aiPrompt' && 
       edges.some(e => e.source === n.id && e.target === 'context')
     )
     
-    if (aiPromptNode) {
-      console.log('🚀 Auto-generating structure with orchestrator after node creation')
+    // Check if chat prompt exists in orchestrator node
+    const orchestratorNode = nodes.find(n => n.id === 'context')
+    const hasChatPrompt = !!(orchestratorNode?.data as any)?.chatPrompt
+    
+    if (aiPromptNode || hasChatPrompt) {
+      console.log('🚀 Auto-generating structure with orchestrator after node creation', {
+        hasAIPromptNode: !!aiPromptNode,
+        hasChatPrompt,
+        source: aiPromptNode ? 'AI Prompt Node' : 'Chat Input'
+      })
+      
+      // Create a virtual AI Prompt node if using chat
+      const effectivePromptNode = aiPromptNode || {
+        id: 'virtual-prompt',
+        type: 'aiPromptNode',
+        data: {
+          nodeType: 'aiPrompt' as const,
+          label: 'Virtual Prompt',
+          comments: [],
+          userPrompt: (orchestratorNode?.data as any)?.chatPrompt || '',
+          maxTokens: 2000,
+          isActive: true
+        },
+        position: { x: 0, y: 0 }
+      }
+      
       // Use orchestrator-based generation by default
       // Pass 'context' as the orchestrator ID since that's where the model selection is stored
       setTimeout(() => {
-        // TODO: Add smart detection to choose between orchestrated vs legacy
-        // For now, use orchestrated generation by default
-        triggerOrchestratedGeneration(structureId, format, aiPromptNode, 'context')
+        triggerOrchestratedGeneration(structureId, format, effectivePromptNode, 'context')
       }, 100)
     }
     
