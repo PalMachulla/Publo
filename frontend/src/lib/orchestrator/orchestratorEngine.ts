@@ -15,6 +15,11 @@ import {
   getModelById,
   getModelsForRole 
 } from '@/lib/models/modelCapabilities'
+import { 
+  TemporalMemory,
+  createTemporalMemory,
+  type EventDelta 
+} from './temporalMemory'
 
 // ============================================================
 // TYPES
@@ -141,13 +146,18 @@ Guidelines:
 export class OrchestratorEngine {
   private modelCatalog: ModelCapabilities[]
   private onReasoning: (message: string, type: ReasoningMessageType) => void
+  private temporalMemory: TemporalMemory
   
   constructor(
     modelCatalog: ModelCapabilities[],
-    onReasoning: (message: string, type: ReasoningMessageType) => void
+    onReasoning: (message: string, type: ReasoningMessageType) => void,
+    userId: string = 'system'
   ) {
     this.modelCatalog = modelCatalog
     this.onReasoning = onReasoning
+    this.temporalMemory = createTemporalMemory(userId, 'orchestration')
+    
+    this.log('🧠 Temporal memory initialized', 'thinking')
   }
   
   /**
@@ -158,6 +168,21 @@ export class OrchestratorEngine {
     format: StoryFormat,
     preferences: OrchestratorPreferences
   ): Promise<OrchestratorPlan> {
+    
+    // Log orchestration start event
+    const orchestrationEvent = await this.temporalMemory.addEvent({
+      verb: 'orchestration_started',
+      object: format,
+      attributes_diff: {
+        prompt_length: userPrompt.length,
+        orchestrator_model: preferences.orchestratorModel,
+        available_writers: preferences.availableModels.length
+      },
+      context: {
+        format,
+        user_prompt_hash: this.hashString(userPrompt)
+      }
+    })
     
     try {
       this.log('🧠 Initializing orchestration...', 'thinking')
@@ -170,6 +195,18 @@ export class OrchestratorEngine {
       const writerModels = this.validateWriterModels(
         preferences.availableModels
       )
+      
+      // Log model selection event
+      await this.temporalMemory.addEvent({
+        verb: 'models_selected',
+        object: orchestratorModel.id,
+        attributes_diff: {
+          orchestrator: orchestratorModel.displayName,
+          writers: writerModels.map(m => m.displayName),
+          writer_count: writerModels.length
+        },
+        derived_from: [orchestrationEvent.id]
+      })
       
       this.log(
         `🎯 Using orchestrator: ${orchestratorModel.displayName}`,
@@ -195,6 +232,18 @@ export class OrchestratorEngine {
         'result'
       )
       
+      // Log plan creation event
+      await this.temporalMemory.addEvent({
+        verb: 'plan_created',
+        object: `${plan.structure.length}_sections`,
+        attributes_diff: {
+          section_count: plan.structure.length,
+          task_count: plan.tasks.length,
+          reasoning_length: plan.reasoning?.length || 0
+        },
+        derived_from: [orchestrationEvent.id]
+      })
+      
       // Log orchestrator's reasoning
       if (plan.reasoning) {
         this.log(`💭 Orchestrator reasoning:\n${plan.reasoning}`, 'thinking')
@@ -211,17 +260,59 @@ export class OrchestratorEngine {
         
         task.assignedModel = selectedModel.id
         
+        // Log model assignment event
+        await this.temporalMemory.addEvent({
+          verb: 'task_assigned',
+          object: task.id,
+          attributes_diff: {
+            assigned_model: selectedModel.displayName,
+            complexity: task.requirements.complexity,
+            word_count: task.requirements.wordCount
+          },
+          derived_from: [orchestrationEvent.id]
+        })
+        
         this.log(
           `📌 "${task.description.substring(0, 50)}..." → ${selectedModel.displayName} (${task.requirements.complexity})`,
           'decision'
         )
       }
       
+      // Log orchestration completion
+      await this.temporalMemory.addEvent({
+        verb: 'orchestration_completed',
+        object: format,
+        attributes_diff: {
+          duration_ms: Date.now() - orchestrationEvent.timestamp,
+          success: true
+        },
+        derived_from: [orchestrationEvent.id]
+      })
+      
       this.log('✅ Orchestration plan complete and ready for execution', 'result')
+      
+      // Create timeline snapshot
+      try {
+        await this.temporalMemory.createSnapshot()
+      } catch (e) {
+        // Snapshots are optional, don't fail if they error
+        console.debug('Could not create snapshot:', e)
+      }
       
       return plan
       
     } catch (error: any) {
+      // Log orchestration failure
+      await this.temporalMemory.addEvent({
+        verb: 'orchestration_failed',
+        object: format,
+        attributes_diff: {
+          error_message: error.message,
+          duration_ms: Date.now() - orchestrationEvent.timestamp
+        },
+        derived_from: [orchestrationEvent.id]
+      })
+      
       this.log(`❌ Orchestration failed: ${error.message}`, 'error')
       throw error
     }
@@ -234,6 +325,20 @@ export class OrchestratorEngine {
     task: OrchestratorTask,
     userKeyId: string
   ): Promise<string> {
+    
+    // Log task execution start
+    const taskStartEvent = await this.temporalMemory.addEvent({
+      verb: 'task_started',
+      object: task.id,
+      attributes_diff: {
+        assigned_model: task.assignedModel,
+        target_word_count: task.requirements.wordCount,
+        complexity: task.requirements.complexity
+      },
+      context: {
+        user_prompt_hash: this.hashString(task.description)
+      }
+    })
     
     try {
       task.status = 'in_progress'
@@ -265,6 +370,19 @@ export class OrchestratorEngine {
       task.result = result
       
       const duration = ((task.endTime - task.startTime) / 1000).toFixed(1)
+      
+      // Log task completion
+      await this.temporalMemory.addEvent({
+        verb: 'task_completed',
+        object: task.id,
+        attributes_diff: {
+          duration_ms: task.endTime - task.startTime,
+          output_length: result.length,
+          success: true
+        },
+        derived_from: [taskStartEvent.id]
+      })
+      
       this.log(
         `✅ Task completed in ${duration}s (${result.length} chars)`,
         'result'
@@ -276,6 +394,17 @@ export class OrchestratorEngine {
       task.status = 'failed'
       task.error = error.message
       task.endTime = Date.now()
+      
+      // Log task failure
+      await this.temporalMemory.addEvent({
+        verb: 'task_failed',
+        object: task.id,
+        attributes_diff: {
+          error_message: error.message,
+          duration_ms: task.endTime! - task.startTime!
+        },
+        derived_from: [taskStartEvent.id]
+      })
       
       this.log(`❌ Task failed: ${error.message}`, 'error')
       throw error
@@ -579,6 +708,39 @@ Focus: Conversational tone, clear transitions, engagement
    */
   private log(message: string, type: ReasoningMessageType): void {
     this.onReasoning(message, type)
+  }
+  
+  /**
+   * Hash string for privacy (used in event logging)
+   */
+  private hashString(str: string): string {
+    let hash = 0
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i)
+      hash = hash & hash
+    }
+    return Math.abs(hash).toString(36)
+  }
+  
+  /**
+   * Get audit trail for debugging and compliance
+   */
+  async getAuditTrail(startTime?: number, endTime?: number): Promise<any[]> {
+    const now = Date.now()
+    const start = startTime || (now - 3600000) // Last hour by default
+    const end = endTime || now
+    
+    return this.temporalMemory.getAuditTrail(start, end)
+  }
+  
+  /**
+   * Prove timeline integrity for compliance
+   */
+  async proveTimeline(range?: [number, number]): Promise<any> {
+    const now = Date.now()
+    const defaultRange: [number, number] = [now - 3600000, now]
+    
+    return this.temporalMemory.proveTimeline(range || defaultRange)
   }
 }
 
