@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
-import { NormalizedModel, LLMProvider } from '@/types/api-keys'
 import { 
   CollapsibleSection,
   Card,
@@ -146,14 +145,6 @@ const storyFormats: Array<{ type: StoryFormat; label: string; description: strin
   }
 ]
 
-interface GroupedModels {
-  provider: LLMProvider
-  source: 'user' | 'publo'
-  key_id?: string
-  key_nickname?: string
-  models: NormalizedModel[]
-}
-
 interface ReasoningMessage {
   timestamp: string
   content: string
@@ -161,11 +152,11 @@ interface ReasoningMessage {
 }
 
 export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdate }: CreateStoryPanelProps) {
-  const [selectedModel, setSelectedModel] = useState<string | null>((node.data as any).selectedModel || null)
-  const [selectedKeyId, setSelectedKeyId] = useState<string | null>((node.data as any).selectedKeyId || null)
-  const [groupedModels, setGroupedModels] = useState<GroupedModels[]>([])
-  const [loadingModels, setLoadingModels] = useState(true)
-  const [modelsError, setModelsError] = useState<string | null>(null)
+  const [configuredModel, setConfiguredModel] = useState<{
+    orchestrator: string | null
+    writerCount: number
+  }>({ orchestrator: null, writerCount: 0 })
+  const [loadingConfig, setLoadingConfig] = useState(true)
   const [selectedFormat, setSelectedFormat] = useState<StoryFormat | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   
@@ -182,75 +173,55 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
     }
   }, [reasoningMessages.length])
 
-  // Fetch models from all sources on mount
+  // Fetch configured models from Profile settings
   useEffect(() => {
-    fetchModels()
+    fetchConfiguredModels()
   }, [])
 
-  const fetchModels = async () => {
-    setLoadingModels(true)
-    setModelsError(null)
+  const fetchConfiguredModels = async () => {
+    setLoadingConfig(true)
     
     try {
-      console.log('[CreateStoryPanel] Fetching models from /api/models')
-      const response = await fetch('/api/models')
+      console.log('[CreateStoryPanel] Fetching configured models from Profile')
+      const response = await fetch('/api/user/api-keys')
       const data = await response.json()
       
-      console.log('[CreateStoryPanel] Models API response:', {
-        success: data.success,
-        groupCount: data.grouped?.length,
-        totalModels: data.total_count,
-        rawGroups: data.grouped?.map((g: any) => ({
-          provider: g.provider,
-          source: g.source,
-          keyId: g.key_id,
-          modelCount: g.models?.length,
-          firstModel: g.models?.[0],
-          allModels: g.models?.map((m: any) => ({ id: m.id, name: m.name, supports_chat: m.supports_chat }))
-        }))
-      })
-      
-      if (data.success) {
-        // Filter to only show chat-compatible models
-        const filteredGroups = data.grouped.map((group: GroupedModels) => ({
-          ...group,
-          models: group.models.filter((m: NormalizedModel) => m.supports_chat)
-        })).filter((group: GroupedModels) => group.models.length > 0)
+      if (data.success && data.keys?.length > 0) {
+        // Find the first key with an orchestrator configured
+        const configuredKey = data.keys.find((key: any) => key.orchestrator_model_id)
         
-        console.log('[CreateStoryPanel] After filtering:', {
-          groups: filteredGroups.map((g: GroupedModels) => ({
-            provider: g.provider,
-            modelCount: g.models.length,
-            models: g.models.map((m: NormalizedModel) => m.name)
-          }))
-        })
-        
-        setGroupedModels(filteredGroups)
-        
-        // Auto-select first production model from first group
-        if (filteredGroups.length > 0 && filteredGroups[0].models.length > 0) {
-          const firstGroup = filteredGroups[0]
-          const firstProduction = firstGroup.models.find((m: NormalizedModel) => m.category === 'production') 
-            || firstGroup.models[0]
-          
-          console.log('[CreateStoryPanel] Auto-selected model:', {
-            model: firstProduction.name,
-            id: firstProduction.id,
-            provider: firstGroup.provider,
-            keyId: firstGroup.key_id
+        if (configuredKey) {
+          console.log('[CreateStoryPanel] Found configured model:', {
+            orchestrator: configuredKey.orchestrator_model_id,
+            writers: configuredKey.writer_model_ids?.length || 0
           })
           
-          setSelectedModel(firstProduction.id)
-          setSelectedKeyId(firstGroup.key_id || null)
+          setConfiguredModel({
+            orchestrator: configuredKey.orchestrator_model_id,
+            writerCount: configuredKey.writer_model_ids?.length || 0
+          })
+        } else {
+          // No explicit configuration - will auto-select
+          setConfiguredModel({
+            orchestrator: 'Auto-select',
+            writerCount: 0
+          })
         }
       } else {
-        setModelsError(data.error || 'Failed to load models')
+        // No API keys configured
+        setConfiguredModel({
+          orchestrator: null,
+          writerCount: 0
+        })
       }
     } catch (err) {
-      setModelsError('Failed to fetch models')
-      console.error('[CreateStoryPanel] Error fetching models:', err)
+      console.error('[CreateStoryPanel] Error fetching configuration:', err)
+      setConfiguredModel({
+        orchestrator: 'Error loading config',
+        writerCount: 0
+      })
     } finally {
-      setLoadingModels(false)
+      setLoadingConfig(false)
     }
   }
 
@@ -298,149 +269,66 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        {/* Model Selection Section */}
-        <CollapsibleSection
-          title="1. Select Model"
-          defaultOpen={true}
-        >
-          {loadingModels && (
-            <div className="text-center py-8">
-              <div className="inline-block w-6 h-6 border-3 border-gray-200 border-t-yellow-400 rounded-full animate-spin" />
-              <p className="text-xs text-gray-500 mt-3">Loading models...</p>
+        {/* Model Configuration Display (Read-only) */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">1. Model Configuration</h3>
+          
+          {loadingConfig ? (
+            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 flex items-center justify-center">
+              <div className="inline-block w-4 h-4 border-2 border-gray-300 border-t-yellow-400 rounded-full animate-spin mr-3" />
+              <span className="text-sm text-gray-600">Loading configuration...</span>
             </div>
-          )}
-
-          {modelsError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
-              <p className="text-xs text-red-600">{modelsError}</p>
-              <button
-                onClick={fetchModels}
-                className="text-xs text-red-700 font-medium mt-1 underline"
-              >
-                Try again
-              </button>
-            </div>
-          )}
-
-          {!loadingModels && !modelsError && groupedModels.length > 0 && (
-            <div className="space-y-5">
-              {groupedModels.map((group, groupIndex) => (
-                <div key={`${group.provider}-${group.key_id || 'publo'}`}>
-                  {/* Provider Group Header */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <Badge 
-                      variant={
-                        group.provider === 'groq' ? 'purple' :
-                        group.provider === 'openai' ? 'success' :
-                        group.provider === 'anthropic' ? 'warning' :
-                        'info'
-                      }
-                      size="md"
-                    >
-                      {group.provider.toUpperCase()}
-                    </Badge>
-                    {group.source === 'user' && (
-                      <span className="text-xs text-gray-600 font-medium">
-                        {group.key_nickname || 'Your Key'}
-                      </span>
-                    )}
-                    {group.source === 'publo' && (
-                      <Badge variant="outline" size="sm">Publo Default</Badge>
-                    )}
-                    <span className="text-xs text-gray-400">
-                      {group.models.length} {group.models.length === 1 ? 'model' : 'models'}
-                    </span>
-                  </div>
-
-                  {/* Models in this group */}
-                  <div className="space-y-2">
-                    {group.models.map((model) => (
-                      <Card
-                        key={model.id}
-                        variant={selectedModel === model.id ? 'selected' : 'interactive'}
-                        onClick={() => {
-                          console.log('🎯 Model selected:', {
-                            model: model.id,
-                            provider: group.provider,
-                            keyId: group.key_id,
-                            keyNickname: group.key_nickname,
-                            source: group.source
-                          })
-                          
-                          setSelectedModel(model.id)
-                          setSelectedKeyId(group.key_id || null)
-                          // Store selected model and key in node data
-                          if (onUpdate) {
-                            onUpdate(node.id, { 
-                              selectedModel: model.id,
-                              selectedKeyId: group.key_id || null 
-                            } as any)
-                          }
-                        }}
-                        className="relative"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          {/* Model Info */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2 flex-wrap">
-                              <h4 className="text-sm font-semibold text-gray-900">
-                                {model.id}
-                              </h4>
-                              {model.category && (
-                                <Badge 
-                                  variant={
-                                    model.category === 'production' ? 'success' :
-                                    model.category === 'preview' ? 'info' :
-                                    'default'
-                                  }
-                                  size="sm"
-                                >
-                                  {model.category}
-                                </Badge>
-                              )}
-                            </div>
-                            
-                            {/* Pricing & Speed */}
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {model.input_price_per_1m !== null && model.input_price_per_1m !== undefined && (
-                                <Badge variant="outline" size="sm">
-                                  💵 In: ${model.input_price_per_1m.toFixed(3)}/1M
-                                </Badge>
-                              )}
-                              {model.output_price_per_1m !== null && model.output_price_per_1m !== undefined && (
-                                <Badge variant="outline" size="sm">
-                                  💵 Out: ${model.output_price_per_1m.toFixed(3)}/1M
-                                </Badge>
-                              )}
-                              {model.speed_tokens_per_sec && (
-                                <Badge variant="outline" size="sm">
-                                  ⚡ {model.speed_tokens_per_sec} t/s
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Selection Indicator */}
-                          {selectedModel === model.id && (
-                            <div className="flex-shrink-0 w-5 h-5 rounded-full bg-yellow-400 flex items-center justify-center">
-                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </div>
-                          )}
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
+          ) : configuredModel.orchestrator === null ? (
+            <div className="bg-yellow-50 rounded-lg border border-yellow-200 p-4">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-yellow-800 mb-1">No API keys configured</p>
+                  <p className="text-xs text-yellow-700">Add an API key in your Profile to use the orchestrator.</p>
+                  <a 
+                    href="/profile" 
+                    className="inline-block mt-2 text-xs font-semibold text-yellow-700 underline hover:text-yellow-800"
+                  >
+                    Go to Profile →
+                  </a>
                 </div>
-              ))}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold text-gray-900">
+                      {configuredModel.orchestrator === 'Auto-select' 
+                        ? 'Auto-select (Best Available)' 
+                        : configuredModel.orchestrator}
+                    </h4>
+                    <Badge variant="success" size="sm">Active</Badge>
+                  </div>
+                  <p className="text-xs text-gray-600 mb-2">
+                    {configuredModel.writerCount > 0 
+                      ? `Orchestrator with ${configuredModel.writerCount} writer${configuredModel.writerCount > 1 ? 's' : ''}`
+                      : 'Orchestrator (handles both planning and writing)'}
+                  </p>
+                  <a 
+                    href="/profile" 
+                    className="inline-block text-xs font-medium text-blue-600 hover:text-blue-700 underline"
+                  >
+                    Change in Profile →
+                  </a>
+                </div>
+              </div>
             </div>
           )}
-        </CollapsibleSection>
+        </div>
 
         {/* Reasoning Chat Section (NEW) */}
         <CollapsibleSection
