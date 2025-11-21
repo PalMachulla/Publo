@@ -24,6 +24,8 @@ export interface UserAPIKey {
   models_cache: NormalizedModel[] | null
   models_cached_at: string | null
   model_preferences?: Record<string, boolean> | null  // model_id -> enabled (requires migration)
+  orchestrator_model_id?: string | null  // Preferred orchestrator model (null = auto-select)
+  writer_model_ids?: string[] | null  // Enabled writer models (empty = single-model mode)
   usage_count: number
   last_used_at: string | null
   created_at: string
