@@ -163,9 +163,18 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false) // Prevent double-clicks
   
+  // Pill expansion state
+  const [isModelPillExpanded, setIsModelPillExpanded] = useState(false)
+  const [isFormatPillExpanded, setIsFormatPillExpanded] = useState(false)
+  
+  // Chat state
+  const [chatMessage, setChatMessage] = useState('')
+  const [chatMessages, setChatMessages] = useState<Array<{id: string, role: 'user' | 'orchestrator', content: string}>>([])
+  
   // Reasoning chat state - synced from node data
   const [isReasoningOpen, setIsReasoningOpen] = useState(true) // Open by default to see streaming
   const reasoningEndRef = useRef<HTMLDivElement>(null) // Auto-scroll target
+  const chatInputRef = useRef<HTMLTextAreaElement>(null) // Chat input ref
   
   // Read reasoning messages from node data (updated by orchestrator)
   const reasoningMessages: ReasoningMessage[] = (node.data as any).reasoningMessages || []
@@ -323,113 +332,129 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="p-6 border-b border-gray-200">
+    <div className="h-full flex flex-col bg-white">
+      {/* Top Pills Bar */}
+      <div className="px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center">
-            <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-            </svg>
+          {/* Model Pill */}
+          <div className="relative flex-1">
+            <button
+              onClick={() => setIsModelPillExpanded(!isModelPillExpanded)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-white border-2 border-indigo-200 rounded-full hover:border-indigo-300 hover:bg-indigo-50 transition-all shadow-sm"
+            >
+              <div className="flex items-center gap-2.5">
+                <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                </svg>
+                <span className="text-sm font-semibold text-gray-900">
+                  {loadingConfig ? 'Loading...' : (configuredModel?.orchestrator || 'Auto-select')}
+                </span>
+              </div>
+              <svg className={`w-4 h-4 text-gray-400 transition-transform ${isModelPillExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {/* Model Pill Dropdown */}
+            {isModelPillExpanded && (
+              <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-white border border-gray-200 rounded-lg shadow-lg z-10 animate-in slide-in-from-top-2 duration-200">
+                <div className="text-xs text-gray-600 mb-2">
+                  <span className="font-semibold">Orchestrator:</span> {configuredModel?.orchestrator || 'Auto-select best model'}
+                </div>
+                <div className="text-xs text-gray-600 mb-3">
+                  <span className="font-semibold">Writers:</span> {configuredModel?.writerCount || 0} models
+                </div>
+                <button
+                  onClick={() => router.push('/profile')}
+                  className="w-full text-xs font-medium text-indigo-600 hover:text-indigo-700 py-1.5 px-3 border border-indigo-200 rounded-md hover:bg-indigo-50 transition-colors"
+                >
+                  Change in Profile →
+                </button>
+              </div>
+            )}
           </div>
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">Ghostwriter</h2>
-            <p className="text-sm text-gray-500">Choose a format to begin writing</p>
+
+          {/* Format Pill */}
+          <div className="relative flex-1">
+            <button
+              onClick={() => setIsFormatPillExpanded(!isFormatPillExpanded)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-white border-2 border-yellow-200 rounded-full hover:border-yellow-300 hover:bg-yellow-50 transition-all shadow-sm"
+            >
+              <div className="flex items-center gap-2.5">
+                <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                <span className="text-sm font-semibold text-gray-900">
+                  {selectedFormat ? storyFormats.find(f => f.type === selectedFormat)?.label : 'Select Format'}
+                </span>
+              </div>
+              <svg className={`w-4 h-4 text-gray-400 transition-transform ${isFormatPillExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {/* Format Pill Dropdown */}
+            {isFormatPillExpanded && (
+              <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-96 overflow-y-auto animate-in slide-in-from-top-2 duration-200">
+                {storyFormats.map((format) => {
+                  const formatTemplates = templates[format.type]
+                  const isSelected = selectedFormat === format.type
+                  
+                  return (
+                    <div key={format.type} className="mb-2 last:mb-0">
+                      <button
+                        onClick={() => {
+                          setSelectedFormat(format.type)
+                          setSelectedTemplate(null)
+                        }}
+                        className={`w-full flex items-center gap-2 p-2 rounded-md text-left transition-colors ${
+                          isSelected ? 'bg-yellow-50 border-2 border-yellow-300' : 'hover:bg-gray-50 border-2 border-transparent'
+                        }`}
+                      >
+                        <div className="text-yellow-600">{format.icon}</div>
+                        <div className="flex-1">
+                          <div className="text-sm font-semibold text-gray-900">{format.label}</div>
+                          <div className="text-xs text-gray-500">{format.description}</div>
+                        </div>
+                      </button>
+                      
+                      {isSelected && (
+                        <div className="ml-8 mt-1 space-y-1">
+                          {formatTemplates.map((template) => (
+                            <button
+                              key={template.id}
+                              onClick={() => {
+                                setSelectedTemplate(template.id)
+                                setIsFormatPillExpanded(false)
+                                // Auto-create when template selected
+                                if (!isCreating) {
+                                  handleCreateStory()
+                                }
+                              }}
+                              className={`w-full text-left px-3 py-1.5 rounded text-xs transition-colors ${
+                                selectedTemplate === template.id
+                                  ? 'bg-yellow-100 text-yellow-900 font-medium'
+                                  : 'text-gray-600 hover:bg-gray-100'
+                              }`}
+                            >
+                              {template.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {/* Model Configuration Display (Read-only) */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-700">1. Model Configuration</h3>
-            <button
-              onClick={() => {
-                console.log('[CreateStoryPanel] Manual refresh triggered')
-                fetchConfiguredModels()
-              }}
-              disabled={loadingConfig}
-              className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Refresh configuration"
-            >
-              <svg 
-                className={`w-3.5 h-3.5 ${loadingConfig ? 'animate-spin' : ''}`} 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Refresh
-            </button>
-          </div>
-          
-          {loadingConfig ? (
-            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 flex items-center justify-center">
-              <div className="inline-block w-4 h-4 border-2 border-gray-300 border-t-yellow-400 rounded-full animate-spin mr-3" />
-              <span className="text-sm text-gray-600">Loading configuration...</span>
-            </div>
-          ) : configuredModel.orchestrator === null ? (
-            <div className="bg-yellow-50 rounded-lg border border-yellow-200 p-4">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-yellow-800 mb-1">No API keys configured</p>
-                  <p className="text-xs text-yellow-700">Add an API key in your Profile to use the orchestrator.</p>
-                  <button 
-                    onClick={() => router.push('/profile')}
-                    className="inline-block mt-2 text-xs font-semibold text-yellow-700 underline hover:text-yellow-800 cursor-pointer"
-                  >
-                    Go to Profile →
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-sm font-semibold text-gray-900">
-                      {configuredModel.orchestrator === 'Auto-select' 
-                        ? 'Auto-select (Best Available)' 
-                        : configuredModel.orchestrator}
-                    </h4>
-                    <Badge variant="success" size="sm">Active</Badge>
-                  </div>
-                  <p className="text-xs text-gray-600 mb-2">
-                    {configuredModel.writerCount > 0 
-                      ? `Orchestrator with ${configuredModel.writerCount} writer${configuredModel.writerCount > 1 ? 's' : ''}`
-                      : 'Orchestrator (handles both planning and writing)'}
-                  </p>
-                  <button 
-                    onClick={() => router.push('/profile')}
-                    className="inline-block text-xs font-medium text-blue-600 hover:text-blue-700 underline cursor-pointer"
-                  >
-                    Change in Profile →
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Reasoning Chat Section (NEW) */}
-        <CollapsibleSection
-          title="Orchestrator Reasoning"
-          defaultOpen={isReasoningOpen}
-          className="mt-6"
-        >
-          <div className="space-y-2 max-h-96 overflow-y-auto">
+      {/* Orchestrator Reasoning - Center Stage */}
+      <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-gray-50 to-white">
+        <div className="max-w-4xl mx-auto h-full flex flex-col">
+          <div className="flex-1 overflow-y-auto space-y-3">
             {reasoningMessages.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -518,132 +543,49 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
                 )
               })
             )}
-            {/* Scroll target for auto-scroll */}
-            <div ref={reasoningEndRef} />
+          {/* Scroll target */}
+          <div ref={reasoningEndRef} />
           </div>
-        </CollapsibleSection>
-
-        {/* Format Selection Section */}
-        <CollapsibleSection
-          title="2. Choose Format"
-          defaultOpen={true}
-          className="mt-6"
-        >
-          <div className="space-y-2">
-            {storyFormats.map((format) => {
-              const isSelected = selectedFormat === format.type
-              const formatTemplates = templates[format.type]
-              
-              return (
-                <div key={format.type}>
-                  {/* Format Card */}
-                  <Card
-                    variant={isSelected ? 'selected' : 'interactive'}
-                    onClick={() => handleFormatClick(format.type)}
-                    className="relative transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`flex-shrink-0 transition-colors ${isSelected ? 'text-yellow-600' : 'text-gray-500'}`}>
-                        {format.icon}
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className={`text-sm font-semibold transition-colors ${isSelected ? 'text-yellow-900' : 'text-gray-900'}`}>
-                          {format.label}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {format.description}
-                        </div>
-                      </div>
-                      {/* Chevron indicator */}
-                      <div className={`flex-shrink-0 transition-transform ${isSelected ? 'rotate-90' : ''}`}>
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* Template Selection (expands directly below format) */}
-                  {isSelected && (
-                    <div className="mt-2 ml-8 space-y-1 animate-in slide-in-from-top-2 duration-200">
-                      {formatTemplates.map((template) => (
-                        <button
-                          key={template.id}
-                          onClick={() => handleTemplateSelect(template.id)}
-                          className={`w-full text-left p-3 rounded-lg border transition-all ${
-                            selectedTemplate === template.id
-                              ? 'border-yellow-400 bg-yellow-50 shadow-sm'
-                              : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className="flex items-start gap-2">
-                            <div className="flex-1">
-                              <div className={`text-sm font-medium ${
-                                selectedTemplate === template.id ? 'text-yellow-900' : 'text-gray-900'
-                              }`}>
-                                {template.name}
-                              </div>
-                              <div className="text-xs text-gray-500 mt-0.5">
-                                {template.description}
-                              </div>
-                            </div>
-                            {selectedTemplate === template.id && (
-                              <div className="flex-shrink-0 w-4 h-4 rounded-full bg-yellow-400 flex items-center justify-center">
-                                <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                              </div>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </CollapsibleSection>
+        </div>
       </div>
 
-      {/* Footer with Create Button */}
-      <div className="p-6 border-t border-gray-200 bg-gray-50">
-        <Button
-          onClick={handleCreateStory}
-          disabled={!selectedFormat || !selectedTemplate || isCreating}
-          variant="primary"
-          size="lg"
-          className="w-full"
-        >
-          {isCreating ? (
-            <>
-              <div className="inline-block w-5 h-5 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Creating...
-            </>
-          ) : (
-            <>
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              {selectedFormat && selectedTemplate
-                ? `Create ${storyFormats.find(f => f.type === selectedFormat)?.label}`
-                : selectedFormat
-                ? 'Select a Template'
-                : 'Select a Format'}
-            </>
-          )}
-        </Button>
-        {selectedFormat && selectedTemplate && (
-          <p className="text-xs text-gray-500 text-center mt-3">
-            This will create a new story structure on the canvas
-          </p>
-        )}
+      {/* Chat Input - Bottom */}
+      <div className="border-t border-gray-200 bg-white p-4">
+        <div className="flex items-end gap-3">
+          <textarea
+            ref={chatInputRef}
+            value={chatMessage}
+            onChange={(e) => setChatMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                // TODO: Send message to orchestrator
+                console.log('Send message:', chatMessage)
+                setChatMessage('')
+              }
+            }}
+            placeholder="Chat with the orchestrator..."
+            rows={2}
+            className="flex-1 resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-gray-400"
+          />
+          <button
+            onClick={() => {
+              // TODO: Send message to orchestrator
+              console.log('Send message:', chatMessage)
+              setChatMessage('')
+            }}
+            disabled={!chatMessage.trim()}
+            className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 mt-2">
+          Press Enter to send, Shift+Enter for new line
+        </p>
       </div>
     </div>
   )
 }
-
