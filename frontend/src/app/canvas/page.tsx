@@ -1114,12 +1114,21 @@ export default function CanvasPage() {
       
       onReasoning(`📝 Analyzing prompt: "${effectivePrompt.substring(0, 100)}..."`, 'thinking')
       
+      // Determine which model to use as orchestrator
+      const finalOrchestratorModel = orchestratorModelId || selectedModel || (availableModels.length > 0 ? availableModels[0] : null)
+      
+      if (!finalOrchestratorModel) {
+        throw new Error('No orchestrator model available')
+      }
+      
+      onReasoning(`🎯 Using: ${finalOrchestratorModel}`, 'decision')
+      
       // Call orchestrator to create plan
       const plan = await orchestrator.orchestrate(
         effectivePrompt,
         format,
         {
-          orchestratorModel: orchestratorModelId || selectedModel || null,
+          orchestratorModel: finalOrchestratorModel,
           availableModels,
           userKeyId: selectedKeyId || undefined
         }
