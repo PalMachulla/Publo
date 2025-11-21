@@ -910,19 +910,244 @@ export default function CanvasPage() {
     )
     
     if (aiPromptNode) {
-      console.log('🚀 Auto-generating structure with AI after node creation')
-      // Trigger AI generation after a brief delay to ensure node is added
+      console.log('🚀 Auto-generating structure with orchestrator after node creation')
+      // Use orchestrator-based generation by default
       // Pass 'context' as the orchestrator ID since that's where the model selection is stored
       setTimeout(() => {
-        triggerAIGeneration(structureId, format, aiPromptNode, 'context')
+        // TODO: Add smart detection to choose between orchestrated vs legacy
+        // For now, use orchestrated generation by default
+        triggerOrchestratedGeneration(structureId, format, aiPromptNode, 'context')
       }, 100)
     }
     
     saveAndFinalize()
   }, [nodes, edges, setNodes, setEdges, handleSave])
   
-  // Helper function to trigger AI generation for a structure node
-  // Now uses the orchestrator-based agentic system
+  // NEW: Orchestrator-based generation using agentic system
+  const triggerOrchestratedGeneration = async (
+    structureNodeId: string,
+    format: StoryFormat,
+    aiPromptNode: Node,
+    orchestratorNodeId: string
+  ) => {
+    console.log('🎬 Starting orchestrator-based agentic generation...')
+    
+    // Check authentication
+    if (!user) {
+      isInferencingRef.current = false
+      alert('❌ You must be logged in to generate content.')
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === structureNodeId) {
+            return { ...n, data: { ...n.data, isLoading: false } }
+          } else if (n.id === orchestratorNodeId) {
+            return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+          }
+          return n
+        })
+      )
+      return
+    }
+    
+    const isActive = (aiPromptNode.data as any).isActive !== false
+    const userPrompt = (aiPromptNode.data as any).userPrompt || ''
+    
+    if (isActive && !userPrompt.trim()) {
+      alert('Please enter a prompt in the AI Prompt node first, or set it to Passive mode.')
+      return
+    }
+    
+    try {
+      // Set inference flag
+      isInferencingRef.current = true
+      
+      // Import orchestrator engine
+      const { OrchestratorEngine } = await import('@/lib/orchestrator/orchestratorEngine')
+      const { MODEL_CATALOG } = await import('@/lib/models/modelCapabilities')
+      
+      // Get orchestrator node data
+      const orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
+      const selectedModel = (orchestratorNode?.data as any)?.selectedModel
+      const selectedKeyId = (orchestratorNode?.data as any)?.selectedKeyId
+      
+      console.log('🔍 Fetching user preferences...')
+      
+      // Fetch user's orchestrator/writer preferences
+      let orchestratorModelId: string | null = null
+      let writerModelIds: string[] = []
+      
+      if (selectedKeyId) {
+        const prefsResponse = await fetch('/api/user/api-keys')
+        const prefsData = await prefsResponse.json()
+        
+        if (prefsData.success) {
+          const userKey = prefsData.keys.find((k: any) => k.id === selectedKeyId)
+          if (userKey) {
+            orchestratorModelId = userKey.orchestrator_model_id || null
+            writerModelIds = userKey.writer_model_ids || []
+          }
+        }
+      }
+      
+      console.log('📋 User preferences:', {
+        orchestratorModelId,
+        writerModelIds,
+        selectedKeyId
+      })
+      
+      // Initialize reasoning messages array
+      const reasoningMessages: Array<{
+        id: string
+        timestamp: number
+        message: string
+        type: 'thinking' | 'decision' | 'task' | 'result' | 'error'
+      }> = []
+      
+      // Reasoning callback to update orchestrator node
+      const onReasoning = (message: string, type: any) => {
+        const msg = {
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          timestamp: Date.now(),
+          message,
+          type
+        }
+        reasoningMessages.push(msg)
+        
+        // Update orchestrator node with reasoning messages
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === orchestratorNodeId
+              ? { ...n, data: { ...n.data, reasoningMessages: [...reasoningMessages] } }
+              : n
+          )
+        )
+      }
+      
+      // Update orchestrator to show it's working
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === orchestratorNodeId
+            ? { ...n, data: { ...n.data, isOrchestrating: true, loadingText: 'Orchestrating', reasoningMessages: [] } }
+            : n
+        )
+      )
+      
+      onReasoning('🚀 Initializing orchestrator engine...', 'thinking')
+      
+      // Create orchestrator engine
+      const orchestrator = new OrchestratorEngine(
+        MODEL_CATALOG,
+        onReasoning,
+        user.id
+      )
+      
+      // Determine available models
+      let availableModels: string[] = []
+      if (orchestratorModelId) {
+        availableModels = [orchestratorModelId]
+      } else if (selectedModel) {
+        availableModels = [selectedModel]
+      }
+      
+      // Add writer models if configured
+      if (writerModelIds.length > 0) {
+        availableModels.push(...writerModelIds)
+      }
+      
+      console.log('🎯 Available models:', availableModels)
+      
+      // Build effective prompt
+      const effectivePrompt = isActive 
+        ? userPrompt 
+        : `Create a ${format} structure with typical sections and appropriate detail.`
+      
+      onReasoning(`📝 Analyzing prompt: "${effectivePrompt.substring(0, 100)}..."`, 'thinking')
+      
+      // Call orchestrator to create plan
+      const plan = await orchestrator.orchestrate(
+        effectivePrompt,
+        format,
+        {
+          orchestratorModel: orchestratorModelId || selectedModel || null,
+          availableModels,
+          userKeyId: selectedKeyId || undefined
+        }
+      )
+      
+      onReasoning(`✅ Plan created: ${plan.structure.length} sections, ${plan.tasks.length} tasks`, 'result')
+      
+      // Convert plan to structure items
+      const structureItems = plan.structure.map((section: any) => ({
+        id: section.id,
+        level: section.level,
+        name: section.name,
+        parentId: section.parentId,
+        wordCount: section.wordCount,
+        summary: section.summary || ''
+      }))
+      
+      // Update structure node with initial structure
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === structureNodeId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                items: structureItems,
+                contentMap: {},
+                format,
+                isLoading: false
+              }
+            }
+          }
+          return n
+        })
+      )
+      
+      onReasoning(`📊 Structure initialized with ${structureItems.length} sections`, 'result')
+      
+      // Save canvas with structure
+      hasUnsavedChangesRef.current = true
+      await handleSave()
+      
+      // Clear inference flag
+      isInferencingRef.current = false
+      
+      // Update orchestrator to clear loading
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === orchestratorNodeId
+            ? { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+            : n
+        )
+      )
+      
+      onReasoning('✅ Orchestration complete!', 'result')
+      
+      alert(`✅ ${format.charAt(0).toUpperCase() + format.slice(1)} structure generated with orchestrator!`)
+      
+    } catch (error: any) {
+      console.error('❌ Orchestrated generation failed:', error)
+      
+      isInferencingRef.current = false
+      
+      alert(`Failed to generate structure:\n\n${error.message}`)
+      
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === structureNodeId) {
+            return { ...n, data: { ...n.data, isLoading: false } }
+          } else if (n.id === orchestratorNodeId) {
+            return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+          }
+          return n
+        })
+      )
+    }
+  }
+  
+  // LEGACY: Original generation function (kept for backward compatibility)
   const triggerAIGeneration = async (
     structureNodeId: string,
     format: StoryFormat,

@@ -169,9 +169,18 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   const [selectedFormat, setSelectedFormat] = useState<StoryFormat | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   
-  // NEW: Reasoning chat state
-  const [reasoningMessages, setReasoningMessages] = useState<ReasoningMessage[]>([])
+  // Reasoning chat state - synced from node data
   const [isReasoningOpen, setIsReasoningOpen] = useState(false)
+  
+  // Read reasoning messages from node data (updated by orchestrator)
+  const reasoningMessages: ReasoningMessage[] = (node.data as any).reasoningMessages || []
+
+  // Auto-open reasoning panel when messages appear
+  useEffect(() => {
+    if (reasoningMessages.length > 0 && !isReasoningOpen) {
+      setIsReasoningOpen(true)
+    }
+  }, [reasoningMessages.length])
 
   // Fetch models from all sources on mount
   useEffect(() => {
