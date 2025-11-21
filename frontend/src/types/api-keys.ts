@@ -96,6 +96,7 @@ export interface GenerateRequest {
   temperature?: number
   top_p?: number
   mode?: 'orchestrator' | 'writer' | 'legacy' // NEW: Generation mode
+  stream?: boolean // NEW: Enable streaming responses (SSE)
 }
 
 /**

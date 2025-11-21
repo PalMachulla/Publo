@@ -24,7 +24,8 @@ export async function POST(request: Request) {
       user_key_id, 
       temperature, 
       top_p,
-      mode = 'legacy' // NEW: orchestrator | writer | legacy (default)
+      mode = 'legacy', // NEW: orchestrator | writer | legacy (default)
+      stream = false    // NEW: Enable streaming responses (SSE)
     } = body
     
     const supabase = await createClient()
@@ -162,7 +163,79 @@ export async function POST(request: Request) {
     // Get provider adapter
     const adapter = getProviderAdapter(provider)
 
-    // Generate content
+    // ═══════════════════════════════════════════════════════════════
+    // STREAMING MODE: Return SSE stream
+    // ═══════════════════════════════════════════════════════════════
+    if (stream) {
+      console.log(`🌊 Streaming generation with ${provider} model ${model}`)
+      
+      const encoder = new TextEncoder()
+      
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            // Check if adapter supports streaming
+            if (typeof adapter.generateStream !== 'function') {
+              // Fallback to batch mode if streaming not supported
+              console.warn(`⚠️ ${provider} adapter doesn't support streaming, falling back to batch`)
+              
+              const result = await adapter.generate(apiKey, {
+                model,
+                system_prompt,
+                user_prompt,
+                max_tokens,
+                temperature,
+                top_p,
+              })
+              
+              // Send as single chunk
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'content',
+                content: result.content,
+                done: true
+              })}\n\n`))
+              
+              controller.close()
+              return
+            }
+            
+            // Stream from provider
+            for await (const chunk of adapter.generateStream(apiKey, {
+              model,
+              system_prompt,
+              user_prompt,
+              max_tokens,
+              temperature,
+              top_p,
+            })) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+            }
+            
+            controller.close()
+          } catch (error: any) {
+            console.error('❌ Streaming error:', error)
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'error',
+              error: error.message || 'Streaming failed'
+            })}\n\n`))
+            controller.close()
+          }
+        }
+      })
+      
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no', // Disable nginx buffering
+        }
+      })
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // BATCH MODE: Return JSON (existing behavior)
+    // ═══════════════════════════════════════════════════════════════
     console.log(`🤖 Generating with ${provider} model ${model}`, {
       keyLength: apiKey.length,
       keyPreview: `${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)}`,

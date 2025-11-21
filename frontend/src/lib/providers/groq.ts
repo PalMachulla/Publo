@@ -142,6 +142,142 @@ export class GroqAdapter implements LLMProviderAdapter {
   }
 
   /**
+   * Generate content with streaming (SSE)
+   * Returns an async generator that yields chunks as they arrive
+   */
+  async *generateStream(apiKey: string, params: GenerateParams): AsyncGenerator<{
+    type: 'reasoning' | 'content' | 'done' | 'error'
+    content?: string
+    usage?: ProviderUsage
+    model?: string
+    done?: boolean
+    error?: string
+  }> {
+    try {
+      const response = await fetch(`${GROQ_API_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: params.model,
+          messages: [
+            { role: 'system', content: params.system_prompt },
+            { role: 'user', content: params.user_prompt },
+          ],
+          max_completion_tokens: params.max_tokens,
+          ...(params.temperature !== undefined && { temperature: params.temperature }),
+          ...(params.top_p !== undefined && { top_p: params.top_p }),
+          stream: true, // Enable streaming
+        }),
+      })
+
+      if (response.status === 401) {
+        throw new InvalidAPIKeyError('groq')
+      }
+
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('retry-after')
+        throw new RateLimitError('groq', retryAfter ? parseInt(retryAfter) : undefined)
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new ProviderError(
+          errorData.error?.message || `Groq API error: ${response.statusText}`,
+          'groq',
+          response.status
+        )
+      }
+
+      // Parse SSE stream
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let fullContent = ''
+      let insideThinkTag = false
+      let reasoningBuffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            if (data === '[DONE]') {
+              yield {
+                type: 'done',
+                content: fullContent,
+                done: true
+              }
+              return
+            }
+
+            try {
+              const parsed = JSON.parse(data)
+              const delta = parsed.choices[0]?.delta?.content
+
+              if (delta) {
+                fullContent += delta
+
+                // Parse reasoning tokens (<think> tags)
+                for (const char of delta) {
+                  if (char === '<' && fullContent.endsWith('<think>')) {
+                    insideThinkTag = true
+                    reasoningBuffer = ''
+                    continue
+                  }
+
+                  if (insideThinkTag) {
+                    reasoningBuffer += char
+                    if (reasoningBuffer.endsWith('</think>')) {
+                      // Extract reasoning (remove closing tag)
+                      const reasoning = reasoningBuffer.slice(0, -8)
+                      yield {
+                        type: 'reasoning',
+                        content: reasoning
+                      }
+                      insideThinkTag = false
+                      reasoningBuffer = ''
+                      continue
+                    }
+                  } else {
+                    // Regular content (not inside <think> tags)
+                    yield {
+                      type: 'content',
+                      content: char
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Failed to parse SSE chunk:', e)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if (error instanceof ProviderError) {
+        yield {
+          type: 'error',
+          error: error.message
+        }
+      } else {
+        yield {
+          type: 'error',
+          error: 'Failed to generate with Groq'
+        }
+      }
+    }
+  }
+
+  /**
    * Validate Groq API key by making a lightweight request
    */
   async validateKey(apiKey: string): Promise<boolean> {
