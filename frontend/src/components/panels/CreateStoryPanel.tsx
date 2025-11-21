@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
@@ -164,9 +164,14 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   
   // Reasoning chat state - synced from node data
   const [isReasoningOpen, setIsReasoningOpen] = useState(false)
+  const reasoningEndRef = useRef<HTMLDivElement>(null) // Auto-scroll target
   
   // Read reasoning messages from node data (updated by orchestrator)
   const reasoningMessages: ReasoningMessage[] = (node.data as any).reasoningMessages || []
+  
+  // Detect if streaming (last message is from model and being updated)
+  const isStreaming = reasoningMessages.length > 0 && 
+    reasoningMessages[reasoningMessages.length - 1].content.startsWith('🤖 Model reasoning:')
 
   // Auto-open reasoning panel when messages appear
   useEffect(() => {
@@ -206,6 +211,13 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
       window.removeEventListener('orchestratorConfigUpdated' as any, handleConfigUpdate as any)
     }
   }, [])
+
+  // NEW: Auto-scroll to latest reasoning message
+  useEffect(() => {
+    if (reasoningMessages.length > 0 && reasoningEndRef.current) {
+      reasoningEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    }
+  }, [reasoningMessages])
 
   const fetchConfiguredModels = async () => {
     setLoadingConfig(true)
@@ -418,7 +430,12 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
               </div>
             ) : (
               reasoningMessages.map((msg, i) => {
+                // Distinguish model reasoning from orchestrator messages
+                const isModelMessage = msg.content.startsWith('🤖 Model reasoning:')
+                const isLastMessage = i === reasoningMessages.length - 1
+                
                 const bgColor = 
+                  isModelMessage ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-l-4 border-indigo-500' :
                   msg.type === 'thinking' ? 'bg-purple-50 border-l-4 border-purple-400' :
                   msg.type === 'decision' ? 'bg-blue-50 border-l-4 border-blue-400' :
                   msg.type === 'task' ? 'bg-yellow-50 border-l-4 border-yellow-400' :
@@ -426,6 +443,11 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
                   'bg-red-50 border-l-4 border-red-400'
                 
                 const icon = 
+                  isModelMessage ? (
+                    <svg className="w-3.5 h-3.5 text-indigo-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                    </svg>
+                  ) :
                   msg.type === 'thinking' ? (
                     <svg className="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -452,16 +474,18 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
                     </svg>
                   )
                 
+                const label = isModelMessage ? 'MODEL' : msg.type.toUpperCase()
+                
                 return (
-                  <div key={i} className={`p-3 rounded ${bgColor}`}>
+                  <div key={i} className={`p-3 rounded ${bgColor} ${isLastMessage && isStreaming ? 'animate-pulse' : ''}`}>
                     <div className="flex items-start gap-2">
                       <div className="flex-shrink-0 mt-0.5">
                         {icon}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
-                            {msg.type}
+                          <span className={`text-[10px] font-medium uppercase tracking-wide ${isModelMessage ? 'text-indigo-600 font-bold' : 'text-gray-500'}`}>
+                            {label}
                           </span>
                           <span className="text-[10px] text-gray-400">
                             {new Date(msg.timestamp).toLocaleTimeString('en-US', { 
@@ -473,6 +497,10 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
                         </div>
                         <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
                           {msg.content}
+                          {/* Typing indicator for last message when streaming */}
+                          {isLastMessage && isStreaming && (
+                            <span className="inline-block ml-1 w-1.5 h-4 bg-indigo-600 animate-pulse" />
+                          )}
                         </p>
                       </div>
                     </div>
@@ -480,6 +508,8 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
                 )
               })
             )}
+            {/* Scroll target for auto-scroll */}
+            <div ref={reasoningEndRef} />
           </div>
         </CollapsibleSection>
 
