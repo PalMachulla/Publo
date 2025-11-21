@@ -177,18 +177,44 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
 
   // Fetch configured models from Profile settings - ALWAYS refresh on mount
   useEffect(() => {
+    console.log('[CreateStoryPanel] Component mounted, fetching configuration...')
     fetchConfiguredModels()
   }, []) // This now refreshes every time panel opens
 
-  // Auto-refresh when window regains focus (user returns from Profile page)
+  // Auto-refresh when page becomes visible (user returns from Profile)
   useEffect(() => {
-    const handleFocus = () => {
-      console.log('[CreateStoryPanel] Window focused, refreshing configuration...')
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('[CreateStoryPanel] Page became visible, refreshing configuration...')
+        fetchConfiguredModels()
+      }
+    }
+    
+    // Listen for custom event from Profile page when config is saved
+    const handleConfigUpdate = (e: CustomEvent) => {
+      console.log('[CreateStoryPanel] Config update event received:', e.detail)
       fetchConfiguredModels()
     }
     
-    window.addEventListener('focus', handleFocus)
-    return () => window.removeEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('popstate', fetchConfiguredModels) // Browser back button
+    window.addEventListener('orchestratorConfigUpdated' as any, handleConfigUpdate as any)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('popstate', fetchConfiguredModels)
+      window.removeEventListener('orchestratorConfigUpdated' as any, handleConfigUpdate as any)
+    }
+  }, [])
+
+  // Poll for changes every 2 seconds when panel is open (backup mechanism)
+  useEffect(() => {
+    const pollInterval = setInterval(() => {
+      console.log('[CreateStoryPanel] Polling for config changes...')
+      fetchConfiguredModels()
+    }, 2000)
+
+    return () => clearInterval(pollInterval)
   }, [])
 
   const fetchConfiguredModels = async () => {

@@ -733,6 +733,16 @@ export default function ProfilePage() {
                                                   // Refresh keys to get updated data
                                                   await fetchKeys()
                                                   
+                                                  // Dispatch custom event to notify other components (e.g., CreateStoryPanel)
+                                                  window.dispatchEvent(new CustomEvent('orchestratorConfigUpdated', {
+                                                    detail: {
+                                                      orchestratorModelId: selectedOrchestrator,
+                                                      writerModelIds: selectedWriters,
+                                                      timestamp: new Date().toISOString()
+                                                    }
+                                                  }))
+                                                  console.log('[Profile] Dispatched orchestratorConfigUpdated event')
+                                                  
                                                   alert('✅ Model preferences saved!')
                                                 } catch (error: any) {
                                                   console.error('[Profile] Error saving preferences:', error)
