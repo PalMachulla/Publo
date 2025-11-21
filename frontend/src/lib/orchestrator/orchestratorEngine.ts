@@ -76,7 +76,7 @@ export interface OrchestratorPlan {
 export interface OrchestratorPreferences {
   orchestratorModel: string
   availableModels: string[]
-  userKeyId: string
+  userKeyId?: string
 }
 
 export interface ReasoningMessage {

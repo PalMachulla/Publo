@@ -965,34 +965,56 @@ export default function CanvasPage() {
       const { OrchestratorEngine } = await import('@/lib/orchestrator/orchestratorEngine')
       const { MODEL_CATALOG } = await import('@/lib/models/modelCapabilities')
       
-      // Get orchestrator node data
+      // Get orchestrator node (no longer stores selectedModel/selectedKeyId)
       const orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
-      const selectedModel = (orchestratorNode?.data as any)?.selectedModel
-      const selectedKeyId = (orchestratorNode?.data as any)?.selectedKeyId
       
       console.log('🔍 Fetching user preferences...')
       
       // Fetch user's orchestrator/writer preferences
       let orchestratorModelId: string | null = null
       let writerModelIds: string[] = []
+      let userKeyId: string | null = null
       
-      if (selectedKeyId) {
-        const prefsResponse = await fetch('/api/user/api-keys')
-        const prefsData = await prefsResponse.json()
+      // Fetch ALL API keys and find first configured orchestrator
+      const prefsResponse = await fetch('/api/user/api-keys')
+      const prefsData = await prefsResponse.json()
+      
+      console.log('📦 API keys response:', {
+        success: prefsData.success,
+        keyCount: prefsData.keys?.length,
+        keys: prefsData.keys?.map((k: any) => ({
+          id: k.id,
+          provider: k.provider,
+          orchestrator: k.orchestrator_model_id,
+          writers: k.writer_model_ids
+        }))
+      })
+      
+      if (prefsData.success && prefsData.keys?.length > 0) {
+        // Find first key with orchestrator configured
+        const configuredKey = prefsData.keys.find((k: any) => k.orchestrator_model_id)
         
-        if (prefsData.success) {
-          const userKey = prefsData.keys.find((k: any) => k.id === selectedKeyId)
-          if (userKey) {
-            orchestratorModelId = userKey.orchestrator_model_id || null
-            writerModelIds = userKey.writer_model_ids || []
-          }
+        if (configuredKey) {
+          orchestratorModelId = configuredKey.orchestrator_model_id
+          writerModelIds = configuredKey.writer_model_ids || []
+          userKeyId = configuredKey.id
+          console.log('✅ Found configured orchestrator:', {
+            orchestrator: orchestratorModelId,
+            writers: writerModelIds.length,
+            keyId: userKeyId,
+            provider: configuredKey.provider
+          })
+        } else {
+          console.log('⚠️ No orchestrator configured in any API key')
         }
+      } else {
+        console.log('❌ No API keys found')
       }
       
       console.log('📋 User preferences:', {
         orchestratorModelId,
         writerModelIds,
-        selectedKeyId
+        userKeyId
       })
       
       // Initialize reasoning messages array
@@ -1043,16 +1065,16 @@ export default function CanvasPage() {
       
       // Determine available models
       let availableModels: string[] = []
+      let finalOrchestratorModel: string | null = null
       
-      // Priority 1: Use configured orchestrator model
+      // Priority 1: Use configured orchestrator model from Profile
       if (orchestratorModelId) {
+        finalOrchestratorModel = orchestratorModelId
         availableModels = [orchestratorModelId]
+        onReasoning(`✓ Using configured orchestrator: ${orchestratorModelId}`, 'decision')
+        console.log('[Canvas] Using Profile orchestrator:', orchestratorModelId)
       } 
-      // Priority 2: Use selected model from canvas node
-      else if (selectedModel) {
-        availableModels = [selectedModel]
-      }
-      // Priority 3: Fetch from API as fallback
+      // Priority 2: Fetch from API as fallback
       else {
         onReasoning('🔍 No model configured, fetching available models...', 'thinking')
         
@@ -1075,12 +1097,16 @@ export default function CanvasPage() {
               )
               
               if (orchestratorModels.length > 0) {
+                finalOrchestratorModel = orchestratorModels[0].id
                 availableModels = [orchestratorModels[0].id]
                 onReasoning(`✓ Auto-selected: ${orchestratorModels[0].name || orchestratorModels[0].id}`, 'decision')
+                console.log('[Canvas] Auto-selected orchestrator:', finalOrchestratorModel)
               } else {
                 // Fallback to any available model
+                finalOrchestratorModel = firstGroup.models[0].id
                 availableModels = [firstGroup.models[0].id]
                 onReasoning(`✓ Using: ${firstGroup.models[0].name || firstGroup.models[0].id}`, 'decision')
+                console.log('[Canvas] Fallback orchestrator:', finalOrchestratorModel)
               }
             }
           } else {
@@ -1099,10 +1125,11 @@ export default function CanvasPage() {
       }
       
       console.log('🎯 Available models:', availableModels)
+      console.log('🎯 Final orchestrator:', finalOrchestratorModel)
       
       // Validate we have at least one model
-      if (availableModels.length === 0) {
-        const errorMsg = 'No models available. Please:\n\n1. Go to Profile page\n2. Add an API key (Groq, OpenAI, or Anthropic)\n3. Click "Model Configuration"\n4. Save your preferences\n5. Try generating again'
+      if (availableModels.length === 0 || !finalOrchestratorModel) {
+        const errorMsg = 'No models available. Please:\n\n1. Go to Profile page\n2. Add an API key (Groq, OpenAI, or Anthropic)\n3. Click "Model Configuration"\n4. Select an orchestrator model\n5. Save your preferences\n6. Try generating again'
         onReasoning(`❌ ${errorMsg}`, 'error')
         throw new Error(errorMsg)
       }
@@ -1114,15 +1141,6 @@ export default function CanvasPage() {
       
       onReasoning(`📝 Analyzing prompt: "${effectivePrompt.substring(0, 100)}..."`, 'thinking')
       
-      // Determine which model to use as orchestrator
-      const finalOrchestratorModel = orchestratorModelId || selectedModel || (availableModels.length > 0 ? availableModels[0] : null)
-      
-      if (!finalOrchestratorModel) {
-        throw new Error('No orchestrator model available')
-      }
-      
-      onReasoning(`🎯 Using: ${finalOrchestratorModel}`, 'decision')
-      
       // Call orchestrator to create plan
       const plan = await orchestrator.orchestrate(
         effectivePrompt,
@@ -1130,7 +1148,7 @@ export default function CanvasPage() {
         {
           orchestratorModel: finalOrchestratorModel,
           availableModels,
-          userKeyId: selectedKeyId || undefined
+          userKeyId: userKeyId ?? undefined
         }
       )
       
