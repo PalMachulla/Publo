@@ -374,86 +374,106 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
             )}
           </div>
 
-          {/* Format Pill */}
-          <div className="relative flex-1">
-            <button
-              onClick={() => setIsFormatPillExpanded(!isFormatPillExpanded)}
-              className="w-full flex items-center justify-between px-4 py-2.5 bg-white border-2 border-yellow-200 rounded-full hover:border-yellow-300 hover:bg-yellow-50 transition-all shadow-sm"
-            >
-              <div className="flex items-center gap-2.5">
-                <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
-                <span className="text-sm font-semibold text-gray-900">
-                  {selectedFormat ? storyFormats.find(f => f.type === selectedFormat)?.label : 'Select Format'}
-                </span>
-              </div>
-              <svg className={`w-4 h-4 text-gray-400 transition-transform ${isFormatPillExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          {/* Format Pill - Simplified (just shows selection) */}
+          <button
+            onClick={() => setIsFormatPillExpanded(!isFormatPillExpanded)}
+            className="flex-1 flex items-center justify-between px-4 py-2.5 bg-white border-2 border-yellow-200 rounded-full hover:border-yellow-300 hover:bg-yellow-50 transition-all shadow-sm"
+          >
+            <div className="flex items-center gap-2.5">
+              <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
               </svg>
-            </button>
-            
-            {/* Format Pill Dropdown */}
-            {isFormatPillExpanded && (
-              <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-96 overflow-y-auto animate-in slide-in-from-top-2 duration-200">
-                {storyFormats.map((format) => {
-                  const formatTemplates = templates[format.type]
-                  const isSelected = selectedFormat === format.type
-                  
-                  return (
-                    <div key={format.type} className="mb-2 last:mb-0">
-                      <button
-                        onClick={() => {
-                          setSelectedFormat(format.type)
-                          setSelectedTemplate(null)
-                        }}
-                        className={`w-full flex items-center gap-2 p-2 rounded-md text-left transition-colors ${
-                          isSelected ? 'bg-yellow-50 border-2 border-yellow-300' : 'hover:bg-gray-50 border-2 border-transparent'
-                        }`}
-                      >
-                        <div className="text-yellow-600">{format.icon}</div>
-                        <div className="flex-1">
-                          <div className="text-sm font-semibold text-gray-900">{format.label}</div>
-                          <div className="text-xs text-gray-500">{format.description}</div>
-                        </div>
-                      </button>
-                      
-                      {isSelected && (
-                        <div className="ml-8 mt-1 space-y-1">
-                          {formatTemplates.map((template) => (
-                            <button
-                              key={template.id}
-                              onClick={() => {
-                                setSelectedTemplate(template.id)
-                                setIsFormatPillExpanded(false)
-                                // Auto-create when template selected
-                                if (!isCreating) {
-                                  handleCreateStory()
-                                }
-                              }}
-                              className={`w-full text-left px-3 py-1.5 rounded text-xs transition-colors ${
-                                selectedTemplate === template.id
-                                  ? 'bg-yellow-100 text-yellow-900 font-medium'
-                                  : 'text-gray-600 hover:bg-gray-100'
-                              }`}
-                            >
-                              {template.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+              <span className="text-sm font-semibold text-gray-900">
+                {selectedFormat && selectedTemplate 
+                  ? `${storyFormats.find(f => f.type === selectedFormat)?.label} - ${templates[selectedFormat].find(t => t.id === selectedTemplate)?.name}`
+                  : selectedFormat 
+                  ? storyFormats.find(f => f.type === selectedFormat)?.label
+                  : 'Select Format'}
+              </span>
+            </div>
+            <svg className={`w-4 h-4 text-gray-400 transition-transform ${isFormatPillExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
       </div>
 
       {/* Orchestrator Reasoning - Center Stage */}
       <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-gray-50 to-white">
         <div className="max-w-4xl mx-auto h-full flex flex-col">
+          {/* Format Selection Accordion (expands when pill clicked) */}
+          {isFormatPillExpanded && (
+            <div className="mb-4 bg-white rounded-lg border-2 border-yellow-300 shadow-md animate-in slide-in-from-top-2 duration-200">
+              <div className="p-4 max-h-96 overflow-y-auto">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Choose a Format & Template</h3>
+                <div className="space-y-3">
+                  {storyFormats.map((format) => {
+                    const formatTemplates = templates[format.type]
+                    const isSelected = selectedFormat === format.type
+                    
+                    return (
+                      <div key={format.type} className="border border-gray-200 rounded-lg overflow-hidden">
+                        <button
+                          onClick={() => {
+                            setSelectedFormat(isSelected ? null : format.type)
+                            if (!isSelected) setSelectedTemplate(null)
+                          }}
+                          className={`w-full flex items-center gap-3 p-3 text-left transition-colors ${
+                            isSelected ? 'bg-yellow-50' : 'bg-white hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className={`text-2xl ${isSelected ? 'text-yellow-600' : 'text-gray-400'}`}>
+                            {format.icon}
+                          </div>
+                          <div className="flex-1">
+                            <div className={`text-sm font-semibold ${isSelected ? 'text-yellow-900' : 'text-gray-900'}`}>
+                              {format.label}
+                            </div>
+                            <div className="text-xs text-gray-500">{format.description}</div>
+                          </div>
+                          <svg 
+                            className={`w-5 h-5 text-gray-400 transition-transform ${isSelected ? 'rotate-180' : ''}`} 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        
+                        {isSelected && (
+                          <div className="bg-yellow-50 border-t border-yellow-200 p-3 space-y-2">
+                            <p className="text-xs font-medium text-gray-700 mb-2">Select a template:</p>
+                            {formatTemplates.map((template) => (
+                              <button
+                                key={template.id}
+                                onClick={() => {
+                                  setSelectedTemplate(template.id)
+                                  setIsFormatPillExpanded(false)
+                                  // Auto-create when template selected
+                                  if (!isCreating) {
+                                    handleCreateStory()
+                                  }
+                                }}
+                                className={`w-full text-left px-4 py-2.5 rounded-md text-sm transition-colors ${
+                                  selectedTemplate === template.id
+                                    ? 'bg-yellow-200 text-yellow-900 font-semibold border-2 border-yellow-400'
+                                    : 'bg-white text-gray-700 hover:bg-yellow-100 border-2 border-transparent'
+                                }`}
+                              >
+                                {template.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="flex-1 overflow-y-auto space-y-3">
             {reasoningMessages.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
