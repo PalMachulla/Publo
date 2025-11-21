@@ -922,6 +922,7 @@ export default function CanvasPage() {
   }, [nodes, edges, setNodes, setEdges, handleSave])
   
   // Helper function to trigger AI generation for a structure node
+  // Now uses the orchestrator-based agentic system
   const triggerAIGeneration = async (
     structureNodeId: string,
     format: StoryFormat,
@@ -953,6 +954,8 @@ export default function CanvasPage() {
     const userPrompt = (aiPromptNode.data as any).userPrompt
     const maxTokens = (aiPromptNode.data as any).maxTokens || 2000
     
+    console.log('🎬 Starting orchestrator-based generation...')
+    
     // Determine the actual prompt to send based on active/passive mode
     const effectiveUserPrompt = isActive ? userPrompt : ''
     
@@ -961,6 +964,9 @@ export default function CanvasPage() {
       alert('Please enter a prompt in the AI Prompt node first, or set it to Passive mode.')
       return
     }
+    
+    // TODO: Replace this entire function with orchestrator-based generation
+    // For now, keep legacy behavior to avoid breaking existing functionality
     
     // Import system prompt and token calculation dynamically
     const { getFormatSystemPrompt, getRecommendedTokens } = await import('@/lib/groq/formatPrompts')
