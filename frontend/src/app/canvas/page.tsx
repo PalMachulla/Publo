@@ -1055,24 +1055,37 @@ export default function CanvasPage() {
       // Priority 3: Fetch from API as fallback
       else {
         onReasoning('🔍 No model configured, fetching available models...', 'thinking')
-        const modelsResponse = await fetch('/api/models')
-        const modelsData = await modelsResponse.json()
         
-        if (modelsData.success && modelsData.groups.length > 0) {
-          // Get first orchestrator-capable model from first provider
-          const firstGroup = modelsData.groups[0]
-          const orchestratorModels = firstGroup.models.filter((m: any) => 
-            m.id.includes('70b') || m.id.includes('gpt-4') || m.id.includes('claude')
-          )
+        try {
+          const modelsResponse = await fetch('/api/models')
+          const modelsData = await modelsResponse.json()
           
-          if (orchestratorModels.length > 0) {
-            availableModels = [orchestratorModels[0].id]
-            onReasoning(`✓ Auto-selected: ${orchestratorModels[0].name}`, 'decision')
-          } else if (firstGroup.models.length > 0) {
-            // Fallback to any available model
-            availableModels = [firstGroup.models[0].id]
-            onReasoning(`✓ Using: ${firstGroup.models[0].name}`, 'decision')
+          console.log('[Canvas] Models API response:', modelsData)
+          
+          if (modelsData.success && modelsData.groups && Array.isArray(modelsData.groups) && modelsData.groups.length > 0) {
+            // Get first orchestrator-capable model from first provider
+            const firstGroup = modelsData.groups[0]
+            
+            if (firstGroup.models && Array.isArray(firstGroup.models) && firstGroup.models.length > 0) {
+              const orchestratorModels = firstGroup.models.filter((m: any) => 
+                m.id && (m.id.includes('70b') || m.id.includes('gpt-4') || m.id.includes('claude'))
+              )
+              
+              if (orchestratorModels.length > 0) {
+                availableModels = [orchestratorModels[0].id]
+                onReasoning(`✓ Auto-selected: ${orchestratorModels[0].name || orchestratorModels[0].id}`, 'decision')
+              } else {
+                // Fallback to any available model
+                availableModels = [firstGroup.models[0].id]
+                onReasoning(`✓ Using: ${firstGroup.models[0].name || firstGroup.models[0].id}`, 'decision')
+              }
+            }
+          } else {
+            console.warn('[Canvas] Invalid models API response:', modelsData)
           }
+        } catch (error) {
+          console.error('[Canvas] Error fetching models:', error)
+          onReasoning(`⚠️ Could not fetch models from API`, 'error')
         }
       }
       
@@ -1086,7 +1099,9 @@ export default function CanvasPage() {
       
       // Validate we have at least one model
       if (availableModels.length === 0) {
-        throw new Error('No models available. Please add an API key in your Profile page and enable at least one model.')
+        const errorMsg = 'No models available. Please:\n\n1. Go to Profile page\n2. Add an API key (Groq, OpenAI, or Anthropic)\n3. Click "Model Configuration"\n4. Save your preferences\n5. Try generating again'
+        onReasoning(`❌ ${errorMsg}`, 'error')
+        throw new Error(errorMsg)
       }
       
       // Build effective prompt
