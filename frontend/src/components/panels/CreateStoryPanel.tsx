@@ -207,16 +207,6 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
     }
   }, [])
 
-  // Poll for changes every 2 seconds when panel is open (backup mechanism)
-  useEffect(() => {
-    const pollInterval = setInterval(() => {
-      console.log('[CreateStoryPanel] Polling for config changes...')
-      fetchConfiguredModels()
-    }, 2000)
-
-    return () => clearInterval(pollInterval)
-  }, [])
-
   const fetchConfiguredModels = async () => {
     setLoadingConfig(true)
     
