@@ -215,12 +215,31 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
       const response = await fetch('/api/user/api-keys')
       const data = await response.json()
       
+      console.log('[CreateStoryPanel] 📦 API Response:', {
+        success: data.success,
+        keyCount: data.keys?.length,
+        allKeys: data.keys?.map((k: any) => ({
+          id: k.id,
+          provider: k.provider,
+          orchestrator_model_id: k.orchestrator_model_id,
+          writer_model_ids: k.writer_model_ids,
+          hasOrchestrator: !!k.orchestrator_model_id
+        }))
+      })
+      
       if (data.success && data.keys?.length > 0) {
         // Find the first key with an orchestrator configured
         const configuredKey = data.keys.find((key: any) => key.orchestrator_model_id)
         
+        console.log('[CreateStoryPanel] 🔍 Search result:', {
+          foundKey: !!configuredKey,
+          keyId: configuredKey?.id,
+          orchestrator: configuredKey?.orchestrator_model_id,
+          writers: configuredKey?.writer_model_ids
+        })
+        
         if (configuredKey) {
-          console.log('[CreateStoryPanel] Found configured model:', {
+          console.log('[CreateStoryPanel] ✅ Setting configured model:', {
             orchestrator: configuredKey.orchestrator_model_id,
             writers: configuredKey.writer_model_ids?.length || 0
           })
@@ -230,6 +249,7 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
             writerCount: configuredKey.writer_model_ids?.length || 0
           })
         } else {
+          console.log('[CreateStoryPanel] ⚠️ No orchestrator found, defaulting to Auto-select')
           // No explicit configuration - will auto-select
           setConfiguredModel({
             orchestrator: 'Auto-select',
@@ -237,6 +257,7 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
           })
         }
       } else {
+        console.log('[CreateStoryPanel] ❌ No API keys found')
         // No API keys configured
         setConfiguredModel({
           orchestrator: null,

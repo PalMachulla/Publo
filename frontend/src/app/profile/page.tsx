@@ -733,6 +733,13 @@ export default function ProfilePage() {
                                                   // Refresh keys to get updated data
                                                   await fetchKeys()
                                                   
+                                                  console.log('[Profile] ✅ Keys refreshed, verifying save:', {
+                                                    savedOrchestrator: selectedOrchestrator,
+                                                    savedWriters: selectedWriters,
+                                                    currentOrchestratorPrefs: orchestratorPreferences,
+                                                    currentWriterPrefs: writerPreferences
+                                                  })
+                                                  
                                                   // Dispatch custom event to notify other components (e.g., CreateStoryPanel)
                                                   window.dispatchEvent(new CustomEvent('orchestratorConfigUpdated', {
                                                     detail: {
@@ -741,7 +748,7 @@ export default function ProfilePage() {
                                                       timestamp: new Date().toISOString()
                                                     }
                                                   }))
-                                                  console.log('[Profile] Dispatched orchestratorConfigUpdated event')
+                                                  console.log('[Profile] 📡 Dispatched orchestratorConfigUpdated event')
                                                   
                                                   alert('✅ Model preferences saved!')
                                                 } catch (error: any) {
