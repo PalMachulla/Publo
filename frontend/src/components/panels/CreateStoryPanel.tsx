@@ -173,12 +173,13 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   const isStreaming = reasoningMessages.length > 0 && 
     reasoningMessages[reasoningMessages.length - 1].content.startsWith('🤖 Model reasoning:')
 
-  // Auto-open reasoning panel when messages appear
+  // Auto-open reasoning panel when messages appear or update
   useEffect(() => {
-    if (reasoningMessages.length > 0 && !isReasoningOpen) {
+    if (reasoningMessages.length > 0) {
       setIsReasoningOpen(true)
+      console.log('[CreateStoryPanel] Auto-opening reasoning panel, messages:', reasoningMessages.length)
     }
-  }, [reasoningMessages.length])
+  }, [reasoningMessages])
 
   // Fetch configured models from Profile settings - ALWAYS refresh on mount
   useEffect(() => {

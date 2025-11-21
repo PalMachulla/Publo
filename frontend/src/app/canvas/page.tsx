@@ -1054,6 +1054,11 @@ export default function CanvasPage() {
       
       onReasoning('🚀 Initializing orchestrator engine...', 'thinking')
       
+      // Announce the format selected by user
+      const formatLabel = format.charAt(0).toUpperCase() + format.slice(1).replace(/-/g, ' ')
+      onReasoning(`📖 User selected format: ${formatLabel}`, 'decision')
+      onReasoning(`💭 Analyzing prompt for ${formatLabel} structure...`, 'thinking')
+      
       // Streaming callback for real-time model reasoning
       let modelReasoningBuffer = ''
       let currentModelMessage: {

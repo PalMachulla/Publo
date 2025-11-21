@@ -429,7 +429,8 @@ export class OrchestratorEngine {
     
     const fullSystemPrompt = `${ORCHESTRATOR_SYSTEM_PROMPT}\n\n${formatInstructions}`
     
-    const fullUserPrompt = `Format: ${format}\n\nUser's creative prompt:\n${userPrompt}\n\nCreate a detailed structure plan with specific writing tasks.`
+    const formatLabel = format.charAt(0).toUpperCase() + format.slice(1).replace(/-/g, ' ')
+    const fullUserPrompt = `The user wants to create a ${formatLabel}.\n\nUser's creative prompt:\n${userPrompt}\n\nPlease analyze this prompt carefully and create a detailed structure plan optimized for the ${formatLabel} format, with specific writing tasks.`
     
     // Check if streaming is enabled
     const useStreaming = !!this.onModelStream
