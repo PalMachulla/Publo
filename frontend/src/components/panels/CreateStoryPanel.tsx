@@ -161,6 +161,7 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   const [loadingConfig, setLoadingConfig] = useState(true)
   const [selectedFormat, setSelectedFormat] = useState<StoryFormat | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false) // Prevent double-clicks
   
   // Reasoning chat state - synced from node data
   const [isReasoningOpen, setIsReasoningOpen] = useState(true) // Open by default to see streaming
@@ -305,8 +306,15 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   }
 
   const handleCreateStory = () => {
-    if (selectedFormat && selectedTemplate) {
+    if (selectedFormat && selectedTemplate && !isCreating) {
+      setIsCreating(true) // Prevent double-clicks
       onCreateStory(selectedFormat, selectedTemplate)
+      
+      // Reset after 2 seconds (allows user to create again if needed)
+      setTimeout(() => {
+        setIsCreating(false)
+      }, 2000)
+      
       // Keep panel open to watch orchestrator reasoning
       // setSelectedFormat(null) // Keep selection visible
       // setSelectedTemplate(null)
@@ -606,19 +614,28 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
       <div className="p-6 border-t border-gray-200 bg-gray-50">
         <Button
           onClick={handleCreateStory}
-          disabled={!selectedFormat || !selectedTemplate}
+          disabled={!selectedFormat || !selectedTemplate || isCreating}
           variant="primary"
           size="lg"
           className="w-full"
         >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          {selectedFormat && selectedTemplate
-            ? `Create ${storyFormats.find(f => f.type === selectedFormat)?.label}`
-            : selectedFormat
-            ? 'Select a Template'
-            : 'Select a Format'}
+          {isCreating ? (
+            <>
+              <div className="inline-block w-5 h-5 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Creating...
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              {selectedFormat && selectedTemplate
+                ? `Create ${storyFormats.find(f => f.type === selectedFormat)?.label}`
+                : selectedFormat
+                ? 'Select a Template'
+                : 'Select a Format'}
+            </>
+          )}
         </Button>
         {selectedFormat && selectedTemplate && (
           <p className="text-xs text-gray-500 text-center mt-3">

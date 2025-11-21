@@ -891,7 +891,16 @@ export default function CanvasPage() {
 
     // Save immediately to database so node exists for when items are clicked
     const saveAndFinalize = async () => {
-      await handleSave()
+      try {
+        await handleSave()
+      } catch (error: any) {
+        // Ignore duplicate key errors (node already exists)
+        if (error?.code !== '23505') {
+          console.error('❌ Save error:', error)
+        } else {
+          console.log('⚠️ Node already exists in database, continuing...')
+        }
+      }
       
       // Remove loading state after save completes
       setNodes((currentNodes) =>
