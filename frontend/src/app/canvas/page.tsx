@@ -1054,11 +1054,53 @@ export default function CanvasPage() {
       
       onReasoning('🚀 Initializing orchestrator engine...', 'thinking')
       
-      // Create orchestrator engine
+      // Streaming callback for real-time model reasoning
+      let modelReasoningBuffer = ''
+      let currentModelMessage: {
+        id: string
+        timestamp: string
+        content: string
+        type: 'thinking' | 'decision' | 'task' | 'result' | 'error'
+      } | null = null
+      
+      const onModelStream = (content: string, type: 'reasoning' | 'content') => {
+        if (type === 'reasoning') {
+          // Accumulate reasoning tokens
+          modelReasoningBuffer += content
+          
+          // Create or update a "model thinking" message
+          if (!currentModelMessage) {
+            currentModelMessage = {
+              id: `model_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              timestamp: new Date().toISOString(),
+              content: '',
+              type: 'thinking'
+            }
+            reasoningMessages.push(currentModelMessage)
+          }
+          
+          // Update the message content with accumulated reasoning
+          currentModelMessage.content = `🤖 Model reasoning:\n${modelReasoningBuffer}`
+          
+          // Update orchestrator node with the new messages
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === orchestratorNodeId
+                ? { ...n, data: { ...n.data, reasoningMessages: [...reasoningMessages] } }
+                : n
+            )
+          )
+        }
+        // For 'content' type, we'll just let it accumulate silently
+        // (the plan JSON is being built character by character)
+      }
+      
+      // Create orchestrator engine with streaming support
       const orchestrator = new OrchestratorEngine(
         MODEL_CATALOG,
         onReasoning,
-        user.id
+        user.id,
+        onModelStream // NEW: Stream model reasoning tokens
       )
       
       // Determine available models

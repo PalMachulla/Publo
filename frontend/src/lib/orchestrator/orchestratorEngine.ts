@@ -146,15 +146,18 @@ Guidelines:
 export class OrchestratorEngine {
   private modelCatalog: ModelCapabilities[]
   private onReasoning: (message: string, type: ReasoningMessageType) => void
+  private onModelStream?: (content: string, type: 'reasoning' | 'content') => void
   private temporalMemory: TemporalMemory
   
   constructor(
     modelCatalog: ModelCapabilities[],
     onReasoning: (message: string, type: ReasoningMessageType) => void,
-    userId: string = 'system'
+    userId: string = 'system',
+    onModelStream?: (content: string, type: 'reasoning' | 'content') => void
   ) {
     this.modelCatalog = modelCatalog
     this.onReasoning = onReasoning
+    this.onModelStream = onModelStream
     this.temporalMemory = createTemporalMemory(userId, 'orchestration')
     
     this.log('🧠 Temporal memory initialized', 'thinking')
@@ -428,6 +431,9 @@ export class OrchestratorEngine {
     
     const fullUserPrompt = `Format: ${format}\n\nUser's creative prompt:\n${userPrompt}\n\nCreate a detailed structure plan with specific writing tasks.`
     
+    // Check if streaming is enabled
+    const useStreaming = !!this.onModelStream
+    
     // Call orchestrator model
     const response = await fetch('/api/generate', {
       method: 'POST',
@@ -438,7 +444,8 @@ export class OrchestratorEngine {
         system_prompt: fullSystemPrompt,
         user_prompt: fullUserPrompt,
         max_completion_tokens: 16000,
-        user_key_id: userKeyId
+        user_key_id: userKeyId,
+        stream: useStreaming // NEW: Enable streaming if callback exists
       })
     })
     
@@ -447,6 +454,82 @@ export class OrchestratorEngine {
       throw new Error(errorData.error || 'Orchestrator API call failed')
     }
     
+    // ═══════════════════════════════════════════════════════════════
+    // STREAMING MODE: Parse SSE stream
+    // ═══════════════════════════════════════════════════════════════
+    if (useStreaming && response.headers.get('content-type')?.includes('text/event-stream')) {
+      let fullContent = ''
+      let reasoningBuffer = ''
+      
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            
+            try {
+              const parsed = JSON.parse(data)
+              
+              if (parsed.type === 'reasoning' && this.onModelStream) {
+                // Stream model's reasoning tokens
+                reasoningBuffer += parsed.content
+                this.onModelStream(parsed.content, 'reasoning')
+              } else if (parsed.type === 'content' && parsed.content) {
+                // Stream regular content (JSON plan)
+                fullContent += parsed.content
+                if (this.onModelStream) {
+                  this.onModelStream(parsed.content, 'content')
+                }
+              } else if (parsed.type === 'done') {
+                // Stream complete
+                break
+              } else if (parsed.type === 'error') {
+                throw new Error(parsed.error || 'Streaming failed')
+              }
+            } catch (e) {
+              // Ignore parse errors for individual chunks
+            }
+          }
+        }
+      }
+      
+      // Parse the accumulated JSON content
+      try {
+        const plan = JSON.parse(fullContent)
+        
+        // Validate plan structure
+        if (!plan.structure || !Array.isArray(plan.structure)) {
+          throw new Error('Plan missing structure array')
+        }
+        
+        if (!plan.tasks || !Array.isArray(plan.tasks)) {
+          throw new Error('Plan missing tasks array')
+        }
+        
+        // Add reasoning buffer if captured
+        if (reasoningBuffer) {
+          plan.reasoning = reasoningBuffer
+        }
+        
+        return plan as OrchestratorPlan
+      } catch (error) {
+        throw new Error(`Failed to parse orchestrator plan: ${error}`)
+      }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // BATCH MODE: Parse JSON response (existing behavior)
+    // ═══════════════════════════════════════════════════════════════
     const data = await response.json()
     
     if (!data.success || !data.plan) {
