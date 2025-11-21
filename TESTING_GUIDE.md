@@ -2,10 +2,11 @@
 
 ## 🎯 Overview
 
-This guide covers testing the new orchestrator-based agentic system that replaces the legacy YAML-based generation.
+This guide covers testing the new orchestrator-based agentic system with real-time streaming reasoning.
 
-**Branch:** `feature/agentic-orchestrator`  
+**Branch:** `feature/streaming-reasoning`  
 **Status:** ✅ Implementation Complete, Ready for Testing  
+**Features:** Orchestrator Planning + Real-Time Token Streaming + Model Reasoning Visibility  
 **Do NOT merge to main until testing passes**
 
 ---
@@ -167,7 +168,111 @@ Check browser console for:
 
 ---
 
-### Test 4: Temporal Memory Logging
+### Test 4: Real-Time Streaming & Model Reasoning 🌊 NEW!
+
+**Objective:** Verify streaming tokens and model reasoning display in real-time
+
+**Background:**
+The system now streams the model's internal reasoning tokens as they're generated, giving users visibility into how the AI thinks through the planning process.
+
+**Steps:**
+1. Navigate to `/canvas` and click "Create Story" node
+2. Configure a Groq Llama model in Profile (recommended for fast streaming)
+3. Select a format and template
+4. Click "Create Novel"
+5. **Immediately watch the "Orchestrator Reasoning" section**
+
+**Expected Streaming Behavior:**
+
+**Phase 1: Orchestrator Messages (Instant)**
+- [ ] 🚀 "Initializing orchestrator engine..." (purple)
+- [ ] 🧠 "Temporal memory initialized" (purple)
+- [ ] ✅ "Using configured orchestrator: llama-3.3-70b-versatile" (blue)
+- [ ] 💭 "Orchestrator analyzing prompt and planning structure..." (purple)
+
+**Phase 2: Model Reasoning Stream (Character-by-Character)**
+- [ ] 🤖 "Model reasoning:" message appears (indigo gradient background)
+- [ ] Text streams character-by-character in real-time
+- [ ] Blinking cursor (|) appears at the end of streaming text
+- [ ] Message has pulse animation while streaming
+- [ ] Auto-scrolls to keep latest content visible
+
+**Phase 3: Completion**
+- [ ] 📋 "Plan created: X sections, Y tasks" (green)
+- [ ] Cursor disappears when streaming completes
+- [ ] Pulse animation stops
+
+**Visual Indicators to Verify:**
+
+1. **Model Message Styling:**
+   - Background: Indigo gradient (`from-indigo-50 to-purple-50`)
+   - Border: Left border (indigo-500)
+   - Icon: CPU chip with pulse animation
+   - Label: "MODEL" (bold indigo text)
+   - Typing cursor: Blinking vertical bar at end
+
+2. **Orchestrator Message Styling:**
+   - Background: Solid colors (purple/blue/yellow/green)
+   - Icon: Static (lightbulb/clipboard/lightning)
+   - Label: "THINKING", "DECISION", etc.
+
+3. **Auto-Scroll:**
+   - Panel should automatically scroll down as new tokens arrive
+   - Scroll behavior should be smooth (not jumpy)
+   - Latest message always visible
+
+**Console Validation:**
+```
+🌊 Streaming enabled for orchestrator model
+data: {"type":"reasoning","content":"Let me analyze..."}
+data: {"type":"reasoning","content":" this prompt..."}
+data: {"type":"content","content":"{\"structure\":["}
+data: {"type":"done","done":true}
+✅ Streaming complete: 1247 tokens
+```
+
+**Performance Metrics:**
+- [ ] First token appears within 500ms
+- [ ] Tokens stream smoothly (no long pauses)
+- [ ] UI remains responsive during streaming
+- [ ] Memory usage stays stable
+
+**Edge Cases to Test:**
+
+**A. No <think> Tags:**
+- Model doesn't wrap reasoning in tags
+- ✅ Should still stream content normally
+- ✅ No "Model reasoning" message (goes straight to plan)
+
+**B. Multiple <think> Blocks:**
+- Model uses multiple reasoning sections
+- ✅ All reasoning should accumulate in single message
+- ✅ Content between blocks streams normally
+
+**C. Very Long Reasoning:**
+- Model generates 500+ tokens of reasoning
+- ✅ Message container should scroll internally
+- ✅ Panel should auto-scroll to bottom
+- ✅ No performance degradation
+
+**Troubleshooting:**
+
+❌ **No streaming (instant response):**
+- Check: Provider adapter supports `generateStream()`
+- Check: `stream: true` in API call
+- Solution: Groq has streaming, OpenAI needs implementation
+
+❌ **Cursor doesn't appear:**
+- Check: `isStreaming` detection logic
+- Check: Last message starts with "🤖 Model reasoning:"
+
+❌ **No auto-scroll:**
+- Check: `reasoningEndRef` is attached
+- Check: useEffect dependency on `reasoningMessages`
+
+---
+
+### Test 5: Temporal Memory Logging
 
 **Objective:** Verify temporal memory tracks orchestration events
 
@@ -197,7 +302,7 @@ Check browser console for:
 
 ---
 
-### Test 5: Error Handling
+### Test 6: Error Handling
 
 **Objective:** Verify graceful error handling
 
@@ -223,7 +328,7 @@ Check browser console for:
 
 ---
 
-### Test 6: Backward Compatibility
+### Test 7: Backward Compatibility
 
 **Objective:** Ensure existing workflows still work
 
