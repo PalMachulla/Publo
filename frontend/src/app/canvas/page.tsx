@@ -1064,6 +1064,8 @@ export default function CanvasPage() {
       } | null = null
       
       const onModelStream = (content: string, type: 'reasoning' | 'content') => {
+        console.log('[Canvas] Model stream:', { type, contentLength: content.length, preview: content.substring(0, 50) })
+        
         if (type === 'reasoning') {
           // Accumulate reasoning tokens
           modelReasoningBuffer += content
@@ -1077,6 +1079,7 @@ export default function CanvasPage() {
               type: 'thinking'
             }
             reasoningMessages.push(currentModelMessage)
+            console.log('[Canvas] Created MODEL reasoning message')
           }
           
           // Update the message content with accumulated reasoning
@@ -1090,9 +1093,35 @@ export default function CanvasPage() {
                 : n
             )
           )
+        } else if (type === 'content') {
+          // DEBUG: Also show content streaming (the JSON plan being built)
+          // This lets us see that streaming IS working, even without <think> tags
+          if (!currentModelMessage) {
+            currentModelMessage = {
+              id: `model_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              timestamp: new Date().toISOString(),
+              content: '',
+              type: 'thinking'
+            }
+            reasoningMessages.push(currentModelMessage)
+            console.log('[Canvas] Created MODEL content stream message')
+          }
+          
+          // Show first 200 chars of the JSON being built
+          modelReasoningBuffer += content
+          const preview = modelReasoningBuffer.length > 200 
+            ? modelReasoningBuffer.substring(0, 200) + '...' 
+            : modelReasoningBuffer
+          currentModelMessage.content = `🤖 Model streaming plan (JSON):\n${preview}`
+          
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === orchestratorNodeId
+                ? { ...n, data: { ...n.data, reasoningMessages: [...reasoningMessages] } }
+                : n
+            )
+          )
         }
-        // For 'content' type, we'll just let it accumulate silently
-        // (the plan JSON is being built character by character)
       }
       
       // Create orchestrator engine with streaming support

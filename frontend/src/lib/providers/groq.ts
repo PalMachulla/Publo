@@ -225,6 +225,9 @@ export class GroqAdapter implements LLMProviderAdapter {
 
               if (delta) {
                 fullContent += delta
+                
+                // DEBUG: Log what model is actually outputting
+                console.log('[Groq Stream] Raw delta:', delta)
 
                 // Parse reasoning tokens (<think> tags)
                 for (const char of delta) {
