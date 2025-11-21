@@ -18,6 +18,7 @@ interface CreateStoryPanelProps {
   onCreateStory: (format: StoryFormat, template?: string) => void
   onClose: () => void
   onUpdate?: (nodeId: string, data: Partial<CreateStoryNodeData>) => void
+  onSendPrompt?: (prompt: string) => void // NEW: For chat-based prompting
 }
 
 interface Template {
@@ -152,7 +153,7 @@ interface ReasoningMessage {
   type: 'thinking' | 'decision' | 'task' | 'result' | 'error'
 }
 
-export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdate }: CreateStoryPanelProps) {
+export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdate, onSendPrompt }: CreateStoryPanelProps) {
   const router = useRouter()
   const [configuredModel, setConfiguredModel] = useState<{
     orchestrator: string | null
@@ -579,8 +580,37 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               if (chatMessage.trim()) {
-                // TODO: Send message to orchestrator
-                console.log('Send message:', chatMessage)
+                // Check if format and template are selected
+                if (!selectedFormat || !selectedTemplate) {
+                  alert('Please select a format and template first using the Format tile above.')
+                  return
+                }
+                
+                // Send prompt to orchestrator
+                console.log('📤 Sending prompt to orchestrator:', chatMessage)
+                
+                // Store prompt in orchestrator node for the canvas to use
+                if (onUpdate) {
+                  onUpdate(node.id, { chatPrompt: chatMessage })
+                }
+                
+                // Add user message to chat
+                setChatMessages([
+                  ...chatMessages,
+                  {
+                    id: `user_${Date.now()}`,
+                    role: 'user',
+                    content: chatMessage
+                  }
+                ])
+                
+                // Small delay to ensure node update is processed
+                setTimeout(() => {
+                  // Trigger story creation with the prompt
+                  onCreateStory(selectedFormat, selectedTemplate)
+                }, 50)
+                
+                // Clear input
                 setChatMessage('')
               }
             }

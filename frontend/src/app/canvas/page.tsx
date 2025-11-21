@@ -1336,18 +1336,26 @@ export default function CanvasPage() {
       return
     }
     
+    // Check for prompt from AI Prompt node OR from chat input in orchestrator node
+    const orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
+    const chatPrompt = (orchestratorNode?.data as any)?.chatPrompt
+    
     const isActive = (aiPromptNode.data as any).isActive !== false
-    const userPrompt = (aiPromptNode.data as any).userPrompt
+    const userPrompt = (aiPromptNode.data as any).userPrompt || chatPrompt // Use chat prompt if no AI Prompt node prompt
     const maxTokens = (aiPromptNode.data as any).maxTokens || 2000
     
-    console.log('🎬 Starting orchestrator-based generation...')
+    console.log('🎬 Starting orchestrator-based generation...', {
+      hasAIPromptNodePrompt: !!(aiPromptNode.data as any).userPrompt,
+      hasChatPrompt: !!chatPrompt,
+      usingPrompt: userPrompt
+    })
     
     // Determine the actual prompt to send based on active/passive mode
     const effectiveUserPrompt = isActive ? userPrompt : ''
     
     // Only validate prompt if in active mode
     if (isActive && (!userPrompt || userPrompt.trim() === '')) {
-      alert('Please enter a prompt in the AI Prompt node first, or set it to Passive mode.')
+      alert('Please enter a prompt in the AI Prompt node or use the chat input.')
       return
     }
     
