@@ -163,7 +163,7 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   
   // Reasoning chat state - synced from node data
-  const [isReasoningOpen, setIsReasoningOpen] = useState(false)
+  const [isReasoningOpen, setIsReasoningOpen] = useState(true) // Open by default to see streaming
   const reasoningEndRef = useRef<HTMLDivElement>(null) // Auto-scroll target
   
   // Read reasoning messages from node data (updated by orchestrator)
@@ -306,9 +306,10 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   const handleCreateStory = () => {
     if (selectedFormat && selectedTemplate) {
       onCreateStory(selectedFormat, selectedTemplate)
-      setSelectedFormat(null) // Reset selection after creating
-      setSelectedTemplate(null)
-      onClose() // Close the panel after creating
+      // Keep panel open to watch orchestrator reasoning
+      // setSelectedFormat(null) // Keep selection visible
+      // setSelectedTemplate(null)
+      // onClose() // Don't close - user wants to see streaming
     }
   }
 
