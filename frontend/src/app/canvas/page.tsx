@@ -1062,9 +1062,12 @@ export default function CanvasPage() {
           
           console.log('[Canvas] Models API response:', modelsData)
           
-          if (modelsData.success && modelsData.groups && Array.isArray(modelsData.groups) && modelsData.groups.length > 0) {
+          // API returns 'grouped' not 'groups'
+          const groups = modelsData.grouped || modelsData.groups || []
+          
+          if (modelsData.success && Array.isArray(groups) && groups.length > 0) {
             // Get first orchestrator-capable model from first provider
-            const firstGroup = modelsData.groups[0]
+            const firstGroup = groups[0]
             
             if (firstGroup.models && Array.isArray(firstGroup.models) && firstGroup.models.length > 0) {
               const orchestratorModels = firstGroup.models.filter((m: any) => 
