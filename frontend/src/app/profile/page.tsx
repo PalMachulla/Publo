@@ -706,6 +706,12 @@ export default function ProfilePage() {
                                                 setUpdatingOrchestrator(key.id)
                                                 
                                                 try {
+                                                  console.log('[Profile] Saving preferences:', {
+                                                    keyId: key.id,
+                                                    orchestratorModelId: selectedOrchestrator,
+                                                    writerModelIds: selectedWriters
+                                                  })
+                                                  
                                                   const response = await fetch(`/api/user/api-keys/${key.id}/preferences`, {
                                                     method: 'PATCH',
                                                     headers: { 'Content-Type': 'application/json' },
@@ -715,8 +721,13 @@ export default function ProfilePage() {
                                                     })
                                                   })
                                                   
+                                                  console.log('[Profile] Response status:', response.status)
+                                                  
+                                                  const data = await response.json()
+                                                  console.log('[Profile] Response data:', data)
+                                                  
                                                   if (!response.ok) {
-                                                    throw new Error('Failed to save preferences')
+                                                    throw new Error(data.error || 'Failed to save preferences')
                                                   }
                                                   
                                                   // Refresh keys to get updated data
@@ -724,7 +735,7 @@ export default function ProfilePage() {
                                                   
                                                   alert('✅ Model preferences saved!')
                                                 } catch (error: any) {
-                                                  console.error('Error saving preferences:', error)
+                                                  console.error('[Profile] Error saving preferences:', error)
                                                   alert(`❌ Failed to save: ${error.message}`)
                                                 } finally {
                                                   setUpdatingOrchestrator(null)
