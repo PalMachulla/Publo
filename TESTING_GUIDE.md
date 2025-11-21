@@ -104,10 +104,12 @@ You'll need at least ONE API key from:
 1. Navigate to `/canvas` (or create new canvas)
 2. Click the "Create Story" node (context node)
 3. In the panel:
-   - Select a model (or use default)
+   - Verify "Model Configuration" shows your Profile settings (read-only)
    - Select format (e.g., "Novel")
    - Select template (e.g., "Three-Act Structure")
 4. Click "Create Novel"
+
+**Note:** Model selection has been moved to Profile page. The canvas panel now shows a read-only display of your configured orchestrator. If you need to change models, click "Change in Profile →"
 
 **Expected Behavior:**
 - [ ] New structure node appears on canvas
