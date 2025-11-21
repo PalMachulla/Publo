@@ -1019,18 +1019,16 @@ export default function CanvasPage() {
       
       // Initialize reasoning messages array
       const reasoningMessages: Array<{
-        id: string
-        timestamp: number
-        message: string
+        timestamp: string
+        content: string
         type: 'thinking' | 'decision' | 'task' | 'result' | 'error'
       }> = []
       
       // Reasoning callback to update orchestrator node
       const onReasoning = (message: string, type: any) => {
         const msg = {
-          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          timestamp: Date.now(),
-          message,
+          timestamp: new Date().toISOString(),
+          content: message,
           type
         }
         reasoningMessages.push(msg)

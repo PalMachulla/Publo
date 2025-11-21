@@ -464,7 +464,11 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
                             {msg.type}
                           </span>
                           <span className="text-[10px] text-gray-400">
-                            {msg.timestamp}
+                            {new Date(msg.timestamp).toLocaleTimeString('en-US', { 
+                              hour: '2-digit', 
+                              minute: '2-digit', 
+                              second: '2-digit' 
+                            })}
                           </span>
                         </div>
                         <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
