@@ -1043,18 +1043,51 @@ export default function CanvasPage() {
       
       // Determine available models
       let availableModels: string[] = []
+      
+      // Priority 1: Use configured orchestrator model
       if (orchestratorModelId) {
         availableModels = [orchestratorModelId]
-      } else if (selectedModel) {
+      } 
+      // Priority 2: Use selected model from canvas node
+      else if (selectedModel) {
         availableModels = [selectedModel]
+      }
+      // Priority 3: Fetch from API as fallback
+      else {
+        onReasoning('🔍 No model configured, fetching available models...', 'thinking')
+        const modelsResponse = await fetch('/api/models')
+        const modelsData = await modelsResponse.json()
+        
+        if (modelsData.success && modelsData.groups.length > 0) {
+          // Get first orchestrator-capable model from first provider
+          const firstGroup = modelsData.groups[0]
+          const orchestratorModels = firstGroup.models.filter((m: any) => 
+            m.id.includes('70b') || m.id.includes('gpt-4') || m.id.includes('claude')
+          )
+          
+          if (orchestratorModels.length > 0) {
+            availableModels = [orchestratorModels[0].id]
+            onReasoning(`✓ Auto-selected: ${orchestratorModels[0].name}`, 'decision')
+          } else if (firstGroup.models.length > 0) {
+            // Fallback to any available model
+            availableModels = [firstGroup.models[0].id]
+            onReasoning(`✓ Using: ${firstGroup.models[0].name}`, 'decision')
+          }
+        }
       }
       
       // Add writer models if configured
       if (writerModelIds.length > 0) {
         availableModels.push(...writerModelIds)
+        onReasoning(`✓ Writer models: ${writerModelIds.length}`, 'decision')
       }
       
       console.log('🎯 Available models:', availableModels)
+      
+      // Validate we have at least one model
+      if (availableModels.length === 0) {
+        throw new Error('No models available. Please add an API key in your Profile page and enable at least one model.')
+      }
       
       // Build effective prompt
       const effectivePrompt = isActive 
