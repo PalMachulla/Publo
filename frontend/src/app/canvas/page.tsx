@@ -926,28 +926,12 @@ export default function CanvasPage() {
       console.log('🚀 Auto-generating structure with orchestrator after node creation', {
         hasAIPromptNode: !!aiPromptNode,
         hasChatPrompt,
-        source: aiPromptNode ? 'AI Prompt Node' : 'Chat Input'
+        source: hasChatPrompt ? 'Chat Input (Priority)' : aiPromptNode ? 'AI Prompt Node' : 'None'
       })
       
-      // Create a virtual AI Prompt node if using chat
-      const effectivePromptNode = aiPromptNode || {
-        id: 'virtual-prompt',
-        type: 'aiPromptNode',
-        data: {
-          nodeType: 'aiPrompt' as const,
-          label: 'Virtual Prompt',
-          comments: [],
-          userPrompt: (orchestratorNode?.data as any)?.chatPrompt || '',
-          maxTokens: 2000,
-          isActive: true
-        },
-        position: { x: 0, y: 0 }
-      }
-      
-      // Use orchestrator-based generation by default
-      // Pass 'context' as the orchestrator ID since that's where the model selection is stored
+      // Pass AI Prompt node if exists, otherwise null (chat prompt will be used)
       setTimeout(() => {
-        triggerOrchestratedGeneration(structureId, format, effectivePromptNode, 'context')
+        triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context')
       }, 100)
     }
     
@@ -958,7 +942,7 @@ export default function CanvasPage() {
   const triggerOrchestratedGeneration = async (
     structureNodeId: string,
     format: StoryFormat,
-    aiPromptNode: Node,
+    aiPromptNode: Node | null, // Now optional
     orchestratorNodeId: string
   ) => {
     console.log('🎬 Starting orchestrator-based agentic generation...')
@@ -977,6 +961,11 @@ export default function CanvasPage() {
           return n
         })
       )
+      return
+    }
+    
+    if (!aiPromptNode) {
+      alert('Please connect an AI Prompt node to the Orchestrator or use the chat input in the panel.')
       return
     }
     
@@ -1074,11 +1063,11 @@ export default function CanvasPage() {
         )
       }
       
-      // Update orchestrator to show it's working
+      // Update orchestrator to show it's working and clear chat prompt for next generation
       setNodes((nds) =>
         nds.map((n) =>
           n.id === orchestratorNodeId
-            ? { ...n, data: { ...n.data, isOrchestrating: true, loadingText: 'Orchestrating', reasoningMessages: [] } }
+            ? { ...n, data: { ...n.data, isOrchestrating: true, loadingText: 'Orchestrating', reasoningMessages: [], chatPrompt: undefined } }
             : n
         )
       )
@@ -1358,18 +1347,21 @@ export default function CanvasPage() {
       return
     }
     
-    // Check for prompt from AI Prompt node OR from chat input in orchestrator node
+    // PRIORITY: Chat prompt takes precedence over AI Prompt node
     const orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
     const chatPrompt = (orchestratorNode?.data as any)?.chatPrompt
+    const aiPromptNodePrompt = aiPromptNode ? (aiPromptNode.data as any).userPrompt : null
     
-    const isActive = (aiPromptNode.data as any).isActive !== false
-    const userPrompt = (aiPromptNode.data as any).userPrompt || chatPrompt // Use chat prompt if no AI Prompt node prompt
-    const maxTokens = (aiPromptNode.data as any).maxTokens || 2000
+    // Use chat prompt first, fallback to AI Prompt node
+    const userPrompt = chatPrompt || aiPromptNodePrompt || ''
+    const isActive = aiPromptNode ? (aiPromptNode.data as any).isActive !== false : true
+    const maxTokens = aiPromptNode ? (aiPromptNode.data as any).maxTokens || 2000 : 2000
     
     console.log('🎬 Starting orchestrator-based generation...', {
-      hasAIPromptNodePrompt: !!(aiPromptNode.data as any).userPrompt,
       hasChatPrompt: !!chatPrompt,
-      usingPrompt: userPrompt
+      hasAIPromptNodePrompt: !!aiPromptNodePrompt,
+      usingPrompt: userPrompt,
+      source: chatPrompt ? 'Chat Input (Priority)' : 'AI Prompt Node (Fallback)'
     })
     
     // Determine the actual prompt to send based on active/passive mode
@@ -1377,7 +1369,7 @@ export default function CanvasPage() {
     
     // Only validate prompt if in active mode
     if (isActive && (!userPrompt || userPrompt.trim() === '')) {
-      alert('Please enter a prompt in the AI Prompt node or use the chat input.')
+      alert('Please enter a prompt using the chat input.')
       return
     }
     
