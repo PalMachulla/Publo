@@ -188,6 +188,7 @@ export default function CanvasPage() {
   const [currentStructureItems, setCurrentStructureItems] = useState<any[]>([])
   const [currentStructureFormat, setCurrentStructureFormat] = useState<StoryFormat | undefined>(undefined)
   const [currentContentMap, setCurrentContentMap] = useState<Record<string, string>>({})
+  const [currentSections, setCurrentSections] = useState<Array<{ id: string; structure_item_id: string; content: string }>>([])
   const [initialSectionId, setInitialSectionId] = useState<string | null>(null)
   
   // Active context for orchestrator (when clicking segments/sections)
@@ -1782,25 +1783,37 @@ export default function CanvasPage() {
   }, [currentStoryStructureNodeId])
 
   /**
+   * Handle sections loaded from AIDocumentPanel (Supabase)
+   * This is the ACTUAL content source - not node contentMap
+   */
+  const handleSectionsLoaded = useCallback((sections: Array<{ id: string; structure_item_id: string; content: string }>) => {
+    console.log('📚 Sections loaded from Supabase:', {
+      count: sections.length,
+      sampleIds: sections.slice(0, 3).map(s => ({ id: s.id, structureItemId: s.structure_item_id, contentLength: s.content.length }))
+    })
+    setCurrentSections(sections)
+  }, [])
+
+  /**
    * Agentic Handler: Answer Question
    * Uses orchestrator model to answer questions about the story/content
    */
   const handleAnswerQuestion = useCallback(async (question: string): Promise<string> => {
     console.log('💬 handleAnswerQuestion:', question)
     
-    // BUILD contentMap from structureItems if contentMap is empty
-    // Content might be stored inline in structure items, not in separate contentMap
+    // BUILD contentMap from SECTIONS (Supabase) if contentMap (node) is empty
+    // Content is stored in Supabase sections table, NOT inline in structureItems
     let effectiveContentMap = { ...currentContentMap }
     
-    if (Object.keys(effectiveContentMap).length === 0 && currentStructureItems.length > 0) {
-      console.log('📦 Building contentMap from structureItems (contentMap is empty)')
-      currentStructureItems.forEach((item: any) => {
-        if (item.content && typeof item.content === 'string' && item.content.trim()) {
-          effectiveContentMap[item.id] = item.content
+    if (Object.keys(effectiveContentMap).length === 0 && currentSections.length > 0) {
+      console.log('📦 Building contentMap from Supabase sections (node contentMap is empty)')
+      currentSections.forEach((section) => {
+        if (section.content && section.content.trim()) {
+          effectiveContentMap[section.structure_item_id] = section.content
         }
       })
-      console.log('✅ Built contentMap:', {
-        itemsCount: currentStructureItems.length,
+      console.log('✅ Built contentMap from sections:', {
+        sectionsCount: currentSections.length,
         contentMapSize: Object.keys(effectiveContentMap).length,
         sampleKeys: Object.keys(effectiveContentMap).slice(0, 3)
       })
@@ -1809,6 +1822,7 @@ export default function CanvasPage() {
     console.log('📊 Context being sent:', {
       storyStructureNodeId: currentStoryStructureNodeId,
       structureItemsCount: currentStructureItems.length,
+      sectionsCount: currentSections.length,
       contentMapKeys: Object.keys(effectiveContentMap),
       contentMapSize: Object.keys(effectiveContentMap).length,
       hasActiveContext: !!activeContext,
@@ -1829,7 +1843,7 @@ export default function CanvasPage() {
           context: {
             storyStructureNodeId: currentStoryStructureNodeId,
             structureItems: currentStructureItems,
-            contentMap: effectiveContentMap, // ← Use built contentMap!
+            contentMap: effectiveContentMap, // ← Use built contentMap from sections!
             activeContext
           }
         })
@@ -1846,7 +1860,7 @@ export default function CanvasPage() {
       console.error('Failed to answer question:', error)
       return `I apologize, but I encountered an error trying to answer your question: ${error instanceof Error ? error.message : 'Unknown error'}`
     }
-  }, [currentStoryStructureNodeId, currentStructureItems, currentContentMap, activeContext])
+  }, [currentStoryStructureNodeId, currentStructureItems, currentContentMap, currentSections, activeContext])
 
   const handleVisibilityChange = async (newVisibility: 'private' | 'shared' | 'public') => {
     if (!storyId) return
@@ -2784,6 +2798,7 @@ export default function CanvasPage() {
             setCurrentStructureItems([])
             setCurrentStructureFormat(undefined)
             setCurrentContentMap({})
+            setCurrentSections([]) // Also clear sections
             setInitialSectionId(null)
             setActiveContext(null) // Clear context when closing document panel
           }}
@@ -2797,6 +2812,7 @@ export default function CanvasPage() {
           orchestratorPanelWidth={orchestratorPanelWidth}
           onSwitchDocument={handleSwitchDocument}
           onSetContext={setActiveContext}
+          onSectionsLoaded={handleSectionsLoaded}
         />
       </div>
     </div>

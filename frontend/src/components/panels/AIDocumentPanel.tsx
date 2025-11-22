@@ -22,6 +22,7 @@ interface AIDocumentPanelProps {
   orchestratorPanelWidth?: number // Width of the orchestrator panel in pixels
   onSwitchDocument?: (nodeId: string) => void // Switch to a different document
   onSetContext?: (context: { type: 'section' | 'segment', id: string, name: string, title?: string, level?: number, description?: string }) => void // Set active context for orchestrator
+  onSectionsLoaded?: (sections: Array<{ id: string; structure_item_id: string; content: string }>) => void // Callback when sections are loaded from Supabase
 }
 
 export default function AIDocumentPanel({
@@ -37,6 +38,7 @@ export default function AIDocumentPanel({
   orchestratorPanelWidth = 384,
   onSwitchDocument,
   onSetContext,
+  onSectionsLoaded,
 }: AIDocumentPanelProps) {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(initialSectionId)
   
@@ -97,6 +99,13 @@ export default function AIDocumentPanel({
       setExpandedSections(allItemIds)
     }
   }, [structureItems])
+
+  // Notify parent when sections are loaded (so orchestrator can access content)
+  useEffect(() => {
+    if (sections.length > 0 && onSectionsLoaded) {
+      onSectionsLoaded(sections)
+    }
+  }, [sections, onSectionsLoaded])
 
   // Persist sections sidebar collapse state
   useEffect(() => {
