@@ -156,9 +156,25 @@ export default function AIDocumentPanel({
   
   // Track which nodes have been initialized to prevent duplicates
   const initializedNodesRef = useRef<Set<string>>(new Set())
+  
+  // Clear initialization tracking when document closes
+  useEffect(() => {
+    if (!isOpen) {
+      console.log('🧹 Document panel closed - clearing initialization tracking')
+      initializedNodesRef.current.clear()
+    }
+  }, [isOpen])
 
   // Re-initialize sections when structure items change
   useEffect(() => {
+    console.log('📋 [AIDocumentPanel] Section initialization check:', {
+      isOpen,
+      storyStructureNodeId,
+      structureItemsLength: structureItems.length,
+      sectionsLength: sections.length,
+      alreadyInitialized: storyStructureNodeId ? initializedNodesRef.current.has(storyStructureNodeId) : false
+    })
+    
     if (isOpen && storyStructureNodeId && structureItems.length > 0) {
       const nodeKey = storyStructureNodeId
       
@@ -170,6 +186,7 @@ export default function AIDocumentPanel({
           initializeSections()
         } else {
           console.log('⏭️ Skipping initialization - already attempted for node:', nodeKey)
+          console.log('   If sections are still empty, there may be an RLS or database issue')
         }
         return
       }
@@ -182,8 +199,14 @@ export default function AIDocumentPanel({
       const hasRemovedItems = sections.some(s => !structureItemIds.has(s.structure_item_id))
       
       if (hasNewItems || hasRemovedItems) {
-        console.log('🔄 Structure items changed, re-initializing sections...')
+        console.log('🔄 Structure items changed, re-initializing sections...', {
+          hasNewItems,
+          hasRemovedItems,
+          newItemsCount: hasNewItems ? structureItems.filter(item => !sectionItemIds.has(item.id)).length : 0
+        })
         initializeSections()
+      } else {
+        console.log('✅ Sections in sync with structure items (no changes needed)')
       }
     }
   }, [isOpen, storyStructureNodeId, structureItems, sections, initializeSections])
