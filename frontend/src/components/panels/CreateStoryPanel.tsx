@@ -12,6 +12,7 @@ import {
   RadioItem,
   Button
 } from '@/components/ui'
+import { analyzeIntent, validateIntent, explainIntent, type IntentAnalysis } from '@/lib/orchestrator/intentRouter'
 
 interface ActiveContext {
   type: 'section' | 'segment'
@@ -41,6 +42,8 @@ interface CreateStoryPanelProps {
   isDocumentViewOpen?: boolean // NEW: Document panel visibility state
   activeContext?: ActiveContext | null // NEW: Currently selected segment/section
   onClearContext?: () => void // NEW: Clear the active context
+  onWriteContent?: (segmentId: string, prompt: string) => Promise<void> // NEW: Write content to specific segment
+  onAnswerQuestion?: (question: string) => Promise<string> // NEW: Answer questions about content
 }
 
 interface Template {
@@ -189,7 +192,9 @@ export default function CreateStoryPanel({
   onToggleDocumentView,
   isDocumentViewOpen = false,
   activeContext = null,
-  onClearContext
+  onClearContext,
+  onWriteContent,
+  onAnswerQuestion
 }: CreateStoryPanelProps) {
   const router = useRouter()
   const [configuredModel, setConfiguredModel] = useState<{
@@ -220,6 +225,142 @@ export default function CreateStoryPanel({
   const isStreaming = reasoningMessages.length > 0 && 
     reasoningMessages[reasoningMessages.length - 1].role === 'orchestrator' &&
     reasoningMessages[reasoningMessages.length - 1].content.startsWith('🤖 Model')
+  
+  /**
+   * Agentic message handler - analyzes intent and routes to appropriate action
+   */
+  const handleSendMessage = async (message: string) => {
+    // Add user message to chat history
+    if (onAddChatMessage) {
+      onAddChatMessage(message)
+    }
+    
+    // STEP 1: Analyze user intent using IntentRouter
+    const intentAnalysis = analyzeIntent({
+      message,
+      hasActiveSegment: !!activeContext,
+      activeSegmentName: activeContext?.name,
+      conversationHistory: canvasChatHistory.slice(-5) // Last 5 messages for context
+    })
+    
+    // Log intent analysis to reasoning chat
+    if (onAddChatMessage) {
+      onAddChatMessage(`🧠 ${explainIntent(intentAnalysis)} (Confidence: ${Math.round(intentAnalysis.confidence * 100)}%)`)
+      onAddChatMessage(`💭 ${intentAnalysis.reasoning}`)
+    }
+    
+    // STEP 2: Validate intent can be executed
+    const validation = validateIntent(intentAnalysis, !!activeContext)
+    
+    if (!validation.canExecute) {
+      if (onAddChatMessage) {
+        onAddChatMessage(`❌ Cannot execute: ${validation.errorMessage}`)
+        if (validation.suggestion) {
+          onAddChatMessage(`💡 ${validation.suggestion}`)
+        }
+      }
+      setChatMessage('')
+      return
+    }
+    
+    // STEP 3: Route to appropriate action based on intent
+    try {
+      switch (intentAnalysis.intent) {
+        case 'write_content':
+          // Write content to selected segment
+          if (onAddChatMessage) {
+            onAddChatMessage(`📝 Delegating to writer model: ${intentAnalysis.suggestedModel}`)
+          }
+          
+          if (activeContext && onWriteContent) {
+            await onWriteContent(activeContext.id, message)
+          } else {
+            // Fallback to old behavior
+            const finalPrompt = `[Writing mode: "${activeContext?.name}"${activeContext?.title ? ` - ${activeContext.title}` : ''}]
+Intent: Write/modify content for THIS section only (not create new structure).
+Request: ${message}`
+            onCreateStory(selectedFormat, selectedTemplate || undefined, finalPrompt)
+          }
+          break
+        
+        case 'improve_content':
+          // Improve existing content in selected segment
+          if (onAddChatMessage) {
+            onAddChatMessage(`✨ Delegating to editor model: ${intentAnalysis.suggestedModel}`)
+          }
+          
+          if (activeContext && onWriteContent) {
+            const improvePrompt = `Improve the following content:\n\n${message}`
+            await onWriteContent(activeContext.id, improvePrompt)
+          } else {
+            // Fallback
+            onCreateStory(selectedFormat, selectedTemplate || undefined, `Improve: ${message}`)
+          }
+          break
+        
+        case 'answer_question':
+          // Answer question using orchestrator model
+          if (onAddChatMessage) {
+            onAddChatMessage(`💬 Answering with orchestrator model...`)
+          }
+          
+          if (onAnswerQuestion) {
+            const answer = await onAnswerQuestion(message)
+            if (onAddChatMessage) {
+              onAddChatMessage(`📖 ${answer}`)
+            }
+          } else {
+            // Fallback: show message that Q&A is not implemented yet
+            if (onAddChatMessage) {
+              onAddChatMessage(`⚠️ Q&A functionality not yet fully implemented. For now, I'll generate a response using the orchestrator.`)
+            }
+            onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+          }
+          break
+        
+        case 'create_structure':
+          // Create new story structure
+          if (onAddChatMessage) {
+            onAddChatMessage(`🏗️ Planning structure with orchestrator model...`)
+          }
+          onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+          break
+        
+        case 'modify_structure':
+          // Modify existing structure
+          if (onAddChatMessage) {
+            onAddChatMessage(`🔧 Modifying structure...`)
+          }
+          onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+          break
+        
+        case 'general_chat':
+        default:
+          // General conversation
+          if (onAddChatMessage) {
+            onAddChatMessage(`💭 Responding conversationally...`)
+          }
+          
+          if (onAnswerQuestion) {
+            const response = await onAnswerQuestion(message)
+            if (onAddChatMessage) {
+              onAddChatMessage(`💬 ${response}`)
+            }
+          } else {
+            onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+          }
+          break
+      }
+    } catch (error) {
+      console.error('❌ Error executing intent:', error)
+      if (onAddChatMessage) {
+        onAddChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
+    
+    // Clear input
+    setChatMessage('')
+  }
 
   // Auto-open reasoning panel when messages appear or update
   useEffect(() => {
@@ -687,31 +828,11 @@ export default function CreateStoryPanel({
           ref={chatInputRef}
           value={chatMessage}
           onChange={(e) => setChatMessage(e.target.value)}
-          onKeyDown={(e) => {
+          onKeyDown={async (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               if (chatMessage.trim()) {
-                // Build context-aware prompt
-                let finalPrompt = chatMessage
-                if (activeContext) {
-                  // When context is active, be clear about intent but concise
-                  finalPrompt = `[Writing mode: "${activeContext.name}"${activeContext.title ? ` - ${activeContext.title}` : ''}]
-Intent: Write/modify content for THIS section only (not create new structure).
-Request: ${chatMessage}`
-                }
-                
-                console.log('📤 Sending prompt:', { activeContext: !!activeContext, format: selectedFormat })
-                
-                // Add user message to chat history
-                if (onAddChatMessage) {
-                  onAddChatMessage(chatMessage)
-                }
-                
-                // Trigger story creation with context-aware prompt
-                onCreateStory(selectedFormat, selectedTemplate || undefined, finalPrompt)
-                
-                // Clear input
-                setChatMessage('')
+                await handleSendMessage(chatMessage)
               }
             }
           }}

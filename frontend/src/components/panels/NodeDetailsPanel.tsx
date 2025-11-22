@@ -81,6 +81,8 @@ interface NodeDetailsPanelProps {
   onPanelWidthChange?: (width: number) => void // NEW: Notify parent when panel width changes
   activeContext?: ActiveContext | null // NEW: Currently selected segment/section
   onClearContext?: () => void // NEW: Clear the active context
+  onWriteContent?: (segmentId: string, prompt: string) => Promise<void> // NEW: Write content to specific segment
+  onAnswerQuestion?: (question: string) => Promise<string> // NEW: Answer questions about content
 }
 
 export default function NodeDetailsPanel({
@@ -101,7 +103,9 @@ export default function NodeDetailsPanel({
   isDocumentViewOpen = false,
   onPanelWidthChange,
   activeContext = null,
-  onClearContext
+  onClearContext,
+  onWriteContent,
+  onAnswerQuestion
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
   const [commentText, setCommentText] = useState('')
@@ -454,6 +458,8 @@ export default function NodeDetailsPanel({
               isDocumentViewOpen={isDocumentViewOpen}
               activeContext={activeContext}
               onClearContext={onClearContext}
+              onWriteContent={onWriteContent}
+              onAnswerQuestion={onAnswerQuestion}
             />
           ) : nodeType === 'story-structure' ? (
             // Story Structure Metadata Panel

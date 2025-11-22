@@ -1716,6 +1716,105 @@ export default function CanvasPage() {
     console.log('Updated story draft:', nodeId)
   }, [setNodes])
 
+  /**
+   * Agentic Handler: Write Content
+   * Generates content for a specific segment in the document
+   */
+  const handleWriteContent = useCallback(async (segmentId: string, prompt: string) => {
+    console.log('📝 handleWriteContent:', { segmentId, prompt })
+    
+    // Add reasoning message
+    setCanvasChatHistory(prev => [...prev, {
+      id: `write_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      content: `📝 Generating content for segment: ${segmentId}`,
+      type: 'task' as const,
+      role: 'orchestrator' as const
+    }])
+    
+    try {
+      // TODO: Call API to generate content for this specific segment
+      // For now, we'll use a placeholder
+      const response = await fetch('/api/content/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          segmentId,
+          prompt,
+          storyStructureNodeId: currentStoryStructureNodeId,
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to generate content: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      // Update the content map with new content
+      setCurrentContentMap(prev => ({
+        ...prev,
+        [segmentId]: data.content
+      }))
+      
+      // Add success message
+      setCanvasChatHistory(prev => [...prev, {
+        id: `write_success_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        content: `✅ Content generated successfully for segment: ${segmentId}`,
+        type: 'result' as const,
+        role: 'orchestrator' as const
+      }])
+      
+    } catch (error) {
+      console.error('Failed to write content:', error)
+      setCanvasChatHistory(prev => [...prev, {
+        id: `write_error_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        content: `❌ Failed to generate content: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error' as const,
+        role: 'orchestrator' as const
+      }])
+    }
+  }, [currentStoryStructureNodeId])
+
+  /**
+   * Agentic Handler: Answer Question
+   * Uses orchestrator model to answer questions about the story/content
+   */
+  const handleAnswerQuestion = useCallback(async (question: string): Promise<string> => {
+    console.log('💬 handleAnswerQuestion:', question)
+    
+    try {
+      // TODO: Call API to answer question using orchestrator model
+      // For now, return a placeholder response
+      const response = await fetch('/api/content/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          context: {
+            storyStructureNodeId: currentStoryStructureNodeId,
+            structureItems: currentStructureItems,
+            contentMap: currentContentMap,
+            activeContext
+          }
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to answer question: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      return data.answer
+      
+    } catch (error) {
+      console.error('Failed to answer question:', error)
+      return `I apologize, but I encountered an error trying to answer your question: ${error instanceof Error ? error.message : 'Unknown error'}`
+    }
+  }, [currentStoryStructureNodeId, currentStructureItems, currentContentMap, activeContext])
+
   const handleVisibilityChange = async (newVisibility: 'private' | 'shared' | 'public') => {
     if (!storyId) return
     
@@ -2628,6 +2727,8 @@ export default function CanvasPage() {
           onPanelWidthChange={setOrchestratorPanelWidth}
           activeContext={activeContext}
           onClearContext={() => setActiveContext(null)}
+          onWriteContent={handleWriteContent}
+          onAnswerQuestion={handleAnswerQuestion}
         />
 
         {/* Loading indicator now integrated into Orchestrator node */}
