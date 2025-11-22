@@ -191,6 +191,9 @@ export default function CanvasPage() {
   const [currentSections, setCurrentSections] = useState<Array<{ id: string; structure_item_id: string; content: string }>>([])
   const [initialSectionId, setInitialSectionId] = useState<string | null>(null)
   
+  // Store refresh function from document panel
+  const refreshSectionsRef = useRef<(() => Promise<void>) | null>(null)
+  
   // Active context for orchestrator (when clicking segments/sections)
   const [activeContext, setActiveContext] = useState<{
     type: 'section' | 'segment'
@@ -1820,6 +1823,14 @@ export default function CanvasPage() {
           // Don't throw - content is still in local state
         } else {
           console.log('✅ Section saved to Supabase:', sectionData)
+          
+          // Refresh sections in document panel to show new content
+          if (refreshSectionsRef.current) {
+            console.log('🔄 Refreshing sections in document panel...')
+            await refreshSectionsRef.current()
+          } else {
+            console.warn('⚠️ No refresh function available - sections may not update in UI')
+          }
         }
       } catch (saveError) {
         console.error('❌ Error saving section:', saveError)
@@ -1863,6 +1874,14 @@ export default function CanvasPage() {
     })
     setCurrentSections(sections)
     console.log('✅ [CANVAS] currentSections state updated')
+  }, [])
+  
+  /**
+   * Receive refresh function from document panel
+   */
+  const handleRefreshSectionsCallback = useCallback((refreshFn: () => Promise<void>) => {
+    console.log('🔗 [CANVAS] Received refreshSections function from document panel')
+    refreshSectionsRef.current = refreshFn
   }, [])
 
   /**
@@ -2903,6 +2922,7 @@ export default function CanvasPage() {
           onSwitchDocument={handleSwitchDocument}
           onSetContext={setActiveContext}
           onSectionsLoaded={handleSectionsLoaded}
+          onRefreshSections={handleRefreshSectionsCallback}
         />
       </div>
     </div>

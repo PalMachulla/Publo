@@ -23,6 +23,7 @@ interface AIDocumentPanelProps {
   onSwitchDocument?: (nodeId: string) => void // Switch to a different document
   onSetContext?: (context: { type: 'section' | 'segment', id: string, name: string, title?: string, level?: number, description?: string }) => void // Set active context for orchestrator
   onSectionsLoaded?: (sections: Array<{ id: string; structure_item_id: string; content: string }>) => void // Callback when sections are loaded from Supabase
+  onRefreshSections?: (refreshFn: () => Promise<void>) => void // Callback to provide refresh function to parent
 }
 
 export default function AIDocumentPanel({
@@ -39,6 +40,7 @@ export default function AIDocumentPanel({
   onSwitchDocument,
   onSetContext,
   onSectionsLoaded,
+  onRefreshSections,
 }: AIDocumentPanelProps) {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(initialSectionId)
   
@@ -122,6 +124,15 @@ export default function AIDocumentPanel({
       })
     }
   }, [sections, onSectionsLoaded])
+  
+  // Provide refreshSections function to parent via callback
+  useEffect(() => {
+    if (onRefreshSections) {
+      // Pass our refreshSections function to parent
+      // Parent can call this to refresh the sections list
+      onRefreshSections(refreshSections)
+    }
+  }, [onRefreshSections, refreshSections])
 
   // Persist sections sidebar collapse state
   useEffect(() => {
