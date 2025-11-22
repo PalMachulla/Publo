@@ -47,6 +47,15 @@ function lightenColor(hex: string, depth: number): string {
 
 // structureTemplates removed (was ~360 lines containing: screenplay, novel, short-story, podcast, article, essay, report)
 
+interface ActiveContext {
+  type: 'section' | 'segment'
+  id: string
+  name: string
+  title?: string
+  level?: number
+  description?: string
+}
+
 interface NodeDetailsPanelProps {
   node: Node<AnyNodeData> | null
   isOpen: boolean
@@ -70,6 +79,8 @@ interface NodeDetailsPanelProps {
   onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
   isDocumentViewOpen?: boolean // NEW: Document panel visibility state
   onPanelWidthChange?: (width: number) => void // NEW: Notify parent when panel width changes
+  activeContext?: ActiveContext | null // NEW: Currently selected segment/section
+  onClearContext?: () => void // NEW: Clear the active context
 }
 
 export default function NodeDetailsPanel({
@@ -88,7 +99,9 @@ export default function NodeDetailsPanel({
   onClearChat,
   onToggleDocumentView,
   isDocumentViewOpen = false,
-  onPanelWidthChange
+  onPanelWidthChange,
+  activeContext = null,
+  onClearContext
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
   const [commentText, setCommentText] = useState('')
@@ -439,6 +452,8 @@ export default function NodeDetailsPanel({
               onClearChat={onClearChat}
               onToggleDocumentView={onToggleDocumentView}
               isDocumentViewOpen={isDocumentViewOpen}
+              activeContext={activeContext}
+              onClearContext={onClearContext}
             />
           ) : nodeType === 'story-structure' ? (
             // Story Structure Metadata Panel

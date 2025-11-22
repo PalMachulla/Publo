@@ -21,6 +21,7 @@ interface AIDocumentPanelProps {
   contentMap?: Record<string, string> // Map of structure item ID to markdown content
   orchestratorPanelWidth?: number // Width of the orchestrator panel in pixels
   onSwitchDocument?: (nodeId: string) => void // Switch to a different document
+  onSetContext?: (context: { type: 'section' | 'segment', id: string, name: string, title?: string, level?: number, description?: string }) => void // Set active context for orchestrator
 }
 
 export default function AIDocumentPanel({
@@ -35,6 +36,7 @@ export default function AIDocumentPanel({
   contentMap = {},
   orchestratorPanelWidth = 384,
   onSwitchDocument,
+  onSetContext,
 }: AIDocumentPanelProps) {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(initialSectionId)
   
@@ -302,6 +304,18 @@ export default function AIDocumentPanel({
     }
     
     setActiveSectionId(item.id)
+    
+    // Set orchestrator context when segment is clicked
+    if (onSetContext) {
+      onSetContext({
+        type: 'segment',
+        id: item.id,
+        name: item.name,
+        title: item.title,
+        level: item.level,
+        description: item.description
+      })
+    }
   }
 
   // Handle generating content from test node

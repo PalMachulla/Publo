@@ -190,6 +190,16 @@ export default function CanvasPage() {
   const [currentContentMap, setCurrentContentMap] = useState<Record<string, string>>({})
   const [initialSectionId, setInitialSectionId] = useState<string | null>(null)
   
+  // Active context for orchestrator (when clicking segments/sections)
+  const [activeContext, setActiveContext] = useState<{
+    type: 'section' | 'segment'
+    id: string
+    name: string
+    title?: string
+    level?: number
+    description?: string
+  } | null>(null)
+  
   // TEMPORARY: Force admin for your email while debugging
   const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
   console.log('🔧 isForceAdmin check:', { email: user?.email, isForceAdmin, userRole })
@@ -2616,6 +2626,8 @@ export default function CanvasPage() {
           onToggleDocumentView={() => setIsAIDocPanelOpen(!isAIDocPanelOpen)}
           isDocumentViewOpen={isAIDocPanelOpen}
           onPanelWidthChange={setOrchestratorPanelWidth}
+          activeContext={activeContext}
+          onClearContext={() => setActiveContext(null)}
         />
 
         {/* Loading indicator now integrated into Orchestrator node */}
@@ -2639,6 +2651,7 @@ export default function CanvasPage() {
             setCurrentStructureFormat(undefined)
             setCurrentContentMap({})
             setInitialSectionId(null)
+            setActiveContext(null) // Clear context when closing document panel
           }}
           storyStructureNodeId={currentStoryStructureNodeId}
           structureItems={currentStructureItems}
@@ -2649,6 +2662,7 @@ export default function CanvasPage() {
           canvasNodes={nodes}
           orchestratorPanelWidth={orchestratorPanelWidth}
           onSwitchDocument={handleSwitchDocument}
+          onSetContext={setActiveContext}
         />
       </div>
     </div>

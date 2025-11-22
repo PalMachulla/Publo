@@ -13,6 +13,15 @@ import {
   Button
 } from '@/components/ui'
 
+interface ActiveContext {
+  type: 'section' | 'segment'
+  id: string
+  name: string
+  title?: string
+  level?: number
+  description?: string
+}
+
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
   onCreateStory: (format: StoryFormat, template?: string, userPrompt?: string) => void
@@ -30,6 +39,8 @@ interface CreateStoryPanelProps {
   onClearChat?: () => void
   onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
   isDocumentViewOpen?: boolean // NEW: Document panel visibility state
+  activeContext?: ActiveContext | null // NEW: Currently selected segment/section
+  onClearContext?: () => void // NEW: Clear the active context
 }
 
 interface Template {
@@ -176,7 +187,9 @@ export default function CreateStoryPanel({
   onAddChatMessage,
   onClearChat,
   onToggleDocumentView,
-  isDocumentViewOpen = false
+  isDocumentViewOpen = false,
+  activeContext = null,
+  onClearContext
 }: CreateStoryPanelProps) {
   const router = useRouter()
   const [configuredModel, setConfiguredModel] = useState<{
@@ -215,6 +228,13 @@ export default function CreateStoryPanel({
       console.log('[CreateStoryPanel] Auto-opening reasoning panel, messages:', reasoningMessages.length)
     }
   }, [reasoningMessages])
+
+  // Clear context when document view is closed
+  useEffect(() => {
+    if (!isDocumentViewOpen && activeContext && onClearContext) {
+      onClearContext()
+    }
+  }, [isDocumentViewOpen, activeContext, onClearContext])
 
   // Fetch configured models from Profile settings - ALWAYS refresh on mount
   useEffect(() => {
@@ -352,26 +372,78 @@ export default function CreateStoryPanel({
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Orchestrator Header with Document View Toggle */}
+      {/* Orchestrator Header with Document View Toggle & New Chat */}
       <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-900">Orchestrator</h3>
-        {onToggleDocumentView && (
+        <div className="flex items-center gap-2">
+          {onToggleDocumentView && (
+            <button
+              onClick={onToggleDocumentView}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                isDocumentViewOpen
+                  ? 'bg-yellow-100 text-yellow-900 hover:bg-yellow-200'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              title={isDocumentViewOpen ? 'Hide document view' : 'Show document view'}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>{isDocumentViewOpen ? 'Hide' : 'Show'} Document</span>
+            </button>
+          )}
           <button
-            onClick={onToggleDocumentView}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-              isDocumentViewOpen
-                ? 'bg-yellow-100 text-yellow-900 hover:bg-yellow-200'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-            title={isDocumentViewOpen ? 'Hide document view' : 'Show document view'}
+            onClick={() => {
+              if (onClearChat) {
+                onClearChat()
+              }
+            }}
+            className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+            title="New chat"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            <span>{isDocumentViewOpen ? 'Hide' : 'Show'} Document</span>
           </button>
-        )}
+        </div>
       </div>
+
+      {/* Active Context Display - Compact (only show when document view is open) */}
+      {activeContext && isDocumentViewOpen && (
+        <div className="px-3 py-2 bg-yellow-50 border-b border-yellow-200 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <svg className="w-4 h-4 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+            <span className="text-xs text-yellow-900 truncate">
+              <span className="font-medium">Writing:</span> {activeContext.name}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                if (onAddChatMessage && activeContext) {
+                  onAddChatMessage(`Write content for "${activeContext.name}"`)
+                  onCreateStory(selectedFormat, selectedTemplate || undefined, `Write detailed content for "${activeContext.name}"`)
+                }
+              }}
+              className="px-2 py-1 bg-yellow-200 hover:bg-yellow-300 text-yellow-900 rounded text-xs font-medium transition-colors"
+              title="Write this section"
+            >
+              Write
+            </button>
+            <button
+              onClick={onClearContext}
+              className="p-1 hover:bg-yellow-200 rounded transition-colors"
+              title="Clear context"
+            >
+              <svg className="w-3.5 h-3.5 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* Thin Stacked Accordion Tiles */}
       <div className="border-b border-gray-200 bg-gray-50">
@@ -514,22 +586,6 @@ export default function CreateStoryPanel({
             </div>
           )}
           
-          {/* New Chat Button (only show if there's history) */}
-          {reasoningMessages.length > 0 && onClearChat && (
-            <div className="flex justify-end mb-2">
-              <button
-                onClick={onClearChat}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md border border-gray-300 transition-colors"
-                title="Start a new conversation"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                New Chat
-              </button>
-            </div>
-          )}
-          
           <div className="flex-1 overflow-y-auto space-y-3">
             {reasoningMessages.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
@@ -635,25 +691,33 @@ export default function CreateStoryPanel({
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               if (chatMessage.trim()) {
-                // Format is always set (defaults to 'novel'), template is optional
-                console.log('📤 Sending prompt to orchestrator:', chatMessage)
-                console.log('📝 Using format:', selectedFormat, 'template:', selectedTemplate || 'none')
+                // Build context-aware prompt
+                let finalPrompt = chatMessage
+                if (activeContext) {
+                  // When context is active, be clear about intent but concise
+                  finalPrompt = `[Writing mode: "${activeContext.name}"${activeContext.title ? ` - ${activeContext.title}` : ''}]
+Intent: Write/modify content for THIS section only (not create new structure).
+Request: ${chatMessage}`
+                }
                 
-                // Add user message to CANVAS-LEVEL chat history (persistent)
+                console.log('📤 Sending prompt:', { activeContext: !!activeContext, format: selectedFormat })
+                
+                // Add user message to chat history
                 if (onAddChatMessage) {
                   onAddChatMessage(chatMessage)
                 }
                 
-                // Trigger story creation IMMEDIATELY with the prompt (no delay needed)
-                // Pass prompt directly to avoid React state race condition
-                onCreateStory(selectedFormat, selectedTemplate || undefined, chatMessage)
+                // Trigger story creation with context-aware prompt
+                onCreateStory(selectedFormat, selectedTemplate || undefined, finalPrompt)
                 
                 // Clear input
                 setChatMessage('')
               }
             }
           }}
-          placeholder={`Chat with the orchestrator (${selectedFormat.charAt(0).toUpperCase() + selectedFormat.slice(1).replace('-', ' ')})...`}
+          placeholder={activeContext 
+            ? `Write about "${activeContext.name}"...` 
+            : `Chat with the orchestrator (${selectedFormat.charAt(0).toUpperCase() + selectedFormat.slice(1).replace('-', ' ')})...`}
           rows={2}
           className="w-full resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent placeholder-gray-400"
         />
