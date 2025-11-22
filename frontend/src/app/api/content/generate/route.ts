@@ -24,7 +24,14 @@ export async function POST(request: NextRequest) {
     }
     
     // Parse request body
-    const { segmentId, prompt, storyStructureNodeId } = await request.json()
+    const { 
+      segmentId, 
+      prompt, 
+      storyStructureNodeId,
+      structureItems = [],
+      contentMap = {},
+      format
+    } = await request.json()
     
     if (!segmentId || !prompt) {
       return NextResponse.json(
@@ -33,7 +40,14 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    console.log('[API /content/generate] Request:', { segmentId, prompt, storyStructureNodeId })
+    console.log('[API /content/generate] Request:', { 
+      segmentId, 
+      prompt, 
+      storyStructureNodeId,
+      structureItemsCount: structureItems.length,
+      contentMapSize: Object.keys(contentMap).length,
+      format
+    })
     
     // Get writer model preference
     const { data: preferences } = await supabase
@@ -106,17 +120,70 @@ export async function POST(request: NextRequest) {
     console.log('[API /content/generate] Getting provider adapter for:', provider)
     const adapter = getProviderAdapter(provider)
     
-    // Construct writing prompt
-    const systemPrompt = `You are a professional writer tasked with generating high-quality narrative content.
-Write engaging, descriptive content that matches the tone and style requested by the user.
-Focus on creating vivid scenes, compelling dialogue, and meaningful character development.`
+    // BUILD STRATEGIC CONTEXT FOR WRITER (orchestrator's instructions)
+    // Find the target segment in structure
+    const targetSegment = structureItems.find((item: any) => item.id === segmentId)
+    const targetIndex = structureItems.findIndex((item: any) => item.id === segmentId)
     
-    const userPrompt = `Generate content for the following segment:
+    // Build context sections
+    let contextSections = ''
+    
+    // 1. BEFORE: What has happened (previous segments)
+    const previousSegments = structureItems.slice(0, targetIndex)
+    if (previousSegments.length > 0) {
+      contextSections += `\n\n=== WHAT HAS HAPPENED (Before this segment) ===\n`
+      previousSegments.forEach((item: any) => {
+        const content = contentMap[item.id]
+        if (content) {
+          // Truncate long content, show full summaries
+          const preview = content.length > 300 
+            ? content.substring(0, 300) + '...[continues]'
+            : content
+          contextSections += `\n${item.name}: ${preview}\n`
+        }
+      })
+    }
+    
+    // 2. CURRENT: What should happen (target segment summary)
+    if (targetSegment?.summary) {
+      contextSections += `\n\n=== YOUR WRITING GOAL (This segment) ===\n`
+      contextSections += `${targetSegment.name}: ${targetSegment.summary}\n`
+      contextSections += `\nUser's specific instruction: ${prompt}\n`
+    }
+    
+    // 3. AFTER: What will happen (future segments)
+    const futureSegments = structureItems.slice(targetIndex + 1)
+    if (futureSegments.length > 0) {
+      contextSections += `\n\n=== WHAT WILL HAPPEN (After this segment) ===\n`
+      contextSections += `You should subtly foreshadow or set up for these future events:\n`
+      futureSegments.slice(0, 5).forEach((item: any) => {
+        if (item.summary) {
+          contextSections += `\n${item.name}: ${item.summary}\n`
+        }
+      })
+    }
+    
+    // Construct strategic writing prompt
+    const systemPrompt = `You are a professional writer working under the direction of a master storyteller (the orchestrator).
+The orchestrator has planned the entire story structure and is providing you with full context.
 
-Segment ID: ${segmentId}
-User Request: ${prompt}
+Your job: Write compelling narrative content for ONE specific segment, maintaining coherence with what came before and setting up what comes after.
 
-Write compelling narrative content that fulfills this request. Be creative and engaging.`
+Guidelines:
+- Match the tone and style of the ${format || 'story'}
+- Create vivid scenes, compelling dialogue, and meaningful character development
+- Reference events from previous segments naturally
+- Subtly foreshadow or set up future events when appropriate
+- Stay true to the orchestrator's plan (the summaries)
+- Be creative within the constraints`
+    
+    const userPrompt = `${contextSections}
+
+=== YOUR TASK ===
+Write detailed, engaging content for "${targetSegment?.name || segmentId}".
+Follow the orchestrator's plan above, maintaining story coherence.
+
+Now write the content:`
     
     console.log('[API /content/generate] Calling provider API...', {
       provider,

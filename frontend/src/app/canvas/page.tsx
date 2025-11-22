@@ -1724,18 +1724,41 @@ export default function CanvasPage() {
   const handleWriteContent = useCallback(async (segmentId: string, prompt: string) => {
     console.log('📝 handleWriteContent:', { segmentId, prompt })
     
+    // BUILD STRATEGIC CONTEXT (orchestrator's job!)
+    // Get full hierarchy, previous content, future summaries
+    let effectiveContentMap: Record<string, string> = { ...currentContentMap }
+    
+    // Build contentMap with smart fallback (same logic as handleAnswerQuestion)
+    if (Object.keys(effectiveContentMap).length === 0) {
+      const sectionByItemId = new Map(currentSections.map(s => [s.structure_item_id, s]))
+      currentStructureItems.forEach((item: any) => {
+        const section = sectionByItemId.get(item.id)
+        if (section?.content && section.content.trim() && !section.content.includes('<p></p>')) {
+          effectiveContentMap[item.id] = section.content
+        } else if (item.summary && item.summary.trim()) {
+          effectiveContentMap[item.id] = item.summary
+        }
+      })
+    }
+    
+    console.log('🧠 Orchestrator context:', {
+      targetSegment: segmentId,
+      totalStructureItems: currentStructureItems.length,
+      contentMapSize: Object.keys(effectiveContentMap).length,
+      hasPreviousContent: currentStructureItems.findIndex((item: any) => item.id === segmentId) > 0
+    })
+    
     // Add reasoning message
     setCanvasChatHistory(prev => [...prev, {
       id: `write_${Date.now()}`,
       timestamp: new Date().toISOString(),
-      content: `📝 Generating content for segment: ${segmentId}`,
+      content: `📝 Orchestrator delegating to writer model with full story context...`,
       type: 'task' as const,
       role: 'orchestrator' as const
     }])
     
     try {
-      // TODO: Call API to generate content for this specific segment
-      // For now, we'll use a placeholder
+      // Call API with FULL orchestrator context
       const response = await fetch('/api/content/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1743,6 +1766,10 @@ export default function CanvasPage() {
           segmentId,
           prompt,
           storyStructureNodeId: currentStoryStructureNodeId,
+          // STRATEGIC CONTEXT from orchestrator
+          structureItems: currentStructureItems, // Full hierarchy
+          contentMap: effectiveContentMap, // All content/summaries
+          format: currentStructureFormat, // Story format
         })
       })
       
@@ -1780,7 +1807,7 @@ export default function CanvasPage() {
         role: 'orchestrator' as const
       }])
     }
-  }, [currentStoryStructureNodeId])
+  }, [currentStoryStructureNodeId, currentStructureItems, currentSections, currentContentMap, currentStructureFormat])
 
   /**
    * Handle sections loaded from AIDocumentPanel (Supabase)
