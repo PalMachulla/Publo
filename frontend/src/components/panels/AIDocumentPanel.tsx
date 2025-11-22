@@ -142,14 +142,20 @@ export default function AIDocumentPanel({
   
   // Ref to the editor's scrollable container for TOC scrolling
   const editorContainerRef = useRef<HTMLDivElement>(null)
+  
+  // Track initialization to prevent duplicate calls
+  const isInitializingRef = useRef(false)
 
   // Re-initialize sections when structure items change
   useEffect(() => {
     if (isOpen && storyStructureNodeId && structureItems.length > 0) {
-      // If sections is empty, initialize all sections
-      if (sections.length === 0) {
+      // If sections is empty, initialize all sections (but only if not already initializing)
+      if (sections.length === 0 && !isInitializingRef.current) {
         console.log('🚀 No sections exist, initializing all sections...')
-        initializeSections()
+        isInitializingRef.current = true
+        initializeSections().finally(() => {
+          isInitializingRef.current = false
+        })
         return
       }
       
@@ -160,9 +166,12 @@ export default function AIDocumentPanel({
       const hasNewItems = structureItems.some(item => !sectionItemIds.has(item.id))
       const hasRemovedItems = sections.some(s => !structureItemIds.has(s.structure_item_id))
       
-      if (hasNewItems || hasRemovedItems) {
+      if ((hasNewItems || hasRemovedItems) && !isInitializingRef.current) {
         console.log('🔄 Structure items changed, re-initializing sections...')
-        initializeSections()
+        isInitializingRef.current = true
+        initializeSections().finally(() => {
+          isInitializingRef.current = false
+        })
       }
     }
   }, [isOpen, storyStructureNodeId, structureItems, sections, initializeSections])
