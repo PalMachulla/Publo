@@ -337,6 +337,10 @@ export default function CanvasPage() {
     if (!loading && user && storyId && storyId !== lastLoadedStoryIdRef.current) {
       console.log('Loading story:', storyId, '(previously loaded:', lastLoadedStoryIdRef.current, ')')
       
+      // Clear chat history when switching canvases (fresh start for each canvas)
+      setCanvasChatHistory([])
+      console.log('🗑️ Chat history cleared for new canvas')
+      
       // Set loading flags before loading
       setIsLoadingCanvas(true)
       isLoadingRef.current = true

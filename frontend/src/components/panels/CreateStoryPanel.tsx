@@ -610,14 +610,9 @@ export default function CreateStoryPanel({
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               if (chatMessage.trim()) {
-                // Check if format and template are selected
-                if (!selectedFormat || !selectedTemplate) {
-                  alert('Please select a format and template first using the Format tile above.')
-                  return
-                }
-                
-                // Send prompt to orchestrator
+                // Format is always set (defaults to 'novel'), template is optional
                 console.log('📤 Sending prompt to orchestrator:', chatMessage)
+                console.log('📝 Using format:', selectedFormat, 'template:', selectedTemplate || 'none')
                 
                 // Add user message to CANVAS-LEVEL chat history (persistent)
                 if (onAddChatMessage) {
@@ -631,8 +626,8 @@ export default function CreateStoryPanel({
                 
                 // Small delay to ensure chat message is added
                 setTimeout(() => {
-                  // Trigger story creation with the prompt
-                  onCreateStory(selectedFormat, selectedTemplate)
+                  // Trigger story creation with the prompt (template is optional)
+                  onCreateStory(selectedFormat, selectedTemplate || undefined)
                 }, 50)
                 
                 // Clear input
