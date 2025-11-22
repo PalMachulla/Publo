@@ -1807,18 +1807,37 @@ export default function CanvasPage() {
   const handleAnswerQuestion = useCallback(async (question: string): Promise<string> => {
     console.log('💬 handleAnswerQuestion:', question)
     
-    // BUILD contentMap from SECTIONS (Supabase) if contentMap (node) is empty
-    // Content is stored in Supabase sections table, NOT inline in structureItems
+    // BUILD contentMap with SMART FALLBACK CHAIN:
+    // 1. Node contentMap (from test markdown)
+    // 2. Section content (user-written full story from Supabase)
+    // 3. Structure item summary (AI-generated overview)
     let effectiveContentMap = { ...currentContentMap }
     
-    if (Object.keys(effectiveContentMap).length === 0 && currentSections.length > 0) {
-      console.log('📦 Building contentMap from Supabase sections (node contentMap is empty)')
-      currentSections.forEach((section) => {
-        if (section.content && section.content.trim()) {
-          effectiveContentMap[section.structure_item_id] = section.content
+    if (Object.keys(effectiveContentMap).length === 0) {
+      console.log('📦 Building contentMap with smart fallback chain...')
+      
+      // Create a map from structure_item_id to section for quick lookup
+      const sectionByItemId = new Map(
+        currentSections.map(s => [s.structure_item_id, s])
+      )
+      
+      currentStructureItems.forEach((item: any) => {
+        const section = sectionByItemId.get(item.id)
+        
+        // Priority 1: Section content (user-written full story)
+        if (section?.content && section.content.trim() && !section.content.includes('<p></p>')) {
+          effectiveContentMap[item.id] = section.content
+          console.log(`  ✅ [${item.name}] Using section.content (full story)`)
+        }
+        // Priority 2: Structure item summary (AI-generated overview)
+        else if (item.summary && item.summary.trim()) {
+          effectiveContentMap[item.id] = item.summary
+          console.log(`  📝 [${item.name}] Using item.summary (AI overview): "${item.summary.substring(0, 60)}..."`)
         }
       })
-      console.log('✅ Built contentMap from sections:', {
+      
+      console.log('✅ Built contentMap:', {
+        structureItemsCount: currentStructureItems.length,
         sectionsCount: currentSections.length,
         contentMapSize: Object.keys(effectiveContentMap).length,
         sampleKeys: Object.keys(effectiveContentMap).slice(0, 3)
