@@ -33,7 +33,17 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    console.log('[API /content/answer] Request:', { question, hasContext: !!context })
+    console.log('[API /content/answer] Request:', { 
+      question, 
+      hasContext: !!context,
+      structureItemsCount: context?.structureItems?.length,
+      contentMapKeys: context?.contentMap ? Object.keys(context.contentMap) : [],
+      contentMapSample: context?.contentMap ? Object.keys(context.contentMap).slice(0, 3).map(key => ({
+        id: key,
+        contentLength: context.contentMap[key]?.length,
+        preview: context.contentMap[key]?.substring(0, 50)
+      })) : []
+    })
     
     // Get orchestrator model preference
     const { data: preferences } = await supabase

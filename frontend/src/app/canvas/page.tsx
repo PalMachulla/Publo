@@ -1787,6 +1787,18 @@ export default function CanvasPage() {
    */
   const handleAnswerQuestion = useCallback(async (question: string): Promise<string> => {
     console.log('💬 handleAnswerQuestion:', question)
+    console.log('📊 Context being sent:', {
+      storyStructureNodeId: currentStoryStructureNodeId,
+      structureItemsCount: currentStructureItems.length,
+      contentMapKeys: Object.keys(currentContentMap),
+      contentMapSize: Object.keys(currentContentMap).length,
+      hasActiveContext: !!activeContext,
+      contentMapSample: Object.keys(currentContentMap).slice(0, 3).map(key => ({
+        id: key,
+        length: currentContentMap[key]?.length,
+        preview: currentContentMap[key]?.substring(0, 100)
+      }))
+    })
     
     try {
       // TODO: Call API to answer question using orchestrator model
