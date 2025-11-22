@@ -143,19 +143,23 @@ export default function AIDocumentPanel({
   // Ref to the editor's scrollable container for TOC scrolling
   const editorContainerRef = useRef<HTMLDivElement>(null)
   
-  // Track initialization to prevent duplicate calls
-  const isInitializingRef = useRef(false)
+  // Track which nodes have been initialized to prevent duplicates
+  const initializedNodesRef = useRef<Set<string>>(new Set())
 
   // Re-initialize sections when structure items change
   useEffect(() => {
     if (isOpen && storyStructureNodeId && structureItems.length > 0) {
-      // If sections is empty, initialize all sections (but only if not already initializing)
-      if (sections.length === 0 && !isInitializingRef.current) {
-        console.log('🚀 No sections exist, initializing all sections...')
-        isInitializingRef.current = true
-        initializeSections().finally(() => {
-          isInitializingRef.current = false
-        })
+      const nodeKey = storyStructureNodeId
+      
+      // If sections is empty, initialize all sections (but only once per node)
+      if (sections.length === 0) {
+        if (!initializedNodesRef.current.has(nodeKey)) {
+          console.log('🚀 No sections exist, initializing all sections for node:', nodeKey)
+          initializedNodesRef.current.add(nodeKey)
+          initializeSections()
+        } else {
+          console.log('⏭️ Skipping initialization - already attempted for node:', nodeKey)
+        }
         return
       }
       
@@ -166,12 +170,9 @@ export default function AIDocumentPanel({
       const hasNewItems = structureItems.some(item => !sectionItemIds.has(item.id))
       const hasRemovedItems = sections.some(s => !structureItemIds.has(s.structure_item_id))
       
-      if ((hasNewItems || hasRemovedItems) && !isInitializingRef.current) {
+      if (hasNewItems || hasRemovedItems) {
         console.log('🔄 Structure items changed, re-initializing sections...')
-        isInitializingRef.current = true
-        initializeSections().finally(() => {
-          isInitializingRef.current = false
-        })
+        initializeSections()
       }
     }
   }, [isOpen, storyStructureNodeId, structureItems, sections, initializeSections])
