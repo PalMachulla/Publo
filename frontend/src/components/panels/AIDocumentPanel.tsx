@@ -470,28 +470,28 @@ export default function AIDocumentPanel({
 
   // Render enhanced section tree with add/edit capabilities
   const renderSectionTree = () => {
-    if (sectionsLoading) {
-      return (
-        <div className="flex items-center justify-center p-8">
-          <div className="text-sm text-gray-400">Loading sections...</div>
+    // Don't wait for Supabase sections - show structure items immediately (like Word's navigation)
+    // Sections loading/error only affects content persistence, not navigation tree
+    
+    // Optionally show error as a warning, but still render the tree
+    const errorBanner = sectionsError ? (
+      <div className="p-2 mb-2">
+        <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
+          ⚠️ Content persistence unavailable (sections not initialized)
         </div>
-      )
-    }
-
-    if (sectionsError) {
-      return (
-        <div className="p-4">
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-            <div className="text-sm text-red-700">{sectionsError}</div>
-          </div>
-        </div>
-      )
-    }
+      </div>
+    ) : null
 
     // Build hierarchical structure from structure items (like Word's nav tree)
     const buildTree = (items: typeof structureItems, parentId?: string): typeof structureItems => {
       return items
-        .filter(item => item.parentId === parentId)
+        .filter(item => {
+          // For root items, match undefined, null, or empty string
+          if (parentId === undefined) {
+            return !item.parentId || item.parentId === ''
+          }
+          return item.parentId === parentId
+        })
         .sort((a, b) => a.order - b.order)
     }
 
@@ -626,22 +626,46 @@ export default function AIDocumentPanel({
 
     const rootItems = buildTree(structureItems, undefined)
 
-    if (rootItems.length === 0) {
+    console.log('🌲 [renderSectionTree] Rendering tree:', {
+      structureItemsCount: structureItems.length,
+      rootItemsCount: rootItems.length,
+      structureItems: structureItems.map(i => ({ id: i.id, name: i.name, parentId: i.parentId, level: i.level })),
+      rootItems: rootItems.map(i => ({ id: i.id, name: i.name, level: i.level }))
+    })
+
+    if (rootItems.length === 0 && structureItems.length === 0) {
       return (
-        <div className="p-8 text-center">
-          <div className="text-gray-400 text-sm mb-4">No sections yet</div>
-          <button
-            onClick={openAddSectionModal}
-            className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-lg text-sm font-medium transition-colors"
-          >
-            + Add First Section
-          </button>
-        </div>
+        <>
+          {errorBanner}
+          <div className="p-8 text-center">
+            <div className="text-gray-400 text-sm mb-4">No structure yet</div>
+            <button
+              onClick={openAddSectionModal}
+              className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-lg text-sm font-medium transition-colors"
+            >
+              + Add First Section
+            </button>
+          </div>
+        </>
+      )
+    }
+    
+    // If we have structure items but no root items, show ALL items (flat list)
+    if (rootItems.length === 0 && structureItems.length > 0) {
+      console.warn('⚠️ No root items found! Showing all structure items as flat list')
+      return (
+        <>
+          {errorBanner}
+          <div className="py-1">
+            {renderTreeLevel(structureItems, 0)}
+          </div>
+        </>
       )
     }
 
     return (
       <div className="py-1">
+        {errorBanner}
         {renderTreeLevel(rootItems, 0)}
         
         {/* Add Section Button at bottom */}
