@@ -85,21 +85,42 @@ export function analyzeIntent(context: IntentContext): IntentAnalysis {
       }
     }
     
-    // Ambiguous - user might be asking to write OR asking a question
-    // Default to writing if segment is selected and message is brief
-    if (lowerMessage.length < 50 && !lowerMessage.includes('?')) {
+    // Ambiguous - user might be asking to write OR having a conversation
+    // Only default to writing if it sounds imperative (commands, not questions)
+    const imperativePatterns = [
+      /^(make|create|add|generate|produce)/i,
+      /^(insert|include|put)/i,
+    ]
+    
+    if (lowerMessage.length < 50 && 
+        !lowerMessage.includes('?') &&
+        imperativePatterns.some(pattern => pattern.test(message))) {
       return {
         intent: 'write_content',
-        confidence: 0.7,
-        reasoning: `Segment "${activeSegmentName}" is selected and user message appears to be a writing instruction`,
+        confidence: 0.6,
+        reasoning: `Segment "${activeSegmentName}" is selected and user message appears to be an imperative writing instruction`,
         suggestedAction: `Generate content for "${activeSegmentName}" based on the user's guidance: "${message}"`,
         requiresContext: true,
         suggestedModel: 'writer'
       }
     }
+    
+    // If still ambiguous and segment is selected, lean towards conversation
+    // Users often want to discuss content, not always generate it
+    if (lowerMessage.length < 30) {
+      return {
+        intent: 'general_chat',
+        confidence: 0.5,
+        reasoning: `Ambiguous short message with segment selected - defaulting to conversation rather than assuming writing intent`,
+        suggestedAction: `Respond conversationally about "${activeSegmentName}"`,
+        requiresContext: false,
+        suggestedModel: 'orchestrator'
+      }
+    }
   }
   
-  // PRIORITY 2: Questions (regardless of context)
+  // PRIORITY 2: Questions and Explanations (regardless of context)
+  // These should NEVER trigger content generation, only conversation
   const questionPatterns = [
     /^what/i,
     /^why/i,
@@ -107,16 +128,20 @@ export function analyzeIntent(context: IntentContext): IntentAnalysis {
     /^when/i,
     /^who/i,
     /^where/i,
-    /^can you (tell|explain)/i,
+    /^explain/i,
+    /^describe/i,
+    /^tell me (about|why|how|what)/i,
+    /^can you (tell|explain|describe)/i,
+    /what (is|are|does)/i,
     /\?$/,
   ]
   
   if (questionPatterns.some(pattern => pattern.test(message))) {
     return {
       intent: 'answer_question',
-      confidence: 0.85,
-      reasoning: 'User is asking a question based on interrogative patterns',
-      suggestedAction: 'Answer the user\'s question using orchestrator model',
+      confidence: 0.9,
+      reasoning: 'User is asking for explanation or information based on interrogative patterns',
+      suggestedAction: 'Answer the user\'s question using orchestrator model in chat',
       requiresContext: false,
       suggestedModel: 'orchestrator'
     }
