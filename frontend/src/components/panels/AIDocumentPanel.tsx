@@ -264,31 +264,26 @@ export default function AIDocumentPanel({
   // Note: We don't auto-load individual sections - the full document is loaded once
   // and users navigate via TOC scrolling
 
-  // Set active section when sections load
+  // Set active section from structure items (not requiring Supabase sections)
   useEffect(() => {
-    if (sections.length > 0 && !activeSectionId) {
-      // If initialSectionId is provided, try to find that section
+    if (structureItems.length > 0 && !activeSectionId) {
+      // Use structure item ID directly (works like Word's navigation)
       if (initialSectionId) {
-        const targetSection = sections.find(s => s.structure_item_id === initialSectionId)
-        if (targetSection) {
-          setActiveSectionId(targetSection.id)
-          return
-        }
+        setActiveSectionId(initialSectionId)
+        return
       }
-      // Otherwise, set the first section as active
-      setActiveSectionId(sections[0].id)
+      // Otherwise, set the first structure item as active
+      setActiveSectionId(structureItems[0].id)
     }
-  }, [sections, activeSectionId, initialSectionId])
+  }, [structureItems, activeSectionId, initialSectionId])
 
   // Load initial section content
   useEffect(() => {
-    if (isOpen && initialSectionId && sections.length > 0) {
-      const section = sections.find(s => s.structure_item_id === initialSectionId)
-      if (section) {
-        handleSectionClick(section)
-      }
+    if (isOpen && initialSectionId && structureItems.length > 0) {
+      // Use structure item ID directly
+      setActiveSectionId(initialSectionId)
     }
-  }, [isOpen, initialSectionId, sections])
+  }, [isOpen, initialSectionId, structureItems])
 
 
   // Aggregate content hierarchically for a structure item
@@ -348,17 +343,12 @@ export default function AIDocumentPanel({
     return aggregatedContent.join('\n\n')
   }
 
-  // Handle section click (from sidebar)
+  // Handle section click (from sidebar or NarrationArrangementView)
+  // Convert Supabase section to structure item and delegate
   const handleSectionClick = (section: DocumentSection) => {
-    setActiveSectionId(section.id)
-    
-    // Load aggregated content for this section
     const structureItem = structureItems.find(i => i.id === section.structure_item_id)
     if (structureItem) {
-      const aggregatedContent = aggregateHierarchicalContent(structureItem.id)
-      if (aggregatedContent) {
-        setContent(aggregatedContent)
-      }
+      handleSegmentClick(structureItem)
     }
   }
   
@@ -498,7 +488,7 @@ export default function AIDocumentPanel({
       )
     }
 
-    // Build hierarchical structure
+    // Build hierarchical structure from structure items (like Word's nav tree)
     const buildTree = (items: typeof structureItems, parentId?: string): typeof structureItems => {
       return items
         .filter(item => item.parentId === parentId)
@@ -507,11 +497,13 @@ export default function AIDocumentPanel({
 
     const renderTreeLevel = (items: typeof structureItems, level: number = 0) => {
       return items.map((item) => {
+        // Work directly with structure items, don't require Supabase sections
         const section = sections.find(s => s.structure_item_id === item.id)
         const children = buildTree(structureItems, item.id)
         const hasChildren = children.length > 0
         const isExpanded = expandedSections.has(item.id)
-        const isActive = section?.id === activeSectionId
+        // Use structure item ID for active state (not Supabase section ID)
+        const isActive = activeSectionId === item.id || section?.id === activeSectionId
 
         return (
           <div key={item.id}>
