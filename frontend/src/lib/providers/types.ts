@@ -70,6 +70,19 @@ export interface LLMProviderAdapter {
   generate(apiKey: string, params: GenerateParams): Promise<ProviderGenerateResponse>
 
   /**
+   * Generate text using streaming (optional)
+   * 
+   * @param apiKey - The API key to use
+   * @param params - Generation parameters
+   * @returns AsyncGenerator yielding content chunks and final usage
+   */
+  generateStream?(apiKey: string, params: GenerateParams): AsyncGenerator<
+    { type: 'content' | 'reasoning' | 'done'; content?: string; usage?: ProviderUsage },
+    void,
+    unknown
+  >
+
+  /**
    * Validate that an API key is valid
    * 
    * @param apiKey - The API key to validate
