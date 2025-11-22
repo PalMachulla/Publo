@@ -180,7 +180,7 @@ export default function CreateStoryPanel({
     writerCount: number
   }>({ orchestrator: null, writerCount: 0 })
   const [loadingConfig, setLoadingConfig] = useState(true)
-  const [selectedFormat, setSelectedFormat] = useState<StoryFormat | null>(null)
+  const [selectedFormat, setSelectedFormat] = useState<StoryFormat>('novel') // Default to 'novel'
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false) // Prevent double-clicks
   
@@ -320,15 +320,9 @@ export default function CreateStoryPanel({
   }
 
   const handleFormatClick = (format: StoryFormat) => {
-    if (selectedFormat === format) {
-      // Collapse if clicking the same format
-      setSelectedFormat(null)
-      setSelectedTemplate(null)
-    } else {
-      // Expand new format
-      setSelectedFormat(format)
-      setSelectedTemplate(null)
-    }
+    // Always select the format (no deselection - format is required)
+    setSelectedFormat(format)
+    setSelectedTemplate(null)
   }
 
   const handleTemplateSelect = (templateId: string) => {
@@ -436,8 +430,8 @@ export default function CreateStoryPanel({
                       <div key={format.type} className="border border-gray-200 rounded-md overflow-hidden hover:border-gray-300 transition-colors">
                         <button
                           onClick={() => {
-                            setSelectedFormat(isSelected ? null : format.type)
-                            if (!isSelected) setSelectedTemplate(null)
+                            setSelectedFormat(format.type)
+                            setSelectedTemplate(null)
                           }}
                           className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
                             isSelected ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'
@@ -646,12 +640,12 @@ export default function CreateStoryPanel({
               }
             }
           }}
-          placeholder="Chat with the orchestrator..."
+          placeholder={`Chat with the orchestrator (${selectedFormat.charAt(0).toUpperCase() + selectedFormat.slice(1).replace('-', ' ')})...`}
           rows={2}
           className="w-full resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent placeholder-gray-400"
         />
         <p className="text-xs text-gray-500 mt-2">
-          Press Enter to send, Shift+Enter for new line
+          Press Enter to send • Shift+Enter for new line • Format: <span className="font-semibold text-gray-700">{selectedFormat.charAt(0).toUpperCase() + selectedFormat.slice(1).replace('-', ' ')}</span>
         </p>
       </div>
     </div>
