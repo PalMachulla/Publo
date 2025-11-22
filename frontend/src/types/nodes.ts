@@ -108,6 +108,12 @@ export interface CreateStoryNodeData extends BaseNodeData {
   isOrchestrating?: boolean // Whether the orchestrator is active
   orchestratorProgress?: number // Progress percentage (0-100)
   loadingText?: string // Text to show below logo during operations
+  chatPrompt?: string // User's prompt from the chat input
+  reasoningMessages?: Array<{ // Orchestrator's reasoning messages
+    timestamp: string
+    content: string
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error'
+  }>
 }
 
 export type StoryDraftStatus = 'draft' | 'active' | 'published'

@@ -13,6 +13,46 @@ import AppHeader from '@/components/layout/AppHeader'
 
 type Section = 'general' | 'byoapi' | 'preferences' | 'account'
 
+// Helper: Identify orchestrator models by pattern matching
+const isOrchestratorModel = (modelId: string): boolean => {
+  const id = modelId.toLowerCase()
+  
+  // High-capability orchestrator patterns
+  const orchestratorPatterns = [
+    'gpt-4',
+    'o1',
+    'o3',
+    'claude-3-5-sonnet',
+    'claude-3-opus',
+    'gemini-1.5-pro',
+    'gemini-2.0-flash-exp',
+    'llama-3.3-70b',
+    'llama-3.1-70b',
+    'mixtral-8x7b',
+    'qwen2.5-72b'
+  ]
+  
+  return orchestratorPatterns.some(pattern => id.includes(pattern))
+}
+
+// Helper: Identify writer models (everything else that's chat-capable)
+const isWriterModel = (modelId: string): boolean => {
+  const id = modelId.toLowerCase()
+  
+  // Exclude non-chat models
+  const excluded = [
+    'realtime', 'transcribe', 'search', 'image', 
+    'diarize', 'codex', 'embedding', 'moderation'
+  ]
+  
+  if (excluded.some(pattern => id.includes(pattern))) return false
+  
+  // Exclude instruct models unless they're llama
+  if (id.includes('instruct') && !id.includes('llama')) return false
+  
+  return true
+}
+
 export default function ProfilePage() {
   const { user, signOut } = useAuth()
   const router = useRouter()
@@ -32,6 +72,9 @@ export default function ProfilePage() {
   const [modelPreferences, setModelPreferences] = useState<Record<string, Record<string, boolean>>>({})
   const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({})
   const [updatingModel, setUpdatingModel] = useState<string | null>(null)
+  const [orchestratorPreferences, setOrchestratorPreferences] = useState<Record<string, string | null>>({}) // keyId -> orchestratorModelId
+  const [writerPreferences, setWriterPreferences] = useState<Record<string, string[]>>({}) // keyId -> writerModelIds[]
+  const [updatingOrchestrator, setUpdatingOrchestrator] = useState<string | null>(null)
   
   // Form state
   const [provider, setProvider] = useState<Provider>('groq')
@@ -55,12 +98,21 @@ export default function ProfilePage() {
       
       if (data.success) {
         setKeys(data.keys)
+        
         // Initialize model preferences from fetched keys
         const prefs: Record<string, Record<string, boolean>> = {}
+        const orchestratorPrefs: Record<string, string | null> = {}
+        const writerPrefs: Record<string, string[]> = {}
+        
         data.keys.forEach((key: UserAPIKey) => {
           prefs[key.id] = key.model_preferences || {}
+          orchestratorPrefs[key.id] = key.orchestrator_model_id || null
+          writerPrefs[key.id] = key.writer_model_ids || []
         })
+        
         setModelPreferences(prefs)
+        setOrchestratorPreferences(orchestratorPrefs)
+        setWriterPreferences(writerPrefs)
       } else {
         setError(data.error || 'Failed to load API keys')
       }
@@ -436,25 +488,20 @@ export default function ProfilePage() {
                                   )}
                                 </div>
                                 
-                                {/* Model Selection Accordion */}
+                                {/* Enhanced Model Selection: Orchestrator + Writers */}
                                 {key.models_cache && key.models_cache.length > 0 && (() => {
-                                  // Filter for truly usable chat models
+                                  // Filter and categorize models
                                   const chatModels = key.models_cache.filter((m: any) => {
                                     if (m.supports_chat === false) return false
-                                    
-                                    // Additional filtering for OpenAI models
-                                    const id = m.id.toLowerCase()
-                                    const isRealtime = id.includes('realtime')
-                                    const isTranscribe = id.includes('transcribe')
-                                    const isSearch = id.includes('search')
-                                    const isImage = id.includes('image')
-                                    const isDiarize = id.includes('diarize')
-                                    const isCodex = id.includes('codex')
-                                    const isInstruct = id.includes('instruct') && !id.includes('llama')
-                                    
-                                    return !isRealtime && !isTranscribe && !isSearch && !isImage && !isDiarize && !isCodex && !isInstruct
+                                    return isWriterModel(m.id)
                                   })
+                                  
+                                  const orchestrators = chatModels.filter((m: any) => isOrchestratorModel(m.id))
+                                  const writers = chatModels.filter((m: any) => !isOrchestratorModel(m.id))
+                                  
                                   const isExpanded = expandedModels[key.id] || false
+                                  const selectedOrchestrator = orchestratorPreferences[key.id]
+                                  const selectedWriters = writerPreferences[key.id] || []
                                   
                                   return (
                                     <div className="mt-3 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
@@ -472,143 +519,249 @@ export default function ProfilePage() {
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                           </svg>
                                           <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
-                                            Available Models
+                                            Model Configuration
                                           </span>
                                           <Badge variant="info" size="sm">
-                                            {chatModels.length}
+                                            {orchestrators.length} orchestrators
+                                          </Badge>
+                                          <Badge variant="default" size="sm">
+                                            {writers.length} writers
                                           </Badge>
                                         </div>
                                         <span className="text-xs text-gray-500">
-                                          {chatModels.filter((m: any) => modelPreferences[key.id]?.[m.id] === true).length} enabled
+                                          {selectedOrchestrator ? (selectedWriters.length > 0 ? 'Multi-agent' : 'Single-model') : 'Not configured'}
                                         </span>
                                       </button>
                                       
                                       {isExpanded && (
-                                        <div className="border-t border-gray-200 bg-gray-50">
-                                          <div className="px-4 py-2 bg-amber-50 border-b border-amber-200">
-                                            <p className="text-xs text-amber-800">
-                                              💡 <strong>Models are disabled by default.</strong> Check the ones you want to use in story generation. Only chat-compatible models are shown.
-                                            </p>
+                                        <div className="border-t border-gray-200 bg-gray-50 p-4 space-y-4">
+                                          {/* Info Banner */}
+                                          <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                            <div className="flex gap-3">
+                                              <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                              </svg>
+                                              <div className="text-xs text-blue-900 space-y-1">
+                                                <p className="font-semibold">Orchestration Modes:</p>
+                                                <p>• <strong>Single-model:</strong> Select an orchestrator only. It handles planning AND writing.</p>
+                                                <p>• <strong>Multi-agent:</strong> Select orchestrator + writer models. Orchestrator plans, delegates writing to cheaper/faster models.</p>
+                                                <p>• <strong>Auto:</strong> Leave blank. System picks the best orchestrator automatically.</p>
+                                              </div>
+                                            </div>
                                           </div>
-                                          <div className="p-3 space-y-2 max-h-96 overflow-y-auto">
-                                            {chatModels
-                                              .filter((model: any) => {
-                                                // Filter out non-chat models by ID patterns
-                                                const id = model.id.toLowerCase()
-                                                const isRealtime = id.includes('realtime')
-                                                const isTranscribe = id.includes('transcribe')
-                                                const isSearch = id.includes('search')
-                                                const isImage = id.includes('image')
-                                                const isDiarize = id.includes('diarize')
-                                                const isCodex = id.includes('codex')
-                                                const isInstruct = id.includes('instruct') && !id.includes('llama')
-                                                
-                                                return !isRealtime && !isTranscribe && !isSearch && !isImage && !isDiarize && !isCodex && !isInstruct
-                                              })
-                                              .map((model: any) => {
-                                              const isChecked = modelPreferences[key.id]?.[model.id] === true
-                                              
-                                              return (
-                                                <label
-                                                  key={model.id}
-                                                  className="flex items-start gap-3 p-3 bg-white rounded-lg cursor-pointer hover:shadow-md transition-all border border-gray-200 hover:border-yellow-300"
-                                                >
+                                          
+                                          {/* Orchestrator Selection */}
+                                          <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                              <h4 className="text-sm font-semibold text-gray-900">🧠 Orchestrator Model</h4>
+                                              <span className="text-xs text-gray-500">(Plans structure & delegates tasks)</span>
+                                            </div>
+                                            
+                                            {orchestrators.length > 0 ? (
+                                              <div className="space-y-2 max-h-64 overflow-y-auto">
+                                                {/* Auto option */}
+                                                <label className="flex items-start gap-3 p-3 bg-white rounded-lg cursor-pointer hover:shadow-md transition-all border-2 border-green-200 hover:border-green-300">
                                                   <input
-                                                    type="checkbox"
-                                                    checked={isChecked}
-                                                    disabled={updatingModel === `${key.id}-${model.id}`}
-                                                    onChange={async (e) => {
-                                                      e.stopPropagation()
-                                                      const newValue = e.target.checked
-                                                      const updateKey = `${key.id}-${model.id}`
-                                                      
-                                                      // Prevent concurrent updates
-                                                      if (updatingModel) return
-                                                      
-                                                      setUpdatingModel(updateKey)
-                                                      
-                                                      // Optimistically update UI
-                                                      setModelPreferences(prev => ({
+                                                    type="radio"
+                                                    name={`orchestrator-${key.id}`}
+                                                    checked={!selectedOrchestrator}
+                                                    onChange={() => {
+                                                      setOrchestratorPreferences(prev => ({
                                                         ...prev,
-                                                        [key.id]: {
-                                                          ...(prev[key.id] || {}),
-                                                          [model.id]: newValue
-                                                        }
+                                                        [key.id]: null
                                                       }))
-                                                      
-                                                      try {
-                                                        const url = `/api/user/api-keys/${key.id}/models`
-                                                        console.log('[Model Toggle] Calling:', url, { modelId: model.id, enabled: newValue, keyId: key.id })
-                                                        
-                                                        const response = await fetch(url, {
-                                                          method: 'PATCH',
-                                                          headers: { 'Content-Type': 'application/json' },
-                                                          body: JSON.stringify({ modelId: model.id, enabled: newValue }),
-                                                        })
-                                                        
-                                                        console.log('[Model Toggle] Response:', response.status, response.statusText)
-                                                        
-                                                        if (!response.ok) {
-                                                          const errorData = await response.json().catch(() => ({}))
-                                                          console.error('Failed to update model preference:', errorData)
-                                                          // Revert on error
-                                                          setModelPreferences(prev => ({
-                                                            ...prev,
-                                                            [key.id]: {
-                                                              ...(prev[key.id] || {}),
-                                                              [model.id]: !newValue
-                                                            }
-                                                          }))
-                                                        } else {
-                                                          console.log('[Model Toggle] Success!')
-                                                        }
-                                                      } catch (error) {
-                                                        console.error('Error updating model preference:', error)
-                                                        // Revert on error
-                                                        setModelPreferences(prev => ({
-                                                          ...prev,
-                                                          [key.id]: {
-                                                            ...(prev[key.id] || {}),
-                                                            [model.id]: !newValue
-                                                          }
-                                                        }))
-                                                      } finally {
-                                                        setUpdatingModel(null)
-                                                      }
                                                     }}
-                                                    className="mt-1 w-4 h-4 text-yellow-500 border-gray-300 rounded focus:ring-yellow-400 focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    className="mt-1 w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500"
                                                   />
-                                                  <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                      <span className="text-sm font-semibold text-gray-900">{model.name || model.id}</span>
-                                                      <Badge 
-                                                        variant={
-                                                          model.category === 'production' ? 'success' : 
-                                                          model.category === 'preview' ? 'warning' : 'default'
-                                                        }
-                                                        size="sm"
-                                                      >
-                                                        {model.category}
-                                                      </Badge>
+                                                  <div className="flex-1">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                      <span className="text-sm font-semibold text-gray-900">🤖 Auto-select</span>
+                                                      <Badge variant="success" size="sm">Recommended</Badge>
                                                     </div>
-                                                    {model.description && (
-                                                      <p className="text-xs text-gray-600 mb-2 leading-relaxed">{model.description}</p>
-                                                    )}
-                                                    <div className="flex items-center gap-3 text-xs text-gray-500">
-                                                      {model.context_window && (
-                                                        <span>{(model.context_window / 1000).toFixed(0)}K ctx</span>
-                                                      )}
-                                                      {model.max_output_tokens && (
-                                                        <span>{(model.max_output_tokens / 1000).toFixed(0)}K max</span>
-                                                      )}
-                                                      {model.input_price_per_1m !== null && (
-                                                        <span className="font-medium text-gray-700">${model.input_price_per_1m.toFixed(2)}/1M</span>
-                                                      )}
-                                                    </div>
+                                                    <p className="text-xs text-gray-600">System picks the best orchestrator for your provider</p>
                                                   </div>
                                                 </label>
-                                              )
-                                            })}
+                                                
+                                                {orchestrators.map((model: any) => (
+                                                  <label
+                                                    key={model.id}
+                                                    className="flex items-start gap-3 p-3 bg-white rounded-lg cursor-pointer hover:shadow-md transition-all border border-gray-200 hover:border-purple-300"
+                                                  >
+                                                    <input
+                                                      type="radio"
+                                                      name={`orchestrator-${key.id}`}
+                                                      checked={selectedOrchestrator === model.id}
+                                                      onChange={() => {
+                                                        setOrchestratorPreferences(prev => ({
+                                                          ...prev,
+                                                          [key.id]: model.id
+                                                        }))
+                                                      }}
+                                                      className="mt-1 w-4 h-4 text-purple-600 border-gray-300 focus:ring-purple-500"
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                        <span className="text-sm font-semibold text-gray-900">{model.name || model.id}</span>
+                                                        <Badge variant={model.category === 'production' ? 'success' : 'warning'} size="sm">
+                                                          {model.category}
+                                                        </Badge>
+                                                      </div>
+                                                      {model.description && (
+                                                        <p className="text-xs text-gray-600 mb-2 leading-relaxed">{model.description}</p>
+                                                      )}
+                                                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                                                        {model.context_window && (
+                                                          <span>{(model.context_window / 1000).toFixed(0)}K ctx</span>
+                                                        )}
+                                                        {model.max_output_tokens && (
+                                                          <span>{(model.max_output_tokens / 1000).toFixed(0)}K max</span>
+                                                        )}
+                                                        {model.input_price_per_1m !== null && (
+                                                          <span className="font-medium text-gray-700">${model.input_price_per_1m.toFixed(2)}/1M</span>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  </label>
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                                                No high-capability orchestrator models found. System will auto-select.
+                                              </div>
+                                            )}
+                                          </div>
+                                          
+                                          {/* Writer Models Selection */}
+                                          <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                              <h4 className="text-sm font-semibold text-gray-900">✍️ Writer Models</h4>
+                                              <span className="text-xs text-gray-500">(Optional: for multi-agent delegation)</span>
+                                            </div>
+                                            
+                                            {writers.length > 0 ? (
+                                              <div className="space-y-2 max-h-64 overflow-y-auto">
+                                                {writers.map((model: any) => {
+                                                  const isChecked = selectedWriters.includes(model.id)
+                                                  
+                                                  return (
+                                                    <label
+                                                      key={model.id}
+                                                      className="flex items-start gap-3 p-3 bg-white rounded-lg cursor-pointer hover:shadow-md transition-all border border-gray-200 hover:border-yellow-300"
+                                                    >
+                                                      <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={(e) => {
+                                                          const newWriters = e.target.checked
+                                                            ? [...selectedWriters, model.id]
+                                                            : selectedWriters.filter(id => id !== model.id)
+                                                          
+                                                          setWriterPreferences(prev => ({
+                                                            ...prev,
+                                                            [key.id]: newWriters
+                                                          }))
+                                                        }}
+                                                        className="mt-1 w-4 h-4 text-yellow-500 border-gray-300 rounded focus:ring-yellow-400 focus:ring-2"
+                                                      />
+                                                      <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                          <span className="text-sm font-semibold text-gray-900">{model.name || model.id}</span>
+                                                          <Badge variant={model.category === 'production' ? 'success' : 'warning'} size="sm">
+                                                            {model.category}
+                                                          </Badge>
+                                                        </div>
+                                                        {model.description && (
+                                                          <p className="text-xs text-gray-600 mb-2 leading-relaxed">{model.description}</p>
+                                                        )}
+                                                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                                                          {model.context_window && (
+                                                            <span>{(model.context_window / 1000).toFixed(0)}K ctx</span>
+                                                          )}
+                                                          {model.max_output_tokens && (
+                                                            <span>{(model.max_output_tokens / 1000).toFixed(0)}K max</span>
+                                                          )}
+                                                          {model.input_price_per_1m !== null && (
+                                                            <span className="font-medium text-gray-700">${model.input_price_per_1m.toFixed(2)}/1M</span>
+                                                          )}
+                                                        </div>
+                                                      </div>
+                                                    </label>
+                                                  )
+                                                })}
+                                              </div>
+                                            ) : (
+                                              <div className="p-3 bg-gray-100 border border-gray-200 rounded-lg text-xs text-gray-600">
+                                                No writer models available. Orchestrator will handle all writing.
+                                              </div>
+                                            )}
+                                          </div>
+                                          
+                                          {/* Save Button */}
+                                          <div className="pt-2 border-t border-gray-200">
+                                            <Button
+                                              variant="primary"
+                                              size="sm"
+                                              disabled={updatingOrchestrator === key.id}
+                                              onClick={async () => {
+                                                setUpdatingOrchestrator(key.id)
+                                                
+                                                try {
+                                                  console.log('[Profile] Saving preferences:', {
+                                                    keyId: key.id,
+                                                    orchestratorModelId: selectedOrchestrator,
+                                                    writerModelIds: selectedWriters
+                                                  })
+                                                  
+                                                  const response = await fetch(`/api/user/api-keys/${key.id}/preferences`, {
+                                                    method: 'PATCH',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
+                                                      orchestratorModelId: selectedOrchestrator,
+                                                      writerModelIds: selectedWriters
+                                                    })
+                                                  })
+                                                  
+                                                  console.log('[Profile] Response status:', response.status)
+                                                  
+                                                  const data = await response.json()
+                                                  console.log('[Profile] Response data:', data)
+                                                  
+                                                  if (!response.ok) {
+                                                    throw new Error(data.error || 'Failed to save preferences')
+                                                  }
+                                                  
+                                                  // Refresh keys to get updated data
+                                                  await fetchKeys()
+                                                  
+                                                  console.log('[Profile] ✅ Keys refreshed, verifying save:', {
+                                                    savedOrchestrator: selectedOrchestrator,
+                                                    savedWriters: selectedWriters,
+                                                    currentOrchestratorPrefs: orchestratorPreferences,
+                                                    currentWriterPrefs: writerPreferences
+                                                  })
+                                                  
+                                                  // Dispatch custom event to notify other components (e.g., CreateStoryPanel)
+                                                  window.dispatchEvent(new CustomEvent('orchestratorConfigUpdated', {
+                                                    detail: {
+                                                      orchestratorModelId: selectedOrchestrator,
+                                                      writerModelIds: selectedWriters,
+                                                      timestamp: new Date().toISOString()
+                                                    }
+                                                  }))
+                                                  console.log('[Profile] 📡 Dispatched orchestratorConfigUpdated event')
+                                                  
+                                                  alert('✅ Model preferences saved!')
+                                                } catch (error: any) {
+                                                  console.error('[Profile] Error saving preferences:', error)
+                                                  alert(`❌ Failed to save: ${error.message}`)
+                                                } finally {
+                                                  setUpdatingOrchestrator(null)
+                                                }
+                                              }}
+                                              className="w-full"
+                                            >
+                                              {updatingOrchestrator === key.id ? 'Saving...' : '💾 Save Configuration'}
+                                            </Button>
                                           </div>
                                         </div>
                                       )}

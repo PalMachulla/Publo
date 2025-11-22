@@ -16,7 +16,17 @@ export async function POST(request: Request) {
   try {
     // Parse request body first (before auth, so we can check for key_id)
     const body: GenerateRequest = await request.json()
-    const { model, system_prompt, user_prompt, max_tokens, user_key_id, temperature, top_p } = body
+    const { 
+      model, 
+      system_prompt, 
+      user_prompt, 
+      max_tokens, 
+      user_key_id, 
+      temperature, 
+      top_p,
+      mode = 'legacy', // NEW: orchestrator | writer | legacy (default)
+      stream = false    // NEW: Enable streaming responses (SSE)
+    } = body
     
     const supabase = await createClient()
 
@@ -153,7 +163,79 @@ export async function POST(request: Request) {
     // Get provider adapter
     const adapter = getProviderAdapter(provider)
 
-    // Generate content
+    // ═══════════════════════════════════════════════════════════════
+    // STREAMING MODE: Return SSE stream
+    // ═══════════════════════════════════════════════════════════════
+    if (stream) {
+      console.log(`🌊 Streaming generation with ${provider} model ${model}`)
+      
+      const encoder = new TextEncoder()
+      
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            // Check if adapter supports streaming
+            if (typeof adapter.generateStream !== 'function') {
+              // Fallback to batch mode if streaming not supported
+              console.warn(`⚠️ ${provider} adapter doesn't support streaming, falling back to batch`)
+              
+              const result = await adapter.generate(apiKey, {
+                model,
+                system_prompt,
+                user_prompt,
+                max_tokens,
+                temperature,
+                top_p,
+              })
+              
+              // Send as single chunk
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'content',
+                content: result.content,
+                done: true
+              })}\n\n`))
+              
+              controller.close()
+              return
+            }
+            
+            // Stream from provider
+            for await (const chunk of adapter.generateStream(apiKey, {
+              model,
+              system_prompt,
+              user_prompt,
+              max_tokens,
+              temperature,
+              top_p,
+            })) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+            }
+            
+            controller.close()
+          } catch (error: any) {
+            console.error('❌ Streaming error:', error)
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'error',
+              error: error.message || 'Streaming failed'
+            })}\n\n`))
+            controller.close()
+          }
+        }
+      })
+      
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no', // Disable nginx buffering
+        }
+      })
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // BATCH MODE: Return JSON (existing behavior)
+    // ═══════════════════════════════════════════════════════════════
     console.log(`🤖 Generating with ${provider} model ${model}`, {
       keyLength: apiKey.length,
       keyPreview: `${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)}`,
@@ -223,18 +305,57 @@ export async function POST(request: Request) {
       // Continue anyway - don't fail the generation
     }
 
-    // Return response
-    const response: GenerateResponse = {
-      success: true,
-      markdown: generationResult.content,
-      usage: generationResult.usage,
-      cost,
-      model: generationResult.model,
-      provider,
-      timestamp: new Date().toISOString(),
-    }
+    // Return response based on mode
+    if (mode === 'orchestrator') {
+      // Orchestrator mode: expect JSON response from model
+      try {
+        const plan = JSON.parse(generationResult.content)
+        
+        return NextResponse.json({
+          success: true,
+          plan, // Parsed JSON plan
+          usage: generationResult.usage,
+          cost,
+          model: generationResult.model,
+          provider,
+          timestamp: new Date().toISOString(),
+        })
+      } catch (parseError: any) {
+        console.error('❌ Failed to parse orchestrator JSON response:', parseError)
+        return NextResponse.json(
+          { 
+            error: 'Orchestrator returned invalid JSON',
+            details: parseError.message,
+            rawContent: generationResult.content.substring(0, 500)
+          },
+          { status: 500 }
+        )
+      }
+    } else if (mode === 'writer') {
+      // Writer mode: return plain text content
+      return NextResponse.json({
+        success: true,
+        content: generationResult.content, // Plain text
+        usage: generationResult.usage,
+        cost,
+        model: generationResult.model,
+        provider,
+        timestamp: new Date().toISOString(),
+      })
+    } else {
+      // Legacy mode: return markdown (backward compatibility)
+      const response: GenerateResponse = {
+        success: true,
+        markdown: generationResult.content,
+        usage: generationResult.usage,
+        cost,
+        model: generationResult.model,
+        provider,
+        timestamp: new Date().toISOString(),
+      }
 
-    return NextResponse.json(response)
+      return NextResponse.json(response)
+    }
   } catch (error: any) {
     console.error('Error in POST /api/generate:', error)
 

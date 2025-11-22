@@ -18,6 +18,140 @@ interface YAMLStructureItem {
 }
 
 /**
+ * Attempt to repair common YAML indentation issues
+ * AI models sometimes generate YAML with inconsistent spacing
+ */
+function repairYAMLIndentation(markdown: string): string {
+  console.log('🔧 Starting YAML repair...')
+  
+  const lines = markdown.split('\n')
+  const fixed: string[] = []
+  let inFrontmatter = false
+  let inStructure = false
+  let issuesFixed = 0
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trim()
+    
+    // Track frontmatter boundaries
+    if (trimmed === '---') {
+      fixed.push('---')  // Ensure it's exactly '---' without extra spaces
+      if (line !== '---') {
+        issuesFixed++
+        console.log(`  ✓ Fixed delimiter at line ${i + 1}`)
+      }
+      if (!inFrontmatter) {
+        inFrontmatter = true
+      } else {
+        // Closing frontmatter
+        inFrontmatter = false
+        inStructure = false
+      }
+      continue
+    }
+    
+    // Outside frontmatter - keep as-is
+    if (!inFrontmatter) {
+      fixed.push(line)
+      continue
+    }
+    
+    // Detect structure array start
+    if (trimmed.match(/^structure:\s*$/)) {
+      inStructure = true
+      fixed.push('structure:')
+      continue
+    }
+    
+    // Detect when structure array ends (non-indented key at root level)
+    if (inStructure && trimmed.length > 0 && !trimmed.startsWith('-') && trimmed.match(/^[a-z_]+:\s*/i) && !line.startsWith(' ')) {
+      // This is a new root-level YAML key, exit structure mode
+      inStructure = false
+      fixed.push(line)
+      continue
+    }
+    
+    // Inside structure array - fix indentation
+    if (inStructure) {
+      if (trimmed.length === 0) {
+        // Keep blank lines
+        fixed.push('')
+        continue
+      }
+      
+      if (trimmed.startsWith('-')) {
+        // List item - ensure exactly 2 spaces
+        const originalIndent = line.length - line.trimStart().length
+        if (originalIndent !== 2) {
+          fixed.push('  ' + trimmed)
+          issuesFixed++
+          console.log(`  ✓ Fixed list item indent at line ${i + 1}: "${trimmed.substring(0, 30)}..."`)
+        } else {
+          fixed.push(line)
+        }
+        continue
+      }
+      
+      // Property under a list item - ensure exactly 4 spaces
+      if (trimmed.includes(':')) {
+        const originalIndent = line.length - line.trimStart().length
+        
+        // Ensure multi-line strings are properly quoted
+        const colonIndex = trimmed.indexOf(':')
+        const key = trimmed.substring(0, colonIndex).trim()
+        let value = trimmed.substring(colonIndex + 1).trim()
+        
+        // If value contains quotes but they're not balanced, or has special chars, ensure it's quoted
+        if (value && !value.startsWith('"') && !value.startsWith("'")) {
+          // Check if it needs quoting (has special chars, multiple lines, etc)
+          if (value.includes('#') || value.includes(':') || value.includes('[') || value.includes(']')) {
+            value = `"${value.replace(/"/g, '\\"')}"`
+            const fixedLine = `    ${key}: ${value}`
+            fixed.push(fixedLine)
+            issuesFixed++
+            console.log(`  ✓ Fixed and quoted value at line ${i + 1}: "${key}: ${value.substring(0, 20)}..."`)
+            continue
+          }
+        }
+        
+        if (originalIndent !== 4) {
+          fixed.push('    ' + trimmed)
+          issuesFixed++
+          console.log(`  ✓ Fixed property indent at line ${i + 1}: "${trimmed.substring(0, 30)}..."`)
+        } else {
+          fixed.push(line)
+        }
+        continue
+      }
+      
+      // Continuation line (part of a multi-line value) - ensure proper indentation
+      if (!trimmed.startsWith('-') && !trimmed.includes(':')) {
+        // This is likely a continuation of a previous value
+        // Should be indented more than the property (6+ spaces)
+        const originalIndent = line.length - line.trimStart().length
+        if (originalIndent < 6) {
+          // This is problematic - append it to previous line instead
+          if (fixed.length > 0) {
+            const prevLine = fixed[fixed.length - 1]
+            fixed[fixed.length - 1] = prevLine + ' ' + trimmed
+            issuesFixed++
+            console.log(`  ✓ Merged continuation line ${i + 1} into previous: "${trimmed.substring(0, 30)}..."`)
+          }
+          continue
+        }
+      }
+    }
+    
+    // Default: keep line as-is
+    fixed.push(line)
+  }
+  
+  console.log(`🔧 YAML repair complete: fixed ${issuesFixed} indentation issues`)
+  return fixed.join('\n')
+}
+
+/**
  * Parse markdown with YAML frontmatter to extract structure and content
  * 
  * Expected format:
@@ -43,13 +177,81 @@ interface YAMLStructureItem {
  * Content here...
  */
 export function parseMarkdownStructure(markdown: string): ParsedMarkdownStructure {
+  console.log('📄 Parsing markdown structure...')
+  console.log('📄 Original markdown length:', markdown.length)
+  
+  // Log the very first 500 characters to check for frontmatter start
+  console.log('📄 Markdown starts with (first 500 chars):\n', markdown.substring(0, 500))
+  
+  // Strip Chain-of-Thought tags that some models (Qwen) add
+  let cleanedMarkdown = markdown.trim()
+  if (cleanedMarkdown.startsWith('<think>') || cleanedMarkdown.startsWith('<thinking>')) {
+    console.log('🧠 Detected CoT tags, stripping...')
+    // Remove everything up to and including </think> or </thinking>
+    cleanedMarkdown = cleanedMarkdown.replace(/^<think>[\s\S]*?<\/think>\s*/i, '')
+    cleanedMarkdown = cleanedMarkdown.replace(/^<thinking>[\s\S]*?<\/thinking>\s*/i, '')
+    console.log('✂️ After stripping CoT tags (first 300 chars):\n', cleanedMarkdown.substring(0, 300))
+  }
+  
+  // Check if it starts with ---
+  const startsWithDelimiter = cleanedMarkdown.trimStart().startsWith('---')
+  console.log('📄 Starts with --- delimiter?', startsWithDelimiter)
+  
+  // Count how many --- delimiters exist
+  const delimiterCount = (cleanedMarkdown.match(/^---$/gm) || []).length
+  console.log('📄 Number of --- delimiters found:', delimiterCount)
+  
+  // Log first 50 lines of YAML frontmatter for debugging
+  const yamlSection = cleanedMarkdown.split('---')[1]
+  if (yamlSection) {
+    const yamlLines = yamlSection.split('\n').slice(0, 50)
+    console.log('📄 YAML frontmatter (first 50 lines):', yamlLines.join('\n'))
+  } else {
+    console.error('❌ No YAML section found between --- delimiters')
+  }
+  
+  // Try to fix common YAML indentation issues before parsing
+  const fixedMarkdown = repairYAMLIndentation(cleanedMarkdown)
+  
+  console.log('📄 After repair - first 300 chars:\n', fixedMarkdown.substring(0, 300))
+  
   // Parse frontmatter
-  const { data, content } = matter(markdown)
+  let data, content
+  try {
+    const parsed = matter(fixedMarkdown)
+    data = parsed.data
+    content = parsed.content
+    
+    console.log('📄 gray-matter parsed successfully:', {
+      dataKeys: Object.keys(data),
+      dataKeysCount: Object.keys(data).length,
+      hasContent: !!content,
+      contentLength: content?.length
+    })
+  } catch (yamlError: any) {
+    console.error('❌ YAML parsing failed even after repair:', yamlError)
+    console.error('❌ Failed YAML section:', fixedMarkdown.split('---')[1]?.substring(0, 500))
+    throw new Error(`YAML frontmatter is invalid: ${yamlError.message}\n\nPlease check the markdown format. The YAML must use exactly 2 spaces for indentation.`)
+  }
   
   const structure = data.structure as YAMLStructureItem[] | undefined
   
+  console.log('📊 Parsed YAML data:', {
+    hasStructure: !!structure,
+    isArray: Array.isArray(structure),
+    structureType: typeof structure,
+    structureLength: Array.isArray(structure) ? structure.length : 'N/A',
+    allKeys: Object.keys(data),
+    dataPreview: data
+  })
+  
   if (!structure || !Array.isArray(structure)) {
-    throw new Error('Markdown must contain a "structure" array in YAML frontmatter')
+    console.error('❌ Missing or invalid structure field in YAML:', {
+      structure,
+      allData: data,
+      allKeys: Object.keys(data)
+    })
+    throw new Error(`Markdown must contain a "structure" array in YAML frontmatter. Found: ${Object.keys(data).join(', ') || 'empty YAML'}`)
   }
   
   // Convert YAML structure to StoryStructureItems

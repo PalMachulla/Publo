@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     // Fetch user's API keys (without the encrypted_key field for security)
     const { data: keys, error: keysError } = await supabase
       .from('user_api_keys')
-      .select('id, provider, nickname, is_active, last_validated_at, validation_status, models_cache, models_cached_at, model_preferences, usage_count, last_used_at, created_at, updated_at')
+      .select('id, provider, nickname, is_active, last_validated_at, validation_status, models_cache, models_cached_at, model_preferences, orchestrator_model_id, writer_model_ids, usage_count, last_used_at, created_at, updated_at')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
@@ -42,6 +42,16 @@ export async function GET(request: Request) {
       console.error('Error fetching API keys:', keysError)
       return NextResponse.json({ error: 'Failed to fetch API keys' }, { status: 500 })
     }
+
+    console.log('[API Keys] Fetched keys:', {
+      count: keys.length,
+      orchestratorConfigs: keys.map(k => ({
+        id: k.id,
+        provider: k.provider,
+        orchestrator: k.orchestrator_model_id,
+        writers: k.writer_model_ids
+      }))
+    })
 
     return NextResponse.json({
       success: true,

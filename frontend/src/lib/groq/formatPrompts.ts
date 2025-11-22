@@ -5,8 +5,58 @@
 
 import { StoryFormat } from '@/types/nodes'
 
+// Common YAML formatting instructions for all prompts
+const YAML_FORMATTING_RULES = `
+
+CRITICAL: Follow this EXACT YAML format. Any deviation will cause parsing errors.
+
+OUTPUT RULES:
+- Start IMMEDIATELY with "---" (no preamble, no explanations, no thinking tags)
+- Do NOT wrap output in <think>, <thinking>, or any XML tags
+- Do NOT add introductory text like "Here is..." or "Okay, so..."
+- ONLY return the markdown structure as shown below
+
+INDENTATION RULES (count spaces carefully):
+- Use EXACTLY 2 spaces for indentation (NO tabs, NO 4 spaces)
+- "structure:" starts at column 0 (no spaces)
+- Each "- id:" starts at column 2 (2 spaces before the dash)
+- Properties like "level:", "name:", etc. start at column 4 (4 spaces total)
+
+VALUE RULES (critical for parsing):
+- ALL string values (name, summary, title) MUST be quoted with double quotes
+- Keep ALL values on a SINGLE line (no line breaks within values)
+- If a summary is long, keep it on one line anyway (do NOT wrap to next line)
+- Example: summary: "This is a long summary that stays on one line even though it's very long"
+
+CORRECT FORMAT EXAMPLE (count the spaces):
+---
+format: novel
+title: "Story Title"
+structure:
+  - id: chapter1
+    level: 1
+    name: "Chapter 1"
+    wordCount: 2000
+    summary: "This is a chapter summary that must stay on a single line no matter how long it gets because line breaks will cause parsing errors"
+  - id: chapter2
+    level: 1
+    name: "Chapter 2"
+    wordCount: 2000
+    summary: "Another single-line summary with proper double quotes around the entire text"
+---
+
+WRONG (will fail):
+- Starting with <think> or explanations
+- Too many spaces before dash
+- Properties not aligned at 4 spaces
+- Tabs instead of spaces
+- Inconsistent spacing
+`
+
 export const FORMAT_SYSTEM_PROMPTS: Record<StoryFormat, string> = {
-  'screenplay': `You are a screenplay structure generator. Return markdown in this EXACT format:
+  'screenplay': `You are a screenplay structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: screenplay
@@ -55,6 +105,7 @@ Action description here.
 Dialogue here.
 
 CRITICAL RULES:
+- WORD LIMIT: Generate approximately 1000-1200 words of actual content (not counting YAML frontmatter)
 - Use 3-act structure (Act I: 25%, Act II: 50%, Act III: 25%)
 - Each act has 2-3 sequences
 - Each sequence has 2-4 scenes
@@ -63,9 +114,12 @@ CRITICAL RULES:
 - All IDs must be unique and follow the pattern: act#_seq#_scene#_beat#
 - Always include parentId except for top level (acts)
 - Always include summary for levels 1-3
-- Use proper screenplay formatting in content`,
+- Use proper screenplay formatting in content
+- Focus on structure quality over content length - concise is better`,
 
-  'novel': `You are a novel structure generator. Return markdown in this EXACT format:
+  'novel': `You are a novel structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: novel
@@ -104,17 +158,21 @@ structure:
 Prose content here. Write in narrative form with proper paragraphs.
 
 CRITICAL RULES:
+- WORD LIMIT: Generate approximately 1200-1500 words of actual content (not counting YAML frontmatter)
 - Use 3-part structure for novels
-- Each part has 8-10 chapters
+- Each part has 8-10 chapters (list structure only, don't write full chapters yet)
 - Each chapter has 3-5 sections
 - Each section has 2-3 beats
-- Total wordCount should be 70,000-100,000 words
+- Total wordCount targets: Parts (25k each), Chapters (3k each) - these are TARGETS for future expansion
 - All IDs must be unique and follow the pattern: part#_ch#_sec#_beat#
 - Always include parentId except for top level (parts)
 - Always include summary for levels 1-3
-- Write in prose, not dialogue format`,
+- Write in prose, not dialogue format
+- THIS IS A STRUCTURE GENERATION - focus on comprehensive hierarchy, not full content`,
 
-  'short-story': `You are a short story structure generator. Return markdown in this EXACT format:
+  'short-story': `You are a short story structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: short-story
@@ -150,16 +208,20 @@ structure:
 Prose content here. Short stories are concise and focused.
 
 CRITICAL RULES:
+- WORD LIMIT: Generate approximately 800-1000 words of actual content (not counting YAML frontmatter)
 - Use 3-part structure: Beginning (30%), Middle (40%), End (30%)
-- Total wordCount should be 3,000-7,000 words
+- Total wordCount targets shown are for FUTURE full story (3k-7k words)
 - Each part has 2-3 sections
 - Each section has 2-3 beats
 - All IDs must be unique
 - Always include parentId except for top level
 - Always include summary for levels 1-2
-- Be concise and impactful`,
+- Be concise and impactful
+- Focus on structure and key beats, not full narrative`,
 
-  'report': `You are a report structure generator. Return markdown in this EXACT format:
+  'report': `You are a report structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: report
@@ -199,15 +261,19 @@ Key findings and recommendations.
 Detailed background information.
 
 CRITICAL RULES:
+- WORD LIMIT: Generate approximately 1200-1500 words of actual content (not counting YAML frontmatter)
 - Standard sections: Executive Summary, Introduction, Methodology, Findings, Analysis, Conclusions, Recommendations
 - Each section can have subsections (level 2-3)
-- Total wordCount should be 5,000-15,000 words
+- Total wordCount targets (5k-15k) are for FUTURE full report expansion
 - Use professional, objective tone
 - All IDs must be unique and descriptive
 - Always include parentId except for top level
-- Always include summary for levels 1-2`,
+- Always include summary for levels 1-2
+- Focus on complete structure hierarchy, not full section content`,
 
-  'article': `You are an article structure generator. Return markdown in this EXACT format:
+  'article': `You are an article structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: article
@@ -249,17 +315,21 @@ Compelling opening paragraph.
 Detailed example or case study.
 
 CRITICAL RULES:
+- WORD LIMIT: Generate approximately 1000-1200 words of actual content (not counting YAML frontmatter)
 - Start with compelling introduction
 - 3-5 main sections
 - Each section has 2-3 subsections
 - End with strong conclusion
-- Total wordCount should be 1,500-3,000 words
+- Total wordCount targets (1.5k-3k) are for FUTURE full article
 - Use journalistic style
 - All IDs must be unique and descriptive
 - Always include parentId except for top level
-- Always include summary for levels 1-2`,
+- Always include summary for levels 1-2
+- Focus on structure and key arguments, not full exposition`,
 
-  'essay': `You are an essay structure generator. Return markdown in this EXACT format:
+  'essay': `You are an essay structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: essay
@@ -304,17 +374,21 @@ Supporting evidence and citations.
 Critical analysis and interpretation.
 
 CRITICAL RULES:
+- WORD LIMIT: Generate approximately 900-1100 words of actual content (not counting YAML frontmatter)
 - Clear thesis in introduction
 - 3-5 body paragraphs/sections
 - Each section has evidence and analysis
 - Strong conclusion
-- Total wordCount should be 1,500-2,500 words
+- Total wordCount targets (1.5k-2.5k) are for FUTURE full essay
 - Academic tone
 - All IDs must be unique
 - Always include parentId except for top level
-- Always include summary for levels 1-2`,
+- Always include summary for levels 1-2
+- Focus on argument structure and thesis development, not full elaboration`,
 
-  'podcast': `You are a podcast structure generator. Return markdown in this EXACT format:
+  'podcast': `You are a podcast structure generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
 
 ---
 format: podcast
@@ -360,16 +434,18 @@ Let's talk about...
 Great question...
 
 CRITICAL RULES:
+- WORD LIMIT: Generate approximately 1000-1200 words of actual content (not counting YAML frontmatter)
 - Start with engaging introduction
 - 3-5 main segments
 - Each segment has discussion, Q&A, or interview
 - End with summary and outro
-- Total wordCount should be 3,000-5,000 words
+- Total wordCount targets (3k-5k) are for FUTURE full episode
 - Use dialogue format with speaker labels
 - All IDs must be unique
 - Always include parentId except for top level
 - Always include summary for levels 1-2
-- Write as spoken conversation`
+- Write as spoken conversation
+- Focus on segment structure and key talking points, not full dialogue`
 }
 
 /**
@@ -377,5 +453,24 @@ CRITICAL RULES:
  */
 export function getFormatSystemPrompt(format: StoryFormat): string {
   return FORMAT_SYSTEM_PROMPTS[format] || FORMAT_SYSTEM_PROMPTS['article']
+}
+
+/**
+ * Get recommended max_completion_tokens based on format complexity
+ * These are calculated to generate ~1000-1500 words of content + YAML frontmatter
+ * 1 token ≈ 0.75 words, so 1500 words ≈ 2000 tokens
+ */
+export function getRecommendedTokens(format: StoryFormat): number {
+  const TOKEN_LIMITS: Record<StoryFormat, number> = {
+    'screenplay': 3000,    // More structured, needs space for formatting
+    'novel': 3500,         // Longest structure hierarchy
+    'short-story': 2000,   // Simpler structure
+    'report': 3000,        // Multiple sections with subsections
+    'article': 2500,       // Moderate complexity
+    'essay': 2000,         // Simpler academic structure
+    'podcast': 2500,       // Dialogue format takes more tokens
+  }
+  
+  return TOKEN_LIMITS[format] || 2500
 }
 

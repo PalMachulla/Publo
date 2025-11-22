@@ -138,9 +138,10 @@ export class OpenAIAdapter implements LLMProviderAdapter {
           { role: 'system', content: params.system_prompt },
           { role: 'user', content: params.user_prompt },
         ],
-        max_tokens: params.max_tokens,
-        temperature: params.temperature ?? 0.7,
-        top_p: params.top_p ?? 1,
+        max_completion_tokens: params.max_tokens, // Use new OpenAI parameter name
+        // Only include temperature/top_p if explicitly provided (some models don't support them)
+        ...(params.temperature !== undefined && { temperature: params.temperature }),
+        ...(params.top_p !== undefined && { top_p: params.top_p }),
       })
 
       return {

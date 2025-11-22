@@ -77,6 +77,15 @@ export default function CanvasPage() {
   
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+  
+  // Canvas-level chat history (persistent across all generations)
+  const [canvasChatHistory, setCanvasChatHistory] = useState<Array<{
+    id: string
+    timestamp: string
+    content: string
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+    role?: 'user' | 'orchestrator'
+  }>>([])
 
   // Wrapper to prevent context node deletion and handle cluster node dragging
   const handleNodesChange = useCallback((changes: any) => {
@@ -189,6 +198,7 @@ export default function CanvasPage() {
   const currentStoryIdRef = useRef<string | null>(null)
   const lastLoadedStoryIdRef = useRef<string | null>(null)
   const hasUnsavedChangesRef = useRef(false) // Track if user made changes
+  const isInferencingRef = useRef(false) // Track if AI is currently generating
   const titleInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
@@ -300,10 +310,36 @@ export default function CanvasPage() {
     }
   }, [user, loading, router, storyId, checkingAccess, hasAccess])
 
+  // Maintain inference loading state on orchestrator node
+  useEffect(() => {
+    if (isInferencingRef.current) {
+      // Ensure orchestrator node keeps showing inference state
+      setNodes((currentNodes) => {
+        const orchestratorNode = currentNodes.find(n => n.id === 'context')
+        if (!orchestratorNode) return currentNodes
+        
+        const nodeData = orchestratorNode.data as any
+        if (!nodeData.isOrchestrating || nodeData.loadingText !== 'Inference') {
+          console.log('🔄 Re-applying inference loading state (was cleared by another update)')
+          return currentNodes.map(n =>
+            n.id === 'context'
+              ? { ...n, data: { ...n.data, isOrchestrating: true, loadingText: 'Inference' } }
+              : n
+          )
+        }
+        return currentNodes
+      })
+    }
+  }, [nodes, setNodes])
+
   // Load story on mount or when storyId changes
   useEffect(() => {
     if (!loading && user && storyId && storyId !== lastLoadedStoryIdRef.current) {
       console.log('Loading story:', storyId, '(previously loaded:', lastLoadedStoryIdRef.current, ')')
+      
+      // Clear chat history when switching canvases (fresh start for each canvas)
+      setCanvasChatHistory([])
+      console.log('🗑️ Chat history cleared for new canvas')
       
       // Set loading flags before loading
       setIsLoadingCanvas(true)
@@ -800,8 +836,8 @@ export default function CanvasPage() {
   }, [clusterCount, availableAgents]) // When cluster count or data changes
 
   // Handle Create Story node click - spawn new story structure node
-  const handleCreateStory = useCallback((format: StoryFormat, template?: string) => {
-    console.log('handleCreateStory called with format:', format, 'template:', template)
+  const handleCreateStory = useCallback((format: StoryFormat, template?: string, userPromptDirect?: string) => {
+    console.log('handleCreateStory called with format:', format, 'template:', template, 'userPromptDirect:', userPromptDirect)
     
     // Generate unique ID for the story structure
     const structureId = `structure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -868,7 +904,16 @@ export default function CanvasPage() {
 
     // Save immediately to database so node exists for when items are clicked
     const saveAndFinalize = async () => {
-      await handleSave()
+      try {
+        await handleSave()
+      } catch (error: any) {
+        // Ignore duplicate key errors (node already exists)
+        if (error?.code !== '23505') {
+          console.error('❌ Save error:', error)
+        } else {
+          console.log('⚠️ Node already exists in database, continuing...')
+        }
+      }
       
       // Remove loading state after save completes
       setNodes((currentNodes) =>
@@ -880,25 +925,473 @@ export default function CanvasPage() {
       )
     }
     
-    // AUTO-GENERATE: Check if AI Prompt node is connected, trigger immediate generation
+    // AUTO-GENERATE: Check if AI Prompt node is connected OR chat prompt exists
     const aiPromptNode = nodes.find(n => 
       n.data?.nodeType === 'aiPrompt' && 
       edges.some(e => e.source === n.id && e.target === 'context')
     )
     
-    if (aiPromptNode) {
-      console.log('🚀 Auto-generating structure with AI after node creation')
-      // Trigger AI generation after a brief delay to ensure node is added
-      // Pass 'context' as the orchestrator ID since that's where the model selection is stored
-      setTimeout(() => {
-        triggerAIGeneration(structureId, format, aiPromptNode, 'context')
-      }, 100)
-    }
+    // Check if chat prompt exists (direct parameter OR orchestrator node data)
+    const orchestratorNode = nodes.find(n => n.id === 'context')
+    const hasChatPrompt = !!userPromptDirect || !!(orchestratorNode?.data as any)?.chatPrompt
     
-    saveAndFinalize()
+    if (aiPromptNode || hasChatPrompt) {
+      console.log('🚀 Auto-generating structure with orchestrator after node creation', {
+        hasAIPromptNode: !!aiPromptNode,
+        hasChatPrompt,
+        userPromptDirect: userPromptDirect || 'none',
+        source: userPromptDirect ? 'Chat Input (Direct)' : (orchestratorNode?.data as any)?.chatPrompt ? 'Chat Input (Node Data)' : aiPromptNode ? 'AI Prompt Node' : 'None'
+      })
+      
+      // Pass AI Prompt node if exists, otherwise null (chat prompt will be used)
+      // Start orchestration BEFORE saving to avoid delays from database errors
+      setTimeout(() => {
+        console.log('⏰ Triggering orchestration for structure:', structureId)
+        triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
+      }, 100)
+      
+      // Save in background (don't block orchestration)
+      saveAndFinalize().catch(err => {
+        console.warn('Background save failed, but orchestration continues:', err)
+      })
+    } else {
+      console.warn('⚠️ No AI Prompt node or chat prompt found, skipping auto-generation')
+      // Still save the node even if not auto-generating
+      saveAndFinalize().catch(err => {
+        console.warn('Background save failed:', err)
+      })
+    }
   }, [nodes, edges, setNodes, setEdges, handleSave])
   
-  // Helper function to trigger AI generation for a structure node
+  // NEW: Orchestrator-based generation using agentic system
+  const triggerOrchestratedGeneration = async (
+    structureNodeId: string,
+    format: StoryFormat,
+    aiPromptNode: Node | null, // Now optional
+    orchestratorNodeId: string,
+    userPromptDirect?: string // Direct chat prompt (bypasses node data)
+  ) => {
+    console.log('═══════════════════════════════════════════════')
+    console.log('🎬 ORCHESTRATION STARTED')
+    console.log('═══════════════════════════════════════════════')
+    console.log('Structure ID:', structureNodeId)
+    console.log('Format:', format)
+    console.log('Has AI Prompt Node:', !!aiPromptNode)
+    console.log('Orchestrator ID:', orchestratorNodeId)
+    console.log('═══════════════════════════════════════════════')
+    
+    // Check authentication
+    if (!user) {
+      isInferencingRef.current = false
+      alert('❌ You must be logged in to generate content.')
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === structureNodeId) {
+            return { ...n, data: { ...n.data, isLoading: false } }
+          } else if (n.id === orchestratorNodeId) {
+            return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+          }
+          return n
+        })
+      )
+      return
+    }
+    
+    // Determine user prompt source (priority: direct > AI Prompt node)
+    let userPrompt = ''
+    
+    if (userPromptDirect) {
+      // Priority 1: Direct chat input
+      userPrompt = userPromptDirect
+      console.log('✅ Using direct chat prompt:', userPrompt)
+    } else if (aiPromptNode) {
+      // Priority 2: AI Prompt node
+      const isActive = (aiPromptNode.data as any).isActive !== false
+      userPrompt = (aiPromptNode.data as any).userPrompt || ''
+      
+      if (isActive && !userPrompt.trim()) {
+        alert('Please enter a prompt in the AI Prompt node first, or set it to Passive mode.')
+        return
+      }
+      console.log('✅ Using AI Prompt node:', userPrompt)
+    } else {
+      alert('Please use the chat input in the panel or connect an AI Prompt node.')
+      return
+    }
+    
+    if (!userPrompt.trim()) {
+      alert('Please enter a prompt first.')
+      return
+    }
+    
+    try {
+      // Set inference flag
+      isInferencingRef.current = true
+      
+      // Import orchestrator engine
+      const { OrchestratorEngine } = await import('@/lib/orchestrator/orchestratorEngine')
+      const { MODEL_CATALOG } = await import('@/lib/models/modelCapabilities')
+      
+      // Get orchestrator node (no longer stores selectedModel/selectedKeyId)
+      const orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
+      
+      console.log('🔍 Fetching user preferences...')
+      
+      // Fetch user's orchestrator/writer preferences
+      let orchestratorModelId: string | null = null
+      let writerModelIds: string[] = []
+      let userKeyId: string | null = null
+      
+      // Fetch ALL API keys and find first configured orchestrator
+      const prefsResponse = await fetch('/api/user/api-keys')
+      const prefsData = await prefsResponse.json()
+      
+      console.log('📦 API keys response:', {
+        success: prefsData.success,
+        keyCount: prefsData.keys?.length,
+        keys: prefsData.keys?.map((k: any) => ({
+          id: k.id,
+          provider: k.provider,
+          orchestrator: k.orchestrator_model_id,
+          writers: k.writer_model_ids
+        }))
+      })
+      
+      if (prefsData.success && prefsData.keys?.length > 0) {
+        // Find first key with orchestrator configured
+        const configuredKey = prefsData.keys.find((k: any) => k.orchestrator_model_id)
+        
+        if (configuredKey) {
+          orchestratorModelId = configuredKey.orchestrator_model_id
+          writerModelIds = configuredKey.writer_model_ids || []
+          userKeyId = configuredKey.id
+          console.log('✅ Found configured orchestrator:', {
+            orchestrator: orchestratorModelId,
+            writers: writerModelIds.length,
+            keyId: userKeyId,
+            provider: configuredKey.provider
+          })
+        } else {
+          console.log('⚠️ No orchestrator configured in any API key')
+        }
+      } else {
+        console.log('❌ No API keys found')
+      }
+      
+      console.log('📋 User preferences:', {
+        orchestratorModelId,
+        writerModelIds,
+        userKeyId
+      })
+      
+      // Initialize reasoning messages array
+      const reasoningMessages: Array<{
+        timestamp: string
+        content: string
+        type: 'thinking' | 'decision' | 'task' | 'result' | 'error'
+      }> = []
+      
+      // Reasoning callback to update CANVAS-LEVEL chat history
+      const onReasoning = (message: string, type: any) => {
+        const msg = {
+          id: `reasoning_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          timestamp: new Date().toISOString(),
+          content: message,
+          type,
+          role: 'orchestrator' as const
+        }
+        reasoningMessages.push(msg)
+        
+        // Append to canvas-level chat history (persistent)
+        setCanvasChatHistory(prev => [...prev, msg])
+        
+        // Also update orchestrator node for backward compatibility
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === orchestratorNodeId
+              ? { ...n, data: { ...n.data, reasoningMessages: [...reasoningMessages] } }
+              : n
+          )
+        )
+      }
+      
+      // Update orchestrator to show it's working and clear chat prompt for next generation
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === orchestratorNodeId
+            ? { ...n, data: { ...n.data, isOrchestrating: true, loadingText: 'Orchestrating', reasoningMessages: [], chatPrompt: undefined } }
+            : n
+        )
+      )
+      
+      onReasoning('🚀 Initializing orchestrator engine...', 'thinking')
+      
+      // Announce the format selected by user
+      const formatLabel = format.charAt(0).toUpperCase() + format.slice(1).replace(/-/g, ' ')
+      onReasoning(`📖 User selected format: ${formatLabel}`, 'decision')
+      onReasoning(`💭 Analyzing prompt for ${formatLabel} structure...`, 'thinking')
+      
+      // Streaming callback for real-time model reasoning
+      let modelReasoningBuffer = ''
+      let currentModelMessage: {
+        id: string
+        timestamp: string
+        content: string
+        type: 'thinking' | 'decision' | 'task' | 'result' | 'error'
+      } | null = null
+      
+      const onModelStream = (content: string, type: 'reasoning' | 'content') => {
+        console.log('[Canvas] Model stream:', { type, contentLength: content.length, preview: content.substring(0, 50) })
+        
+        if (type === 'reasoning') {
+          // Accumulate reasoning tokens
+          modelReasoningBuffer += content
+          
+          // Create or update a "model thinking" message
+          if (!currentModelMessage) {
+            currentModelMessage = {
+              id: `model_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              timestamp: new Date().toISOString(),
+              content: '',
+              type: 'thinking'
+            }
+            reasoningMessages.push(currentModelMessage)
+            console.log('[Canvas] Created MODEL reasoning message')
+          }
+          
+          // Update the message content with accumulated reasoning
+          currentModelMessage.content = `🤖 Model reasoning:\n${modelReasoningBuffer}`
+          
+          // Update canvas-level chat history (persistent)
+          setCanvasChatHistory(prev => {
+            const existingIndex = prev.findIndex(m => m.id === currentModelMessage!.id)
+            if (existingIndex >= 0) {
+              const updated = [...prev]
+              updated[existingIndex] = { ...currentModelMessage!, role: 'orchestrator' as const }
+              return updated
+            }
+            return [...prev, { ...currentModelMessage!, role: 'orchestrator' as const }]
+          })
+          
+          // Update orchestrator node with the new messages
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === orchestratorNodeId
+                ? { ...n, data: { ...n.data, reasoningMessages: [...reasoningMessages] } }
+                : n
+            )
+          )
+        } else if (type === 'content') {
+          // DEBUG: Also show content streaming (the JSON plan being built)
+          // This lets us see that streaming IS working, even without <think> tags
+          if (!currentModelMessage) {
+            currentModelMessage = {
+              id: `model_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              timestamp: new Date().toISOString(),
+              content: '',
+              type: 'thinking'
+            }
+            reasoningMessages.push(currentModelMessage)
+            console.log('[Canvas] Created MODEL content stream message')
+          }
+          
+          // Show first 200 chars of the JSON being built
+          modelReasoningBuffer += content
+          const preview = modelReasoningBuffer.length > 200 
+            ? modelReasoningBuffer.substring(0, 200) + '...' 
+            : modelReasoningBuffer
+          currentModelMessage.content = `🤖 Model streaming plan (JSON):\n${preview}`
+          
+          // Update canvas-level chat history (persistent)
+          setCanvasChatHistory(prev => {
+            const existingIndex = prev.findIndex(m => m.id === currentModelMessage!.id)
+            if (existingIndex >= 0) {
+              const updated = [...prev]
+              updated[existingIndex] = { ...currentModelMessage!, role: 'orchestrator' as const }
+              return updated
+            }
+            return [...prev, { ...currentModelMessage!, role: 'orchestrator' as const }]
+          })
+          
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === orchestratorNodeId
+                ? { ...n, data: { ...n.data, reasoningMessages: [...reasoningMessages] } }
+                : n
+            )
+          )
+        }
+      }
+      
+      // Create orchestrator engine with streaming support
+      const orchestrator = new OrchestratorEngine(
+        MODEL_CATALOG,
+        onReasoning,
+        user.id,
+        onModelStream // NEW: Stream model reasoning tokens
+      )
+      
+      // Determine available models
+      let availableModels: string[] = []
+      let finalOrchestratorModel: string | null = null
+      
+      // Priority 1: Use configured orchestrator model from Profile
+      if (orchestratorModelId) {
+        finalOrchestratorModel = orchestratorModelId
+        availableModels = [orchestratorModelId]
+        onReasoning(`✓ Using configured orchestrator: ${orchestratorModelId}`, 'decision')
+        console.log('[Canvas] Using Profile orchestrator:', orchestratorModelId)
+      } 
+      // Priority 2: Fetch from API as fallback
+      else {
+        onReasoning('🔍 No model configured, fetching available models...', 'thinking')
+        
+        try {
+          const modelsResponse = await fetch('/api/models')
+          const modelsData = await modelsResponse.json()
+          
+          console.log('[Canvas] Models API response:', modelsData)
+          
+          // API returns 'grouped' not 'groups'
+          const groups = modelsData.grouped || modelsData.groups || []
+          
+          if (modelsData.success && Array.isArray(groups) && groups.length > 0) {
+            // Get first orchestrator-capable model from first provider
+            const firstGroup = groups[0]
+            
+            if (firstGroup.models && Array.isArray(firstGroup.models) && firstGroup.models.length > 0) {
+              const orchestratorModels = firstGroup.models.filter((m: any) => 
+                m.id && (m.id.includes('70b') || m.id.includes('gpt-4') || m.id.includes('claude'))
+              )
+              
+              if (orchestratorModels.length > 0) {
+                finalOrchestratorModel = orchestratorModels[0].id
+                availableModels = [orchestratorModels[0].id]
+                onReasoning(`✓ Auto-selected: ${orchestratorModels[0].name || orchestratorModels[0].id}`, 'decision')
+                console.log('[Canvas] Auto-selected orchestrator:', finalOrchestratorModel)
+              } else {
+                // Fallback to any available model
+                finalOrchestratorModel = firstGroup.models[0].id
+                availableModels = [firstGroup.models[0].id]
+                onReasoning(`✓ Using: ${firstGroup.models[0].name || firstGroup.models[0].id}`, 'decision')
+                console.log('[Canvas] Fallback orchestrator:', finalOrchestratorModel)
+              }
+            }
+          } else {
+            console.warn('[Canvas] Invalid models API response:', modelsData)
+          }
+        } catch (error) {
+          console.error('[Canvas] Error fetching models:', error)
+          onReasoning(`⚠️ Could not fetch models from API`, 'error')
+        }
+      }
+      
+      // Add writer models if configured
+      if (writerModelIds.length > 0) {
+        availableModels.push(...writerModelIds)
+        onReasoning(`✓ Writer models: ${writerModelIds.length}`, 'decision')
+      }
+      
+      console.log('🎯 Available models:', availableModels)
+      console.log('🎯 Final orchestrator:', finalOrchestratorModel)
+      
+      // Validate we have at least one model
+      if (availableModels.length === 0 || !finalOrchestratorModel) {
+        const errorMsg = 'No models available. Please:\n\n1. Go to Profile page\n2. Add an API key (Groq, OpenAI, or Anthropic)\n3. Click "Model Configuration"\n4. Select an orchestrator model\n5. Save your preferences\n6. Try generating again'
+        onReasoning(`❌ ${errorMsg}`, 'error')
+        throw new Error(errorMsg)
+      }
+      
+      // Build effective prompt (already validated above)
+      const effectivePrompt = userPrompt
+      
+      onReasoning(`📝 Analyzing prompt: "${effectivePrompt.substring(0, 100)}..."`, 'thinking')
+      
+      // Call orchestrator to create plan
+      const plan = await orchestrator.orchestrate(
+        effectivePrompt,
+        format,
+        {
+          orchestratorModel: finalOrchestratorModel,
+          availableModels,
+          userKeyId: userKeyId ?? undefined
+        }
+      )
+      
+      onReasoning(`✅ Plan created: ${plan.structure.length} sections, ${plan.tasks.length} tasks`, 'result')
+      
+      // Convert plan to structure items
+      const structureItems = plan.structure.map((section: any) => ({
+        id: section.id,
+        level: section.level,
+        name: section.name,
+        parentId: section.parentId,
+        wordCount: section.wordCount,
+        summary: section.summary || ''
+      }))
+      
+      // Update structure node with initial structure
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === structureNodeId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                items: structureItems,
+                contentMap: {},
+                format,
+                isLoading: false
+              }
+            }
+          }
+          return n
+        })
+      )
+      
+      onReasoning(`📊 Structure initialized with ${structureItems.length} sections`, 'result')
+      
+      // Save canvas with structure
+      hasUnsavedChangesRef.current = true
+      await handleSave()
+      
+      // Clear inference flag
+      isInferencingRef.current = false
+      
+      // Update orchestrator to clear loading
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === orchestratorNodeId
+            ? { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+            : n
+        )
+      )
+      
+      onReasoning('✅ Orchestration complete!', 'result')
+      
+      alert(`✅ ${format.charAt(0).toUpperCase() + format.slice(1)} structure generated with orchestrator!`)
+      
+    } catch (error: any) {
+      console.error('❌ Orchestrated generation failed:', error)
+      
+      isInferencingRef.current = false
+      
+      alert(`Failed to generate structure:\n\n${error.message}`)
+      
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === structureNodeId) {
+            return { ...n, data: { ...n.data, isLoading: false } }
+          } else if (n.id === orchestratorNodeId) {
+            return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+          }
+          return n
+        })
+      )
+    }
+  }
+  
+  // LEGACY: Original generation function (kept for backward compatibility)
   const triggerAIGeneration = async (
     structureNodeId: string,
     format: StoryFormat,
@@ -907,41 +1400,67 @@ export default function CanvasPage() {
   ) => {
     // Check authentication first
     if (!user) {
+      // Clear inference flag
+      isInferencingRef.current = false
+      
       alert('❌ You must be logged in to generate content.\n\nPlease log in at http://localhost:3002/auth and try again.')
       
-      // Remove loading state
+      // Remove loading state from both structure node and orchestrator
       setNodes((nds) =>
-        nds.map((n) =>
-          n.id === structureNodeId
-            ? { ...n, data: { ...n.data, isLoading: false } }
-            : n
-        )
+        nds.map((n) => {
+          if (n.id === structureNodeId) {
+            return { ...n, data: { ...n.data, isLoading: false } }
+          } else if (n.id === orchestratorNodeId) {
+            return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+          }
+          return n
+        })
       )
       return
     }
     
-    const isActive = (aiPromptNode.data as any).isActive !== false
-    const userPrompt = (aiPromptNode.data as any).userPrompt
-    const maxTokens = (aiPromptNode.data as any).maxTokens || 2000
+    // PRIORITY: Chat prompt takes precedence over AI Prompt node
+    const orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
+    const chatPrompt = (orchestratorNode?.data as any)?.chatPrompt
+    const aiPromptNodePrompt = aiPromptNode ? (aiPromptNode.data as any).userPrompt : null
+    
+    // Use chat prompt first, fallback to AI Prompt node
+    const userPrompt = chatPrompt || aiPromptNodePrompt || ''
+    const isActive = aiPromptNode ? (aiPromptNode.data as any).isActive !== false : true
+    const maxTokens = aiPromptNode ? (aiPromptNode.data as any).maxTokens || 2000 : 2000
+    
+    console.log('🎬 Starting orchestrator-based generation...', {
+      hasChatPrompt: !!chatPrompt,
+      hasAIPromptNodePrompt: !!aiPromptNodePrompt,
+      usingPrompt: userPrompt,
+      source: chatPrompt ? 'Chat Input (Priority)' : 'AI Prompt Node (Fallback)'
+    })
     
     // Determine the actual prompt to send based on active/passive mode
     const effectiveUserPrompt = isActive ? userPrompt : ''
     
     // Only validate prompt if in active mode
     if (isActive && (!userPrompt || userPrompt.trim() === '')) {
-      alert('Please enter a prompt in the AI Prompt node first, or set it to Passive mode.')
+      alert('Please enter a prompt using the chat input.')
       return
     }
     
-    // Import system prompt dynamically
-    const { getFormatSystemPrompt } = await import('@/lib/groq/formatPrompts')
+    // TODO: Replace this entire function with orchestrator-based generation
+    // For now, keep legacy behavior to avoid breaking existing functionality
+    
+    // Import system prompt and token calculation dynamically
+    const { getFormatSystemPrompt, getRecommendedTokens } = await import('@/lib/groq/formatPrompts')
     const systemPrompt = getFormatSystemPrompt(format)
+    const recommendedTokens = getRecommendedTokens(format)
     
     // Import markdown parser
     const { parseMarkdownStructure } = await import('@/lib/markdownParser')
     
     try {
-      // Get orchestrator node data using setNodes callback to access latest state
+      // Set inference flag
+      isInferencingRef.current = true
+      
+      // Get orchestrator node data and set inference loading state
       let selectedModel = 'llama-3.1-8b-instant'
       let selectedKeyId: string | null = null
       
@@ -962,7 +1481,12 @@ export default function CanvasPage() {
           selectedKeyIdInData: (orchestratorNode?.data as any)?.selectedKeyId
         })
         
-        return currentNodes
+        // Update orchestrator node to show inference loading state
+        return currentNodes.map(n => 
+          n.id === orchestratorNodeId
+            ? { ...n, data: { ...n.data, isOrchestrating: true, loadingText: 'Inference' } }
+            : n
+        )
       })
       
       console.log('[Canvas] Calling /api/generate with:', {
@@ -973,6 +1497,11 @@ export default function CanvasPage() {
         hasUserPrompt: !!effectiveUserPrompt
       })
       
+      // Use user's custom maxTokens if set, otherwise use recommended based on format
+      const effectiveMaxTokens = maxTokens && maxTokens !== 2000 ? maxTokens : recommendedTokens
+      
+      console.log('🎨 Inference loading state SET - pink spinner should be visible')
+      
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -980,16 +1509,44 @@ export default function CanvasPage() {
           model: selectedModel,
           system_prompt: systemPrompt,
           user_prompt: effectiveUserPrompt,
-          max_tokens: maxTokens,
+          max_tokens: effectiveMaxTokens,
           user_key_id: selectedKeyId,
           format
         })
       })
       
+      console.log('📡 API response received, parsing...')
       const data = await response.json()
+      console.log('✅ Data parsed:', {
+        success: data.success,
+        hasMarkdown: !!data.markdown,
+        markdownLength: data.markdown?.length,
+        error: data.error
+      })
+      
+      // Log the actual markdown for debugging (first 2000 chars)
+      if (data.markdown) {
+        console.log('📝 Generated markdown (first 2000 chars):\n', data.markdown.substring(0, 2000))
+      }
       
       if (data.success && data.markdown) {
-        const { items: parsedItems, contentMap } = parseMarkdownStructure(data.markdown)
+        console.log('🔍 Parsing markdown structure...')
+        
+        let parsedItems, contentMap
+        try {
+          const parseResult = parseMarkdownStructure(data.markdown)
+          parsedItems = parseResult.items
+          contentMap = parseResult.contentMap
+          
+          console.log('📊 Parsed structure:', {
+            itemCount: parsedItems.length,
+            contentMapSize: contentMap.size,
+            firstItem: parsedItems[0]
+          })
+        } catch (parseError: any) {
+          console.error('❌ Markdown parsing failed:', parseError)
+          throw new Error(`Failed to parse markdown structure: ${parseError.message}`)
+        }
         
         // Convert contentMap to plain object
         const contentMapObject: Record<string, string> = {}
@@ -997,22 +1554,31 @@ export default function CanvasPage() {
           contentMapObject[key] = value
         })
         
-        // Update structure node
+        // Clear inference flag
+        isInferencingRef.current = false
+        
+        console.log('📝 Updating structure node with parsed data...')
+        
+        // Update structure node and clear orchestrator loading state
         setNodes((nds) =>
-          nds.map((n) =>
-            n.id === structureNodeId
-              ? {
-                  ...n,
-                  data: {
-                    ...n.data,
-                    items: parsedItems,
-                    contentMap: contentMapObject,
-                    format: format,
-                    isLoading: false
-                  }
+          nds.map((n) => {
+            if (n.id === structureNodeId) {
+              return {
+                ...n,
+                data: {
+                  ...n.data,
+                  items: parsedItems,
+                  contentMap: contentMapObject,
+                  format: format,
+                  isLoading: false
                 }
-              : n
-          )
+              }
+            } else if (n.id === orchestratorNodeId) {
+              // Clear inference loading state
+              return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+            }
+            return n
+          })
         )
         
         console.log('✅ Auto-generation complete:', {
@@ -1020,9 +1586,11 @@ export default function CanvasPage() {
           itemsCount: parsedItems.length
         })
         
+        console.log('💾 Triggering auto-save...')
         // Trigger save
         hasUnsavedChangesRef.current = true
         await handleSave()
+        console.log('💾 Auto-save complete')
         
         alert(`✅ ${format.charAt(0).toUpperCase() + format.slice(1)} structure generated successfully!`)
       } else {
@@ -1030,22 +1598,39 @@ export default function CanvasPage() {
       }
     } catch (error: any) {
       console.error('❌ Auto-generation failed:', error)
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      })
+      
+      // Clear inference flag on error
+      isInferencingRef.current = false
       
       // Provide helpful error message
       let errorMessage = error.message || 'Unknown error'
-      if (errorMessage.includes('No API key available') || errorMessage.includes('No') && errorMessage.includes('API key')) {
-        errorMessage = `❌ ${errorMessage}\n\n💡 To fix this:\n1. Go to http://localhost:3002/test-api\n2. Add your API key for this provider\n3. Try generating again`
+      
+      // Add more specific error context
+      if (errorMessage === 'Failed to generate structure') {
+        errorMessage = 'Failed to generate structure. The AI response may be incomplete or in an unexpected format. Please try again.'
+      } else if (errorMessage.includes('Failed to parse markdown')) {
+        errorMessage = `${errorMessage}\n\nThe AI generated content but it wasn't in the expected format. Try:\n- Using a different model\n- Simplifying your prompt\n- Choosing a different format`
+      } else if (errorMessage.includes('No API key available') || errorMessage.includes('No') && errorMessage.includes('API key')) {
+        errorMessage = `❌ ${errorMessage}\n\n💡 To fix this:\n1. Go to your Profile page\n2. Add your API key for this provider\n3. Enable the model you want to use\n4. Try generating again`
       }
       
       alert(`Failed to generate structure:\n\n${errorMessage}`)
       
-      // Remove loading state on error
+      // Remove loading state on error (both structure node and orchestrator)
       setNodes((nds) =>
-        nds.map((n) =>
-          n.id === structureNodeId
-            ? { ...n, data: { ...n.data, isLoading: false } }
-            : n
-        )
+        nds.map((n) => {
+          if (n.id === structureNodeId) {
+            return { ...n, data: { ...n.data, isLoading: false } }
+          } else if (n.id === orchestratorNodeId) {
+            return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+          }
+          return n
+        })
       )
     }
   }
@@ -1978,6 +2563,22 @@ export default function CanvasPage() {
           onAddEdge={(newEdge) => setEdges((eds) => [...eds, newEdge])}
           edges={edges}
           nodes={nodes}
+          canvasChatHistory={canvasChatHistory}
+          onAddChatMessage={(message) => {
+            const userMsg = {
+              id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              timestamp: new Date().toISOString(),
+              content: message,
+              type: 'user' as const,
+              role: 'user' as const
+            }
+            setCanvasChatHistory(prev => [...prev, userMsg])
+          }}
+          onClearChat={() => {
+            if (confirm('Clear all chat history? This cannot be undone.')) {
+              setCanvasChatHistory([])
+            }
+          }}
         />
 
         {/* Loading indicator now integrated into Orchestrator node */}

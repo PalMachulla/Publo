@@ -7,6 +7,9 @@ import { CreateStoryNodeData } from '@/types/nodes'
 function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
   const { isOrchestrating = false, orchestratorProgress = 0, loadingText = '' } = data
   
+  // Determine if this is AI inference based on loading text
+  const isInferring = loadingText.toLowerCase().includes('inference')
+  
   return (
     <div className="relative">
       {/* Keyframes for spinner rotation */}
@@ -73,14 +76,14 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
             stroke="none"
           />
           
-          {/* Yellow spinner ring (animated when orchestrating) - rendered after white circle to be on top */}
+          {/* Animated spinner ring - pink during AI inference, yellow during other orchestration */}
           {isOrchestrating && (
             <circle
               cx="90"
               cy="90"
               r="80"
               fill="none"
-              stroke="#fbbf24"
+              stroke={isInferring ? "#ec4899" : "#fbbf24"}
               strokeWidth="2"
               strokeLinecap="round"
               strokeDasharray={`${Math.PI * 75 * 0.75} ${Math.PI * 75 * 1.25}`}

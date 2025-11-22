@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
-import { NormalizedModel, LLMProvider } from '@/types/api-keys'
 import { 
   CollapsibleSection,
   Card,
@@ -15,9 +15,19 @@ import {
 
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
-  onCreateStory: (format: StoryFormat, template?: string) => void
+  onCreateStory: (format: StoryFormat, template?: string, userPrompt?: string) => void
   onClose: () => void
   onUpdate?: (nodeId: string, data: Partial<CreateStoryNodeData>) => void
+  onSendPrompt?: (prompt: string) => void // NEW: For chat-based prompting
+  canvasChatHistory?: Array<{
+    id: string
+    timestamp: string
+    content: string
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+    role?: 'user' | 'orchestrator'
+  }>
+  onAddChatMessage?: (message: string) => void
+  onClearChat?: () => void
 }
 
 interface Template {
@@ -146,105 +156,173 @@ const storyFormats: Array<{ type: StoryFormat; label: string; description: strin
   }
 ]
 
-interface GroupedModels {
-  provider: LLMProvider
-  source: 'user' | 'publo'
-  key_id?: string
-  key_nickname?: string
-  models: NormalizedModel[]
+interface ReasoningMessage {
+  id: string
+  timestamp: string
+  content: string
+  type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+  role?: 'user' | 'orchestrator'
 }
 
-export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdate }: CreateStoryPanelProps) {
-  const [selectedModel, setSelectedModel] = useState<string | null>((node.data as any).selectedModel || null)
-  const [selectedKeyId, setSelectedKeyId] = useState<string | null>((node.data as any).selectedKeyId || null)
-  const [groupedModels, setGroupedModels] = useState<GroupedModels[]>([])
-  const [loadingModels, setLoadingModels] = useState(true)
-  const [modelsError, setModelsError] = useState<string | null>(null)
-  const [selectedFormat, setSelectedFormat] = useState<StoryFormat | null>(null)
+export default function CreateStoryPanel({ 
+  node, 
+  onCreateStory, 
+  onClose, 
+  onUpdate, 
+  onSendPrompt,
+  canvasChatHistory = [],
+  onAddChatMessage,
+  onClearChat
+}: CreateStoryPanelProps) {
+  const router = useRouter()
+  const [configuredModel, setConfiguredModel] = useState<{
+    orchestrator: string | null
+    writerCount: number
+  }>({ orchestrator: null, writerCount: 0 })
+  const [loadingConfig, setLoadingConfig] = useState(true)
+  const [selectedFormat, setSelectedFormat] = useState<StoryFormat>('novel') // Default to 'novel'
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false) // Prevent double-clicks
+  
+  // Pill expansion state
+  const [isModelPillExpanded, setIsModelPillExpanded] = useState(false)
+  const [isFormatPillExpanded, setIsFormatPillExpanded] = useState(false)
+  
+  // Chat state (local input only, history is canvas-level)
+  const [chatMessage, setChatMessage] = useState('')
+  
+  // Reasoning chat state
+  const [isReasoningOpen, setIsReasoningOpen] = useState(true) // Open by default to see streaming
+  const reasoningEndRef = useRef<HTMLDivElement>(null) // Auto-scroll target
+  const chatInputRef = useRef<HTMLTextAreaElement>(null) // Chat input ref
+  
+  // Use CANVAS-LEVEL chat history (persistent across all generations)
+  const reasoningMessages: ReasoningMessage[] = canvasChatHistory
+  
+  // Detect if streaming (last message is from model and being updated)
+  const isStreaming = reasoningMessages.length > 0 && 
+    reasoningMessages[reasoningMessages.length - 1].role === 'orchestrator' &&
+    reasoningMessages[reasoningMessages.length - 1].content.startsWith('🤖 Model')
 
-  // Fetch models from all sources on mount
+  // Auto-open reasoning panel when messages appear or update
   useEffect(() => {
-    fetchModels()
+    if (reasoningMessages.length > 0) {
+      setIsReasoningOpen(true)
+      console.log('[CreateStoryPanel] Auto-opening reasoning panel, messages:', reasoningMessages.length)
+    }
+  }, [reasoningMessages])
+
+  // Fetch configured models from Profile settings - ALWAYS refresh on mount
+  useEffect(() => {
+    console.log('[CreateStoryPanel] Component mounted, fetching configuration...')
+    fetchConfiguredModels()
+  }, []) // This now refreshes every time panel opens
+
+  // Auto-refresh when page becomes visible (user returns from Profile)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('[CreateStoryPanel] Page became visible, refreshing configuration...')
+        fetchConfiguredModels()
+      }
+    }
+    
+    // Listen for custom event from Profile page when config is saved
+    const handleConfigUpdate = (e: CustomEvent) => {
+      console.log('[CreateStoryPanel] Config update event received:', e.detail)
+      fetchConfiguredModels()
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('popstate', fetchConfiguredModels) // Browser back button
+    window.addEventListener('orchestratorConfigUpdated' as any, handleConfigUpdate as any)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('popstate', fetchConfiguredModels)
+      window.removeEventListener('orchestratorConfigUpdated' as any, handleConfigUpdate as any)
+    }
   }, [])
 
-  const fetchModels = async () => {
-    setLoadingModels(true)
-    setModelsError(null)
+  // NEW: Auto-scroll to latest reasoning message
+  useEffect(() => {
+    if (reasoningMessages.length > 0 && reasoningEndRef.current) {
+      reasoningEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    }
+  }, [reasoningMessages])
+
+  const fetchConfiguredModels = async () => {
+    setLoadingConfig(true)
     
     try {
-      console.log('[CreateStoryPanel] Fetching models from /api/models')
-      const response = await fetch('/api/models')
+      console.log('[CreateStoryPanel] Fetching configured models from Profile')
+      const response = await fetch('/api/user/api-keys')
       const data = await response.json()
       
-      console.log('[CreateStoryPanel] Models API response:', {
+      console.log('[CreateStoryPanel] 📦 API Response:', {
         success: data.success,
-        groupCount: data.grouped?.length,
-        totalModels: data.total_count,
-        rawGroups: data.grouped?.map((g: any) => ({
-          provider: g.provider,
-          source: g.source,
-          keyId: g.key_id,
-          modelCount: g.models?.length,
-          firstModel: g.models?.[0],
-          allModels: g.models?.map((m: any) => ({ id: m.id, name: m.name, supports_chat: m.supports_chat }))
+        keyCount: data.keys?.length,
+        allKeys: data.keys?.map((k: any) => ({
+          id: k.id,
+          provider: k.provider,
+          orchestrator_model_id: k.orchestrator_model_id,
+          writer_model_ids: k.writer_model_ids,
+          hasOrchestrator: !!k.orchestrator_model_id
         }))
       })
       
-      if (data.success) {
-        // Filter to only show chat-compatible models
-        const filteredGroups = data.grouped.map((group: GroupedModels) => ({
-          ...group,
-          models: group.models.filter((m: NormalizedModel) => m.supports_chat)
-        })).filter((group: GroupedModels) => group.models.length > 0)
+      if (data.success && data.keys?.length > 0) {
+        // Find the first key with an orchestrator configured
+        const configuredKey = data.keys.find((key: any) => key.orchestrator_model_id)
         
-        console.log('[CreateStoryPanel] After filtering:', {
-          groups: filteredGroups.map((g: GroupedModels) => ({
-            provider: g.provider,
-            modelCount: g.models.length,
-            models: g.models.map((m: NormalizedModel) => m.name)
-          }))
+        console.log('[CreateStoryPanel] 🔍 Search result:', {
+          foundKey: !!configuredKey,
+          keyId: configuredKey?.id,
+          orchestrator: configuredKey?.orchestrator_model_id,
+          writers: configuredKey?.writer_model_ids
         })
         
-        setGroupedModels(filteredGroups)
-        
-        // Auto-select first production model from first group
-        if (filteredGroups.length > 0 && filteredGroups[0].models.length > 0) {
-          const firstGroup = filteredGroups[0]
-          const firstProduction = firstGroup.models.find((m: NormalizedModel) => m.category === 'production') 
-            || firstGroup.models[0]
-          
-          console.log('[CreateStoryPanel] Auto-selected model:', {
-            model: firstProduction.name,
-            id: firstProduction.id,
-            provider: firstGroup.provider,
-            keyId: firstGroup.key_id
+        if (configuredKey) {
+          console.log('[CreateStoryPanel] ✅ Setting configured model:', {
+            orchestrator: configuredKey.orchestrator_model_id,
+            writers: configuredKey.writer_model_ids?.length || 0
           })
           
-          setSelectedModel(firstProduction.id)
-          setSelectedKeyId(firstGroup.key_id || null)
+          setConfiguredModel({
+            orchestrator: configuredKey.orchestrator_model_id,
+            writerCount: configuredKey.writer_model_ids?.length || 0
+          })
+        } else {
+          console.log('[CreateStoryPanel] ⚠️ No orchestrator found, defaulting to Auto-select')
+          // No explicit configuration - will auto-select
+          setConfiguredModel({
+            orchestrator: 'Auto-select',
+            writerCount: 0
+          })
         }
       } else {
-        setModelsError(data.error || 'Failed to load models')
+        console.log('[CreateStoryPanel] ❌ No API keys found')
+        // No API keys configured
+        setConfiguredModel({
+          orchestrator: null,
+          writerCount: 0
+        })
       }
     } catch (err) {
-      setModelsError('Failed to fetch models')
-      console.error('[CreateStoryPanel] Error fetching models:', err)
+      console.error('[CreateStoryPanel] Error fetching configuration:', err)
+      setConfiguredModel({
+        orchestrator: 'Error loading config',
+        writerCount: 0
+      })
     } finally {
-      setLoadingModels(false)
+      setLoadingConfig(false)
     }
   }
 
   const handleFormatClick = (format: StoryFormat) => {
-    if (selectedFormat === format) {
-      // Collapse if clicking the same format
-      setSelectedFormat(null)
-      setSelectedTemplate(null)
-    } else {
-      // Expand new format
-      setSelectedFormat(format)
-      setSelectedTemplate(null)
-    }
+    // Always select the format (no deselection - format is required)
+    setSelectedFormat(format)
+    setSelectedTemplate(null)
   }
 
   const handleTemplateSelect = (templateId: string) => {
@@ -252,289 +330,312 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   }
 
   const handleCreateStory = () => {
-    if (selectedFormat && selectedTemplate) {
+    if (selectedFormat && selectedTemplate && !isCreating) {
+      setIsCreating(true) // Prevent double-clicks
       onCreateStory(selectedFormat, selectedTemplate)
-      setSelectedFormat(null) // Reset selection after creating
-      setSelectedTemplate(null)
-      onClose() // Close the panel after creating
+      
+      // Reset after 2 seconds (allows user to create again if needed)
+      setTimeout(() => {
+        setIsCreating(false)
+      }, 2000)
+      
+      // Keep panel open to watch orchestrator reasoning
+      // setSelectedFormat(null) // Keep selection visible
+      // setSelectedTemplate(null)
+      // onClose() // Don't close - user wants to see streaming
     }
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center">
-            <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+    <div className="h-full flex flex-col bg-white">
+      {/* Thin Stacked Accordion Tiles */}
+      <div className="border-b border-gray-200 bg-gray-50">
+        {/* Model Tile */}
+        <div className="border-b border-gray-200">
+          <button
+            onClick={() => setIsModelPillExpanded(!isModelPillExpanded)}
+            className="w-full flex items-center justify-between px-4 py-2 bg-white hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+              </svg>
+              <span className="text-xs font-medium text-gray-700">
+                {loadingConfig ? 'Loading...' : (configuredModel?.orchestrator || 'Auto-select model')}
+              </span>
+            </div>
+            <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isModelPillExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">Ghostwriter</h2>
-            <p className="text-sm text-gray-500">Choose a format to begin writing</p>
+          </button>
+          
+          {/* Model Accordion Content */}
+          {isModelPillExpanded && (
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 animate-in slide-in-from-top-2 duration-200">
+              <div className="text-xs text-gray-600 mb-2">
+                <span className="font-semibold">Orchestrator:</span> {configuredModel?.orchestrator || 'Auto-select best model'}
+              </div>
+              <div className="text-xs text-gray-600 mb-3">
+                <span className="font-semibold">Writers:</span> {configuredModel?.writerCount || 0} models
+              </div>
+              <button
+                onClick={() => router.push('/profile')}
+                className="text-xs font-medium text-blue-600 hover:text-blue-700 underline"
+              >
+                Change in Profile →
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Format Tile */}
+        <div>
+          <button
+            onClick={() => setIsFormatPillExpanded(!isFormatPillExpanded)}
+            className="w-full flex items-center justify-between px-4 py-2 bg-white hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+              <span className="text-xs font-medium text-gray-700">
+                {selectedFormat && selectedTemplate 
+                  ? `${storyFormats.find(f => f.type === selectedFormat)?.label} - ${templates[selectedFormat].find(t => t.id === selectedTemplate)?.name}`
+                  : selectedFormat 
+                  ? storyFormats.find(f => f.type === selectedFormat)?.label
+                  : 'Select format'}
+              </span>
+            </div>
+            <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isFormatPillExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Orchestrator Reasoning - Center Stage */}
+      <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-gray-50 to-white">
+        <div className="max-w-4xl mx-auto h-full flex flex-col">
+          {/* Format Selection Accordion (expands when tile clicked) */}
+          {isFormatPillExpanded && (
+            <div className="mb-4 bg-white rounded-md border border-gray-200 shadow-sm animate-in slide-in-from-top-2 duration-200">
+              <div className="p-4 max-h-96 overflow-y-auto">
+                <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">Choose Format & Template</h3>
+                <div className="space-y-3">
+                  {storyFormats.map((format) => {
+                    const formatTemplates = templates[format.type]
+                    const isSelected = selectedFormat === format.type
+                    
+                    return (
+                      <div key={format.type} className="border border-gray-200 rounded-md overflow-hidden hover:border-gray-300 transition-colors">
+                        <button
+                          onClick={() => {
+                            setSelectedFormat(format.type)
+                            setSelectedTemplate(null)
+                          }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+                            isSelected ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className={`text-xl ${isSelected ? 'text-gray-700' : 'text-gray-400'}`}>
+                            {format.icon}
+                          </div>
+                          <div className="flex-1">
+                            <div className={`text-xs font-semibold ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
+                              {format.label}
+                            </div>
+                            <div className="text-xs text-gray-500">{format.description}</div>
+                          </div>
+                          <svg 
+                            className={`w-4 h-4 text-gray-400 transition-transform ${isSelected ? 'rotate-180' : ''}`} 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        
+                        {isSelected && (
+                          <div className="bg-gray-50 border-t border-gray-200 p-3 space-y-1.5">
+                            <p className="text-xs font-medium text-gray-600 mb-2">Templates:</p>
+                            {formatTemplates.map((template) => (
+                              <button
+                                key={template.id}
+                                onClick={() => {
+                                  setSelectedTemplate(template.id)
+                                  setIsFormatPillExpanded(false)
+                                  // Auto-create when template selected
+                                  if (!isCreating) {
+                                    handleCreateStory()
+                                  }
+                                }}
+                                className={`w-full text-left px-3 py-2 rounded text-xs transition-colors ${
+                                  selectedTemplate === template.id
+                                    ? 'bg-gray-700 text-white font-medium'
+                                    : 'bg-white text-gray-700 hover:bg-gray-200 border border-gray-200'
+                                }`}
+                              >
+                                {template.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* New Chat Button (only show if there's history) */}
+          {reasoningMessages.length > 0 && onClearChat && (
+            <div className="flex justify-end mb-2">
+              <button
+                onClick={onClearChat}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md border border-gray-300 transition-colors"
+                title="Start a new conversation"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                New Chat
+              </button>
+            </div>
+          )}
+          
+          <div className="flex-1 overflow-y-auto space-y-3">
+            {reasoningMessages.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <p className="text-sm font-medium">AI reasoning will appear here</p>
+                <p className="text-xs mt-1">Watch the orchestrator think through your story structure</p>
+              </div>
+            ) : (
+              reasoningMessages.map((msg, i) => {
+                // Distinguish model reasoning from orchestrator messages
+                const isModelMessage = msg.content.startsWith('🤖 Model reasoning:')
+                const isLastMessage = i === reasoningMessages.length - 1
+                
+                const bgColor = 
+                  isModelMessage ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-l-4 border-indigo-500' :
+                  msg.type === 'thinking' ? 'bg-purple-50 border-l-4 border-purple-400' :
+                  msg.type === 'decision' ? 'bg-blue-50 border-l-4 border-blue-400' :
+                  msg.type === 'task' ? 'bg-yellow-50 border-l-4 border-yellow-400' :
+                  msg.type === 'result' ? 'bg-green-50 border-l-4 border-green-400' :
+                  'bg-red-50 border-l-4 border-red-400'
+                
+                const icon = 
+                  isModelMessage ? (
+                    <svg className="w-3.5 h-3.5 text-indigo-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                    </svg>
+                  ) :
+                  msg.type === 'thinking' ? (
+                    <svg className="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                  ) :
+                  msg.type === 'decision' ? (
+                    <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                  ) :
+                  msg.type === 'task' ? (
+                    <svg className="w-3.5 h-3.5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  ) :
+                  msg.type === 'result' ? (
+                    <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) :
+                  (
+                    <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )
+                
+                const label = isModelMessage ? 'MODEL' : msg.type.toUpperCase()
+                
+                return (
+                  <div key={i} className={`p-3 rounded ${bgColor} ${isLastMessage && isStreaming ? 'animate-pulse' : ''}`}>
+                    <div className="flex items-start gap-2">
+                      <div className="flex-shrink-0 mt-0.5">
+                        {icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-[10px] font-medium uppercase tracking-wide ${isModelMessage ? 'text-indigo-600 font-bold' : 'text-gray-500'}`}>
+                            {label}
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            {new Date(msg.timestamp).toLocaleTimeString('en-US', { 
+                              hour: '2-digit', 
+                              minute: '2-digit', 
+                              second: '2-digit' 
+                            })}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+                          {msg.content}
+                          {/* Typing indicator for last message when streaming */}
+                          {isLastMessage && isStreaming && (
+                            <span className="inline-block ml-1 w-1.5 h-4 bg-indigo-600 animate-pulse" />
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          {/* Scroll target */}
+          <div ref={reasoningEndRef} />
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {/* Model Selection Section */}
-        <CollapsibleSection
-          title="1. Select Model"
-          defaultOpen={true}
-        >
-          {loadingModels && (
-            <div className="text-center py-8">
-              <div className="inline-block w-6 h-6 border-3 border-gray-200 border-t-yellow-400 rounded-full animate-spin" />
-              <p className="text-xs text-gray-500 mt-3">Loading models...</p>
-            </div>
-          )}
-
-          {modelsError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
-              <p className="text-xs text-red-600">{modelsError}</p>
-              <button
-                onClick={fetchModels}
-                className="text-xs text-red-700 font-medium mt-1 underline"
-              >
-                Try again
-              </button>
-            </div>
-          )}
-
-          {!loadingModels && !modelsError && groupedModels.length > 0 && (
-            <div className="space-y-5">
-              {groupedModels.map((group, groupIndex) => (
-                <div key={`${group.provider}-${group.key_id || 'publo'}`}>
-                  {/* Provider Group Header */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <Badge 
-                      variant={
-                        group.provider === 'groq' ? 'purple' :
-                        group.provider === 'openai' ? 'success' :
-                        group.provider === 'anthropic' ? 'warning' :
-                        'info'
-                      }
-                      size="md"
-                    >
-                      {group.provider.toUpperCase()}
-                    </Badge>
-                    {group.source === 'user' && (
-                      <span className="text-xs text-gray-600 font-medium">
-                        {group.key_nickname || 'Your Key'}
-                      </span>
-                    )}
-                    {group.source === 'publo' && (
-                      <Badge variant="outline" size="sm">Publo Default</Badge>
-                    )}
-                    <span className="text-xs text-gray-400">
-                      {group.models.length} {group.models.length === 1 ? 'model' : 'models'}
-                    </span>
-                  </div>
-
-                  {/* Models in this group */}
-                  <div className="space-y-2">
-                    {group.models.map((model) => (
-                      <Card
-                        key={model.id}
-                        variant={selectedModel === model.id ? 'selected' : 'interactive'}
-                        onClick={() => {
-                          console.log('🎯 Model selected:', {
-                            model: model.id,
-                            provider: group.provider,
-                            keyId: group.key_id,
-                            keyNickname: group.key_nickname,
-                            source: group.source
-                          })
-                          
-                          setSelectedModel(model.id)
-                          setSelectedKeyId(group.key_id || null)
-                          // Store selected model and key in node data
-                          if (onUpdate) {
-                            onUpdate(node.id, { 
-                              selectedModel: model.id,
-                              selectedKeyId: group.key_id || null 
-                            } as any)
-                          }
-                        }}
-                        className="relative"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          {/* Model Info */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2 flex-wrap">
-                              <h4 className="text-sm font-semibold text-gray-900">
-                                {model.id}
-                              </h4>
-                              {model.category && (
-                                <Badge 
-                                  variant={
-                                    model.category === 'production' ? 'success' :
-                                    model.category === 'preview' ? 'info' :
-                                    'default'
-                                  }
-                                  size="sm"
-                                >
-                                  {model.category}
-                                </Badge>
-                              )}
-                            </div>
-                            
-                            {/* Pricing & Speed */}
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {model.input_price_per_1m !== null && model.input_price_per_1m !== undefined && (
-                                <Badge variant="outline" size="sm">
-                                  💵 In: ${model.input_price_per_1m.toFixed(3)}/1M
-                                </Badge>
-                              )}
-                              {model.output_price_per_1m !== null && model.output_price_per_1m !== undefined && (
-                                <Badge variant="outline" size="sm">
-                                  💵 Out: ${model.output_price_per_1m.toFixed(3)}/1M
-                                </Badge>
-                              )}
-                              {model.speed_tokens_per_sec && (
-                                <Badge variant="outline" size="sm">
-                                  ⚡ {model.speed_tokens_per_sec} t/s
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Selection Indicator */}
-                          {selectedModel === model.id && (
-                            <div className="flex-shrink-0 w-5 h-5 rounded-full bg-yellow-400 flex items-center justify-center">
-                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </div>
-                          )}
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CollapsibleSection>
-
-        {/* Format Selection Section */}
-        <CollapsibleSection
-          title="2. Choose Format"
-          defaultOpen={true}
-          className="mt-6"
-        >
-          <div className="space-y-2">
-            {storyFormats.map((format) => {
-              const isSelected = selectedFormat === format.type
-              const formatTemplates = templates[format.type]
-              
-              return (
-                <div key={format.type}>
-                  {/* Format Card */}
-                  <Card
-                    variant={isSelected ? 'selected' : 'interactive'}
-                    onClick={() => handleFormatClick(format.type)}
-                    className="relative transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`flex-shrink-0 transition-colors ${isSelected ? 'text-yellow-600' : 'text-gray-500'}`}>
-                        {format.icon}
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className={`text-sm font-semibold transition-colors ${isSelected ? 'text-yellow-900' : 'text-gray-900'}`}>
-                          {format.label}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {format.description}
-                        </div>
-                      </div>
-                      {/* Chevron indicator */}
-                      <div className={`flex-shrink-0 transition-transform ${isSelected ? 'rotate-90' : ''}`}>
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* Template Selection (expands directly below format) */}
-                  {isSelected && (
-                    <div className="mt-2 ml-8 space-y-1 animate-in slide-in-from-top-2 duration-200">
-                      {formatTemplates.map((template) => (
-                        <button
-                          key={template.id}
-                          onClick={() => handleTemplateSelect(template.id)}
-                          className={`w-full text-left p-3 rounded-lg border transition-all ${
-                            selectedTemplate === template.id
-                              ? 'border-yellow-400 bg-yellow-50 shadow-sm'
-                              : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className="flex items-start gap-2">
-                            <div className="flex-1">
-                              <div className={`text-sm font-medium ${
-                                selectedTemplate === template.id ? 'text-yellow-900' : 'text-gray-900'
-                              }`}>
-                                {template.name}
-                              </div>
-                              <div className="text-xs text-gray-500 mt-0.5">
-                                {template.description}
-                              </div>
-                            </div>
-                            {selectedTemplate === template.id && (
-                              <div className="flex-shrink-0 w-4 h-4 rounded-full bg-yellow-400 flex items-center justify-center">
-                                <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                              </div>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </CollapsibleSection>
-      </div>
-
-      {/* Footer with Create Button */}
-      <div className="p-6 border-t border-gray-200 bg-gray-50">
-        <Button
-          onClick={handleCreateStory}
-          disabled={!selectedFormat || !selectedTemplate}
-          variant="primary"
-          size="lg"
-          className="w-full"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          {selectedFormat && selectedTemplate
-            ? `Create ${storyFormats.find(f => f.type === selectedFormat)?.label}`
-            : selectedFormat
-            ? 'Select a Template'
-            : 'Select a Format'}
-        </Button>
-        {selectedFormat && selectedTemplate && (
-          <p className="text-xs text-gray-500 text-center mt-3">
-            This will create a new story structure on the canvas
-          </p>
-        )}
+      {/* Chat Input - Bottom */}
+      <div className="border-t border-gray-200 bg-white p-4">
+        <textarea
+          ref={chatInputRef}
+          value={chatMessage}
+          onChange={(e) => setChatMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              if (chatMessage.trim()) {
+                // Format is always set (defaults to 'novel'), template is optional
+                console.log('📤 Sending prompt to orchestrator:', chatMessage)
+                console.log('📝 Using format:', selectedFormat, 'template:', selectedTemplate || 'none')
+                
+                // Add user message to CANVAS-LEVEL chat history (persistent)
+                if (onAddChatMessage) {
+                  onAddChatMessage(chatMessage)
+                }
+                
+                // Trigger story creation IMMEDIATELY with the prompt (no delay needed)
+                // Pass prompt directly to avoid React state race condition
+                onCreateStory(selectedFormat, selectedTemplate || undefined, chatMessage)
+                
+                // Clear input
+                setChatMessage('')
+              }
+            }
+          }}
+          placeholder={`Chat with the orchestrator (${selectedFormat.charAt(0).toUpperCase() + selectedFormat.slice(1).replace('-', ' ')})...`}
+          rows={2}
+          className="w-full resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent placeholder-gray-400"
+        />
+        <p className="text-xs text-gray-500 mt-2">
+          Press Enter to send • Shift+Enter for new line • Format: <span className="font-semibold text-gray-700">{selectedFormat.charAt(0).toUpperCase() + selectedFormat.slice(1).replace('-', ' ')}</span>
+        </p>
       </div>
     </div>
   )
 }
-
