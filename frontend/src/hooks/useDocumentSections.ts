@@ -107,15 +107,17 @@ export function useDocumentSections({
       )
 
       // Create sections for items that don't have them
+      // Map with original index to preserve order
       const newSections: DocumentSectionCreate[] = structureItems
-        .filter(item => !existingSectionIds.has(item.id))
-        .map((item, index) => ({
+        .map((item, originalIndex) => ({ item, originalIndex }))
+        .filter(({ item }) => !existingSectionIds.has(item.id))
+        .map(({ item, originalIndex }) => ({
           story_structure_node_id: storyStructureNodeId,
           structure_item_id: item.id,
           content: `<h${Math.min(item.level, 3)} data-section-id="${item.id}" id="section-${item.id}">${item.name}</h${Math.min(item.level, 3)}>\n<p></p>`,
           word_count: 0,
           status: 'draft' as const,
-          order_index: item.order,
+          order_index: typeof item.order === 'number' ? item.order : originalIndex, // Use item.order if valid, fallback to original index
         }))
 
       if (newSections.length === 0) {
