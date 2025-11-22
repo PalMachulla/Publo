@@ -1,9 +1,14 @@
 /**
  * Intent Router
  * 
- * Classifies user messages into actionable intents using keyword analysis and context.
- * This is the "reasoning brain" that decides what action the orchestrator should take.
+ * HYBRID APPROACH:
+ * 1. Fast pattern matching for obvious intents (write, explain, etc.)
+ * 2. LLM-based reasoning for complex cases (pronouns, context, ambiguity)
+ * 
+ * This makes the orchestrator as intelligent as an AI assistant while staying fast.
  */
+
+import { analyzeLLMIntent, shouldUseLLMAnalysis, type ConversationMessage } from './llmIntentAnalyzer'
 
 export type UserIntent = 
   | 'write_content'        // User wants to write/expand content for a specific section
@@ -11,6 +16,7 @@ export type UserIntent =
   | 'create_structure'     // User wants to create new story structure
   | 'improve_content'      // User wants to refine/edit existing content
   | 'modify_structure'     // User wants to change the story structure
+  | 'clarify_intent'       // Orchestrator needs clarification
   | 'general_chat'         // General conversation/unclear intent
 
 export interface IntentAnalysis {
@@ -20,21 +26,61 @@ export interface IntentAnalysis {
   suggestedAction: string // What the orchestrator should do
   requiresContext: boolean // Does this need a selected segment?
   suggestedModel: 'orchestrator' | 'writer' | 'editor' // Which model type to use
+  needsClarification?: boolean // True if orchestrator should ask a question
+  clarifyingQuestion?: string // Question to ask the user
+  usedLLM?: boolean // True if LLM reasoning was used
 }
 
 export interface IntentContext {
   message: string
   hasActiveSegment: boolean
   activeSegmentName?: string
-  conversationHistory?: Array<{ role: string; content: string }>
+  activeSegmentId?: string
+  activeSegmentHasContent?: boolean
+  conversationHistory?: ConversationMessage[]
+  documentStructure?: Array<{ id: string; name: string; level: number }>
+  useLLM?: boolean // Force LLM analysis (for testing or complex cases)
 }
 
 /**
  * Analyzes user message and determines intent
+ * HYBRID: Pattern matching for obvious cases, LLM for complex cases
  */
-export function analyzeIntent(context: IntentContext): IntentAnalysis {
-  const { message, hasActiveSegment, activeSegmentName } = context
+export async function analyzeIntent(context: IntentContext): Promise<IntentAnalysis> {
+  const { message, hasActiveSegment, activeSegmentName, conversationHistory = [] } = context
   const lowerMessage = message.toLowerCase().trim()
+  
+  // Check if we should use LLM analysis
+  const needsLLM = context.useLLM || shouldUseLLMAnalysis(message, conversationHistory.length > 0)
+  
+  if (needsLLM) {
+    console.log('🧠 Using LLM for intent analysis (complex case)...')
+    try {
+      const llmResult = await analyzeLLMIntent({
+        currentMessage: message,
+        conversationHistory,
+        activeSegment: hasActiveSegment ? {
+          id: context.activeSegmentId || '',
+          name: activeSegmentName || '',
+          title: context.activeSegmentName,
+          hasContent: context.activeSegmentHasContent || false
+        } : undefined,
+        documentStructure: context.documentStructure,
+        availableActions: ['write_content', 'answer_question', 'improve_content', 'modify_structure', 'general_chat']
+      })
+      
+      return {
+        ...llmResult,
+        usedLLM: true
+      }
+    } catch (error) {
+      console.error('LLM intent analysis failed, falling back to patterns:', error)
+      // Fall through to pattern matching
+    }
+  }
+  
+  // FAST PATH: Pattern-based analysis (original logic)
+  console.log('⚡ Using pattern matching for intent analysis...')
   
   // PRIORITY 1: Content writing/expansion (when segment is selected)
   if (hasActiveSegment) {
@@ -241,6 +287,8 @@ export function explainIntent(analysis: IntentAnalysis): string {
       return '✨ Improving existing content'
     case 'modify_structure':
       return '🔧 Modifying story structure'
+    case 'clarify_intent':
+      return '❓ Need clarification'
     case 'general_chat':
       return '💭 Chatting'
     default:

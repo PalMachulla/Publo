@@ -235,18 +235,39 @@ export default function CreateStoryPanel({
       onAddChatMessage(message)
     }
     
-    // STEP 1: Analyze user intent using IntentRouter
-    const intentAnalysis = analyzeIntent({
+    // STEP 1: Analyze user intent using Hybrid IntentRouter
+    if (onAddChatMessage) {
+      onAddChatMessage(`🧠 Analyzing your request...`)
+    }
+    
+    const intentAnalysis = await analyzeIntent({
       message,
       hasActiveSegment: !!activeContext,
       activeSegmentName: activeContext?.name,
-      conversationHistory: canvasChatHistory.slice(-5) // Last 5 messages for context
+      activeSegmentId: activeContext?.id,
+      activeSegmentHasContent: false, // TODO: Track if segment has content
+      conversationHistory: canvasChatHistory.slice(-5).map(msg => ({
+        role: msg.role || 'user',
+        content: msg.content,
+        timestamp: msg.timestamp
+      })),
+      documentStructure: [] // TODO: Pass structure items
     })
     
     // Log intent analysis to reasoning chat
     if (onAddChatMessage) {
-      onAddChatMessage(`🧠 ${explainIntent(intentAnalysis)} (Confidence: ${Math.round(intentAnalysis.confidence * 100)}%)`)
+      const method = intentAnalysis.usedLLM ? '🧠 LLM Reasoning' : '⚡ Pattern Matching'
+      onAddChatMessage(`${method}: ${explainIntent(intentAnalysis)} (Confidence: ${Math.round(intentAnalysis.confidence * 100)}%)`)
       onAddChatMessage(`💭 ${intentAnalysis.reasoning}`)
+    }
+    
+    // STEP 1.5: Handle clarifying questions
+    if (intentAnalysis.needsClarification && intentAnalysis.clarifyingQuestion) {
+      if (onAddChatMessage) {
+        onAddChatMessage(`❓ ${intentAnalysis.clarifyingQuestion}`)
+      }
+      setChatMessage('')
+      return
     }
     
     // STEP 2: Validate intent can be executed
@@ -332,6 +353,23 @@ Request: ${message}`
             onAddChatMessage(`🔧 Modifying structure...`)
           }
           onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+          break
+        
+        case 'modify_structure':
+          // Modify existing structure (add/remove sections)
+          if (onAddChatMessage) {
+            onAddChatMessage(`🔧 Modifying structure...`)
+            onAddChatMessage(`⚠️ Structure modification not fully implemented yet. Using story generation as fallback.`)
+          }
+          // TODO: Implement structure modification
+          onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+          break
+        
+        case 'clarify_intent':
+          // This should be handled above, but just in case
+          if (onAddChatMessage) {
+            onAddChatMessage(`❓ I need more information. Could you clarify what you'd like me to do?`)
+          }
           break
         
         case 'general_chat':
