@@ -9,24 +9,9 @@ import type { StoryStructureItem, TestNodeData } from '@/types/nodes'
 import type { DocumentSection } from '@/types/document'
 import type { Edge, Node } from 'reactflow'
 
-interface Task {
-  id: string
-  text: string
-  status: 'pending' | 'in_progress' | 'completed'
-}
-
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-  tasks?: Task[]
-  isThinkingCollapsed?: boolean
-  hasAutoCollapsed?: boolean
-}
-
 interface AIDocumentPanelProps {
   isOpen: boolean
   onClose: () => void
-  initialPrompt?: string
   storyStructureNodeId?: string | null
   structureItems?: StoryStructureItem[]
   initialSectionId?: string | null
@@ -34,12 +19,13 @@ interface AIDocumentPanelProps {
   canvasEdges?: Edge[]
   canvasNodes?: Node[]
   contentMap?: Record<string, string> // Map of structure item ID to markdown content
+  orchestratorPanelWidth?: number // Width of the orchestrator panel in pixels
+  onSwitchDocument?: (nodeId: string) => void // Switch to a different document
 }
 
 export default function AIDocumentPanel({
   isOpen,
   onClose,
-  initialPrompt,
   storyStructureNodeId = null,
   structureItems = [],
   initialSectionId = null,
@@ -47,25 +33,24 @@ export default function AIDocumentPanel({
   canvasEdges = [],
   canvasNodes = [],
   contentMap = {},
+  orchestratorPanelWidth = 384,
+  onSwitchDocument,
 }: AIDocumentPanelProps) {
-  const [input, setInput] = useState('')
-  const [messages, setMessages] = useState<Message[]>([])
-  const [leftPanelWidth, setLeftPanelWidth] = useState(35) // Percentage (for right-side chat, editor gets 100 - this)
-  const [isDragging, setIsDragging] = useState(false)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(initialSectionId)
+  
+  // Detect all story structure nodes on canvas for tabs
+  const storyStructureNodes = useMemo(() => {
+    return canvasNodes.filter(node => node.type === 'storyStructureNode').map(node => ({
+      id: node.id,
+      name: node.data?.name || node.data?.label || 'Untitled',
+      format: node.data?.format,
+    }))
+  }, [canvasNodes])
   
   // Persist panel collapse states to localStorage
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('publo-sections-collapsed')
-      return saved ? JSON.parse(saved) : false
-    }
-    return false
-  })
-  
-  const [isAIChatCollapsed, setIsAIChatCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('publo-ai-chat-collapsed')
       return saved ? JSON.parse(saved) : false
     }
     return false
@@ -86,9 +71,7 @@ export default function AIDocumentPanel({
     return true
   })
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const hasProcessedInitialPrompt = useRef(false)
 
   // Fetch and manage document sections
   const {
@@ -119,13 +102,6 @@ export default function AIDocumentPanel({
       localStorage.setItem('publo-sections-collapsed', JSON.stringify(isSidebarCollapsed))
     }
   }, [isSidebarCollapsed])
-
-  // Persist AI chat collapse state
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('publo-ai-chat-collapsed', JSON.stringify(isAIChatCollapsed))
-    }
-  }, [isAIChatCollapsed])
 
   // Persist arrangement view collapse state
   useEffect(() => {
@@ -209,136 +185,6 @@ export default function AIDocumentPanel({
   // Note: We don't auto-load individual sections - the full document is loaded once
   // and users navigate via TOC scrolling
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages])
-
-  // Auto-collapse thinking box when all tasks are completed
-  useEffect(() => {
-    messages.forEach((msg, idx) => {
-      if (msg.role === 'assistant' && msg.tasks && !msg.isThinkingCollapsed && !msg.hasAutoCollapsed) {
-        const allCompleted = msg.tasks.every(task => task.status === 'completed')
-        if (allCompleted) {
-          setTimeout(() => {
-            setMessages(prev =>
-              prev.map((m, i) =>
-                i === idx ? { ...m, isThinkingCollapsed: true, hasAutoCollapsed: true } : m
-              )
-            )
-          }, 1000)
-        }
-      }
-    })
-  }, [messages])
-
-  const toggleThinkingCollapse = (messageIndex: number) => {
-    setMessages(prev =>
-      prev.map((msg, idx) =>
-        idx === messageIndex
-          ? {
-              ...msg,
-              isThinkingCollapsed: !msg.isThinkingCollapsed,
-            }
-          : msg
-      )
-    )
-  }
-
-  // Handle initial prompt when panel opens
-  useEffect(() => {
-    if (isOpen && initialPrompt && !hasProcessedInitialPrompt.current) {
-      hasProcessedInitialPrompt.current = true
-      setMessages([{ role: 'user', content: initialPrompt }])
-
-      // Simulate AI planning (would be real AI later)
-      setTimeout(() => {
-        const aiResponse: Message = {
-          role: 'assistant',
-          content: "I'll help you with that. Here's my reasoning process:",
-          isThinkingCollapsed: false,
-          hasAutoCollapsed: false,
-          tasks: [
-            { id: '1', text: 'Understanding the prompt and extracting key requirements', status: 'in_progress' },
-            { id: '2', text: 'Breaking down the task into logical components', status: 'pending' },
-            { id: '3', text: 'Identifying the narrative structure and tone', status: 'pending' },
-            { id: '4', text: 'Drafting initial content with key points', status: 'pending' },
-          ],
-        }
-        setMessages(prev => [...prev, aiResponse])
-
-        // Simulate task progression
-        setTimeout(() => {
-          setMessages(prev =>
-            prev.map((msg, idx) =>
-              idx === prev.length - 1 && msg.tasks
-                ? {
-                    ...msg,
-                    tasks: msg.tasks.map(task =>
-                      task.id === '1' ? { ...task, status: 'completed' } : task.id === '2' ? { ...task, status: 'in_progress' } : task
-                    ),
-                  }
-                : msg
-            )
-          )
-        }, 1200)
-
-        setTimeout(() => {
-          setMessages(prev =>
-            prev.map((msg, idx) =>
-              idx === prev.length - 1 && msg.tasks
-                ? {
-                    ...msg,
-                    tasks: msg.tasks.map(task =>
-                      task.id === '2' ? { ...task, status: 'completed' } : task.id === '3' ? { ...task, status: 'in_progress' } : task
-                    ),
-                  }
-                : msg
-            )
-          )
-        }, 2400)
-
-        setTimeout(() => {
-          setMessages(prev =>
-            prev.map((msg, idx) =>
-              idx === prev.length - 1 && msg.tasks
-                ? {
-                    ...msg,
-                    tasks: msg.tasks.map(task =>
-                      task.id === '3' ? { ...task, status: 'completed' } : task.id === '4' ? { ...task, status: 'in_progress' } : task
-                    ),
-                  }
-                : msg
-            )
-          )
-        }, 3600)
-
-        setTimeout(() => {
-          setMessages(prev =>
-            prev.map((msg, idx) =>
-              idx === prev.length - 1 && msg.tasks
-                ? {
-                    ...msg,
-                    tasks: msg.tasks.map(task => (task.id === '4' ? { ...task, status: 'completed' } : task)),
-                  }
-                : msg
-            )
-          )
-        }, 4800)
-      }, 800)
-    }
-
-    if (!isOpen) {
-      hasProcessedInitialPrompt.current = false
-      setMessages([])
-    }
-  }, [isOpen, initialPrompt])
-
-  // Sections are initialized automatically by the hook, no need to call here
-
   // Set active section when sections load
   useEffect(() => {
     if (sections.length > 0 && !activeSectionId) {
@@ -365,117 +211,6 @@ export default function AIDocumentPanel({
     }
   }, [isOpen, initialSectionId, sections])
 
-  // Handle mouse drag for resizing
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }
-
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!isDragging || !containerRef.current) return
-
-    const containerRect = containerRef.current.getBoundingClientRect()
-    const mousePercent = ((e.clientX - containerRect.left) / containerRect.width) * 100
-    
-    // Since editor is on left and chat on right, leftPanelWidth represents right chat width
-    // So we need to invert: if mouse is at 60%, chat width should be 40%
-    const newChatWidth = 100 - mousePercent
-
-    // Constrain chat between 25% and 50% (editor gets 50% to 75%)
-    if (newChatWidth >= 25 && newChatWidth <= 50) {
-      setLeftPanelWidth(newChatWidth)
-    }
-  }
-
-  const handleMouseUp = () => {
-    setIsDragging(false)
-  }
-
-  useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
-
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-        document.body.style.cursor = ''
-        document.body.style.userSelect = ''
-      }
-    }
-  }, [isDragging, handleMouseMove, handleMouseUp])
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim()) return
-
-    const userMessage = input
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }])
-    setInput('')
-
-    // Simulate AI response (would be real AI later)
-    setTimeout(() => {
-      const timestamp = Date.now()
-      const aiResponse: Message = {
-        role: 'assistant',
-        content: 'Thinking through your request...',
-        isThinkingCollapsed: false,
-        hasAutoCollapsed: false,
-        tasks: [
-          { id: `${timestamp}-1`, text: 'Analyzing the context of your input', status: 'in_progress' },
-          { id: `${timestamp}-2`, text: 'Determining the best approach for this task', status: 'pending' },
-          { id: `${timestamp}-3`, text: 'Composing and refining the output', status: 'pending' },
-        ],
-      }
-      setMessages(prev => [...prev, aiResponse])
-
-      // Simulate task progression
-      setTimeout(() => {
-        setMessages(prev =>
-          prev.map((msg, idx) =>
-            idx === prev.length - 1 && msg.tasks
-              ? {
-                  ...msg,
-                  tasks: msg.tasks.map(task =>
-                    task.id === `${timestamp}-1` ? { ...task, status: 'completed' } : task.id === `${timestamp}-2` ? { ...task, status: 'in_progress' } : task
-                  ),
-                }
-              : msg
-          )
-        )
-      }, 1000)
-
-      setTimeout(() => {
-        setMessages(prev =>
-          prev.map((msg, idx) =>
-            idx === prev.length - 1 && msg.tasks
-              ? {
-                  ...msg,
-                  tasks: msg.tasks.map(task =>
-                    task.id === `${timestamp}-2` ? { ...task, status: 'completed' } : task.id === `${timestamp}-3` ? { ...task, status: 'in_progress' } : task
-                  ),
-                }
-              : msg
-          )
-        )
-      }, 2200)
-
-      setTimeout(() => {
-        setMessages(prev =>
-          prev.map((msg, idx) =>
-            idx === prev.length - 1 && msg.tasks
-              ? {
-                  ...msg,
-                  tasks: msg.tasks.map(task => (task.id === `${timestamp}-3` ? { ...task, status: 'completed' } : task)),
-                }
-              : msg
-          )
-        )
-      }, 3400)
-    }, 500)
-  }
 
   // Aggregate content hierarchically for a structure item
   const aggregateHierarchicalContent = (itemId: string, includeHeaders: boolean = true): string => {
@@ -975,78 +710,84 @@ export default function AIDocumentPanel({
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Document Panel - Glides out from orchestrator, grips to its left edge */}
       <div
-        className={`fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity duration-300 ${
-          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        className={`fixed top-16 bottom-0 bg-white border-r border-t border-gray-200 shadow-xl z-40 transform transition-all duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0 pointer-events-none'
         }`}
-        onClick={onClose}
-      />
-
-      {/* Split Panel */}
-      <div
-        className={`fixed inset-y-0 right-0 w-full bg-white shadow-2xl z-50 transform transition-transform duration-500 ease-out ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        style={{
+          left: 0,
+          right: `${orchestratorPanelWidth}px`,
+        }}
       >
-        {/* Header */}
-        <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white">
-          <div className="flex items-center gap-4">
-            <h2 className="text-lg font-semibold text-gray-900">AI Document Assistant</h2>
-            <div className="text-sm text-gray-500">{wordCount} words</div>
+        {/* Header with Tabs */}
+        <div className="border-b border-gray-200 bg-white/95 backdrop-blur-sm">
+          {/* Top Bar - Title and Actions */}
+          <div className="h-10 flex items-center justify-between px-4 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-semibold text-gray-900">Document View</h2>
+              <div className="text-xs text-gray-500 font-mono">{wordCount} words</div>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Save Button */}
+              <button
+                onClick={saveNow}
+                disabled={!isDirty || saveStatus === 'saving'}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  isDirty
+                    ? 'bg-yellow-400 hover:bg-yellow-500 text-gray-900'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                } ${saveStatus === 'saving' ? 'opacity-50' : ''}`}
+              >
+                {saveStatus === 'saving' ? 'Saving...' : isDirty ? 'Save' : 'Saved'}
+              </button>
+              <button
+                onClick={onClose}
+                className="p-1.5 hover:bg-gray-100 rounded transition-colors"
+                aria-label="Hide document view"
+                title="Hide document view"
+              >
+                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            {/* Save Button */}
-            <button
-              onClick={saveNow}
-              disabled={!isDirty || saveStatus === 'saving'}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                isDirty
-                  ? 'bg-yellow-400 hover:bg-yellow-500 text-gray-900'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              } ${saveStatus === 'saving' ? 'opacity-50' : ''}`}
-            >
-              {saveStatus === 'saving' ? (
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
+
+          {/* Tabs Bar */}
+          {storyStructureNodes.length > 0 && (
+            <div className="flex items-center gap-1 px-2 py-1 overflow-x-auto">
+              {storyStructureNodes.map(node => (
+                <button
+                  key={node.id}
+                  onClick={() => onSwitchDocument && onSwitchDocument(node.id)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+                    node.id === storyStructureNodeId
+                      ? 'bg-yellow-100 text-yellow-900 border border-yellow-300'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                  title={node.name}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <span>Saving...</span>
-                </div>
-              ) : isDirty ? (
-                'Save Changes'
-              ) : (
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span>Saved</span>
-                </div>
-              )}
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              aria-label="Close panel"
-            >
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+                  <span className="max-w-[150px] truncate">{node.name}</span>
+                  {node.format && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded uppercase">
+                      {node.format}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Split Content with Arrangement View */}
-        <div className="flex flex-col h-[calc(100vh-4rem)]">
-          {/* Top: Existing split view (Editor + Chat) */}
+        <div className="flex flex-col" style={{ height: `calc(100vh - ${storyStructureNodes.length > 0 ? '9rem' : '7.5rem'})` }}>
+          {/* Document Editor + Section Nav */}
           <div className="flex flex-1 min-h-0" ref={containerRef}>
-          {/* Left Side - Document Editor + Section Nav */}
-          <div className="flex flex-col bg-white relative" style={{ width: isAIChatCollapsed ? '100%' : `${100 - leftPanelWidth}%` }}>
+          <div className="flex flex-col bg-white relative w-full">
             <div className="flex h-full">
               {/* Section Navigation Sidebar */}
               {!isSidebarCollapsed && (
@@ -1109,206 +850,7 @@ export default function AIDocumentPanel({
                 )}
               </div>
             </div>
-
-            {/* AI Chat Expand Button (when AI panel collapsed) */}
-            {isAIChatCollapsed && (
-              <button
-                onClick={() => setIsAIChatCollapsed(false)}
-                className="absolute top-4 right-4 p-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors shadow-sm z-20"
-                title="Show AI Assistant"
-              >
-                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-            )}
           </div>
-
-          {/* Resize Handle */}
-          {!isAIChatCollapsed && (
-            <div
-              className={`relative w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors group ${
-                isDragging ? 'bg-blue-500' : ''
-              }`}
-              onMouseDown={handleMouseDown}
-            >
-              {/* Center Handle Bar */}
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-6 h-12 bg-gray-300 group-hover:bg-blue-500 rounded-full flex items-center justify-center shadow-md transition-colors">
-                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-                </svg>
-              </div>
-            </div>
-          )}
-
-          {/* Right Side - AI Chat */}
-          {!isAIChatCollapsed && (
-            <div
-              className="border-l border-gray-200 flex flex-col bg-gray-100 relative overflow-hidden"
-              style={{ width: `${leftPanelWidth}%` }}
-            >
-              {/* Grid background - matches document area */}
-              <div
-                className="absolute inset-0 z-0 pointer-events-none"
-                style={{
-                  backgroundImage: `
-                    linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
-                    linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px)
-                  `,
-                  backgroundSize: '24px 24px',
-                  opacity: 0.5,
-                }}
-              />
-
-              {/* AI Chat Header */}
-              <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gray-50 relative z-10">
-                <h3 className="font-semibold text-gray-900">AI Assistant</h3>
-                <button
-                  onClick={() => setIsAIChatCollapsed(true)}
-                  className="p-1 hover:bg-gray-200 rounded transition-colors"
-                  title="Collapse AI chat"
-                >
-                  <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-
-            {/* Chat Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 relative z-10">
-              {messages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-gray-400">
-                  <div className="text-center">
-                    <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-                      />
-                    </svg>
-                    <p className="text-sm">Chat with AI to build your document</p>
-                    <p className="text-xs mt-2 text-gray-300">(AI integration coming soon)</p>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {messages.map((message, index) => (
-                    <div key={index} className="space-y-3">
-                      {message.role === 'user' ? (
-                        <div className="bg-white rounded-lg px-4 py-3 shadow-sm border border-gray-200">
-                          <p className="text-sm text-gray-900">{message.content}</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <p className="text-sm text-gray-700 mb-3">{message.content}</p>
-
-                          {/* Thinking Process Box */}
-                          {message.tasks && message.tasks.length > 0 && (
-                            <div className="bg-gray-100 rounded-lg border border-gray-200 overflow-hidden">
-                              {/* Header */}
-                              <button
-                                onClick={() => toggleThinkingCollapse(index)}
-                                className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-200 transition-colors"
-                              >
-                                <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Thinking Process</span>
-                                <svg
-                                  className={`w-4 h-4 text-gray-500 transition-transform ${
-                                    message.isThinkingCollapsed ? 'rotate-0' : 'rotate-180'
-                                  }`}
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                </svg>
-                              </button>
-
-                              {/* Task List */}
-                              {!message.isThinkingCollapsed && (
-                                <div className="px-4 pb-3 space-y-2">
-                                  {message.tasks.map(task => (
-                                    <div key={task.id} className="flex items-center gap-3 group">
-                                      {/* Status Icon */}
-                                      <div className="flex-shrink-0 w-5 h-5">
-                                        {task.status === 'completed' ? (
-                                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                              strokeWidth={2.5}
-                                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                            />
-                                          </svg>
-                                        ) : task.status === 'in_progress' ? (
-                                          <svg className="w-5 h-5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
-                                            <path
-                                              className="opacity-75"
-                                              fill="currentColor"
-                                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                            ></path>
-                                          </svg>
-                                        ) : (
-                                          <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <circle cx="12" cy="12" r="9" strokeWidth="2" />
-                                          </svg>
-                                        )}
-                                      </div>
-
-                                      {/* Task Text */}
-                                      <p
-                                        className={`text-sm flex-1 px-3 py-1.5 rounded bg-white/20 backdrop-blur-sm ${
-                                          task.status === 'completed'
-                                            ? 'text-gray-600 line-through'
-                                            : task.status === 'in_progress'
-                                            ? 'text-gray-900 font-medium'
-                                            : 'text-gray-500'
-                                        }`}
-                                      >
-                                        {task.text}
-                                      </p>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </>
-              )}
-            </div>
-
-              {/* Input Area */}
-              <div className="p-4 bg-white border-t border-gray-200 relative z-10">
-                <form onSubmit={handleSubmit} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    placeholder="What's your story, Morning Glory?"
-                    maxLength={1000}
-                    className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm placeholder:text-gray-400"
-                    aria-label="Message input"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!input.trim()}
-                    className="p-3 bg-yellow-400 hover:bg-yellow-500 disabled:bg-gray-200 disabled:cursor-not-allowed rounded-xl transition-colors"
-                    aria-label="Send message"
-                  >
-                    <svg className="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
           </div>
           
           {/* Bottom: Narration Arrangement View */}

@@ -67,6 +67,9 @@ interface NodeDetailsPanelProps {
   }>
   onAddChatMessage?: (message: string) => void
   onClearChat?: () => void
+  onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
+  isDocumentViewOpen?: boolean // NEW: Document panel visibility state
+  onPanelWidthChange?: (width: number) => void // NEW: Notify parent when panel width changes
 }
 
 export default function NodeDetailsPanel({
@@ -82,7 +85,10 @@ export default function NodeDetailsPanel({
   nodes = [],
   canvasChatHistory = [],
   onAddChatMessage,
-  onClearChat
+  onClearChat,
+  onToggleDocumentView,
+  isDocumentViewOpen = false,
+  onPanelWidthChange
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
   const [commentText, setCommentText] = useState('')
@@ -164,6 +170,13 @@ export default function NodeDetailsPanel({
       document.removeEventListener('mouseup', handleMouseUp)
     }
   }, [isResizing])
+
+  // Notify parent when panel width changes
+  useEffect(() => {
+    if (onPanelWidthChange) {
+      onPanelWidthChange(panelWidth)
+    }
+  }, [panelWidth, onPanelWidthChange])
 
   // Early returns AFTER all hooks
   if (!node) return null
@@ -424,6 +437,8 @@ export default function NodeDetailsPanel({
               canvasChatHistory={canvasChatHistory}
               onAddChatMessage={onAddChatMessage}
               onClearChat={onClearChat}
+              onToggleDocumentView={onToggleDocumentView}
+              isDocumentViewOpen={isDocumentViewOpen}
             />
           ) : nodeType === 'story-structure' ? (
             // Story Structure Metadata Panel

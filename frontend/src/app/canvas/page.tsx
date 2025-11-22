@@ -180,6 +180,7 @@ export default function CanvasPage() {
   const [userAvatar, setUserAvatar] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<'prospect' | 'admin' | 'user' | null>(null)
   const [isAIDocPanelOpen, setIsAIDocPanelOpen] = useState(false)
+  const [orchestratorPanelWidth, setOrchestratorPanelWidth] = useState(384) // Track orchestrator panel width
   const [initialPrompt, setInitialPrompt] = useState('')
   const [currentStoryDraftId, setCurrentStoryDraftId] = useState<string | null>(null)
   const [initialDocumentContent, setInitialDocumentContent] = useState('')
@@ -702,6 +703,39 @@ export default function CanvasPage() {
       hasUnsavedChangesRef.current = true
     }
   }, [handleStructureItemClick, currentStoryStructureNodeId])
+
+  // Handle switching between documents
+  const handleSwitchDocument = useCallback((nodeId: string) => {
+    console.log('Switching to document:', nodeId)
+    
+    // Use setNodes to get LATEST state
+    let latestContentMap: Record<string, string> = {}
+    let allItems: any[] = []
+    let format: StoryFormat | undefined
+    
+    setNodes((currentNodes) => {
+      const targetNode = currentNodes.find(n => n.id === nodeId && n.type === 'storyStructureNode')
+      if (!targetNode) {
+        console.error('Story structure node not found:', nodeId)
+        return currentNodes
+      }
+      
+      const nodeData = targetNode.data as StoryStructureNodeData
+      allItems = nodeData.items || []
+      format = nodeData.format
+      latestContentMap = nodeData.contentMap || {}
+      
+      return currentNodes // Don't modify nodes, just read from them
+    })
+    
+    // Update state
+    setCurrentStoryStructureNodeId(nodeId)
+    setCurrentStructureItems(allItems)
+    setCurrentStructureFormat(format)
+    setCurrentContentMap(latestContentMap)
+    setInitialSectionId(null) // Reset to first section
+  }, [])
+
 
   // Get available agent nodes for assignment
   const availableAgents = useMemo(() => {
@@ -2579,6 +2613,9 @@ export default function CanvasPage() {
               setCanvasChatHistory([])
             }
           }}
+          onToggleDocumentView={() => setIsAIDocPanelOpen(!isAIDocPanelOpen)}
+          isDocumentViewOpen={isAIDocPanelOpen}
+          onPanelWidthChange={setOrchestratorPanelWidth}
         />
 
         {/* Loading indicator now integrated into Orchestrator node */}
@@ -2603,7 +2640,6 @@ export default function CanvasPage() {
             setCurrentContentMap({})
             setInitialSectionId(null)
           }}
-          initialPrompt={initialPrompt}
           storyStructureNodeId={currentStoryStructureNodeId}
           structureItems={currentStructureItems}
           contentMap={currentContentMap}
@@ -2611,6 +2647,8 @@ export default function CanvasPage() {
           onUpdateStructure={handleStructureItemsUpdate}
           canvasEdges={edges}
           canvasNodes={nodes}
+          orchestratorPanelWidth={orchestratorPanelWidth}
+          onSwitchDocument={handleSwitchDocument}
         />
       </div>
     </div>
