@@ -49,14 +49,17 @@ export async function POST(request: NextRequest) {
     // Detect provider from model ID
     const provider = detectProviderFromModel(writerModelId)
     if (!provider) {
+      console.error('[API /content/generate] Could not detect provider for model:', writerModelId)
       return NextResponse.json(
         { error: `Could not detect provider for model: ${writerModelId}` },
         { status: 400 }
       )
     }
     
+    console.log('[API /content/generate] Detected provider:', provider)
+    
     // Get user's API key for this provider
-    const { data: userKey } = await supabase
+    const { data: userKey, error: keyError } = await supabase
       .from('user_api_keys')
       .select('id, encrypted_key, provider, is_active, validation_status, nickname')
       .eq('user_id', user.id)
@@ -66,20 +69,41 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .single()
     
+    console.log('[API /content/generate] User key query result:', { 
+      found: !!userKey, 
+      error: keyError?.message,
+      provider 
+    })
+    
     if (!userKey) {
+      console.error('[API /content/generate] No API key found:', {
+        provider,
+        userId: user.id,
+        keyError: keyError?.message
+      })
       return NextResponse.json(
         { 
           error: `No ${provider.toUpperCase()} API key found. Please add your key at /settings/api-keys`,
-          provider
+          provider,
+          details: keyError?.message
         },
         { status: 400 }
       )
     }
     
     // Decrypt the API key
-    const apiKey = decryptAPIKey(userKey.encrypted_key)
+    console.log('[API /content/generate] Decrypting API key...')
+    let apiKey: string
+    try {
+      apiKey = decryptAPIKey(userKey.encrypted_key)
+      console.log('[API /content/generate] API key decrypted successfully')
+    } catch (decryptError) {
+      console.error('[API /content/generate] Failed to decrypt API key:', decryptError)
+      throw new Error(`Failed to decrypt API key: ${decryptError instanceof Error ? decryptError.message : 'Unknown error'}`)
+    }
     
     // Get provider adapter
+    console.log('[API /content/generate] Getting provider adapter for:', provider)
     const adapter = getProviderAdapter(provider)
     
     // Construct writing prompt
@@ -93,6 +117,12 @@ Segment ID: ${segmentId}
 User Request: ${prompt}
 
 Write compelling narrative content that fulfills this request. Be creative and engaging.`
+    
+    console.log('[API /content/generate] Calling provider API...', {
+      provider,
+      model: writerModelId,
+      maxTokens: 2000
+    })
     
     // Generate content using provider adapter
     const result = await adapter.generate(apiKey, {
