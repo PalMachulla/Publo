@@ -184,3 +184,111 @@ Allows continuity across sessions
 - Error handling is robust
 
 **READY FOR USER TESTING**
+
+---
+
+## Update: Race Condition Fix (Same Session)
+
+### 🐛 **Issue 3: Orchestration Not Starting from Chat Input**
+
+**Problem:** User sent "Lets make a story about Mimosa" → Structure node created ✅ → But NO reasoning messages ❌
+
+**Symptom in Console:**
+```
+✅ Structure node created
+❌ No "⏰ Triggering orchestration..."  
+❌ No "🎬 ORCHESTRATION STARTED"
+❌ No reasoning messages
+```
+
+**Root Cause:** **React State Race Condition**
+
+```typescript
+// CreateStoryPanel - User presses Enter:
+1. onUpdate(node.id, { chatPrompt: message })  // Async state update
+2. setTimeout(() => {
+     onCreateStory(format, template)           // Called 50ms later
+   }, 50)
+
+// canvas/page.tsx - handleCreateStory:
+3. const chatPrompt = orchestratorNode.data.chatPrompt  // ❌ NOT UPDATED YET!
+4. if (!chatPrompt) skip orchestration
+```
+
+**Why:** React's `setState` is **asynchronous**. Even with a 50ms delay, the state might not be updated by the time `handleCreateStory` runs.
+
+---
+
+### ✅ **Fix: Direct Parameter Passing**
+
+**New Flow:**
+```typescript
+// CreateStoryPanel:
+onCreateStory(format, template, chatMessage)  // ✅ Pass directly
+
+// canvas/page.tsx:
+handleCreateStory(format, template, userPromptDirect) {
+  // Use userPromptDirect immediately, no state dependency
+  triggerOrchestratedGeneration(..., userPromptDirect)
+}
+```
+
+**Benefits:**
+- ✅ No race condition (synchronous parameter)
+- ✅ No artificial delay (50ms removed)
+- ✅ Clear data flow (explicit parameter)
+- ✅ Immediate orchestration start
+
+---
+
+### 🔧 **Files Modified:**
+
+**1. CreateStoryPanel.tsx**
+- Updated `onCreateStory` signature: `(format, template, userPrompt)`
+- Removed `onUpdate` call that set `chatPrompt`
+- Removed `setTimeout` delay
+- Pass `chatMessage` directly as 3rd parameter
+
+**2. canvas/page.tsx**
+- Updated `handleCreateStory` signature: `(format, template, userPromptDirect)`
+- Updated `triggerOrchestratedGeneration` signature: added `userPromptDirect`
+- Priority system: Direct prompt > AI Prompt node
+- Better logging for debugging
+
+---
+
+### 🧪 **Expected Console Output (After Fix):**
+
+```
+📤 Sending prompt to orchestrator: Lets make a story about Mimosa
+📝 Using format: novel template: none
+🚀 Auto-generating structure with orchestrator
+  userPromptDirect: "Lets make a story about Mimosa"
+  source: "Chat Input (Direct)"
+⏰ Triggering orchestration for structure: structure-123...
+═══════════════════════════════════════════════════════════════
+🎬 ORCHESTRATION STARTED
+═══════════════════════════════════════════════════════════════
+✅ Using direct chat prompt: Lets make a story about Mimosa
+🚀 Initializing orchestrator engine...
+📖 User selected format: Novel
+💭 Analyzing prompt...
+```
+
+---
+
+### 📊 **Summary of All Fixes This Session:**
+
+| Issue | Root Cause | Fix | Status |
+|-------|-----------|-----|--------|
+| Chat history across canvases | Never cleared on switch | Clear on canvas load | ✅ Fixed |
+| Template requirement blocking | Alert required template | Made template optional | ✅ Fixed |
+| Format undefined | Default was null | Default to 'novel' | ✅ Fixed |
+| Orchestration not starting | React state race condition | Direct parameter passing | ✅ Fixed |
+
+---
+
+**Branch:** `feature/ui-polish-panel`  
+**All Issues Resolved:** ✅  
+**Ready for Testing:** ✅
+
