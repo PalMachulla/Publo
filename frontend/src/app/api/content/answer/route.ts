@@ -7,10 +7,12 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getProviderAdapter, detectProviderFromModel } from '@/lib/providers'
+import { decryptAPIKey } from '@/lib/security/encryption'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     
     // Verify authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -33,20 +35,6 @@ export async function POST(request: NextRequest) {
     
     console.log('[API /content/answer] Request:', { question, hasContext: !!context })
     
-    // TODO: Fetch user's API keys and model preferences
-    const { data: apiKeys } = await supabase
-      .from('user_api_keys')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('enabled', true)
-    
-    if (!apiKeys || apiKeys.length === 0) {
-      return NextResponse.json(
-        { error: 'No API keys configured. Please add an API key in your profile settings.' },
-        { status: 400 }
-      )
-    }
-    
     // Get orchestrator model preference
     const { data: preferences } = await supabase
       .from('model_preferences')
@@ -57,6 +45,43 @@ export async function POST(request: NextRequest) {
     const orchestratorModelId = preferences?.orchestrator_model || 'llama-3.3-70b-versatile'
     
     console.log('[API /content/answer] Using orchestrator model:', orchestratorModelId)
+    
+    // Detect provider from model ID
+    const provider = detectProviderFromModel(orchestratorModelId)
+    if (!provider) {
+      return NextResponse.json(
+        { error: `Could not detect provider for model: ${orchestratorModelId}` },
+        { status: 400 }
+      )
+    }
+    
+    // Get user's API key for this provider
+    const { data: userKey } = await supabase
+      .from('user_api_keys')
+      .select('id, encrypted_key, provider, is_active, validation_status, nickname')
+      .eq('user_id', user.id)
+      .eq('provider', provider)
+      .eq('is_active', true)
+      .eq('validation_status', 'valid')
+      .limit(1)
+      .single()
+    
+    if (!userKey) {
+      return NextResponse.json(
+        { 
+          error: `No ${provider.toUpperCase()} API key found. Please add your key at /settings/api-keys`,
+          provider
+        },
+        { status: 400 }
+      )
+    }
+    
+    // Decrypt the API key
+    const apiKey = decryptAPIKey(userKey.encrypted_key)
+
+    
+    // Get provider adapter
+    const adapter = getProviderAdapter(provider)
     
     // Build context string
     let contextString = ''
@@ -93,96 +118,20 @@ Be conversational, insightful, and provide actionable suggestions when appropria
 
 Please answer this question based on the available context. Be helpful and specific.`
     
-    // Call the provider's API
-    const providerKey = apiKeys[0] // TODO: Select correct provider based on model
+    // Generate answer using provider adapter
+    const result = await adapter.generate(apiKey, {
+      model: orchestratorModelId,
+      system_prompt: systemPrompt,
+      user_prompt: userPrompt,
+      max_tokens: 1000,
+      temperature: 0.7
+    })
     
-    let answer = ''
-    
-    // Determine provider from model ID
-    if (orchestratorModelId.includes('gpt')) {
-      // OpenAI
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${providerKey.key_value}`
-        },
-        body: JSON.stringify({
-          model: orchestratorModelId,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      answer = data.choices[0]?.message?.content || 'I apologize, but I was unable to generate a response.'
-      
-    } else if (orchestratorModelId.includes('claude')) {
-      // Anthropic
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': providerKey.key_value,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: orchestratorModelId,
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: [
-            { role: 'user', content: userPrompt }
-          ]
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Anthropic API error: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      answer = data.content[0]?.text || 'I apologize, but I was unable to generate a response.'
-      
-    } else {
-      // Default to Groq
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${providerKey.key_value}`
-        },
-        body: JSON.stringify({
-          model: orchestratorModelId,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Groq API error: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      answer = data.choices[0]?.message?.content || 'I apologize, but I was unable to generate a response.'
-    }
-    
-    console.log('[API /content/answer] Generated answer length:', answer.length)
+    console.log('[API /content/answer] Generated answer length:', result.content.length)
     
     return NextResponse.json({
       success: true,
-      answer
+      answer: result.content
     })
     
   } catch (error) {

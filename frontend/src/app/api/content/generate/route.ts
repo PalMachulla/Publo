@@ -7,10 +7,12 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getProviderAdapter, detectProviderFromModel } from '@/lib/providers'
+import { decryptAPIKey } from '@/lib/security/encryption'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     
     // Verify authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -33,20 +35,6 @@ export async function POST(request: NextRequest) {
     
     console.log('[API /content/generate] Request:', { segmentId, prompt, storyStructureNodeId })
     
-    // TODO: Fetch user's API keys and model preferences
-    const { data: apiKeys } = await supabase
-      .from('user_api_keys')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('enabled', true)
-    
-    if (!apiKeys || apiKeys.length === 0) {
-      return NextResponse.json(
-        { error: 'No API keys configured. Please add an API key in your profile settings.' },
-        { status: 400 }
-      )
-    }
-    
     // Get writer model preference
     const { data: preferences } = await supabase
       .from('model_preferences')
@@ -57,6 +45,42 @@ export async function POST(request: NextRequest) {
     const writerModelId = preferences?.writer_models?.[0] || 'llama-3.3-70b-versatile'
     
     console.log('[API /content/generate] Using writer model:', writerModelId)
+    
+    // Detect provider from model ID
+    const provider = detectProviderFromModel(writerModelId)
+    if (!provider) {
+      return NextResponse.json(
+        { error: `Could not detect provider for model: ${writerModelId}` },
+        { status: 400 }
+      )
+    }
+    
+    // Get user's API key for this provider
+    const { data: userKey } = await supabase
+      .from('user_api_keys')
+      .select('id, encrypted_key, provider, is_active, validation_status, nickname')
+      .eq('user_id', user.id)
+      .eq('provider', provider)
+      .eq('is_active', true)
+      .eq('validation_status', 'valid')
+      .limit(1)
+      .single()
+    
+    if (!userKey) {
+      return NextResponse.json(
+        { 
+          error: `No ${provider.toUpperCase()} API key found. Please add your key at /settings/api-keys`,
+          provider
+        },
+        { status: 400 }
+      )
+    }
+    
+    // Decrypt the API key
+    const apiKey = decryptAPIKey(userKey.encrypted_key)
+    
+    // Get provider adapter
+    const adapter = getProviderAdapter(provider)
     
     // Construct writing prompt
     const systemPrompt = `You are a professional writer tasked with generating high-quality narrative content.
@@ -70,96 +94,20 @@ User Request: ${prompt}
 
 Write compelling narrative content that fulfills this request. Be creative and engaging.`
     
-    // Call the provider's API (this is a simplified version - in production, route based on model provider)
-    const providerKey = apiKeys[0] // TODO: Select correct provider based on model
+    // Generate content using provider adapter
+    const result = await adapter.generate(apiKey, {
+      model: writerModelId,
+      system_prompt: systemPrompt,
+      user_prompt: userPrompt,
+      max_tokens: 2000,
+      temperature: 0.8
+    })
     
-    let generatedContent = ''
-    
-    // Determine provider from model ID
-    if (writerModelId.includes('gpt')) {
-      // OpenAI
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${providerKey.key_value}`
-        },
-        body: JSON.stringify({
-          model: writerModelId,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0.8,
-          max_tokens: 2000
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      generatedContent = data.choices[0]?.message?.content || ''
-      
-    } else if (writerModelId.includes('claude')) {
-      // Anthropic
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': providerKey.key_value,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: writerModelId,
-          max_tokens: 2000,
-          system: systemPrompt,
-          messages: [
-            { role: 'user', content: userPrompt }
-          ]
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Anthropic API error: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      generatedContent = data.content[0]?.text || ''
-      
-    } else {
-      // Default to Groq
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${providerKey.key_value}`
-        },
-        body: JSON.stringify({
-          model: writerModelId,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0.8,
-          max_tokens: 2000
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Groq API error: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      generatedContent = data.choices[0]?.message?.content || ''
-    }
-    
-    console.log('[API /content/generate] Generated content length:', generatedContent.length)
+    console.log('[API /content/generate] Generated content length:', result.content.length)
     
     return NextResponse.json({
       success: true,
-      content: generatedContent,
+      content: result.content,
       segmentId
     })
     
