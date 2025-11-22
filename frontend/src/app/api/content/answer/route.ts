@@ -104,7 +104,38 @@ export async function POST(request: NextRequest) {
       if (context.contentMap && typeof context.contentMap === 'object') {
         const contentKeys = Object.keys(context.contentMap)
         if (contentKeys.length > 0) {
-          contextString += `\n\nAvailable Content: ${contentKeys.length} segments with written content`
+          contextString += `\n\nDocument Content:\n`
+          
+          // Include actual content from sections
+          // Match content IDs with structure items to get section names
+          const structureById: Record<string, any> = {}
+          if (context.structureItems) {
+            context.structureItems.forEach((item: any) => {
+              structureById[item.id] = item
+            })
+          }
+          
+          // Add content for each section (limit to prevent token overflow)
+          let contentCount = 0
+          const maxSections = 10 // Don't overwhelm the context
+          
+          for (const [sectionId, content] of Object.entries(context.contentMap)) {
+            if (contentCount >= maxSections) break
+            if (!content || typeof content !== 'string') continue
+            
+            const section = structureById[sectionId]
+            const sectionName = section ? section.name : sectionId
+            
+            // Truncate very long content
+            const contentPreview = content.length > 500 
+              ? content.substring(0, 500) + '...[truncated]'
+              : content
+            
+            contextString += `\n### ${sectionName}:\n${contentPreview}\n`
+            contentCount++
+          }
+          
+          contextString += `\n(Total: ${contentKeys.length} sections with content)`
         }
       }
     }
