@@ -223,6 +223,13 @@ export class OrchestratorEngine {
       // Step 2: Create structure plan (orchestrator thinks)
       this.log('💭 Orchestrator analyzing prompt and planning structure...', 'thinking')
       
+      // Validate userKeyId is available
+      if (!preferences.userKeyId) {
+        const errorMsg = 'No API key configured. Please configure your orchestrator in the Profile page.'
+        this.log(`❌ ${errorMsg}`, 'error')
+        throw new Error(errorMsg)
+      }
+      
       const plan = await this.createStructurePlan(
         userPrompt,
         format,
