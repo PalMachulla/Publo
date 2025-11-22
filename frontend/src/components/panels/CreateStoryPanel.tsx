@@ -251,7 +251,9 @@ export default function CreateStoryPanel({
         content: msg.content,
         timestamp: msg.timestamp
       })),
-      documentStructure: [] // TODO: Pass structure items
+      documentStructure: [], // TODO: Pass structure items
+      isDocumentViewOpen: isDocumentViewOpen, // CRITICAL: Tell intent analyzer about document state
+      documentFormat: selectedFormat // Novel, Report, etc.
     })
     
     // Log intent analysis to reasoning chat
@@ -340,7 +342,15 @@ Request: ${message}`
           break
         
         case 'create_structure':
-          // Create new story structure
+          // Create new story structure (ONLY when document panel is closed!)
+          if (isDocumentViewOpen) {
+            // Safety check: If document panel is open, don't create new structure
+            if (onAddChatMessage) {
+              onAddChatMessage(`⚠️ Cannot create new structure while editing a document. Close the document panel first, or try "write more" to add content.`)
+            }
+            break
+          }
+          
           if (onAddChatMessage) {
             onAddChatMessage(`🏗️ Planning structure with orchestrator model...`)
           }
@@ -356,13 +366,28 @@ Request: ${message}`
           break
         
         case 'modify_structure':
-          // Modify existing structure (add/remove sections)
-          if (onAddChatMessage) {
-            onAddChatMessage(`🔧 Modifying structure...`)
-            onAddChatMessage(`⚠️ Structure modification not fully implemented yet. Using story generation as fallback.`)
+          // Modify existing structure (add/remove sections within current document)
+          if (!isDocumentViewOpen) {
+            if (onAddChatMessage) {
+              onAddChatMessage(`⚠️ Cannot modify structure without an open document. Open a document first.`)
+            }
+            break
           }
-          // TODO: Implement structure modification
-          onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+          
+          if (onAddChatMessage) {
+            onAddChatMessage(`🔧 Modifying document structure...`)
+          }
+          
+          // For now, treat structure modification as content generation for the target section
+          // TODO: Implement proper structure modification (add/remove/reorder sections)
+          if (activeContext && onWriteContent) {
+            // User wants to add content to a specific section (like "add to summary")
+            await onWriteContent(activeContext.id, message)
+          } else {
+            if (onAddChatMessage) {
+              onAddChatMessage(`⚠️ Structure modification requires a selected segment. Please click on the section you want to modify.`)
+            }
+          }
           break
         
         case 'clarify_intent':

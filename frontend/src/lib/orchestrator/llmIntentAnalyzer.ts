@@ -31,6 +31,8 @@ export interface LLMIntentContext {
     name: string
     level: number
   }>
+  isDocumentViewOpen: boolean // Is user working inside a document?
+  documentFormat?: string // Novel, Report, Screenplay, etc.
   availableActions: UserIntent[]
 }
 
@@ -52,14 +54,26 @@ Your job is to analyze user messages and determine their intent, considering:
 1. The current message
 2. Recent conversation history (to understand "it", "this", "that")
 3. The active segment/section in the document
-4. Available actions the system can perform
+4. Whether the document panel is open (CRITICAL FOR INTENT!)
+5. Available actions the system can perform
 
 Available intents:
 - write_content: User wants to generate NEW narrative content for a section
 - answer_question: User wants information, explanation, or discussion (respond in chat)
 - improve_content: User wants to refine/enhance existing content
 - modify_structure: User wants to change document structure (add/remove sections)
+- create_structure: User wants to create a BRAND NEW story/document (only when document panel is CLOSED)
 - clarify_intent: You're unsure and need to ask a clarifying question
+
+CRITICAL CONTEXT RULES:
+- If document panel is OPEN → User is working INSIDE that document
+  * "write more" → write_content (for current section)
+  * "add X to Y" → modify_structure (within this document)
+  * NEVER create_structure (don't make new documents)
+  
+- If document panel is CLOSED → User is on the canvas
+  * "create a novel" → create_structure (new document node)
+  * "write about X" → create_structure (needs new document first)
 
 Guidelines:
 - If user says "write more", "expand", "continue" → write_content
@@ -72,6 +86,7 @@ Be context-aware:
 - "it" or "this" usually refers to the most recent explanation or the selected segment
 - "add X to Y" means modify the Y section with content X
 - Conversational follow-ups relate to the previous exchange
+- Document panel open = work WITHIN document, not create new ones!
 
 Return your analysis as JSON with this structure:
 {
@@ -166,6 +181,13 @@ Return ONLY valid JSON with your analysis.`
 function buildContextString(context: LLMIntentContext): string {
   let str = 'Context:\n\n'
 
+  // MOST IMPORTANT: Document panel state
+  str += `**Document Panel Status: ${context.isDocumentViewOpen ? 'OPEN (user is working inside a document)' : 'CLOSED (user is on canvas)'}**\n`
+  if (context.isDocumentViewOpen && context.documentFormat) {
+    str += `Document Type: ${context.documentFormat}\n`
+  }
+  str += '\n'
+
   // Active segment
   if (context.activeSegment) {
     str += `Selected segment: "${context.activeSegment.name}"`
@@ -173,6 +195,8 @@ function buildContextString(context: LLMIntentContext): string {
       str += ` - ${context.activeSegment.title}`
     }
     str += `\nSegment has content: ${context.activeSegment.hasContent ? 'Yes' : 'No'}\n\n`
+  } else if (context.isDocumentViewOpen) {
+    str += 'Document is open but no segment selected\n\n'
   } else {
     str += 'No segment selected\n\n'
   }

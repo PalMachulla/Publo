@@ -39,6 +39,8 @@ export interface IntentContext {
   activeSegmentHasContent?: boolean
   conversationHistory?: ConversationMessage[]
   documentStructure?: Array<{ id: string; name: string; level: number }>
+  isDocumentViewOpen?: boolean // CRITICAL: Is user working in a document?
+  documentFormat?: string // Novel, Report, Screenplay, etc.
   useLLM?: boolean // Force LLM analysis (for testing or complex cases)
 }
 
@@ -66,6 +68,8 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
           hasContent: context.activeSegmentHasContent || false
         } : undefined,
         documentStructure: context.documentStructure,
+        isDocumentViewOpen: context.isDocumentViewOpen || false, // CRITICAL
+        documentFormat: context.documentFormat,
         availableActions: ['write_content', 'answer_question', 'improve_content', 'modify_structure', 'general_chat']
       })
       
@@ -193,8 +197,8 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
     }
   }
   
-  // PRIORITY 3: Structure creation (no segment selected, creation keywords)
-  if (!hasActiveSegment) {
+  // PRIORITY 3: Structure creation (ONLY when document panel is CLOSED)
+  if (!context.isDocumentViewOpen && !hasActiveSegment) {
     const structurePatterns = [
       /create (a |an )?story/i,
       /create (a |an )?(novel|screenplay|article|report)/i,
@@ -208,10 +212,29 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
       return {
         intent: 'create_structure',
         confidence: 0.9,
-        reasoning: 'User wants to create a new story structure from scratch',
+        reasoning: 'User wants to create a new story structure from scratch (document panel is closed)',
         suggestedAction: 'Generate a complete story structure using orchestrator model',
         requiresContext: false,
         suggestedModel: 'orchestrator'
+      }
+    }
+  }
+  
+  // If document panel is OPEN and user says "create", they probably mean "write content"
+  if (context.isDocumentViewOpen && hasActiveSegment) {
+    const createInDocPatterns = [
+      /create (a |an )?(scene|chapter|section)/i,
+      /^write (a |an )?(scene|chapter|paragraph)/i,
+    ]
+    
+    if (createInDocPatterns.some(pattern => pattern.test(message))) {
+      return {
+        intent: 'write_content',
+        confidence: 0.85,
+        reasoning: 'User wants to create content within the open document',
+        suggestedAction: `Write content for "${activeSegmentName}"`,
+        requiresContext: true,
+        suggestedModel: 'writer'
       }
     }
   }
