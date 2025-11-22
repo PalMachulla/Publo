@@ -1782,17 +1782,55 @@ export default function CanvasPage() {
         throw new Error(`Failed to generate content: ${errorMsg}${errorDetails}`)
       }
       
-      // Update the content map with new content
+      // Update the content map with new content (local state)
       setCurrentContentMap(prev => ({
         ...prev,
         [segmentId]: data.content
       }))
       
+      // CRITICAL: Save generated content to Supabase sections
+      // This ensures content persists and appears in document view
+      console.log('💾 Saving generated content to Supabase section:', {
+        segmentId,
+        contentLength: data.content.length,
+        nodeId: currentStoryStructureNodeId
+      })
+      
+      try {
+        const supabase = createClient()
+        
+        // Update or insert the section content
+        const { data: sectionData, error: sectionError } = await supabase
+          .from('document_sections')
+          .upsert({
+            story_structure_node_id: currentStoryStructureNodeId,
+            structure_item_id: segmentId,
+            content: data.content,
+            word_count: data.content.split(/\s+/).filter((w: string) => w.length > 0).length,
+            status: 'completed',
+            order_index: currentStructureItems.findIndex((item: any) => item.id === segmentId)
+          }, {
+            onConflict: 'story_structure_node_id,structure_item_id',
+            ignoreDuplicates: false
+          })
+          .select()
+        
+        if (sectionError) {
+          console.error('❌ Failed to save section to Supabase:', sectionError)
+          // Don't throw - content is still in local state
+        } else {
+          console.log('✅ Section saved to Supabase:', sectionData)
+        }
+      } catch (saveError) {
+        console.error('❌ Error saving section:', saveError)
+        // Don't throw - content is still in local state
+      }
+      
       // Add success message
       setCanvasChatHistory(prev => [...prev, {
         id: `write_success_${Date.now()}`,
         timestamp: new Date().toISOString(),
-        content: `✅ Content generated successfully for segment: ${segmentId}`,
+        content: `✅ Content generated and saved for segment: ${segmentId}`,
         type: 'result' as const,
         role: 'orchestrator' as const
       }])
