@@ -939,12 +939,23 @@ export default function CanvasPage() {
       })
       
       // Pass AI Prompt node if exists, otherwise null (chat prompt will be used)
+      // Start orchestration BEFORE saving to avoid delays from database errors
       setTimeout(() => {
+        console.log('⏰ Triggering orchestration for structure:', structureId)
         triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context')
       }, 100)
+      
+      // Save in background (don't block orchestration)
+      saveAndFinalize().catch(err => {
+        console.warn('Background save failed, but orchestration continues:', err)
+      })
+    } else {
+      console.warn('⚠️ No AI Prompt node or chat prompt found, skipping auto-generation')
+      // Still save the node even if not auto-generating
+      saveAndFinalize().catch(err => {
+        console.warn('Background save failed:', err)
+      })
     }
-    
-    saveAndFinalize()
   }, [nodes, edges, setNodes, setEdges, handleSave])
   
   // NEW: Orchestrator-based generation using agentic system
@@ -954,7 +965,14 @@ export default function CanvasPage() {
     aiPromptNode: Node | null, // Now optional
     orchestratorNodeId: string
   ) => {
-    console.log('🎬 Starting orchestrator-based agentic generation...')
+    console.log('═══════════════════════════════════════════════')
+    console.log('🎬 ORCHESTRATION STARTED')
+    console.log('═══════════════════════════════════════════════')
+    console.log('Structure ID:', structureNodeId)
+    console.log('Format:', format)
+    console.log('Has AI Prompt Node:', !!aiPromptNode)
+    console.log('Orchestrator ID:', orchestratorNodeId)
+    console.log('═══════════════════════════════════════════════')
     
     // Check authentication
     if (!user) {
