@@ -1787,11 +1787,17 @@ export default function CanvasPage() {
    * This is the ACTUAL content source - not node contentMap
    */
   const handleSectionsLoaded = useCallback((sections: Array<{ id: string; structure_item_id: string; content: string }>) => {
-    console.log('📚 Sections loaded from Supabase:', {
+    console.log('📚 [CANVAS] handleSectionsLoaded called:', {
       count: sections.length,
-      sampleIds: sections.slice(0, 3).map(s => ({ id: s.id, structureItemId: s.structure_item_id, contentLength: s.content.length }))
+      sampleIds: sections.slice(0, 3).map(s => ({ 
+        id: s.id, 
+        structureItemId: s.structure_item_id, 
+        contentLength: s.content?.length || 0,
+        contentPreview: s.content?.substring(0, 50)
+      }))
     })
     setCurrentSections(sections)
+    console.log('✅ [CANVAS] currentSections state updated')
   }, [])
 
   /**

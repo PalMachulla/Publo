@@ -102,8 +102,24 @@ export default function AIDocumentPanel({
 
   // Notify parent when sections are loaded (so orchestrator can access content)
   useEffect(() => {
+    console.log('🔍 AIDocumentPanel sections changed:', {
+      sectionsLength: sections.length,
+      hasCallback: !!onSectionsLoaded,
+      sampleSection: sections[0] ? {
+        id: sections[0].id,
+        structure_item_id: sections[0].structure_item_id,
+        contentLength: sections[0].content?.length || 0,
+        contentPreview: sections[0].content?.substring(0, 100)
+      } : null
+    })
+    
     if (sections.length > 0 && onSectionsLoaded) {
+      console.log('📞 Calling onSectionsLoaded with', sections.length, 'sections')
       onSectionsLoaded(sections)
+    } else {
+      console.log('⚠️ Not calling onSectionsLoaded:', {
+        reason: sections.length === 0 ? 'sections empty' : 'no callback'
+      })
     }
   }, [sections, onSectionsLoaded])
 
@@ -129,7 +145,14 @@ export default function AIDocumentPanel({
 
   // Re-initialize sections when structure items change
   useEffect(() => {
-    if (isOpen && storyStructureNodeId && structureItems.length > 0 && sections.length > 0) {
+    if (isOpen && storyStructureNodeId && structureItems.length > 0) {
+      // If sections is empty, initialize all sections
+      if (sections.length === 0) {
+        console.log('🚀 No sections exist, initializing all sections...')
+        initializeSections()
+        return
+      }
+      
       // Check if structure items have changed (added/removed)
       const structureItemIds = new Set(structureItems.map(item => item.id))
       const sectionItemIds = new Set(sections.map(s => s.structure_item_id))
@@ -138,6 +161,7 @@ export default function AIDocumentPanel({
       const hasRemovedItems = sections.some(s => !structureItemIds.has(s.structure_item_id))
       
       if (hasNewItems || hasRemovedItems) {
+        console.log('🔄 Structure items changed, re-initializing sections...')
         initializeSections()
       }
     }

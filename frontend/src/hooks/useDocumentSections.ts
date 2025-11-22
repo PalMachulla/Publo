@@ -41,11 +41,13 @@ export function useDocumentSections({
   // Fetch sections from database
   const fetchSections = useCallback(async () => {
     if (!storyStructureNodeId || !enabled) {
+      console.log('🔍 [useDocumentSections] fetchSections skipped:', { storyStructureNodeId, enabled })
       setLoading(false)
       return
     }
 
     try {
+      console.log('🔍 [useDocumentSections] Fetching sections for node:', storyStructureNodeId)
       setLoading(true)
       setError(null)
 
@@ -56,6 +58,16 @@ export function useDocumentSections({
         .order('order_index', { ascending: true })
 
       if (fetchError) throw fetchError
+
+      console.log('✅ [useDocumentSections] Fetched sections:', {
+        count: data?.length || 0,
+        sample: data?.[0] ? {
+          id: data[0].id,
+          structure_item_id: data[0].structure_item_id,
+          contentLength: data[0].content?.length || 0,
+          contentPreview: data[0].content?.substring(0, 50)
+        } : null
+      })
 
       setSections(data || [])
     } catch (err) {
