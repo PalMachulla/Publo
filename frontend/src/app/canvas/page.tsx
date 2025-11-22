@@ -1745,11 +1745,14 @@ export default function CanvasPage() {
         })
       })
       
-      if (!response.ok) {
-        throw new Error(`Failed to generate content: ${response.statusText}`)
-      }
-      
       const data = await response.json()
+      
+      if (!response.ok) {
+        // Show the actual error message from the API
+        const errorMsg = data.error || response.statusText
+        const errorDetails = data.details ? `\nDetails: ${data.details}` : ''
+        throw new Error(`Failed to generate content: ${errorMsg}${errorDetails}`)
+      }
       
       // Update the content map with new content
       setCurrentContentMap(prev => ({
