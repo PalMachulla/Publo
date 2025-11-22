@@ -19,6 +19,15 @@ interface CreateStoryPanelProps {
   onClose: () => void
   onUpdate?: (nodeId: string, data: Partial<CreateStoryNodeData>) => void
   onSendPrompt?: (prompt: string) => void // NEW: For chat-based prompting
+  canvasChatHistory?: Array<{
+    id: string
+    timestamp: string
+    content: string
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+    role?: 'user' | 'orchestrator'
+  }>
+  onAddChatMessage?: (message: string) => void
+  onClearChat?: () => void
 }
 
 interface Template {
@@ -148,12 +157,23 @@ const storyFormats: Array<{ type: StoryFormat; label: string; description: strin
 ]
 
 interface ReasoningMessage {
+  id: string
   timestamp: string
   content: string
-  type: 'thinking' | 'decision' | 'task' | 'result' | 'error'
+  type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+  role?: 'user' | 'orchestrator'
 }
 
-export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdate, onSendPrompt }: CreateStoryPanelProps) {
+export default function CreateStoryPanel({ 
+  node, 
+  onCreateStory, 
+  onClose, 
+  onUpdate, 
+  onSendPrompt,
+  canvasChatHistory = [],
+  onAddChatMessage,
+  onClearChat
+}: CreateStoryPanelProps) {
   const router = useRouter()
   const [configuredModel, setConfiguredModel] = useState<{
     orchestrator: string | null
@@ -168,21 +188,21 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
   const [isModelPillExpanded, setIsModelPillExpanded] = useState(false)
   const [isFormatPillExpanded, setIsFormatPillExpanded] = useState(false)
   
-  // Chat state
+  // Chat state (local input only, history is canvas-level)
   const [chatMessage, setChatMessage] = useState('')
-  const [chatMessages, setChatMessages] = useState<Array<{id: string, role: 'user' | 'orchestrator', content: string}>>([])
   
-  // Reasoning chat state - synced from node data
+  // Reasoning chat state
   const [isReasoningOpen, setIsReasoningOpen] = useState(true) // Open by default to see streaming
   const reasoningEndRef = useRef<HTMLDivElement>(null) // Auto-scroll target
   const chatInputRef = useRef<HTMLTextAreaElement>(null) // Chat input ref
   
-  // Read reasoning messages from node data (updated by orchestrator)
-  const reasoningMessages: ReasoningMessage[] = (node.data as any).reasoningMessages || []
+  // Use CANVAS-LEVEL chat history (persistent across all generations)
+  const reasoningMessages: ReasoningMessage[] = canvasChatHistory
   
   // Detect if streaming (last message is from model and being updated)
   const isStreaming = reasoningMessages.length > 0 && 
-    reasoningMessages[reasoningMessages.length - 1].content.startsWith('🤖 Model reasoning:')
+    reasoningMessages[reasoningMessages.length - 1].role === 'orchestrator' &&
+    reasoningMessages[reasoningMessages.length - 1].content.startsWith('🤖 Model')
 
   // Auto-open reasoning panel when messages appear or update
   useEffect(() => {
@@ -475,6 +495,22 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
             </div>
           )}
           
+          {/* New Chat Button (only show if there's history) */}
+          {reasoningMessages.length > 0 && onClearChat && (
+            <div className="flex justify-end mb-2">
+              <button
+                onClick={onClearChat}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md border border-gray-300 transition-colors"
+                title="Start a new conversation"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                New Chat
+              </button>
+            </div>
+          )}
+          
           <div className="flex-1 overflow-y-auto space-y-3">
             {reasoningMessages.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
@@ -589,22 +625,17 @@ export default function CreateStoryPanel({ node, onCreateStory, onClose, onUpdat
                 // Send prompt to orchestrator
                 console.log('📤 Sending prompt to orchestrator:', chatMessage)
                 
+                // Add user message to CANVAS-LEVEL chat history (persistent)
+                if (onAddChatMessage) {
+                  onAddChatMessage(chatMessage)
+                }
+                
                 // Store prompt in orchestrator node for the canvas to use
                 if (onUpdate) {
                   onUpdate(node.id, { chatPrompt: chatMessage })
                 }
                 
-                // Add user message to chat
-                setChatMessages([
-                  ...chatMessages,
-                  {
-                    id: `user_${Date.now()}`,
-                    role: 'user',
-                    content: chatMessage
-                  }
-                ])
-                
-                // Small delay to ensure node update is processed
+                // Small delay to ensure chat message is added
                 setTimeout(() => {
                   // Trigger story creation with the prompt
                   onCreateStory(selectedFormat, selectedTemplate)

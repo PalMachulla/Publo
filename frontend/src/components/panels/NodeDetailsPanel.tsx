@@ -58,6 +58,15 @@ interface NodeDetailsPanelProps {
   onAddEdge?: (edge: Edge) => void
   edges?: Edge[]
   nodes?: Node[]
+  canvasChatHistory?: Array<{
+    id: string
+    timestamp: string
+    content: string
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+    role?: 'user' | 'orchestrator'
+  }>
+  onAddChatMessage?: (message: string) => void
+  onClearChat?: () => void
 }
 
 export default function NodeDetailsPanel({
@@ -70,7 +79,10 @@ export default function NodeDetailsPanel({
   onAddNode,
   onAddEdge,
   edges = [],
-  nodes = []
+  nodes = [],
+  canvasChatHistory = [],
+  onAddChatMessage,
+  onClearChat
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
   const [commentText, setCommentText] = useState('')
@@ -409,6 +421,9 @@ export default function NodeDetailsPanel({
               onCreateStory={onCreateStory || (() => console.warn('onCreateStory not provided'))} 
               onClose={onClose}
               onUpdate={onUpdate}
+              canvasChatHistory={canvasChatHistory}
+              onAddChatMessage={onAddChatMessage}
+              onClearChat={onClearChat}
             />
           ) : nodeType === 'story-structure' ? (
             // Story Structure Metadata Panel

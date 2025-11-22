@@ -77,6 +77,15 @@ export default function CanvasPage() {
   
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+  
+  // Canvas-level chat history (persistent across all generations)
+  const [canvasChatHistory, setCanvasChatHistory] = useState<Array<{
+    id: string
+    timestamp: string
+    content: string
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+    role?: 'user' | 'orchestrator'
+  }>>([])
 
   // Wrapper to prevent context node deletion and handle cluster node dragging
   const handleNodesChange = useCallback((changes: any) => {
@@ -1044,16 +1053,21 @@ export default function CanvasPage() {
         type: 'thinking' | 'decision' | 'task' | 'result' | 'error'
       }> = []
       
-      // Reasoning callback to update orchestrator node
+      // Reasoning callback to update CANVAS-LEVEL chat history
       const onReasoning = (message: string, type: any) => {
         const msg = {
+          id: `reasoning_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           timestamp: new Date().toISOString(),
           content: message,
-          type
+          type,
+          role: 'orchestrator' as const
         }
         reasoningMessages.push(msg)
         
-        // Update orchestrator node with reasoning messages
+        // Append to canvas-level chat history (persistent)
+        setCanvasChatHistory(prev => [...prev, msg])
+        
+        // Also update orchestrator node for backward compatibility
         setNodes((nds) =>
           nds.map((n) =>
             n.id === orchestratorNodeId
@@ -1110,6 +1124,17 @@ export default function CanvasPage() {
           // Update the message content with accumulated reasoning
           currentModelMessage.content = `🤖 Model reasoning:\n${modelReasoningBuffer}`
           
+          // Update canvas-level chat history (persistent)
+          setCanvasChatHistory(prev => {
+            const existingIndex = prev.findIndex(m => m.id === currentModelMessage!.id)
+            if (existingIndex >= 0) {
+              const updated = [...prev]
+              updated[existingIndex] = { ...currentModelMessage!, role: 'orchestrator' as const }
+              return updated
+            }
+            return [...prev, { ...currentModelMessage!, role: 'orchestrator' as const }]
+          })
+          
           // Update orchestrator node with the new messages
           setNodes((nds) =>
             nds.map((n) =>
@@ -1138,6 +1163,17 @@ export default function CanvasPage() {
             ? modelReasoningBuffer.substring(0, 200) + '...' 
             : modelReasoningBuffer
           currentModelMessage.content = `🤖 Model streaming plan (JSON):\n${preview}`
+          
+          // Update canvas-level chat history (persistent)
+          setCanvasChatHistory(prev => {
+            const existingIndex = prev.findIndex(m => m.id === currentModelMessage!.id)
+            if (existingIndex >= 0) {
+              const updated = [...prev]
+              updated[existingIndex] = { ...currentModelMessage!, role: 'orchestrator' as const }
+              return updated
+            }
+            return [...prev, { ...currentModelMessage!, role: 'orchestrator' as const }]
+          })
           
           setNodes((nds) =>
             nds.map((n) =>
@@ -2491,6 +2527,22 @@ export default function CanvasPage() {
           onAddEdge={(newEdge) => setEdges((eds) => [...eds, newEdge])}
           edges={edges}
           nodes={nodes}
+          canvasChatHistory={canvasChatHistory}
+          onAddChatMessage={(message) => {
+            const userMsg = {
+              id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              timestamp: new Date().toISOString(),
+              content: message,
+              type: 'user' as const,
+              role: 'user' as const
+            }
+            setCanvasChatHistory(prev => [...prev, userMsg])
+          }}
+          onClearChat={() => {
+            if (confirm('Clear all chat history? This cannot be undone.')) {
+              setCanvasChatHistory([])
+            }
+          }}
         />
 
         {/* Loading indicator now integrated into Orchestrator node */}
