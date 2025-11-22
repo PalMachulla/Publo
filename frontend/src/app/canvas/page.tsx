@@ -1787,22 +1787,40 @@ export default function CanvasPage() {
    */
   const handleAnswerQuestion = useCallback(async (question: string): Promise<string> => {
     console.log('💬 handleAnswerQuestion:', question)
+    
+    // BUILD contentMap from structureItems if contentMap is empty
+    // Content might be stored inline in structure items, not in separate contentMap
+    let effectiveContentMap = { ...currentContentMap }
+    
+    if (Object.keys(effectiveContentMap).length === 0 && currentStructureItems.length > 0) {
+      console.log('📦 Building contentMap from structureItems (contentMap is empty)')
+      currentStructureItems.forEach((item: any) => {
+        if (item.content && typeof item.content === 'string' && item.content.trim()) {
+          effectiveContentMap[item.id] = item.content
+        }
+      })
+      console.log('✅ Built contentMap:', {
+        itemsCount: currentStructureItems.length,
+        contentMapSize: Object.keys(effectiveContentMap).length,
+        sampleKeys: Object.keys(effectiveContentMap).slice(0, 3)
+      })
+    }
+    
     console.log('📊 Context being sent:', {
       storyStructureNodeId: currentStoryStructureNodeId,
       structureItemsCount: currentStructureItems.length,
-      contentMapKeys: Object.keys(currentContentMap),
-      contentMapSize: Object.keys(currentContentMap).length,
+      contentMapKeys: Object.keys(effectiveContentMap),
+      contentMapSize: Object.keys(effectiveContentMap).length,
       hasActiveContext: !!activeContext,
-      contentMapSample: Object.keys(currentContentMap).slice(0, 3).map(key => ({
+      contentMapSample: Object.keys(effectiveContentMap).slice(0, 3).map(key => ({
         id: key,
-        length: currentContentMap[key]?.length,
-        preview: currentContentMap[key]?.substring(0, 100)
+        length: effectiveContentMap[key]?.length,
+        preview: effectiveContentMap[key]?.substring(0, 100)
       }))
     })
     
     try {
-      // TODO: Call API to answer question using orchestrator model
-      // For now, return a placeholder response
+      // Call API to answer question using orchestrator model
       const response = await fetch('/api/content/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1811,7 +1829,7 @@ export default function CanvasPage() {
           context: {
             storyStructureNodeId: currentStoryStructureNodeId,
             structureItems: currentStructureItems,
-            contentMap: currentContentMap,
+            contentMap: effectiveContentMap, // ← Use built contentMap!
             activeContext
           }
         })
