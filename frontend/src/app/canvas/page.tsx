@@ -836,8 +836,8 @@ export default function CanvasPage() {
   }, [clusterCount, availableAgents]) // When cluster count or data changes
 
   // Handle Create Story node click - spawn new story structure node
-  const handleCreateStory = useCallback((format: StoryFormat, template?: string) => {
-    console.log('handleCreateStory called with format:', format, 'template:', template)
+  const handleCreateStory = useCallback((format: StoryFormat, template?: string, userPromptDirect?: string) => {
+    console.log('handleCreateStory called with format:', format, 'template:', template, 'userPromptDirect:', userPromptDirect)
     
     // Generate unique ID for the story structure
     const structureId = `structure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -931,22 +931,23 @@ export default function CanvasPage() {
       edges.some(e => e.source === n.id && e.target === 'context')
     )
     
-    // Check if chat prompt exists in orchestrator node
+    // Check if chat prompt exists (direct parameter OR orchestrator node data)
     const orchestratorNode = nodes.find(n => n.id === 'context')
-    const hasChatPrompt = !!(orchestratorNode?.data as any)?.chatPrompt
+    const hasChatPrompt = !!userPromptDirect || !!(orchestratorNode?.data as any)?.chatPrompt
     
     if (aiPromptNode || hasChatPrompt) {
       console.log('🚀 Auto-generating structure with orchestrator after node creation', {
         hasAIPromptNode: !!aiPromptNode,
         hasChatPrompt,
-        source: hasChatPrompt ? 'Chat Input (Priority)' : aiPromptNode ? 'AI Prompt Node' : 'None'
+        userPromptDirect: userPromptDirect || 'none',
+        source: userPromptDirect ? 'Chat Input (Direct)' : (orchestratorNode?.data as any)?.chatPrompt ? 'Chat Input (Node Data)' : aiPromptNode ? 'AI Prompt Node' : 'None'
       })
       
       // Pass AI Prompt node if exists, otherwise null (chat prompt will be used)
       // Start orchestration BEFORE saving to avoid delays from database errors
       setTimeout(() => {
         console.log('⏰ Triggering orchestration for structure:', structureId)
-        triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context')
+        triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
       }, 100)
       
       // Save in background (don't block orchestration)
@@ -967,7 +968,8 @@ export default function CanvasPage() {
     structureNodeId: string,
     format: StoryFormat,
     aiPromptNode: Node | null, // Now optional
-    orchestratorNodeId: string
+    orchestratorNodeId: string,
+    userPromptDirect?: string // Direct chat prompt (bypasses node data)
   ) => {
     console.log('═══════════════════════════════════════════════')
     console.log('🎬 ORCHESTRATION STARTED')
@@ -995,16 +997,30 @@ export default function CanvasPage() {
       return
     }
     
-    if (!aiPromptNode) {
-      alert('Please connect an AI Prompt node to the Orchestrator or use the chat input in the panel.')
+    // Determine user prompt source (priority: direct > AI Prompt node)
+    let userPrompt = ''
+    
+    if (userPromptDirect) {
+      // Priority 1: Direct chat input
+      userPrompt = userPromptDirect
+      console.log('✅ Using direct chat prompt:', userPrompt)
+    } else if (aiPromptNode) {
+      // Priority 2: AI Prompt node
+      const isActive = (aiPromptNode.data as any).isActive !== false
+      userPrompt = (aiPromptNode.data as any).userPrompt || ''
+      
+      if (isActive && !userPrompt.trim()) {
+        alert('Please enter a prompt in the AI Prompt node first, or set it to Passive mode.')
+        return
+      }
+      console.log('✅ Using AI Prompt node:', userPrompt)
+    } else {
+      alert('Please use the chat input in the panel or connect an AI Prompt node.')
       return
     }
     
-    const isActive = (aiPromptNode.data as any).isActive !== false
-    const userPrompt = (aiPromptNode.data as any).userPrompt || ''
-    
-    if (isActive && !userPrompt.trim()) {
-      alert('Please enter a prompt in the AI Prompt node first, or set it to Passive mode.')
+    if (!userPrompt.trim()) {
+      alert('Please enter a prompt first.')
       return
     }
     
@@ -1286,10 +1302,8 @@ export default function CanvasPage() {
         throw new Error(errorMsg)
       }
       
-      // Build effective prompt
-      const effectivePrompt = isActive 
-        ? userPrompt 
-        : `Create a ${format} structure with typical sections and appropriate detail.`
+      // Build effective prompt (already validated above)
+      const effectivePrompt = userPrompt
       
       onReasoning(`📝 Analyzing prompt: "${effectivePrompt.substring(0, 100)}..."`, 'thinking')
       

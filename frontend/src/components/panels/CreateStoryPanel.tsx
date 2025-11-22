@@ -15,7 +15,7 @@ import {
 
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
-  onCreateStory: (format: StoryFormat, template?: string) => void
+  onCreateStory: (format: StoryFormat, template?: string, userPrompt?: string) => void
   onClose: () => void
   onUpdate?: (nodeId: string, data: Partial<CreateStoryNodeData>) => void
   onSendPrompt?: (prompt: string) => void // NEW: For chat-based prompting
@@ -619,16 +619,9 @@ export default function CreateStoryPanel({
                   onAddChatMessage(chatMessage)
                 }
                 
-                // Store prompt in orchestrator node for the canvas to use
-                if (onUpdate) {
-                  onUpdate(node.id, { chatPrompt: chatMessage })
-                }
-                
-                // Small delay to ensure chat message is added
-                setTimeout(() => {
-                  // Trigger story creation with the prompt (template is optional)
-                  onCreateStory(selectedFormat, selectedTemplate || undefined)
-                }, 50)
+                // Trigger story creation IMMEDIATELY with the prompt (no delay needed)
+                // Pass prompt directly to avoid React state race condition
+                onCreateStory(selectedFormat, selectedTemplate || undefined, chatMessage)
                 
                 // Clear input
                 setChatMessage('')
