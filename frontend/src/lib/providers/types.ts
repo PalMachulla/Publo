@@ -77,7 +77,14 @@ export interface LLMProviderAdapter {
    * @returns AsyncGenerator yielding content chunks and final usage
    */
   generateStream?(apiKey: string, params: GenerateParams): AsyncGenerator<
-    { type: 'content' | 'reasoning' | 'done'; content?: string; usage?: ProviderUsage },
+    { 
+      type: 'content' | 'reasoning' | 'done' | 'error'
+      content?: string
+      usage?: ProviderUsage
+      model?: string
+      done?: boolean
+      error?: string
+    },
     void,
     unknown
   >
