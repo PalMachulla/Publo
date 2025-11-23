@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDeviceType } from '@/hooks/useDeviceType'
@@ -9,10 +9,16 @@ export default function Home() {
   const { user, loading } = useAuth()
   const { isMobile, isLoading: deviceLoading } = useDeviceType()
   const router = useRouter()
+  const [isMounted, setIsMounted] = useState(false)
+
+  // Prevent hydration mismatch by only rendering after mount
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   useEffect(() => {
     // Wait for both auth and device detection to complete
-    if (!loading && !deviceLoading) {
+    if (isMounted && !loading && !deviceLoading) {
       // Mobile users always go to mobile view
       if (isMobile) {
         router.push('/mobile')
@@ -26,9 +32,10 @@ export default function Home() {
         }
       }
     }
-  }, [user, loading, isMobile, deviceLoading, router])
+  }, [isMounted, user, loading, isMobile, deviceLoading, router])
 
-  if (loading || deviceLoading) {
+  // Always render loading state until mounted to avoid hydration mismatch
+  if (!isMounted || loading || deviceLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 relative overflow-hidden">
         {/* Grid background */}
