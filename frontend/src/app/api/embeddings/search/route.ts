@@ -15,7 +15,7 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Check authentication
     const {
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
 // GET: Get context for a specific node (without query)
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Check authentication
     const {

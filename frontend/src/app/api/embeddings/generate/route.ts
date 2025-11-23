@@ -10,7 +10,7 @@ import { StoryStructureItem } from '@/types/document'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Check authentication
     const {
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
 // GET: Check embedding status for a node
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Check authentication
     const {
