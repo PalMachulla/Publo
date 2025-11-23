@@ -112,8 +112,8 @@ export async function enhanceContextWithRAG(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: userMessage,
-        matchThreshold: 0.6, // Lower threshold for broader retrieval
-        matchCount: 8, // Get more chunks for better context
+        matchThreshold: 0.3, // Lower threshold for broader retrieval (0.3 = 30% similarity)
+        matchCount: 10, // Get more chunks for better context
         nodeId: targetNodeId,
         includeMetadata: true,
       }),

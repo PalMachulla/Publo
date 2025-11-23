@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
+import { createClient } from '@/lib/supabase/client'
 import { 
   CollapsibleSection,
   Card,
@@ -226,6 +227,7 @@ export default function CreateStoryPanel({
   onSelectNode
 }: CreateStoryPanelProps) {
   const router = useRouter()
+  const supabase = createClient()
   
   // Debug: Log received props on mount and when they change
   useEffect(() => {
@@ -671,6 +673,43 @@ Request: ${message}`
             // Add RAG-enhanced content if available (this would supplement the above)
             if (ragEnhancedContext?.hasRAG && ragEnhancedContext.ragContent) {
               questionPrompt += `\n\nAdditional Relevant Content (from semantic search):\n${ragEnhancedContext.ragContent}`
+            } else if (ragEnhancedContext?.fallbackReason?.includes('No relevant content found') && ragEnhancedContext.referencedNode) {
+              // RAG found no relevant chunks - fetch all content from database as fallback
+              if (onAddChatMessage) {
+                onAddChatMessage(`📚 Fetching document content (no semantically relevant chunks found)...`, 'orchestrator', 'thinking')
+              }
+              
+              try {
+                const nodeId = ragEnhancedContext.referencedNode.nodeId
+                const { data: allSections, error } = await supabase
+                  .from('document_sections')
+                  .select('id, content, structure_item_id')
+                  .eq('story_structure_node_id', nodeId)
+                  .limit(15) // Get first 15 sections
+                
+                if (!error && allSections && allSections.length > 0) {
+                  let fallbackContent = '\n\nDocument Content (all sections):\n'
+                  let totalChars = 0
+                  
+                  allSections.forEach(section => {
+                    if (section.content && section.content.trim()) {
+                      const truncated = section.content.length > 800 
+                        ? section.content.substring(0, 800) + '...' 
+                        : section.content
+                      fallbackContent += `\n---\n${truncated}\n`
+                      totalChars += truncated.length
+                    }
+                  })
+                  
+                  questionPrompt += fallbackContent
+                  
+                  if (onAddChatMessage) {
+                    onAddChatMessage(`📄 Retrieved ${allSections.length} sections (~${Math.round(totalChars/5)} words)`, 'orchestrator', 'result')
+                  }
+                }
+              } catch (fetchError) {
+                console.error('Failed to fetch fallback content:', fetchError)
+              }
             }
             
             if (onAddChatMessage) {
