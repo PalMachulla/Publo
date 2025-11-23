@@ -189,6 +189,20 @@ interface ReasoningMessage {
   role?: 'user' | 'orchestrator'
 }
 
+// Helper function to detect format from user message
+function detectFormatFromMessage(message: string): StoryFormat | null {
+  const lowerMessage = message.toLowerCase()
+  
+  if (lowerMessage.includes('podcast')) return 'podcast'
+  if (lowerMessage.includes('screenplay') || lowerMessage.includes('script')) return 'screenplay'
+  if (lowerMessage.includes('novel') || lowerMessage.includes('book')) return 'novel'
+  if (lowerMessage.includes('short story')) return 'short-story'
+  if (lowerMessage.includes('article') || lowerMessage.includes('blog')) return 'article'
+  if (lowerMessage.includes('report')) return 'report'
+  
+  return null
+}
+
 export default function CreateStoryPanel({ 
   node, 
   onCreateStory, 
@@ -230,6 +244,14 @@ export default function CreateStoryPanel({
   const [selectedFormat, setSelectedFormat] = useState<StoryFormat>('novel') // Default to 'novel'
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false) // Prevent double-clicks
+  
+  // Pending creation state - for interactive template selection
+  const [pendingCreation, setPendingCreation] = useState<{
+    format: StoryFormat
+    userMessage: string
+    referenceNode?: any
+    enhancedPrompt?: string
+  } | null>(null)
   
   // Pill expansion state
   const [isModelPillExpanded, setIsModelPillExpanded] = useState(false)
@@ -297,7 +319,58 @@ export default function CreateStoryPanel({
   /**
    * Agentic message handler - analyzes intent and routes to appropriate action
    */
+  // Handle template selection (both button click and conversational)
+  const handleTemplateSelection = async (templateId: string, templateName?: string) => {
+    if (!pendingCreation) return
+    
+    // Clear pending creation
+    const creation = pendingCreation
+    setPendingCreation(null)
+    
+    if (onAddChatMessage) {
+      onAddChatMessage(`✨ Great choice! Creating ${creation.format} with "${templateName || templateId}" template...`, 'orchestrator', 'result')
+      onAddChatMessage(`🏗️ Planning structure with orchestrator model...`, 'orchestrator', 'thinking')
+    }
+    
+    // Create with selected template
+    onCreateStory(creation.format, templateId, creation.enhancedPrompt)
+  }
+
   const handleSendMessage = async (message: string) => {
+    // Check if user is responding to template selection
+    if (pendingCreation) {
+      // Parse conversational template selection
+      const lowerMessage = message.toLowerCase()
+      const availableTemplates = templates[pendingCreation.format] || []
+      
+      // Try to match user response to a template
+      for (const template of availableTemplates) {
+        const templateNameLower = template.name.toLowerCase()
+        const templateWords = templateNameLower.split(' ')
+        
+        // Match: "the interview one", "interview format", "interview", "the first one", etc.
+        if (
+          lowerMessage.includes(templateNameLower) ||
+          templateWords.some(word => lowerMessage.includes(word)) ||
+          (lowerMessage.includes('first') && availableTemplates[0] && template.id === availableTemplates[0].id) ||
+          (lowerMessage.includes('blank') && template.id === 'blank')
+        ) {
+          if (onAddChatMessage) {
+            onAddChatMessage(message, 'user')
+          }
+          await handleTemplateSelection(template.id, template.name)
+          return
+        }
+      }
+      
+      // Didn't match any template - ask for clarification
+      if (onAddChatMessage) {
+        onAddChatMessage(message, 'user')
+        onAddChatMessage(`🤔 I didn't quite catch which template you want. Could you click one of the options below or be more specific?`, 'orchestrator', 'result')
+      }
+      return
+    }
+    
     // Add user message to chat history
     if (onAddChatMessage) {
       onAddChatMessage(message, 'user')  // Actual user input
@@ -738,10 +811,27 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
             }
           }
           
+          // Detect format from user message
+          const detectedFormat = detectFormatFromMessage(message)
+          const formatToUse = detectedFormat || selectedFormat
+          
+          // Store pending creation and ask for template choice
+          setPendingCreation({
+            format: formatToUse,
+            userMessage: message,
+            referenceNode: hasReference ? findReferencedNode(message, canvasContext) : undefined,
+            enhancedPrompt: enhancedPrompt
+          })
+          
+          // Show template options to user
+          const formatLabel = storyFormats.find(f => f.type === formatToUse)?.label || formatToUse
+          const availableTemplates = templates[formatToUse] || []
+          
           if (onAddChatMessage) {
-            onAddChatMessage(`🏗️ Planning structure with orchestrator model...`)
+            onAddChatMessage(`📝 Great! Let's create a ${formatLabel}. What style would you like?`, 'orchestrator', 'result')
           }
-          onCreateStory(selectedFormat, selectedTemplate || undefined, enhancedPrompt)
+          
+          // Template options will be shown in the UI below chat
           break
         
         case 'modify_structure':
@@ -1439,6 +1529,34 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
 
       {/* Chat Input - Bottom */}
       <div className="border-t border-gray-200 bg-white p-4">
+        {/* Template Selection UI - shown when waiting for user to choose template */}
+        {pendingCreation && (
+          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm font-medium text-gray-900 mb-3">
+              Choose a template for your {storyFormats.find(f => f.type === pendingCreation.format)?.label || pendingCreation.format}:
+            </p>
+            <div className="grid grid-cols-1 gap-2">
+              {(templates[pendingCreation.format] || []).map((template) => (
+                <button
+                  key={template.id}
+                  onClick={() => handleTemplateSelection(template.id, template.name)}
+                  className="flex flex-col items-start p-3 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all text-left group"
+                >
+                  <span className="font-medium text-gray-900 group-hover:text-blue-700">
+                    {template.name}
+                  </span>
+                  <span className="text-xs text-gray-500 mt-1">
+                    {template.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-3">
+              💬 Or just tell me which one: "The interview one looks good" or "Let's go with blank canvas"
+            </p>
+          </div>
+        )}
+        
         <textarea
           ref={chatInputRef}
           value={chatMessage}
