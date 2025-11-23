@@ -191,14 +191,25 @@ Now write the content:`
       maxTokens: 2000
     })
     
-    // Generate content using provider adapter
-    const result = await adapter.generate(apiKey, {
+    // Detect if this is a reasoning model (o1, gpt-5, etc.) that restricts parameters
+    const isReasoningModel = writerModelId.toLowerCase().includes('o1') || 
+                             writerModelId.toLowerCase().includes('gpt-5')
+    
+    // Build generation options (reasoning models don't support custom temperature)
+    const generateOptions: any = {
       model: writerModelId,
       system_prompt: systemPrompt,
       user_prompt: userPrompt,
-      max_tokens: 2000,
-      temperature: 0.8
-    })
+      max_tokens: 2000
+    }
+    
+    // Only add temperature for non-reasoning models
+    if (!isReasoningModel) {
+      generateOptions.temperature = 0.8
+    }
+    
+    // Generate content using provider adapter
+    const result = await adapter.generate(apiKey, generateOptions)
     
     console.log('[API /content/generate] Generated content length:', result.content.length)
     

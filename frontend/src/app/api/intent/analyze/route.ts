@@ -35,51 +35,47 @@ export async function POST(request: NextRequest) {
     
     console.log('[API /intent/analyze] Analyzing intent with LLM...')
     
-    // Get orchestrator model preference
-    const { data: preferences } = await supabase
-      .from('model_preferences')
-      .select('*')
-      .eq('user_id', user.id)
-      .single()
-    
-    const orchestratorModelId = preferences?.orchestrator_model || 'llama-3.3-70b-versatile'
-    
-    console.log('[API /intent/analyze] Using orchestrator:', orchestratorModelId)
-    
-    // Detect provider from model ID
-    const provider = detectProviderFromModel(orchestratorModelId)
-    if (!provider) {
-      return NextResponse.json(
-        { error: `Could not detect provider for model: ${orchestratorModelId}` },
-        { status: 400 }
-      )
-    }
-    
-    // Get user's API key for this provider
-    const { data: userKey, error: keyError } = await supabase
+    // Get configured orchestrator directly from user_api_keys
+    const { data: configuredKeys } = await supabase
       .from('user_api_keys')
-      .select('id, encrypted_key, provider, is_active, validation_status, nickname')
+      .select('id, provider, encrypted_key, orchestrator_model_id, nickname')
       .eq('user_id', user.id)
-      .eq('provider', provider)
       .eq('is_active', true)
       .eq('validation_status', 'valid')
+      .not('orchestrator_model_id', 'is', null)
       .limit(1)
-      .single()
-    
-    if (!userKey) {
-      console.error('[API /intent/analyze] No API key found:', {
-        provider,
-        userId: user.id,
-        keyError: keyError?.message
-      })
-      return NextResponse.json(
-        { 
-          error: `No ${provider.toUpperCase()} API key found. Please add your key at /settings/api-keys`,
-          provider,
-          details: keyError?.message
-        },
-        { status: 400 }
-      )
+
+    let orchestratorModelId: string
+    let userKey: any
+    let provider: string
+
+    if (configuredKeys && configuredKeys.length > 0) {
+      userKey = configuredKeys[0]
+      orchestratorModelId = userKey.orchestrator_model_id
+      provider = userKey.provider
+      console.log('[API /intent/analyze] Using configured orchestrator:', orchestratorModelId)
+    } else {
+      // Fallback to Groq
+      const { data: groqKey } = await supabase
+        .from('user_api_keys')
+        .select('id, provider, encrypted_key, nickname')
+        .eq('user_id', user.id)
+        .eq('provider', 'groq')
+        .eq('is_active', true)
+        .eq('validation_status', 'valid')
+        .limit(1)
+        .maybeSingle()
+      
+      if (groqKey) {
+        userKey = groqKey
+        provider = 'groq'
+        orchestratorModelId = 'llama-3.3-70b-versatile'
+      } else {
+        return NextResponse.json(
+          { error: 'No active API keys found.' },
+          { status: 400 }
+        )
+      }
     }
     
     // Decrypt the API key
@@ -88,14 +84,25 @@ export async function POST(request: NextRequest) {
     // Get provider adapter
     const adapter = getProviderAdapter(provider)
     
-    // Generate intent analysis using orchestrator
-    const result = await adapter.generate(apiKey, {
+    // Detect if this is a reasoning model (o1, gpt-5, etc.) that restricts parameters
+    const isReasoningModel = orchestratorModelId.toLowerCase().includes('o1') || 
+                             orchestratorModelId.toLowerCase().includes('gpt-5')
+    
+    // Build generation options (reasoning models don't support custom temperature)
+    const generateOptions: any = {
       model: orchestratorModelId,
       system_prompt,
       user_prompt,
-      max_tokens: 500, // Intent analysis doesn't need many tokens
-      temperature
-    })
+      max_tokens: 500 // Intent analysis doesn't need many tokens
+    }
+    
+    // Only add temperature for non-reasoning models
+    if (!isReasoningModel) {
+      generateOptions.temperature = temperature
+    }
+    
+    // Generate intent analysis using orchestrator
+    const result = await adapter.generate(apiKey, generateOptions)
     
     console.log('[API /intent/analyze] Analysis complete, length:', result.content.length)
     

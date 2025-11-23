@@ -170,14 +170,31 @@ Be conversational, insightful, and provide actionable suggestions when appropria
 
 Please answer this question based on the available context. Be helpful and specific.`
     
-    // Generate answer using provider adapter
-    const result = await adapter.generate(apiKey, {
+    // Detect if this is a reasoning model (o1, gpt-5, etc.) that restricts parameters
+    const isReasoningModel = orchestratorModelId.toLowerCase().includes('o1') || 
+                             orchestratorModelId.toLowerCase().includes('gpt-5')
+    
+    console.log('[API /content/answer] Model type:', {
+      model: orchestratorModelId,
+      isReasoningModel,
+      willUseTemperature: !isReasoningModel
+    })
+    
+    // Build generation options (reasoning models don't support custom temperature)
+    const generateOptions: any = {
       model: orchestratorModelId,
       system_prompt: systemPrompt,
       user_prompt: userPrompt,
-      max_tokens: 1000,
-      temperature: 0.7
-    })
+      max_tokens: 1000
+    }
+    
+    // Only add temperature for non-reasoning models
+    if (!isReasoningModel) {
+      generateOptions.temperature = 0.7
+    }
+    
+    // Generate answer using provider adapter
+    const result = await adapter.generate(apiKey, generateOptions)
     
     console.log('[API /content/answer] Generated answer length:', result.content.length)
     
