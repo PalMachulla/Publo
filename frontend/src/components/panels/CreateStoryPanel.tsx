@@ -540,19 +540,65 @@ Request: ${message}`
           
           // Add canvas context if available
           if (canvasContext.connectedNodes.length > 0) {
-            const contextSummary = canvasContext.connectedNodes
-              .map(node => `- ${node.label}: ${node.summary}`)
-              .join('\n')
+            let contextSummary = ''
+            let totalContentChars = 0
             
-            questionPrompt = `User Question: ${message}\n\nAvailable Context:\n${contextSummary}`
+            // Build detailed context from each node
+            canvasContext.connectedNodes.forEach(node => {
+              contextSummary += `\n--- ${node.label} (${node.nodeType}) ---\n`
+              contextSummary += `Summary: ${node.summary}\n`
+              
+              // If it's a story structure node with actual content, include it!
+              if (node.nodeType === 'story-structure' && node.detailedContext?.contentMap) {
+                const contentMap = node.detailedContext.contentMap as Record<string, string>
+                const contentEntries = Object.entries(contentMap)
+                
+                if (contentEntries.length > 0) {
+                  contextSummary += `\nContent (${contentEntries.length} sections):\n`
+                  
+                  // Include content from sections (limit to prevent overwhelming the context)
+                  contentEntries.slice(0, 10).forEach(([sectionId, content]) => {
+                    if (content && content.trim()) {
+                      const sectionInfo = node.detailedContext?.allSections?.find((s: any) => s.id === sectionId)
+                      const sectionName = sectionInfo?.name || sectionId
+                      
+                      // Truncate very long sections to keep context manageable
+                      const truncatedContent = content.length > 1000 
+                        ? content.substring(0, 1000) + '...' 
+                        : content
+                      
+                      contextSummary += `\n## ${sectionName}\n${truncatedContent}\n`
+                      totalContentChars += truncatedContent.length
+                    }
+                  })
+                  
+                  if (contentEntries.length > 10) {
+                    contextSummary += `\n(... ${contentEntries.length - 10} more sections available)\n`
+                  }
+                }
+              }
+              
+              // Include structure information
+              if (node.detailedContext?.structure) {
+                contextSummary += `\nStructure:\n${node.detailedContext.structure}\n`
+              }
+              
+              contextSummary += '\n'
+            })
             
-            // Add RAG-enhanced content if available
+            questionPrompt = `User Question: ${message}\n\nAvailable Context from Canvas:${contextSummary}`
+            
+            // Add RAG-enhanced content if available (this would supplement the above)
             if (ragEnhancedContext?.hasRAG && ragEnhancedContext.ragContent) {
-              questionPrompt += `\n\nRelevant Content (from semantic search):\n${ragEnhancedContext.ragContent}`
+              questionPrompt += `\n\nAdditional Relevant Content (from semantic search):\n${ragEnhancedContext.ragContent}`
             }
             
             if (onAddChatMessage) {
               onAddChatMessage(`📚 Using context from ${canvasContext.connectedNodes.length} connected node(s)`)
+              if (totalContentChars > 0) {
+                const wordCount = Math.round(totalContentChars / 5)
+                onAddChatMessage(`📄 Including ~${wordCount} words of actual content`)
+              }
               if (ragEnhancedContext?.hasRAG) {
                 onAddChatMessage(`🎯 Enhanced with ${ragEnhancedContext.ragStats?.resultsFound || 0} relevant chunks`)
               }
