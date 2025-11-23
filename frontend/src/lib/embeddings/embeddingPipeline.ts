@@ -3,10 +3,10 @@
  * Orchestrates the end-to-end process of chunking, embedding, and storing document content
  */
 
-import { createClient } from '@/lib/supabase/client'
 import { StoryStructureItem } from '@/types/document'
 import { chunkDocumentSection, DocumentChunk } from './chunkingService'
 import { generateBatchEmbeddings, estimateTokenCount } from './embeddingService'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface EmbeddingPipelineConfig {
   batchSize: number // Number of chunks to embed in parallel
@@ -30,6 +30,8 @@ const DEFAULT_PIPELINE_CONFIG: EmbeddingPipelineConfig = {
  * Process a single document section: chunk, embed, and store
  */
 export async function processSingleSection(
+  supabase: SupabaseClient,
+  userId: string,
   documentSectionId: string,
   content: string,
   structureItem: StoryStructureItem,
@@ -41,14 +43,7 @@ export async function processSingleSection(
   totalTokens: number
   error?: string
 }> {
-  const supabase = createClient()
-  
   try {
-    // Get user ID
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      throw new Error('User not authenticated')
-    }
 
     // Phase 1: Chunking
     config.onProgress?.({
@@ -109,7 +104,7 @@ export async function processSingleSection(
     const embeddingRecords = chunks.map((chunk, index) => ({
       document_section_id: documentSectionId,
       story_structure_node_id: nodeId,
-      user_id: user.id,
+      user_id: userId,
       chunk_text: chunk.text,
       chunk_index: chunk.chunkIndex,
       token_count: chunk.tokenCount,
@@ -183,6 +178,8 @@ export async function processSingleSection(
  * Process an entire story structure node (all sections)
  */
 export async function processStoryStructureNode(
+  supabase: SupabaseClient,
+  userId: string,
   nodeId: string,
   sections: Array<{
     documentSectionId: string
@@ -218,6 +215,8 @@ export async function processStoryStructureNode(
     }
 
     const result = await processSingleSection(
+      supabase,
+      userId,
       section.documentSectionId,
       section.content,
       section.structureItem,

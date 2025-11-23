@@ -75,6 +75,8 @@ export async function POST(request: NextRequest) {
       }
 
       const result = await processSingleSection(
+        supabase,
+        user.id,
         documentSectionId,
         sectionData.content,
         structureItem,
@@ -112,7 +114,7 @@ export async function POST(request: NextRequest) {
 
       // Try to generate embeddings (may fail if tables don't exist)
       try {
-        const result = await processStoryStructureNode(nodeId, sections)
+        const result = await processStoryStructureNode(supabase, user.id, nodeId, sections)
 
         return NextResponse.json({
           success: result.success,
