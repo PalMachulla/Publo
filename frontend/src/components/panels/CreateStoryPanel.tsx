@@ -1068,12 +1068,36 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
             // Find section that matches user's message
             const mentionedSection = sections.find((section: {id: string, name: string}) => {
               const lowerSectionName = section.name.toLowerCase()
-              // Check if message mentions this section name
-              return lowerMessage.includes(lowerSectionName) || 
-                     // Also check for common section keywords
-                     (lowerMessage.includes('intro') && lowerSectionName.includes('intro')) ||
+              
+              // Bidirectional matching: message contains section name OR section name contains message keywords
+              if (lowerMessage.includes(lowerSectionName) || lowerSectionName.includes(lowerMessage.trim())) {
+                return true
+              }
+              
+              // Pattern matching for common references
+              // "scene 1" → "Scene 1 – Opening Image"
+              const sceneMatch = lowerMessage.match(/scene\s+(\d+)/i)
+              if (sceneMatch && lowerSectionName.includes(`scene ${sceneMatch[1]}`)) {
+                return true
+              }
+              
+              // "act 1" → "Act I" or "Act 1"
+              const actMatch = lowerMessage.match(/act\s+(\d+|i{1,3}|iv|v)/i)
+              if (actMatch && (lowerSectionName.includes(`act ${actMatch[1]}`) || lowerSectionName.includes('act i'))) {
+                return true
+              }
+              
+              // "sequence 2" → "Sequence 2"
+              const seqMatch = lowerMessage.match(/sequence\s+(\d+)/i)
+              if (seqMatch && lowerSectionName.includes(`sequence ${seqMatch[1]}`)) {
+                return true
+              }
+              
+              // Common section keywords
+              return (lowerMessage.includes('intro') && lowerSectionName.includes('intro')) ||
                      (lowerMessage.includes('background') && lowerSectionName.includes('background')) ||
-                     (lowerMessage.includes('conclusion') && lowerSectionName.includes('conclusion'))
+                     (lowerMessage.includes('conclusion') && lowerSectionName.includes('conclusion')) ||
+                     (lowerMessage.includes('opening') && lowerSectionName.includes('opening'))
             })
             
             if (mentionedSection) {
