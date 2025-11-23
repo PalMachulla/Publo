@@ -942,14 +942,37 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
             onAddChatMessage(`🔧 Modifying document structure...`)
           }
           
+          // Smart Section Detection: Find target section from message if none selected
+          let modTargetId = activeContext?.id
+          
+          if (!modTargetId && structureItems.length > 0) {
+            const lowerMessage = message.toLowerCase()
+            const matchedSection = structureItems.find(item => {
+              const name = item.name.toLowerCase()
+              return lowerMessage.includes(name) || 
+                     (name.includes('sequence') && lowerMessage.includes('sequence') && lowerMessage.includes(item.name.split(' ').pop()?.toLowerCase() || ''))
+            })
+            
+            if (matchedSection) {
+              modTargetId = matchedSection.id
+              if (onAddChatMessage) {
+                onAddChatMessage(`🎯 Identified target section: "${matchedSection.name}"`, 'orchestrator', 'thinking')
+              }
+              // Auto-select the section visually
+              if (currentStoryStructureNodeId && onSelectNode) {
+                onSelectNode(currentStoryStructureNodeId, modTargetId)
+              }
+            }
+          }
+          
           // For now, treat structure modification as content generation for the target section
           // TODO: Implement proper structure modification (add/remove/reorder sections)
-          if (activeContext && onWriteContent) {
+          if (modTargetId && onWriteContent) {
             // User wants to add content to a specific section (like "add to summary")
-            await onWriteContent(activeContext.id, message)
+            await onWriteContent(modTargetId, message)
           } else {
             if (onAddChatMessage) {
-              onAddChatMessage(`⚠️ Structure modification requires a selected segment. Please click on the section you want to modify.`)
+              onAddChatMessage(`⚠️ Structure modification requires a target section. Please click on a section or mention its name (e.g. "Sequence 2").`)
             }
           }
           break
