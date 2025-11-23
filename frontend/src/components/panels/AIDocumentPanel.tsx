@@ -829,90 +829,87 @@ export default function AIDocumentPanel({
       >
         {/* Header with Tabs */}
         <div className="flex flex-col bg-gray-50 border-b border-gray-200">
-          {/* Top Bar - Title and Actions */}
-          <div className="h-10 flex items-center justify-between px-4 border-b border-gray-200 bg-white">
-            <div className="flex items-center gap-3">
-              <h2 className="text-sm font-semibold text-gray-900">Document View</h2>
-              <div className="text-xs text-gray-500 font-mono">{wordCount} words</div>
-            </div>
-            <div className="flex items-center gap-2">
-              {/* Save Button */}
-              <button
-                onClick={saveNow}
-                disabled={!isDirty || saveStatus === 'saving'}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  isDirty
-                    ? 'bg-yellow-400 hover:bg-yellow-500 text-gray-900'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                } ${saveStatus === 'saving' ? 'opacity-50' : ''}`}
-              >
-                {saveStatus === 'saving' ? 'Saving...' : isDirty ? 'Save' : 'Saved'}
-              </button>
-              <button
-                onClick={onClose}
-                className="p-1.5 hover:bg-gray-100 rounded transition-colors"
-                aria-label="Hide document view"
-                title="Hide document view"
-              >
-                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
           {/* Tabs Bar - Cursor Style */}
           {storyStructureNodes.length > 0 && (
-            <div className="flex items-end px-2 pt-2 gap-1 overflow-x-auto scrollbar-hide">
-              {storyStructureNodes.map(node => {
-                const isActive = node.id === storyStructureNodeId
-                return (
-                  <button
-                    key={node.id}
-                    onClick={() => onSwitchDocument && onSwitchDocument(node.id)}
-                    className={`
-                      group relative flex items-center gap-2 px-4 py-2 text-xs font-medium transition-all whitespace-nowrap rounded-t-lg border-t border-l border-r
-                      ${isActive 
-                        ? 'bg-white text-gray-900 border-gray-200 border-b-white -mb-px z-10 shadow-sm' 
-                        : 'bg-gray-100 text-gray-500 border-transparent hover:bg-gray-200 hover:text-gray-700'
-                      }
-                    `}
-                    title={node.name}
-                  >
-                    {/* Active Indicator Line (Top) */}
-                    {isActive && (
-                      <div className="absolute top-0 left-0 right-0 h-0.5 bg-purple-500 rounded-t-lg" />
-                    )}
-                    
-                    {/* Document Icon */}
-                    <svg 
-                      className={`w-3.5 h-3.5 ${isActive ? 'text-purple-500' : 'text-gray-400 group-hover:text-gray-500'}`} 
-                      fill="none" 
-                      stroke="currentColor" 
-                      viewBox="0 0 24 24"
+            <div className="flex items-center justify-between pr-2">
+              {/* Tabs on Left */}
+              <div className="flex items-end px-2 pt-2 gap-1 overflow-x-auto scrollbar-hide flex-1">
+                {storyStructureNodes.map(node => {
+                  const isActive = node.id === storyStructureNodeId
+                  return (
+                    <button
+                      key={node.id}
+                      onClick={() => onSwitchDocument && onSwitchDocument(node.id)}
+                      className={`
+                        group relative flex items-center gap-2 px-4 py-2 text-xs font-medium transition-all whitespace-nowrap rounded-t-lg border-t border-l border-r
+                        ${isActive 
+                          ? 'bg-white text-gray-900 border-gray-200 border-b-white -mb-px z-10 shadow-sm' 
+                          : 'bg-gray-100 text-gray-500 border-transparent hover:bg-gray-200 hover:text-gray-700'
+                        }
+                      `}
+                      title={node.name}
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    
-                    <span className="max-w-[150px] truncate">{node.name}</span>
-                    
-                    {node.format && (
-                      <span className={`
-                        text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider
-                        ${isActive ? 'bg-purple-50 text-purple-700' : 'bg-gray-200 text-gray-500'}
-                      `}>
-                        {node.format}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
+                      {/* Active Indicator Line (Top) */}
+                      {isActive && (
+                        <div className="absolute top-0 left-0 right-0 h-0.5 bg-purple-500 rounded-t-lg" />
+                      )}
+                      
+                      {/* Document Icon */}
+                      <svg 
+                        className={`w-3.5 h-3.5 ${isActive ? 'text-purple-500' : 'text-gray-400 group-hover:text-gray-500'}`} 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      
+                      <span className="max-w-[150px] truncate">{node.name}</span>
+                      
+                      {node.format && (
+                        <span className={`
+                          text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider
+                          ${isActive ? 'bg-purple-50 text-purple-700' : 'bg-gray-200 text-gray-500'}
+                        `}>
+                          {node.format}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Actions on Right */}
+              <div className="flex items-center gap-2 pb-1">
+                <div className="text-xs text-gray-400 font-mono mr-2">{wordCount} words</div>
+                <button
+                  onClick={saveNow}
+                  disabled={!isDirty || saveStatus === 'saving'}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                    isDirty
+                      ? 'bg-yellow-400 hover:bg-yellow-500 text-gray-900'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  } ${saveStatus === 'saving' ? 'opacity-50' : ''}`}
+                >
+                  {saveStatus === 'saving' ? 'Saving...' : isDirty ? 'Save' : 'Saved'}
+                </button>
+                <button
+                  onClick={onClose}
+                  className="p-1.5 hover:bg-gray-200 rounded transition-colors text-gray-500"
+                  aria-label="Hide document view"
+                  title="Hide document view"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
           )}
         </div>
 
         {/* Split Content with Arrangement View */}
-        <div className="flex flex-col" style={{ height: `calc(100vh - ${storyStructureNodes.length > 0 ? '9rem' : '7.5rem'})` }}>
+        <div className="flex flex-col h-[calc(100%-3rem)]">
           {/* Document Editor + Section Nav */}
           <div className="flex flex-1 min-h-0" ref={containerRef}>
           <div className="flex flex-col bg-white relative w-full">
