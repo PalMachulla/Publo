@@ -1124,6 +1124,14 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
           
           // Trigger document load (keeps orchestrator panel visible!)
           if (onSelectNode && nodeToOpen.nodeId) {
+            console.log('🚀 [open_and_write] Calling onSelectNode:', {
+              nodeId: nodeToOpen.nodeId,
+              nodeName: nodeToOpen.label,
+              targetSectionId,
+              hasDetailedContext: !!nodeToOpen.detailedContext,
+              format: nodeToOpen.detailedContext?.format,
+              totalSections: nodeToOpen.detailedContext?.totalSections
+            })
             onSelectNode(nodeToOpen.nodeId, targetSectionId)
           }
           

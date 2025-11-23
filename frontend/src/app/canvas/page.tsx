@@ -2865,12 +2865,32 @@ export default function CanvasPage() {
           onSelectNode={(nodeId: string, sectionId?: string) => {
             // Load document for writing WITHOUT switching away from orchestrator panel
             const node = nodes.find(n => n.id === nodeId)
-            if (!node) return
+            if (!node) {
+              console.error('[onSelectNode] Node not found:', nodeId)
+              return
+            }
             
             // Extract node data
             const nodeData = node.data as StoryStructureNodeData
             if (!nodeData.structureItems || !nodeData.format) {
-              console.warn('Node does not have structure data:', nodeId)
+              console.error('[onSelectNode] Node missing structure data:', {
+                nodeId,
+                hasStructureItems: !!nodeData.structureItems,
+                hasFormat: !!nodeData.format,
+                nodeData
+              })
+              
+              // Notify user via orchestrator chat
+              const nodeName = nodeData.label || nodeData.name || 'document'
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('orchestratorMessage', {
+                  detail: {
+                    message: `⚠️ Cannot open "${nodeName}": Document structure not loaded. Try clicking the node directly to reload it.`,
+                    role: 'orchestrator',
+                    type: 'error'
+                  }
+                }))
+              }
               return
             }
             
