@@ -125,6 +125,7 @@ ALTER TABLE public.embedding_queue ENABLE ROW LEVEL SECURITY;
 -- ============================================================================
 
 -- Users can view embeddings from their own stories or stories shared with them
+DROP POLICY IF EXISTS "Users can view accessible document embeddings" ON public.document_embeddings;
 CREATE POLICY "Users can view accessible document embeddings"
   ON public.document_embeddings FOR SELECT
   USING (
@@ -148,16 +149,19 @@ CREATE POLICY "Users can view accessible document embeddings"
   );
 
 -- Users can insert embeddings for their own stories
+DROP POLICY IF EXISTS "Users can create embeddings for own stories" ON public.document_embeddings;
 CREATE POLICY "Users can create embeddings for own stories"
   ON public.document_embeddings FOR INSERT
   WITH CHECK (user_id = auth.uid());
 
 -- Users can update their own embeddings
+DROP POLICY IF EXISTS "Users can update own embeddings" ON public.document_embeddings;
 CREATE POLICY "Users can update own embeddings"
   ON public.document_embeddings FOR UPDATE
   USING (user_id = auth.uid());
 
 -- Users can delete their own embeddings
+DROP POLICY IF EXISTS "Users can delete own embeddings" ON public.document_embeddings;
 CREATE POLICY "Users can delete own embeddings"
   ON public.document_embeddings FOR DELETE
   USING (user_id = auth.uid());
@@ -166,18 +170,22 @@ CREATE POLICY "Users can delete own embeddings"
 -- 7. RLS POLICIES - EMBEDDING QUEUE
 -- ============================================================================
 
+DROP POLICY IF EXISTS "Users can view own embedding queue" ON public.embedding_queue;
 CREATE POLICY "Users can view own embedding queue"
   ON public.embedding_queue FOR SELECT
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can create own embedding queue items" ON public.embedding_queue;
 CREATE POLICY "Users can create own embedding queue items"
   ON public.embedding_queue FOR INSERT
   WITH CHECK (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can update own embedding queue" ON public.embedding_queue;
 CREATE POLICY "Users can update own embedding queue"
   ON public.embedding_queue FOR UPDATE
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can delete own embedding queue items" ON public.embedding_queue;
 CREATE POLICY "Users can delete own embedding queue items"
   ON public.embedding_queue FOR DELETE
   USING (user_id = auth.uid());
