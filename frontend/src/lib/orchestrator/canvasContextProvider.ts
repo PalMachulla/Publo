@@ -349,7 +349,9 @@ export function findReferencedNode(
   
   // Try to match by label first
   for (const ctx of canvasContext.connectedNodes) {
-    if (ctx.label.toLowerCase().includes(lowerRef)) {
+    const lowerLabel = ctx.label.toLowerCase()
+    // Check if the user's message mentions this node's label
+    if (lowerRef.includes(lowerLabel)) {
       return ctx
     }
   }
