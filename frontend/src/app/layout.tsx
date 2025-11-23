@@ -24,11 +24,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <React.StrictMode>
-          <AuthProvider>
-            {children}
-          </AuthProvider>
-        </React.StrictMode>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   )
