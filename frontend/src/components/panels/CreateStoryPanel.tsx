@@ -14,6 +14,7 @@ import {
 } from '@/components/ui'
 import { analyzeIntent, validateIntent, explainIntent, type IntentAnalysis } from '@/lib/orchestrator/intentRouter'
 import { buildCanvasContext, formatCanvasContextForLLM, findReferencedNode } from '@/lib/orchestrator/canvasContextProvider'
+import { enhanceContextWithRAG, buildRAGEnhancedPrompt } from '@/lib/orchestrator/ragIntegration'
 import { Edge } from 'reactflow'
 
 interface ActiveContext {
@@ -307,6 +308,34 @@ export default function CreateStoryPanel({
       })
     }
     
+    // STEP 0.5: Enhance context with RAG (semantic search) if available
+    let ragEnhancedContext
+    if (canvasContext.connectedNodes.length > 0) {
+      if (onAddChatMessage) {
+        onAddChatMessage(`🔍 Checking for semantic search availability...`)
+      }
+      
+      try {
+        ragEnhancedContext = await enhanceContextWithRAG(message, canvasContext)
+        
+        if (ragEnhancedContext.hasRAG) {
+          if (onAddChatMessage) {
+            onAddChatMessage(`✅ Semantic search active: Found ${ragEnhancedContext.ragStats?.resultsFound || 0} relevant chunks from "${ragEnhancedContext.referencedNode?.label}"`)
+            onAddChatMessage(`   📊 Average relevance: ${Math.round((ragEnhancedContext.ragStats?.averageSimilarity || 0) * 100)}%`)
+          }
+        } else if (ragEnhancedContext.fallbackReason) {
+          if (onAddChatMessage) {
+            onAddChatMessage(`⚠️ Semantic search unavailable: ${ragEnhancedContext.fallbackReason}`)
+          }
+        }
+      } catch (error) {
+        console.error('RAG enhancement error:', error)
+        if (onAddChatMessage) {
+          onAddChatMessage(`⚠️ Could not use semantic search, continuing with standard context`)
+        }
+      }
+    }
+    
     // STEP 1: Analyze user intent using Hybrid IntentRouter
     if (onAddChatMessage) {
       onAddChatMessage(`🧠 Analyzing your request...`)
@@ -326,7 +355,9 @@ export default function CreateStoryPanel({
       documentStructure: structureItems, // Pass current document structure
       isDocumentViewOpen: isDocumentViewOpen, // CRITICAL: Tell intent analyzer about document state
       documentFormat: selectedFormat, // Novel, Report, etc.
-      canvasContext: formatCanvasContextForLLM(canvasContext) // NEW: Canvas visibility!
+      canvasContext: ragEnhancedContext?.hasRAG 
+        ? buildRAGEnhancedPrompt('', ragEnhancedContext, canvasContext) 
+        : formatCanvasContextForLLM(canvasContext) // NEW: RAG-enhanced or standard canvas visibility!
     })
     
     // Log intent analysis to reasoning chat
