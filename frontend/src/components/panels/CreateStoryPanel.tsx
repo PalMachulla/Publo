@@ -261,6 +261,9 @@ export default function CreateStoryPanel({
   const [chatMessage, setChatMessage] = useState('')
   const [collapsedMessages, setCollapsedMessages] = useState<Set<string>>(new Set())
   
+  // LLM reasoning mode toggle
+  const [useLLMReasoning, setUseLLMReasoning] = useState(false) // false = semi (pattern + LLM fallback), true = always LLM
+  
   // Reasoning chat state
   const [isReasoningOpen, setIsReasoningOpen] = useState(true) // Open by default to see streaming
   const reasoningEndRef = useRef<HTMLDivElement>(null) // Auto-scroll target
@@ -431,8 +434,9 @@ export default function CreateStoryPanel({
       documentStructure: structureItems, // Pass current document structure
       isDocumentViewOpen: isDocumentViewOpen, // CRITICAL: Tell intent analyzer about document state
       documentFormat: selectedFormat, // Novel, Report, etc.
+      useLLM: useLLMReasoning, // NEW: Force LLM reasoning if toggle is on
       canvasContext: ragEnhancedContext?.hasRAG 
-        ? buildRAGEnhancedPrompt('', ragEnhancedContext, canvasContext) 
+        ? buildRAGEnhancedPrompt('', ragEnhancedContext, canvasContext)
         : formatCanvasContextForLLM(canvasContext) // NEW: RAG-enhanced or standard canvas visibility!
     })
     
@@ -1204,6 +1208,35 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
       <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-900">Orchestrator</h3>
         <div className="flex items-center gap-2">
+          {/* LLM Reasoning Mode Toggle */}
+          <button
+            onClick={() => setUseLLMReasoning(!useLLMReasoning)}
+            className={`p-1.5 rounded-md transition-colors ${
+              useLLMReasoning 
+                ? 'bg-purple-100 hover:bg-purple-200 text-purple-700' 
+                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+            }`}
+            title={useLLMReasoning ? 'Full LLM Reasoning (Slower, Most Intelligent)' : 'Semi Reasoning (Fast Pattern Matching + LLM Fallback)'}
+          >
+            {useLLMReasoning ? (
+              // Full brain icon - LLM reasoning
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm3 13h-2v3h-2v-3H9v-2.51c-1.24-.96-2-2.44-2-4.02 0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.58-.76 3.06-2 4.02V15z"/>
+                <circle cx="10" cy="9" r="1"/>
+                <circle cx="14" cy="9" r="1"/>
+                <path d="M12 13c-1.1 0-2-.9-2-2h4c0 1.1-.9 2-2 2z"/>
+              </svg>
+            ) : (
+              // Half brain icon - Semi reasoning (pattern matching)
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm0 2c2.76 0 5 2.24 5 5 0 1.58-.76 3.06-2 4.02V15h-6v-2.51c-1.24-.96-2-2.44-2-4.02 0-2.76 2.24-5 5-5z"/>
+                <path d="M12 4v11" stroke="currentColor" strokeWidth="1"/>
+                <circle cx="10" cy="9" r="0.8"/>
+                <circle cx="14" cy="9" r="0.8" opacity="0.3"/>
+              </svg>
+            )}
+          </button>
+          
           {onToggleDocumentView && (
             <button
               onClick={onToggleDocumentView}
