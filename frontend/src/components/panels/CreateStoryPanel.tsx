@@ -39,9 +39,11 @@ const getCanonicalModel = (modelId: string) => {
   // Anthropic Models
   if (id.includes('claude-3-5-sonnet')) return { name: 'Claude 3.5 Sonnet', priority: 92, group: 'Anthropic', isReasoning: true }
   if (id.includes('claude-3-opus')) return { name: 'Claude 3 Opus', priority: 88, group: 'Anthropic', isReasoning: true }
+  if (id.includes('claude-3-haiku')) return { name: 'Claude 3 Haiku', priority: 70, group: 'Anthropic', isReasoning: false }
   
   // Google Models
   if (id.includes('gemini-1.5-pro')) return { name: 'Gemini 1.5 Pro', priority: 89, group: 'Google', isReasoning: true }
+  if (id.includes('gemini-1.5-flash')) return { name: 'Gemini 1.5 Flash', priority: 75, group: 'Google', isReasoning: false }
   if (id.includes('gemini-2.0-flash')) return { name: 'Gemini 2.0 Flash', priority: 87, group: 'Google', isReasoning: true }
   
   // Groq Models

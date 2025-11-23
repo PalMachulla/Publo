@@ -45,45 +45,56 @@ export async function POST(request: NextRequest) {
       })) : []
     })
     
-    // Get orchestrator model preference
-    const { data: preferences } = await supabase
-      .from('model_preferences')
-      .select('*')
-      .eq('user_id', user.id)
-      .single()
-    
-    const orchestratorModelId = preferences?.orchestrator_model || 'llama-3.3-70b-versatile'
-    
-    console.log('[API /content/answer] Using orchestrator model:', orchestratorModelId)
-    
-    // Detect provider from model ID
-    const provider = detectProviderFromModel(orchestratorModelId)
-    if (!provider) {
-      return NextResponse.json(
-        { error: `Could not detect provider for model: ${orchestratorModelId}` },
-        { status: 400 }
-      )
-    }
-    
-    // Get user's API key for this provider
-    const { data: userKey } = await supabase
+    // Get configured orchestrator directly from user_api_keys
+    // This respects the selection made in the CreateStoryPanel dropdown
+    const { data: configuredKeys } = await supabase
       .from('user_api_keys')
-      .select('id, encrypted_key, provider, is_active, validation_status, nickname')
+      .select('id, provider, encrypted_key, orchestrator_model_id, nickname')
       .eq('user_id', user.id)
-      .eq('provider', provider)
       .eq('is_active', true)
       .eq('validation_status', 'valid')
+      .not('orchestrator_model_id', 'is', null)
       .limit(1)
-      .single()
-    
-    if (!userKey) {
-      return NextResponse.json(
-        { 
-          error: `No ${provider.toUpperCase()} API key found. Please add your key at /settings/api-keys`,
-          provider
-        },
-        { status: 400 }
-      )
+
+    let orchestratorModelId: string
+    let userKey: any
+    let provider: string
+
+    if (configuredKeys && configuredKeys.length > 0) {
+      // Found explicit user preference
+      userKey = configuredKeys[0]
+      orchestratorModelId = userKey.orchestrator_model_id
+      provider = userKey.provider
+      console.log('[API /content/answer] Using configured orchestrator:', {
+        model: orchestratorModelId,
+        provider: provider,
+        keyNick: userKey.nickname
+      })
+    } else {
+      // Fallback: Try to find a valid Groq key for default model
+      console.log('[API /content/answer] No orchestrator configured, attempting fallback to Groq')
+      const { data: groqKey } = await supabase
+        .from('user_api_keys')
+        .select('id, provider, encrypted_key, nickname')
+        .eq('user_id', user.id)
+        .eq('provider', 'groq')
+        .eq('is_active', true)
+        .eq('validation_status', 'valid')
+        .limit(1)
+        .maybeSingle()
+      
+      if (groqKey) {
+        userKey = groqKey
+        provider = 'groq'
+        orchestratorModelId = 'llama-3.3-70b-versatile'
+        console.log('[API /content/answer] Fallback successful: Using default Llama 3.3')
+      } else {
+        // No keys at all?
+        return NextResponse.json(
+          { error: 'No active API keys found. Please add an API key in Settings -> API Keys.' },
+          { status: 400 }
+        )
+      }
     }
     
     // Decrypt the API key
