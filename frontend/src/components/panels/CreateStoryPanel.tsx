@@ -39,7 +39,7 @@ interface CreateStoryPanelProps {
     type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
     role?: 'user' | 'orchestrator'
   }>
-  onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator') => void
+  onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user') => void
   onClearChat?: () => void
   onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
   isDocumentViewOpen?: boolean // NEW: Document panel visibility state
@@ -313,7 +313,7 @@ export default function CreateStoryPanel({
     let ragEnhancedContext
     if (canvasContext.connectedNodes.length > 0) {
       if (onAddChatMessage) {
-        onAddChatMessage(`🔍 Checking for semantic search availability...`)
+        onAddChatMessage(`🔍 Checking for semantic search availability...`, 'orchestrator', 'thinking')
       }
       
       try {
@@ -321,25 +321,25 @@ export default function CreateStoryPanel({
         
         if (ragEnhancedContext.hasRAG) {
           if (onAddChatMessage) {
-            onAddChatMessage(`✅ Semantic search active: Found ${ragEnhancedContext.ragStats?.resultsFound || 0} relevant chunks from "${ragEnhancedContext.referencedNode?.label}"`)
-            onAddChatMessage(`   📊 Average relevance: ${Math.round((ragEnhancedContext.ragStats?.averageSimilarity || 0) * 100)}%`)
+            onAddChatMessage(`✅ Semantic search active: Found ${ragEnhancedContext.ragStats?.resultsFound || 0} relevant chunks from "${ragEnhancedContext.referencedNode?.label}"`, 'orchestrator', 'result')
+            onAddChatMessage(`   📊 Average relevance: ${Math.round((ragEnhancedContext.ragStats?.averageSimilarity || 0) * 100)}%`, 'orchestrator', 'result')
           }
         } else if (ragEnhancedContext.fallbackReason) {
           if (onAddChatMessage) {
-            onAddChatMessage(`⚠️ Semantic search unavailable: ${ragEnhancedContext.fallbackReason}`)
+            onAddChatMessage(`⚠️ Semantic search unavailable: ${ragEnhancedContext.fallbackReason}`, 'orchestrator', 'error')
           }
         }
       } catch (error) {
         console.error('RAG enhancement error:', error)
         if (onAddChatMessage) {
-          onAddChatMessage(`⚠️ Could not use semantic search, continuing with standard context`)
+          onAddChatMessage(`⚠️ Could not use semantic search, continuing with standard context`, 'orchestrator', 'error')
         }
       }
     }
     
     // STEP 1: Analyze user intent using Hybrid IntentRouter
     if (onAddChatMessage) {
-      onAddChatMessage(`🧠 Analyzing your request...`)
+      onAddChatMessage(`🧠 Analyzing your request...`, 'orchestrator', 'thinking')
     }
     
     const intentAnalysis = await analyzeIntent({
@@ -364,8 +364,8 @@ export default function CreateStoryPanel({
     // Log intent analysis to reasoning chat
     if (onAddChatMessage) {
       const method = intentAnalysis.usedLLM ? '🧠 LLM Reasoning' : '⚡ Pattern Matching'
-      onAddChatMessage(`${method}: ${explainIntent(intentAnalysis)} (Confidence: ${Math.round(intentAnalysis.confidence * 100)}%)`)
-      onAddChatMessage(`💭 ${intentAnalysis.reasoning}`)
+      onAddChatMessage(`${method}: ${explainIntent(intentAnalysis)} (Confidence: ${Math.round(intentAnalysis.confidence * 100)}%)`, 'orchestrator', 'decision')
+      onAddChatMessage(`💭 ${intentAnalysis.reasoning}`, 'orchestrator', 'thinking')
     }
     
     // STEP 1.5: Handle clarifying questions

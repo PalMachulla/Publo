@@ -2863,12 +2863,30 @@ export default function CanvasPage() {
           edges={edges}
           nodes={nodes}
           canvasChatHistory={canvasChatHistory}
-          onAddChatMessage={(message, role = 'orchestrator') => {
+          onAddChatMessage={(message, role = 'orchestrator', type) => {
+            // Auto-detect type from message content if not provided
+            let messageType: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' = type || 'user'
+            
+            if (!type && role === 'orchestrator') {
+              // Auto-detect based on message prefix emojis
+              if (message.startsWith('🧠') || message.startsWith('💭') || message.startsWith('🔍')) {
+                messageType = 'thinking'
+              } else if (message.startsWith('⚡') || message.startsWith('✓') || message.startsWith('📌')) {
+                messageType = 'decision'
+              } else if (message.startsWith('🚀') || message.startsWith('📝') || message.startsWith('✨')) {
+                messageType = 'task'
+              } else if (message.startsWith('✅') || message.startsWith('📊') || message.startsWith('🎉')) {
+                messageType = 'result'
+              } else if (message.startsWith('❌') || message.startsWith('⚠️')) {
+                messageType = 'error'
+              }
+            }
+            
             const msg = {
               id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               timestamp: new Date().toISOString(),
               content: message,
-              type: 'user' as const,
+              type: messageType,
               role: role as 'user' | 'orchestrator'
             }
             setCanvasChatHistory(prev => [...prev, msg])
