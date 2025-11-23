@@ -669,7 +669,24 @@ export default function ProfilePage() {
                                     return isWriterModel(m.id)
                                   })
                                   
-                                  const orchestrators = chatModels.filter((m: any) => isOrchestratorModel(m.id))
+                                  // Deduplicate orchestrators by canonical name
+                                  const orchestratorMap = new Map<string, any>()
+                                  chatModels.filter((m: any) => isOrchestratorModel(m.id)).forEach((model: any) => {
+                                    const canonical = getCanonicalModel(model.id)
+                                    if (canonical && !orchestratorMap.has(canonical.name)) {
+                                      orchestratorMap.set(canonical.name, {
+                                        ...model,
+                                        canonicalName: canonical.name,
+                                        priority: canonical.priority
+                                      })
+                                    }
+                                  })
+                                  
+                                  const orchestrators = Array.from(orchestratorMap.values()).sort((a, b) => {
+                                    if (a.priority !== b.priority) return b.priority - a.priority
+                                    return a.canonicalName.localeCompare(b.canonicalName)
+                                  })
+                                  
                                   const writers = chatModels.filter((m: any) => !isOrchestratorModel(m.id))
                                   
                                   const isExpanded = expandedModels[key.id] || false
@@ -790,7 +807,10 @@ export default function ProfilePage() {
                                                     />
                                                     <div className="flex-1 min-w-0">
                                                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                        <span className="text-sm font-semibold text-gray-900">{model.name || model.id}</span>
+                                                        <span className="text-sm font-semibold text-gray-900">{model.canonicalName || model.name || model.id}</span>
+                                                        {model.canonicalName && model.id !== model.canonicalName && (
+                                                          <span className="text-[10px] text-gray-400 font-mono">{model.id}</span>
+                                                        )}
                                                         <Badge variant={model.category === 'production' ? 'success' : 'warning'} size="sm">
                                                           {model.category}
                                                         </Badge>
