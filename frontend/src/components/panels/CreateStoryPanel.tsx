@@ -422,6 +422,12 @@ export default function CreateStoryPanel({
       onAddChatMessage(message, 'user')  // Actual user input
     }
     
+    // Prepare conversation history for context resolution (used by findReferencedNode)
+    const conversationForContext = reasoningMessages
+      .filter(m => m.role === 'user' || m.role === 'orchestrator')
+      .slice(-5)
+      .map(m => ({ role: m.role || 'orchestrator', content: m.content }))
+    
     // Show canvas context if available
     if (onAddChatMessage && canvasContext.connectedNodes.length > 0) {
       onAddChatMessage(`👁️ Canvas visibility: ${canvasContext.connectedNodes.length} node(s) connected`)
@@ -858,8 +864,8 @@ INSTRUCTION: Use the above stories as inspiration for creating the new podcast s
                 }
               }
             } else {
-              // Find a single referenced node
-              const referencedNode = findReferencedNode(message, canvasContext)
+              // Find a single referenced node (with conversation history for context)
+              const referencedNode = findReferencedNode(message, canvasContext, conversationForContext)
             
             if (referencedNode && referencedNode.detailedContext) {
               if (onAddChatMessage) {
@@ -955,7 +961,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
           setPendingCreation({
             format: formatToUse,
             userMessage: message,
-            referenceNode: hasReference ? findReferencedNode(message, canvasContext) : undefined,
+            referenceNode: hasReference ? findReferencedNode(message, canvasContext, conversationForContext) : undefined,
             enhancedPrompt: enhancedPrompt
           })
           
@@ -1032,8 +1038,8 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
             onAddChatMessage(`📂 Finding the document to open...`, 'orchestrator', 'thinking')
           }
           
-          // Identify which node to open
-          const nodeToOpen = findReferencedNode(message, canvasContext)
+          // Identify which node to open (with conversation history for context)
+          const nodeToOpen = findReferencedNode(message, canvasContext, conversationForContext)
           
           if (!nodeToOpen) {
             // No clear node reference - ask for clarification

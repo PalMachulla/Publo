@@ -340,14 +340,19 @@ export function formatCanvasContextForLLM(canvasContext: CanvasContext): string 
  * Find specific node content by reference
  * Handles phrases like "our other story", "the screenplay", "that document"
  * Also infers from context like "interview the characters" when a story node is visible
+ * 
+ * @param reference - Current user message
+ * @param canvasContext - Available nodes on canvas
+ * @param conversationHistory - Recent messages to resolve pronouns/references
  */
 export function findReferencedNode(
   reference: string,
-  canvasContext: CanvasContext
+  canvasContext: CanvasContext,
+  conversationHistory?: Array<{ role: string, content: string }>
 ): NodeContext | null {
   const lowerRef = reference.toLowerCase()
   
-  // Try to match by label first
+  // STEP 1: Try to match by label in CURRENT message
   for (const ctx of canvasContext.connectedNodes) {
     const lowerLabel = ctx.label.toLowerCase()
     // Check if the user's message mentions this node's label
@@ -356,7 +361,7 @@ export function findReferencedNode(
     }
   }
   
-  // Try to match by node type
+  // STEP 2: Try to match by format/type in CURRENT message
   if (lowerRef.includes('screenplay') || lowerRef.includes('script')) {
     const screenplay = canvasContext.connectedNodes.find(
       ctx => ctx.nodeType === 'story-structure' && 
@@ -365,7 +370,59 @@ export function findReferencedNode(
     if (screenplay) return screenplay
   }
   
-  // If asking about characters and we have a story/screenplay, use it
+  if (lowerRef.includes('novel') || lowerRef.includes('book')) {
+    const novel = canvasContext.connectedNodes.find(
+      ctx => ctx.nodeType === 'story-structure' && 
+             ctx.detailedContext?.format === 'novel'
+    )
+    if (novel) return novel
+  }
+  
+  if (lowerRef.includes('podcast')) {
+    const podcast = canvasContext.connectedNodes.find(
+      ctx => ctx.nodeType === 'story-structure' && 
+             ctx.detailedContext?.format === 'podcast'
+    )
+    if (podcast) return podcast
+  }
+  
+  if (lowerRef.includes('report')) {
+    const report = canvasContext.connectedNodes.find(
+      ctx => ctx.nodeType === 'story-structure' && 
+             ctx.detailedContext?.format === 'report'
+    )
+    if (report) return report
+  }
+  
+  // STEP 3: Check conversation history for context (pronouns like "it", "the scenes", etc.)
+  if (conversationHistory && conversationHistory.length > 0) {
+    // Look back at last 3 messages to find what was being discussed
+    const recentMessages = conversationHistory.slice(-3).reverse()
+    
+    for (const msg of recentMessages) {
+      const lowerMsg = msg.content.toLowerCase()
+      
+      // Check if any node was mentioned in recent conversation
+      for (const ctx of canvasContext.connectedNodes) {
+        const lowerLabel = ctx.label.toLowerCase()
+        if (lowerMsg.includes(lowerLabel)) {
+          console.log(`[findReferencedNode] Found reference in history: "${ctx.label}" mentioned in "${msg.content.substring(0, 50)}..."`)
+          return ctx
+        }
+        
+        // Also check by format
+        if (ctx.detailedContext?.format) {
+          const format = ctx.detailedContext.format.toLowerCase()
+          if (lowerMsg.includes(format)) {
+            console.log(`[findReferencedNode] Found format reference in history: "${format}" → "${ctx.label}"`)
+            return ctx
+          }
+        }
+      }
+    }
+  }
+  
+  // STEP 4: If asking about characters and we have a story/screenplay, use it
   if (lowerRef.includes('characters') || lowerRef.includes('interview')) {
     // Prioritize screenplay format first (most likely to have clear characters)
     const screenplay = canvasContext.connectedNodes.find(
@@ -381,6 +438,7 @@ export function findReferencedNode(
     if (anyStory) return anyStory
   }
   
+  // STEP 5: Generic "story" or "document" reference
   if (lowerRef.includes('story') || lowerRef.includes('document')) {
     // Return first story structure node
     const story = canvasContext.connectedNodes.find(
@@ -389,16 +447,7 @@ export function findReferencedNode(
     if (story) return story
   }
   
-  // If "other" or "that" is mentioned, return the most recently modified node (not implemented yet)
-  // For now, return the first story structure node
-  if (lowerRef.includes('other') || lowerRef.includes('that') || lowerRef.includes('the')) {
-    const story = canvasContext.connectedNodes.find(
-      ctx => ctx.nodeType === 'story-structure'
-    )
-    if (story) return story
-  }
-  
-  // Default: if only one story structure node exists, assume that's the reference
+  // STEP 6: Default - if only one story structure node exists, assume that's the reference
   const storyNodes = canvasContext.connectedNodes.filter(
     ctx => ctx.nodeType === 'story-structure'
   )
