@@ -4,6 +4,7 @@
  */
 
 import { createClient } from '@/lib/supabase/client'
+import { decryptAPIKey } from '@/lib/security/encryption'
 
 export interface EmbeddingConfig {
   model: 'text-embedding-3-small' | 'text-embedding-3-large'
@@ -45,16 +46,23 @@ export async function generateEmbedding(
   // Get user's OpenAI API key
   const { data: apiKeyData, error: apiKeyError } = await supabase
     .from('user_api_keys')
-    .select('api_key, is_active')
+    .select('encrypted_key, is_active, validation_status')
     .eq('provider', 'openai')
     .eq('is_active', true)
+    .eq('validation_status', 'valid')
     .single()
   
   if (apiKeyError || !apiKeyData) {
     throw new Error('OpenAI API key not found. Please configure your API key in Settings.')
   }
 
-  const openaiApiKey = apiKeyData.api_key
+  // Decrypt the API key
+  let openaiApiKey: string
+  try {
+    openaiApiKey = decryptAPIKey(apiKeyData.encrypted_key)
+  } catch (decryptError) {
+    throw new Error(`Failed to decrypt API key: ${decryptError instanceof Error ? decryptError.message : 'Unknown error'}`)
+  }
 
   // Prepare request
   const requestBody: {
@@ -114,16 +122,23 @@ export async function generateBatchEmbeddings(
   // Get user's OpenAI API key
   const { data: apiKeyData, error: apiKeyError } = await supabase
     .from('user_api_keys')
-    .select('api_key, is_active')
+    .select('encrypted_key, is_active, validation_status')
     .eq('provider', 'openai')
     .eq('is_active', true)
+    .eq('validation_status', 'valid')
     .single()
   
   if (apiKeyError || !apiKeyData) {
     throw new Error('OpenAI API key not found. Please configure your API key in Settings.')
   }
 
-  const openaiApiKey = apiKeyData.api_key
+  // Decrypt the API key
+  let openaiApiKey: string
+  try {
+    openaiApiKey = decryptAPIKey(apiKeyData.encrypted_key)
+  } catch (decryptError) {
+    throw new Error(`Failed to decrypt API key: ${decryptError instanceof Error ? decryptError.message : 'Unknown error'}`)
+  }
 
   // Prepare request
   const requestBody: {
