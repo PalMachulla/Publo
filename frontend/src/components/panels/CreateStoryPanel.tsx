@@ -525,17 +525,41 @@ export default function CreateStoryPanel({
         case 'write_content':
           // Write content to selected segment
           if (onAddChatMessage) {
-            onAddChatMessage(`📝 Delegating to writer model: ${intentAnalysis.suggestedModel}`)
+            onAddChatMessage(`📝 Delegating to writer model: ${intentAnalysis.suggestedModel}`, 'orchestrator', 'thinking')
           }
           
-          if (activeContext && onWriteContent) {
-            await onWriteContent(activeContext.id, message)
+          // Smart Section Detection: Find target section from message if none selected
+          let writeTargetId = activeContext?.id
+          
+          if (!writeTargetId && structureItems.length > 0) {
+            const lowerMessage = message.toLowerCase()
+            const matchedSection = structureItems.find(item => {
+              const name = item.name.toLowerCase()
+              // Match full name or key parts
+              return lowerMessage.includes(name) || 
+                     // Match partial names like "welfare" for "Animal Welfare Consideration"
+                     name.split(' ').some((word: string) => word.length > 4 && lowerMessage.includes(word))
+            })
+            
+            if (matchedSection) {
+              writeTargetId = matchedSection.id
+              if (onAddChatMessage) {
+                onAddChatMessage(`🎯 Auto-selecting section: "${matchedSection.name}"`, 'orchestrator', 'result')
+              }
+              // Auto-select the section visually
+              if (currentStoryStructureNodeId && onSelectNode) {
+                onSelectNode(currentStoryStructureNodeId, writeTargetId)
+              }
+            }
+          }
+          
+          if (writeTargetId && onWriteContent) {
+            await onWriteContent(writeTargetId, message)
           } else {
-            // Fallback to old behavior
-            const finalPrompt = `[Writing mode: "${activeContext?.name}"${activeContext?.title ? ` - ${activeContext.title}` : ''}]
-Intent: Write/modify content for THIS section only (not create new structure).
-Request: ${message}`
-            onCreateStory(selectedFormat, selectedTemplate || undefined, finalPrompt)
+            if (onAddChatMessage) {
+              onAddChatMessage(`⚠️ Cannot execute: Action "write_content" requires a selected segment`, 'orchestrator', 'error')
+              onAddChatMessage(`💡 Please click on a section in the document view to select it first`, 'orchestrator', 'result')
+            }
           }
           break
         
