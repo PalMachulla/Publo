@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { Node, Edge } from 'reactflow'
 import { AnyNodeData, Comment, StoryStructureItem, StoryStructureNodeData, TestNodeData, AIPromptNodeData, StoryFormat } from '@/types/nodes'
 import { useAuth } from '@/contexts/AuthContext'
+import { createClient } from '@/lib/supabase/client'
 import StoryBookPanel from './StoryBookPanel'
 import CharacterPanel from './CharacterPanel'
 import ResearchPanel from './ResearchPanel'
@@ -47,6 +48,15 @@ function lightenColor(hex: string, depth: number): string {
 
 // structureTemplates removed (was ~360 lines containing: screenplay, novel, short-story, podcast, article, essay, report)
 
+interface ActiveContext {
+  type: 'section' | 'segment'
+  id: string
+  name: string
+  title?: string
+  level?: number
+  description?: string
+}
+
 interface NodeDetailsPanelProps {
   node: Node<AnyNodeData> | null
   isOpen: boolean
@@ -58,6 +68,7 @@ interface NodeDetailsPanelProps {
   onAddEdge?: (edge: Edge) => void
   edges?: Edge[]
   nodes?: Node[]
+  onSelectNode?: (nodeId: string, sectionId?: string) => void // NEW: Select and open a specific node, optionally auto-select a section
   canvasChatHistory?: Array<{
     id: string
     timestamp: string
@@ -67,6 +78,16 @@ interface NodeDetailsPanelProps {
   }>
   onAddChatMessage?: (message: string) => void
   onClearChat?: () => void
+  onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
+  isDocumentViewOpen?: boolean // NEW: Document panel visibility state
+  onPanelWidthChange?: (width: number) => void // NEW: Notify parent when panel width changes
+  activeContext?: ActiveContext | null // NEW: Currently selected segment/section
+  onClearContext?: () => void // NEW: Clear the active context
+  onWriteContent?: (segmentId: string, prompt: string) => Promise<void> // NEW: Write content to specific segment
+  onAnswerQuestion?: (question: string) => Promise<string> // NEW: Answer questions about content
+  structureItems?: any[] // GHOSTWRITER: Current document structure
+  contentMap?: Record<string, string> // GHOSTWRITER: Existing content by section ID
+  currentStoryStructureNodeId?: string | null // CANVAS CONTENT: ID of currently loaded story
 }
 
 export default function NodeDetailsPanel({
@@ -80,16 +101,149 @@ export default function NodeDetailsPanel({
   onAddEdge,
   edges = [],
   nodes = [],
+  onSelectNode,
   canvasChatHistory = [],
   onAddChatMessage,
-  onClearChat
+  onClearChat,
+  onToggleDocumentView,
+  isDocumentViewOpen = false,
+  onPanelWidthChange,
+  activeContext = null,
+  onClearContext,
+  onWriteContent,
+  onAnswerQuestion,
+  structureItems = [],
+  contentMap = {},
+  currentStoryStructureNodeId = null
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
+  const supabase = createClient()
   const [commentText, setCommentText] = useState('')
   
   // Panel resize state
   const [panelWidth, setPanelWidth] = useState(384) // 384px = w-96 default
   const [isResizing, setIsResizing] = useState(false)
+  
+  // Embedding status state
+  const [embeddingStatus, setEmbeddingStatus] = useState<{
+    exists: boolean
+    chunkCount: number
+    queueStatus: string
+    loading: boolean
+    generating: boolean
+  }>({
+    exists: false,
+    chunkCount: 0,
+    queueStatus: 'none',
+    loading: false,
+    generating: false
+  })
+  
+  // Check embedding status for current node
+  const checkEmbeddingStatus = async (nodeId: string) => {
+    setEmbeddingStatus(prev => ({ ...prev, loading: true }))
+    try {
+      const response = await fetch(`/api/embeddings/generate?nodeId=${nodeId}`)
+      const data = await response.json()
+      
+      // Handle both success and error responses
+      setEmbeddingStatus({
+        exists: data.exists || false,
+        chunkCount: data.chunkCount || 0,
+        queueStatus: data.queueStatus || 'none',
+        loading: false,
+        generating: false
+      })
+      
+      // Log if tables are not set up
+      if (data.queueStatus === 'unavailable') {
+        console.warn('Embeddings feature not set up:', data.error)
+      }
+    } catch (error) {
+      console.error('Failed to check embedding status:', error)
+      // Set unavailable status on error
+      setEmbeddingStatus({
+        exists: false,
+        chunkCount: 0,
+        queueStatus: 'unavailable',
+        loading: false,
+        generating: false
+      })
+    }
+  }
+  
+  // Generate embeddings for current node
+  const generateEmbeddings = async (nodeId: string, structureItems: any[]) => {
+    setEmbeddingStatus(prev => ({ ...prev, generating: true }))
+    try {
+      // Fetch document sections from database with content
+      const { data: documentSections, error: sectionsError } = await supabase
+        .from('document_sections')
+        .select('id, content, structure_item_id, story_structure_node_id')
+        .eq('story_structure_node_id', nodeId)
+      
+      if (sectionsError) {
+        console.error('Failed to fetch document sections:', sectionsError)
+        alert(`❌ Failed to fetch document sections:\n\n${sectionsError.message}`)
+        setEmbeddingStatus(prev => ({ ...prev, generating: false }))
+        return
+      }
+      
+      if (!documentSections || documentSections.length === 0) {
+        alert('⚠️ No content found to vectorize.\n\nThis document appears to be empty.')
+        setEmbeddingStatus(prev => ({ ...prev, generating: false }))
+        return
+      }
+      
+      // Map to the format expected by the API
+      const sections = documentSections.map((docSection) => {
+        // Find matching structure item
+        const structureItem = structureItems.find((item: any) => item.id === docSection.structure_item_id)
+        
+        return {
+          documentSectionId: docSection.id,
+          content: docSection.content || '',
+          structureItem: structureItem || {
+            id: docSection.structure_item_id,
+            level: 0,
+            type: 'section',
+            content: docSection.content
+          }
+        }
+      })
+      
+      const response = await fetch('/api/embeddings/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'batch',
+          nodeId,
+          sections
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok && data.success) {
+        // Success - refresh status and show results
+        await checkEmbeddingStatus(nodeId)
+        alert(`✅ Embeddings generated!\n\nSections: ${data.successfulSections}/${data.totalSections}\nChunks: ${data.totalChunks}\nTokens: ${data.totalTokens}`)
+      } else if (response.status === 503) {
+        // Service unavailable - tables don't exist
+        alert(`⚙️ Setup Required\n\n${data.error}\n\n${data.details}\n\n💡 ${data.hint}`)
+        setEmbeddingStatus(prev => ({ ...prev, generating: false, queueStatus: 'unavailable' }))
+      } else {
+        // Other errors
+        const errorMsg = data.errors?.join('\n') || data.error || data.details || 'Unknown error'
+        alert(`❌ Failed to generate embeddings:\n\n${errorMsg}`)
+        setEmbeddingStatus(prev => ({ ...prev, generating: false }))
+      }
+    } catch (error) {
+      console.error('Failed to generate embeddings:', error)
+      alert(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setEmbeddingStatus(prev => ({ ...prev, generating: false }))
+    }
+  }
 
   // Detect test nodes connected to orchestrator (MUST be before any early returns)
   const connectedTestNode = useMemo(() => {
@@ -164,6 +318,20 @@ export default function NodeDetailsPanel({
       document.removeEventListener('mouseup', handleMouseUp)
     }
   }, [isResizing])
+
+  // Notify parent when panel width changes
+  useEffect(() => {
+    if (onPanelWidthChange) {
+      onPanelWidthChange(panelWidth)
+    }
+  }, [panelWidth, onPanelWidthChange])
+  
+  // Check embedding status when story-structure node is selected
+  useEffect(() => {
+    if (node && node.type === 'storyStructureNode') {
+      checkEmbeddingStatus(node.id)
+    }
+  }, [node?.id])
 
   // Early returns AFTER all hooks
   if (!node) return null
@@ -424,6 +592,18 @@ export default function NodeDetailsPanel({
               canvasChatHistory={canvasChatHistory}
               onAddChatMessage={onAddChatMessage}
               onClearChat={onClearChat}
+              onToggleDocumentView={onToggleDocumentView}
+              isDocumentViewOpen={isDocumentViewOpen}
+              activeContext={activeContext}
+              onClearContext={onClearContext}
+              onWriteContent={onWriteContent}
+              onAnswerQuestion={onAnswerQuestion}
+              structureItems={structureItems}
+              contentMap={contentMap}
+              canvasNodes={nodes}
+              canvasEdges={edges}
+              currentStoryStructureNodeId={currentStoryStructureNodeId}
+              onSelectNode={onSelectNode}
             />
           ) : nodeType === 'story-structure' ? (
             // Story Structure Metadata Panel
@@ -491,6 +671,92 @@ export default function NodeDetailsPanel({
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Embeddings Section */}
+                <div className="bg-gradient-to-br from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+                        <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd"/>
+                      </svg>
+                      Vector Embeddings
+                    </h3>
+                    {embeddingStatus.exists && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+                        </svg>
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  
+                  {embeddingStatus.loading ? (
+                    <div className="text-sm text-gray-600 animate-pulse">Checking status...</div>
+                  ) : embeddingStatus.queueStatus === 'unavailable' ? (
+                    <div className="space-y-2">
+                      <div className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded p-3">
+                        <strong>⚙️ Setup Required</strong>
+                        <p className="mt-1 text-xs">
+                          Embeddings feature not set up. Run database migration:
+                          <code className="block mt-1 p-1 bg-yellow-100 rounded text-xs">
+                            013_create_document_embeddings.sql
+                          </code>
+                        </p>
+                      </div>
+                    </div>
+                  ) : embeddingStatus.exists ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Chunks:</span>
+                        <span className="font-medium text-gray-900">{embeddingStatus.chunkCount}</span>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        ✓ Semantic search enabled - orchestrator can use RAG to understand this document
+                      </div>
+                      <button
+                        onClick={() => generateEmbeddings(node.id, nodeData.items || [])}
+                        disabled={embeddingStatus.generating}
+                        className="w-full mt-2 px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {embeddingStatus.generating ? '⏳ Regenerating...' : '🔄 Regenerate Embeddings'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="text-sm text-gray-600">
+                        {nodeData.items && nodeData.items.length > 0 ? (
+                          <>
+                            ⚠️ Not vectorized yet. Generate embeddings to enable semantic search and RAG.
+                          </>
+                        ) : (
+                          <>
+                            ℹ️ No content to vectorize. Write content first, then generate embeddings.
+                          </>
+                        )}
+                      </div>
+                      {nodeData.items && nodeData.items.length > 0 && (
+                        <button
+                          onClick={() => generateEmbeddings(node.id, nodeData.items || [])}
+                          disabled={embeddingStatus.generating}
+                          className="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {embeddingStatus.generating ? (
+                            <>⏳ Generating...</>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg>
+                              Generate Embeddings
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Info Message (if no items) */}

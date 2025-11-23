@@ -41,11 +41,13 @@ export function useDocumentSections({
   // Fetch sections from database
   const fetchSections = useCallback(async () => {
     if (!storyStructureNodeId || !enabled) {
+      console.log('🔍 [useDocumentSections] fetchSections skipped:', { storyStructureNodeId, enabled })
       setLoading(false)
       return
     }
 
     try {
+      console.log('🔍 [useDocumentSections] Fetching sections for node:', storyStructureNodeId)
       setLoading(true)
       setError(null)
 
@@ -56,6 +58,16 @@ export function useDocumentSections({
         .order('order_index', { ascending: true })
 
       if (fetchError) throw fetchError
+
+      console.log('✅ [useDocumentSections] Fetched sections:', {
+        count: data?.length || 0,
+        sample: data?.[0] ? {
+          id: data[0].id,
+          structure_item_id: data[0].structure_item_id,
+          contentLength: data[0].content?.length || 0,
+          contentPreview: data[0].content?.substring(0, 50)
+        } : null
+      })
 
       setSections(data || [])
     } catch (err) {
@@ -95,15 +107,17 @@ export function useDocumentSections({
       )
 
       // Create sections for items that don't have them
+      // Map with original index to preserve order
       const newSections: DocumentSectionCreate[] = structureItems
-        .filter(item => !existingSectionIds.has(item.id))
-        .map((item, index) => ({
+        .map((item, originalIndex) => ({ item, originalIndex }))
+        .filter(({ item }) => !existingSectionIds.has(item.id))
+        .map(({ item, originalIndex }) => ({
           story_structure_node_id: storyStructureNodeId,
           structure_item_id: item.id,
           content: `<h${Math.min(item.level, 3)} data-section-id="${item.id}" id="section-${item.id}">${item.name}</h${Math.min(item.level, 3)}>\n<p></p>`,
           word_count: 0,
           status: 'draft' as const,
-          order_index: item.order,
+          order_index: typeof item.order === 'number' ? item.order : originalIndex, // Use item.order if valid, fallback to original index
         }))
 
       if (newSections.length === 0) {
@@ -123,28 +137,31 @@ export function useDocumentSections({
       
       console.log('Node ownership check:', { nodeCheck, nodeError })
       
-      // Use ignoreDuplicates to handle race conditions
+      // Use ignoreDuplicates to handle race conditions (don't throw on conflict)
       const { data, error: createError } = await supabase
         .from('document_sections')
         .insert(newSections)
         .select()
-        .throwOnError()
-
-      console.log('Sections created successfully:', data)
-
-      // Merge with existing sections
-      if (data && data.length > 0) {
+      
+      // Handle conflicts gracefully
+      if (createError) {
+        // 409 Conflict or 23505 duplicate key = sections already exist
+        if (createError.code === '23505' || createError.message?.includes('duplicate') || createError.message?.includes('409')) {
+          console.log('⚠️ Sections already exist (conflict), fetching existing sections...')
+          await fetchSections()
+        } else {
+          // Real error, log and throw
+          console.error('❌ Failed to create sections:', createError)
+          throw createError
+        }
+      } else if (data && data.length > 0) {
+        console.log('✅ Sections created successfully:', data.length, 'new sections')
+        // Merge with existing sections
         setSections(prev => [...prev, ...data].sort((a, b) => a.order_index - b.order_index))
       }
     } catch (err: any) {
-      // If it's a duplicate key error, just fetch to get existing sections
-      if (err?.code === '23505') {
-        console.log('Duplicate sections detected, fetching existing sections...')
-        await fetchSections()
-      } else {
-        console.error('Failed to initialize sections:', err)
-        setError(err instanceof Error ? err.message : 'Failed to initialize sections')
-      }
+      console.error('Failed to initialize sections:', err)
+      setError(err instanceof Error ? err.message : 'Failed to initialize sections')
     } finally {
       setLoading(false)
       initializingRef.current = false

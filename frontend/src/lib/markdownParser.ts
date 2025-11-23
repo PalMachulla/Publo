@@ -316,14 +316,29 @@ export function parseMarkdownStructure(markdown: string): ParsedMarkdownStructur
     contentMap.set(currentItemId, currentContent.join('\n').trim())
   }
   
+  // Deduplicate items by ID (keep first occurrence)
+  const seenIds = new Set<string>()
+  const deduplicatedItems = items.filter(item => {
+    if (seenIds.has(item.id)) {
+      console.warn(`⚠️ Duplicate item ID detected: ${item.id} (${item.name}) - skipping duplicate`)
+      return false
+    }
+    seenIds.add(item.id)
+    return true
+  })
+  
+  if (deduplicatedItems.length < items.length) {
+    console.log(`🧹 Removed ${items.length - deduplicatedItems.length} duplicate items`)
+  }
+  
   console.log('📄 Parsed markdown structure:', {
-    itemsCount: items.length,
+    itemsCount: deduplicatedItems.length,
     contentMapSize: contentMap.size,
-    items: items.map(i => ({ id: i.id, name: i.name, level: i.level })),
+    items: deduplicatedItems.map(i => ({ id: i.id, name: i.name, level: i.level })),
     contentKeys: Array.from(contentMap.keys()),
   })
   
-  return { items, contentMap }
+  return { items: deduplicatedItems, contentMap }
 }
 
 /**

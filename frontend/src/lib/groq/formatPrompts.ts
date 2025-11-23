@@ -115,7 +115,9 @@ CRITICAL RULES:
 - Always include parentId except for top level (acts)
 - Always include summary for levels 1-3
 - Use proper screenplay formatting in content
-- Focus on structure quality over content length - concise is better`,
+- Focus on structure quality over content length - concise is better
+- DO NOT REPEAT SECTION HEADINGS: Each heading (Act, Sequence, Scene, Beat) should appear EXACTLY ONCE in the markdown content
+- The markdown content structure should MIRROR the YAML structure - no duplicates`,
 
   'novel': `You are a novel structure generator.${YAML_FORMATTING_RULES}
 

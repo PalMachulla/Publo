@@ -19,6 +19,16 @@ import { NormalizedModel } from '@/types/api-keys'
 // Static pricing data for OpenAI models (as of Nov 2024)
 // Reference: https://openai.com/api/pricing/
 const OPENAI_MODEL_PRICING: Record<string, ModelPricing> = {
+  // GPT-5 Series (Reasoning Models)
+  'gpt-5.1': {
+    input_price_per_1m: 15.00, // Estimated - check official pricing
+    output_price_per_1m: 60.00,
+  },
+  'gpt-5': {
+    input_price_per_1m: 15.00,
+    output_price_per_1m: 60.00,
+  },
+  // GPT-4o Series
   'gpt-4o': {
     input_price_per_1m: 2.50,
     output_price_per_1m: 10.00,
@@ -59,6 +69,10 @@ const OPENAI_MODEL_PRICING: Record<string, ModelPricing> = {
 
 // Known context windows for OpenAI models
 const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
+  // GPT-5 Series (Reasoning Models)
+  'gpt-5.1': 200000, // 200K context
+  'gpt-5': 200000,
+  // GPT-4o Series
   'gpt-4o': 128000,
   'gpt-4o-2024-11-20': 128000,
   'gpt-4o-mini': 128000,
@@ -102,8 +116,8 @@ export class OpenAIAdapter implements LLMProviderAdapter {
         if (id.includes('moderation')) return false // Moderation
         if (id.includes('audio')) return false // Audio models
         
-        // Only include GPT chat models
-        return id.startsWith('gpt-') || id.startsWith('chatgpt')
+        // Only include GPT chat models and reasoning models
+        return id.startsWith('gpt-') || id.startsWith('chatgpt') || id.startsWith('o1')
       })
 
       return chatModels.map(model => this.normalizeModel(model))
@@ -132,17 +146,36 @@ export class OpenAIAdapter implements LLMProviderAdapter {
     try {
       const client = this.createClient(apiKey)
 
-      const response = await client.chat.completions.create({
+      // Detect if this is a reasoning model (GPT-5, o1)
+      const isReasoningModel = params.model.toLowerCase().includes('gpt-5') || 
+                               params.model.toLowerCase().includes('o1')
+
+      // Build request parameters
+      const requestParams: any = {
         model: params.model,
         messages: [
           { role: 'system', content: params.system_prompt },
           { role: 'user', content: params.user_prompt },
         ],
-        max_completion_tokens: params.max_tokens, // Use new OpenAI parameter name
-        // Only include temperature/top_p if explicitly provided (some models don't support them)
-        ...(params.temperature !== undefined && { temperature: params.temperature }),
-        ...(params.top_p !== undefined && { top_p: params.top_p }),
-      })
+        max_completion_tokens: params.max_tokens,
+      }
+
+      // Reasoning models: Add reasoning_effort parameter
+      if (isReasoningModel) {
+        // For orchestration tasks, use 'medium' reasoning effort (balance speed/intelligence)
+        // Can be 'none', 'low', 'medium', or 'high'
+        requestParams.reasoning_effort = 'medium'
+      } else {
+        // Standard models: Add temperature/top_p if provided
+        if (params.temperature !== undefined) {
+          requestParams.temperature = params.temperature
+        }
+        if (params.top_p !== undefined) {
+          requestParams.top_p = params.top_p
+        }
+      }
+
+      const response = await client.chat.completions.create(requestParams)
 
       return {
         content: response.choices[0]?.message?.content || '',
@@ -259,6 +292,10 @@ export class OpenAIAdapter implements LLMProviderAdapter {
    * Get human-readable display name for model
    */
   private getModelDisplayName(modelId: string): string {
+    if (modelId.includes('gpt-5.1')) return 'GPT-5.1'
+    if (modelId.includes('gpt-5')) return 'GPT-5'
+    if (modelId.includes('o1-preview')) return 'OpenAI o1 Preview'
+    if (modelId.includes('o1-mini')) return 'OpenAI o1 Mini'
     if (modelId.startsWith('gpt-4o-mini')) return 'GPT-4o Mini'
     if (modelId.startsWith('gpt-4o')) return 'GPT-4o'
     if (modelId.startsWith('gpt-4-turbo')) return 'GPT-4 Turbo'
@@ -271,6 +308,12 @@ export class OpenAIAdapter implements LLMProviderAdapter {
    * Get model description
    */
   private getModelDescription(modelId: string): string {
+    if (modelId.includes('gpt-5')) {
+      return 'Advanced reasoning model optimized for coding and agentic tasks with configurable reasoning effort'
+    }
+    if (modelId.includes('o1')) {
+      return 'Reasoning model with internal chain-of-thought for complex problem-solving'
+    }
     if (modelId.startsWith('gpt-4o')) {
       return 'Most advanced multimodal model, optimized for speed and cost'
     }

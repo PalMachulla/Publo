@@ -13,26 +13,47 @@ import AppHeader from '@/components/layout/AppHeader'
 
 type Section = 'general' | 'byoapi' | 'preferences' | 'account'
 
-// Helper: Identify orchestrator models by pattern matching
-const isOrchestratorModel = (modelId: string): boolean => {
+// Helper: Get canonical model details for filtering and display
+const getCanonicalModel = (modelId: string) => {
   const id = modelId.toLowerCase()
+
+  // Frontier / Future Models (GPT-5, 4.1)
+  if (id.includes('gpt-5.1')) return { name: 'GPT-5.1 (Frontier)', priority: 110, group: 'OpenAI (Frontier)', isReasoning: true }
+  if (id.includes('gpt-5') && !id.includes('mini') && !id.includes('nano')) return { name: 'GPT-5', priority: 105, group: 'OpenAI (Frontier)', isReasoning: true }
+  if (id.includes('gpt-5') && (id.includes('mini') || id.includes('nano'))) return { name: 'GPT-5 Efficient', priority: 104, group: 'OpenAI (Frontier)', isReasoning: false }
+  if (id.includes('gpt-4.1')) return { name: 'GPT-4.1', priority: 102, group: 'OpenAI (Frontier)', isReasoning: false }
   
-  // High-capability orchestrator patterns
-  const orchestratorPatterns = [
-    'gpt-4',
-    'o1',
-    'o3',
-    'claude-3-5-sonnet',
-    'claude-3-opus',
-    'gemini-1.5-pro',
-    'gemini-2.0-flash-exp',
-    'llama-3.3-70b',
-    'llama-3.1-70b',
-    'mixtral-8x7b',
-    'qwen2.5-72b'
-  ]
+  // OpenAI Models
+  if (id.includes('o1-preview')) return { name: 'OpenAI o1 Preview', priority: 100, group: 'OpenAI (Reasoning)', isReasoning: true }
+  if (id.includes('o1-mini')) return { name: 'OpenAI o1 Mini', priority: 95, group: 'OpenAI (Reasoning)', isReasoning: true }
+  if (id.includes('gpt-4o') && !id.includes('mini')) return { name: 'GPT-4o', priority: 90, group: 'OpenAI', isReasoning: true }
+  if (id.includes('gpt-4o') && id.includes('mini')) return { name: 'GPT-4o Mini', priority: 70, group: 'OpenAI', isReasoning: false }
+  if (id.includes('gpt-4-turbo') || id.includes('gpt-4-1106') || id.includes('gpt-4-0125')) return { name: 'GPT-4 Turbo', priority: 85, group: 'OpenAI', isReasoning: true }
+  if (id === 'gpt-4' || id.includes('gpt-4-0613') || id.includes('gpt-4-0314')) return { name: 'GPT-4 (Legacy)', priority: 60, group: 'OpenAI', isReasoning: true }
   
-  return orchestratorPatterns.some(pattern => id.includes(pattern))
+  // Anthropic Models
+  if (id.includes('claude-sonnet-4.5') || id.includes('claude-4.5-sonnet')) return { name: 'Claude Sonnet 4.5', priority: 95, group: 'Anthropic', isReasoning: true }
+  if (id.includes('claude-3-5-sonnet')) return { name: 'Claude 3.5 Sonnet', priority: 92, group: 'Anthropic', isReasoning: true }
+  if (id.includes('claude-3-opus')) return { name: 'Claude 3 Opus', priority: 88, group: 'Anthropic', isReasoning: true }
+  if (id.includes('claude-3-haiku')) return { name: 'Claude 3 Haiku', priority: 70, group: 'Anthropic', isReasoning: false }
+  
+  // Google Models
+  if (id.includes('gemini-1.5-pro')) return { name: 'Gemini 1.5 Pro', priority: 89, group: 'Google', isReasoning: true }
+  if (id.includes('gemini-1.5-flash')) return { name: 'Gemini 1.5 Flash', priority: 75, group: 'Google', isReasoning: false }
+  if (id.includes('gemini-2.0-flash')) return { name: 'Gemini 2.0 Flash', priority: 87, group: 'Google', isReasoning: true }
+  
+  // Groq Models
+  if (id.includes('llama-3.3-70b')) return { name: 'Llama 3.3 70B', priority: 85, group: 'Groq', isReasoning: true }
+  if (id.includes('llama-3.1-70b')) return { name: 'Llama 3.1 70B', priority: 80, group: 'Groq', isReasoning: true }
+  if (id.includes('llama-3.1-8b')) return { name: 'Llama 3.1 8B (Fast)', priority: 75, group: 'Groq', isReasoning: false }
+  if (id.includes('mixtral-8x7b')) return { name: 'Mixtral 8x7B', priority: 70, group: 'Groq', isReasoning: false }
+  
+  return null
+}
+
+// Helper: Check if a model is an orchestrator (uses canonical list)
+const isOrchestratorModel = (modelId: string): boolean => {
+  return getCanonicalModel(modelId) !== null
 }
 
 // Helper: Identify writer models (everything else that's chat-capable)
@@ -76,6 +97,16 @@ export default function ProfilePage() {
   const [writerPreferences, setWriterPreferences] = useState<Record<string, string[]>>({}) // keyId -> writerModelIds[]
   const [updatingOrchestrator, setUpdatingOrchestrator] = useState<string | null>(null)
   
+  // Global Orchestrator State
+  const [activeOrchestrator, setActiveOrchestrator] = useState<{
+    id: string, 
+    name: string, 
+    keyId: string, 
+    provider: string,
+    group: string
+  } | null>(null)
+  const [availableOrchestrators, setAvailableOrchestrators] = useState<Array<any>>([])
+  
   // Form state
   const [provider, setProvider] = useState<Provider>('groq')
   const [apiKey, setApiKey] = useState('')
@@ -98,6 +129,52 @@ export default function ProfilePage() {
       
       if (data.success) {
         setKeys(data.keys)
+        
+        // Compute Global Orchestrator State
+        const uniqueModels = new Map<string, any>()
+        let activeOrch = null
+
+        data.keys.forEach((key: any) => {
+           // Check if this key is the active orchestrator
+           if (key.orchestrator_model_id) {
+             const canonical = getCanonicalModel(key.orchestrator_model_id)
+             activeOrch = {
+               id: key.orchestrator_model_id,
+               name: canonical ? canonical.name : key.orchestrator_model_id,
+               keyId: key.id,
+               provider: key.provider,
+               group: canonical ? canonical.group : 'Other'
+             }
+           }
+
+           // Collect available models
+           if (key.models_cache) {
+             key.models_cache.forEach((model: any) => {
+               const canonical = getCanonicalModel(model.id)
+               if (canonical) {
+                 const dedupKey = `${canonical.name}-${key.provider}`
+                 if (!uniqueModels.has(dedupKey)) {
+                   uniqueModels.set(dedupKey, {
+                     id: model.id,
+                     name: canonical.name,
+                     keyId: key.id,
+                     provider: key.provider,
+                     group: canonical.group,
+                     priority: canonical.priority
+                   })
+                 }
+               }
+             })
+           }
+        })
+        
+        const sortedModels = Array.from(uniqueModels.values()).sort((a, b) => {
+            if (a.priority !== b.priority) return b.priority - a.priority
+            return a.name.localeCompare(b.name)
+        })
+        
+        setAvailableOrchestrators(sortedModels)
+        setActiveOrchestrator(activeOrch)
         
         // Initialize model preferences from fetched keys
         const prefs: Record<string, Record<string, boolean>> = {}
@@ -351,6 +428,46 @@ export default function ProfilePage() {
             {/* BYOAPI Section */}
             {activeSection === 'byoapi' && (
               <div className="space-y-6">
+                {/* Active Orchestrator Display */}
+                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-6 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-10">
+                    <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                    </svg>
+                  </div>
+                  
+                  <div className="relative z-10 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        ⚡ Active Orchestrator
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1 max-w-md">
+                        The primary reasoning model used for planning and logic. 
+                        You can change this directly in the Canvas or by configuring specific keys below.
+                      </p>
+                    </div>
+                    
+                    <div className="bg-white/80 backdrop-blur-sm px-6 py-3 rounded-lg border border-purple-100 shadow-sm text-right min-w-[200px]">
+                      {activeOrchestrator ? (
+                        <>
+                          <div className="text-xl font-bold text-purple-700">{activeOrchestrator.name}</div>
+                          <div className="flex items-center justify-end gap-2 mt-1">
+                            <span className="text-[10px] uppercase tracking-wider font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                              {activeOrchestrator.provider}
+                            </span>
+                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-lg font-medium text-gray-600">Auto-select</div>
+                          <div className="text-xs text-gray-400 mt-1">System Default</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 {/* Info Banner */}
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                   <div className="flex items-start gap-3">
@@ -361,6 +478,62 @@ export default function ProfilePage() {
                       <p className="text-sm text-gray-700">
                         <strong>Bring Your Own API</strong> — Use your personal API keys from AI providers. You pay only for what you use, and your keys are securely encrypted with AES-256-GCM.
                       </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Current Orchestrator Display */}
+                <div className="mb-6 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-5 shadow-sm">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0">
+                      <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-base font-semibold text-gray-900 mb-1">Active Orchestrator</h3>
+                      <p className="text-sm text-gray-600 mb-3">
+                        This is the model currently powering your Orchestrator in the Canvas.
+                      </p>
+                      {(() => {
+                        // Find the key with an orchestrator configured
+                        const configuredKey = keys.find(k => k.orchestrator_model_id)
+                        if (configuredKey) {
+                          return (
+                            <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-purple-200">
+                              <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">{configuredKey.orchestrator_model_id}</div>
+                                <div className="text-xs text-gray-500">Provider: {configuredKey.provider.toUpperCase()}</div>
+                              </div>
+                            </div>
+                          )
+                        } else {
+                          return (
+                            <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-300">
+                              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <div>
+                                <div className="text-sm font-medium text-gray-700">No orchestrator configured</div>
+                                <div className="text-xs text-gray-500">Auto-select mode active</div>
+                              </div>
+                            </div>
+                          )
+                        }
+                      })()}
+                      <a 
+                        href="/canvas" 
+                        className="inline-flex items-center gap-2 mt-3 text-sm font-medium text-purple-600 hover:text-purple-700 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Change Orchestrator in Canvas →
+                      </a>
                     </div>
                   </div>
                 </div>
@@ -496,7 +669,24 @@ export default function ProfilePage() {
                                     return isWriterModel(m.id)
                                   })
                                   
-                                  const orchestrators = chatModels.filter((m: any) => isOrchestratorModel(m.id))
+                                  // Deduplicate orchestrators by canonical name
+                                  const orchestratorMap = new Map<string, any>()
+                                  chatModels.filter((m: any) => isOrchestratorModel(m.id)).forEach((model: any) => {
+                                    const canonical = getCanonicalModel(model.id)
+                                    if (canonical && !orchestratorMap.has(canonical.name)) {
+                                      orchestratorMap.set(canonical.name, {
+                                        ...model,
+                                        canonicalName: canonical.name,
+                                        priority: canonical.priority
+                                      })
+                                    }
+                                  })
+                                  
+                                  const orchestrators = Array.from(orchestratorMap.values()).sort((a, b) => {
+                                    if (a.priority !== b.priority) return b.priority - a.priority
+                                    return a.canonicalName.localeCompare(b.canonicalName)
+                                  })
+                                  
                                   const writers = chatModels.filter((m: any) => !isOrchestratorModel(m.id))
                                   
                                   const isExpanded = expandedModels[key.id] || false
@@ -535,6 +725,22 @@ export default function ProfilePage() {
                                       
                                       {isExpanded && (
                                         <div className="border-t border-gray-200 bg-gray-50 p-4 space-y-4">
+                                          {/* Orchestrator Management Notice */}
+                                          <div className="px-4 py-3 bg-purple-50 border border-purple-200 rounded-lg">
+                                            <div className="flex gap-3">
+                                              <svg className="w-5 h-5 text-purple-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                              </svg>
+                                              <div className="text-xs text-purple-900 space-y-1">
+                                                <p className="font-semibold">💡 Orchestrator Selection Moved to Canvas</p>
+                                                <p>To change your active orchestrator model, use the dropdown in the <strong>Orchestrator panel</strong> on the Canvas page.</p>
+                                                <a href="/canvas" className="inline-flex items-center gap-1 text-purple-700 hover:text-purple-800 font-medium underline mt-1">
+                                                  Go to Canvas →
+                                                </a>
+                                              </div>
+                                            </div>
+                                          </div>
+                                          
                                           {/* Info Banner */}
                                           <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
                                             <div className="flex gap-3">
@@ -601,7 +807,10 @@ export default function ProfilePage() {
                                                     />
                                                     <div className="flex-1 min-w-0">
                                                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                        <span className="text-sm font-semibold text-gray-900">{model.name || model.id}</span>
+                                                        <span className="text-sm font-semibold text-gray-900">{model.canonicalName || model.name || model.id}</span>
+                                                        {model.canonicalName && model.id !== model.canonicalName && (
+                                                          <span className="text-[10px] text-gray-400 font-mono">{model.id}</span>
+                                                        )}
                                                         <Badge variant={model.category === 'production' ? 'success' : 'warning'} size="sm">
                                                           {model.category}
                                                         </Badge>

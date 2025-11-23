@@ -180,6 +180,7 @@ export default function CanvasPage() {
   const [userAvatar, setUserAvatar] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<'prospect' | 'admin' | 'user' | null>(null)
   const [isAIDocPanelOpen, setIsAIDocPanelOpen] = useState(false)
+  const [orchestratorPanelWidth, setOrchestratorPanelWidth] = useState(384) // Track orchestrator panel width
   const [initialPrompt, setInitialPrompt] = useState('')
   const [currentStoryDraftId, setCurrentStoryDraftId] = useState<string | null>(null)
   const [initialDocumentContent, setInitialDocumentContent] = useState('')
@@ -187,7 +188,21 @@ export default function CanvasPage() {
   const [currentStructureItems, setCurrentStructureItems] = useState<any[]>([])
   const [currentStructureFormat, setCurrentStructureFormat] = useState<StoryFormat | undefined>(undefined)
   const [currentContentMap, setCurrentContentMap] = useState<Record<string, string>>({})
+  const [currentSections, setCurrentSections] = useState<Array<{ id: string; structure_item_id: string; content: string }>>([])
   const [initialSectionId, setInitialSectionId] = useState<string | null>(null)
+  
+  // Store refresh function from document panel
+  const refreshSectionsRef = useRef<(() => Promise<void>) | null>(null)
+  
+  // Active context for orchestrator (when clicking segments/sections)
+  const [activeContext, setActiveContext] = useState<{
+    type: 'section' | 'segment'
+    id: string
+    name: string
+    title?: string
+    level?: number
+    description?: string
+  } | null>(null)
   
   // TEMPORARY: Force admin for your email while debugging
   const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
@@ -702,6 +717,39 @@ export default function CanvasPage() {
       hasUnsavedChangesRef.current = true
     }
   }, [handleStructureItemClick, currentStoryStructureNodeId])
+
+  // Handle switching between documents
+  const handleSwitchDocument = useCallback((nodeId: string) => {
+    console.log('Switching to document:', nodeId)
+    
+    // Use setNodes to get LATEST state
+    let latestContentMap: Record<string, string> = {}
+    let allItems: any[] = []
+    let format: StoryFormat | undefined
+    
+    setNodes((currentNodes) => {
+      const targetNode = currentNodes.find(n => n.id === nodeId && n.type === 'storyStructureNode')
+      if (!targetNode) {
+        console.error('Story structure node not found:', nodeId)
+        return currentNodes
+      }
+      
+      const nodeData = targetNode.data as StoryStructureNodeData
+      allItems = nodeData.items || []
+      format = nodeData.format
+      latestContentMap = nodeData.contentMap || {}
+      
+      return currentNodes // Don't modify nodes, just read from them
+    })
+    
+    // Update state
+    setCurrentStoryStructureNodeId(nodeId)
+    setCurrentStructureItems(allItems)
+    setCurrentStructureFormat(format)
+    setCurrentContentMap(latestContentMap)
+    setInitialSectionId(null) // Reset to first section
+  }, [])
+
 
   // Get available agent nodes for assignment
   const availableAgents = useMemo(() => {
@@ -1672,6 +1720,257 @@ export default function CanvasPage() {
     console.log('Updated story draft:', nodeId)
   }, [setNodes])
 
+  /**
+   * Agentic Handler: Write Content
+   * Generates content for a specific segment in the document
+   */
+  const handleWriteContent = useCallback(async (segmentId: string, prompt: string) => {
+    console.log('📝 handleWriteContent:', { segmentId, prompt })
+    
+    // BUILD STRATEGIC CONTEXT (orchestrator's job!)
+    // Get full hierarchy, previous content, future summaries
+    let effectiveContentMap: Record<string, string> = { ...currentContentMap }
+    
+    // Build contentMap with smart fallback (same logic as handleAnswerQuestion)
+    if (Object.keys(effectiveContentMap).length === 0) {
+      const sectionByItemId = new Map(currentSections.map(s => [s.structure_item_id, s]))
+      currentStructureItems.forEach((item: any) => {
+        const section = sectionByItemId.get(item.id)
+        if (section?.content && section.content.trim() && !section.content.includes('<p></p>')) {
+          effectiveContentMap[item.id] = section.content
+        } else if (item.summary && item.summary.trim()) {
+          effectiveContentMap[item.id] = item.summary
+        }
+      })
+    }
+    
+    console.log('🧠 Orchestrator context:', {
+      targetSegment: segmentId,
+      totalStructureItems: currentStructureItems.length,
+      contentMapSize: Object.keys(effectiveContentMap).length,
+      hasPreviousContent: currentStructureItems.findIndex((item: any) => item.id === segmentId) > 0
+    })
+    
+    // Add reasoning message
+    setCanvasChatHistory(prev => [...prev, {
+      id: `write_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      content: `📝 Orchestrator delegating to writer model with full story context...`,
+      type: 'task' as const,
+      role: 'orchestrator' as const
+    }])
+    
+    try {
+      // Call API with FULL orchestrator context
+      const response = await fetch('/api/content/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          segmentId,
+          prompt,
+          storyStructureNodeId: currentStoryStructureNodeId,
+          // STRATEGIC CONTEXT from orchestrator
+          structureItems: currentStructureItems, // Full hierarchy
+          contentMap: effectiveContentMap, // All content/summaries
+          format: currentStructureFormat, // Story format
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (!response.ok) {
+        // Show the actual error message from the API
+        const errorMsg = data.error || response.statusText
+        const errorDetails = data.details ? `\nDetails: ${data.details}` : ''
+        throw new Error(`Failed to generate content: ${errorMsg}${errorDetails}`)
+      }
+      
+      // Update the content map with new content (local state)
+      setCurrentContentMap(prev => ({
+        ...prev,
+        [segmentId]: data.content
+      }))
+      
+      // CRITICAL: Save generated content to Supabase sections
+      // This ensures content persists and appears in document view
+      console.log('💾 Saving generated content to Supabase section:', {
+        segmentId,
+        contentLength: data.content.length,
+        nodeId: currentStoryStructureNodeId
+      })
+      
+      try {
+        const supabase = createClient()
+        
+        // Update or insert the section content
+        const { data: sectionData, error: sectionError } = await supabase
+          .from('document_sections')
+          .upsert({
+            story_structure_node_id: currentStoryStructureNodeId,
+            structure_item_id: segmentId,
+            content: data.content,
+            word_count: data.content.split(/\s+/).filter((w: string) => w.length > 0).length,
+            status: 'completed',
+            order_index: currentStructureItems.findIndex((item: any) => item.id === segmentId)
+          }, {
+            onConflict: 'story_structure_node_id,structure_item_id',
+            ignoreDuplicates: false
+          })
+          .select()
+        
+        if (sectionError) {
+          console.error('❌ Failed to save section to Supabase:', sectionError)
+          // Don't throw - content is still in local state
+        } else {
+          console.log('✅ Section saved to Supabase:', sectionData)
+          
+          // Refresh sections in document panel to show new content
+          if (refreshSectionsRef.current) {
+            console.log('🔄 Refreshing sections in document panel...')
+            await refreshSectionsRef.current()
+          } else {
+            console.warn('⚠️ No refresh function available - sections may not update in UI')
+          }
+        }
+      } catch (saveError) {
+        console.error('❌ Error saving section:', saveError)
+        // Don't throw - content is still in local state
+      }
+      
+      // Add success message
+      setCanvasChatHistory(prev => [...prev, {
+        id: `write_success_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        content: `✅ Content generated and saved for segment: ${segmentId}`,
+        type: 'result' as const,
+        role: 'orchestrator' as const
+      }])
+      
+    } catch (error) {
+      console.error('Failed to write content:', error)
+      setCanvasChatHistory(prev => [...prev, {
+        id: `write_error_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        content: `❌ Failed to generate content: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error' as const,
+        role: 'orchestrator' as const
+      }])
+    }
+  }, [currentStoryStructureNodeId, currentStructureItems, currentSections, currentContentMap, currentStructureFormat])
+
+  /**
+   * Handle sections loaded from AIDocumentPanel (Supabase)
+   * This is the ACTUAL content source - not node contentMap
+   */
+  const handleSectionsLoaded = useCallback((sections: Array<{ id: string; structure_item_id: string; content: string }>) => {
+    console.log('📚 [CANVAS] handleSectionsLoaded called:', {
+      count: sections.length,
+      sampleIds: sections.slice(0, 3).map(s => ({ 
+        id: s.id, 
+        structureItemId: s.structure_item_id, 
+        contentLength: s.content?.length || 0,
+        contentPreview: s.content?.substring(0, 50)
+      }))
+    })
+    setCurrentSections(sections)
+    console.log('✅ [CANVAS] currentSections state updated')
+  }, [])
+  
+  /**
+   * Receive refresh function from document panel
+   */
+  const handleRefreshSectionsCallback = useCallback((refreshFn: () => Promise<void>) => {
+    console.log('🔗 [CANVAS] Received refreshSections function from document panel')
+    refreshSectionsRef.current = refreshFn
+  }, [])
+
+  /**
+   * Agentic Handler: Answer Question
+   * Uses orchestrator model to answer questions about the story/content
+   */
+  const handleAnswerQuestion = useCallback(async (question: string): Promise<string> => {
+    console.log('💬 handleAnswerQuestion:', question)
+    
+    // BUILD contentMap with SMART FALLBACK CHAIN:
+    // 1. Node contentMap (from test markdown)
+    // 2. Section content (user-written full story from Supabase)
+    // 3. Structure item summary (AI-generated overview)
+    let effectiveContentMap = { ...currentContentMap }
+    
+    if (Object.keys(effectiveContentMap).length === 0) {
+      console.log('📦 Building contentMap with smart fallback chain...')
+      
+      // Create a map from structure_item_id to section for quick lookup
+      const sectionByItemId = new Map(
+        currentSections.map(s => [s.structure_item_id, s])
+      )
+      
+      currentStructureItems.forEach((item: any) => {
+        const section = sectionByItemId.get(item.id)
+        
+        // Priority 1: Section content (user-written full story)
+        if (section?.content && section.content.trim() && !section.content.includes('<p></p>')) {
+          effectiveContentMap[item.id] = section.content
+          console.log(`  ✅ [${item.name}] Using section.content (full story)`)
+        }
+        // Priority 2: Structure item summary (AI-generated overview)
+        else if (item.summary && item.summary.trim()) {
+          effectiveContentMap[item.id] = item.summary
+          console.log(`  📝 [${item.name}] Using item.summary (AI overview): "${item.summary.substring(0, 60)}..."`)
+        }
+      })
+      
+      console.log('✅ Built contentMap:', {
+        structureItemsCount: currentStructureItems.length,
+        sectionsCount: currentSections.length,
+        contentMapSize: Object.keys(effectiveContentMap).length,
+        sampleKeys: Object.keys(effectiveContentMap).slice(0, 3)
+      })
+    }
+    
+    console.log('📊 Context being sent:', {
+      storyStructureNodeId: currentStoryStructureNodeId,
+      structureItemsCount: currentStructureItems.length,
+      sectionsCount: currentSections.length,
+      contentMapKeys: Object.keys(effectiveContentMap),
+      contentMapSize: Object.keys(effectiveContentMap).length,
+      hasActiveContext: !!activeContext,
+      contentMapSample: Object.keys(effectiveContentMap).slice(0, 3).map(key => ({
+        id: key,
+        length: effectiveContentMap[key]?.length,
+        preview: effectiveContentMap[key]?.substring(0, 100)
+      }))
+    })
+    
+    try {
+      // Call API to answer question using orchestrator model
+      const response = await fetch('/api/content/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          context: {
+            storyStructureNodeId: currentStoryStructureNodeId,
+            structureItems: currentStructureItems,
+            contentMap: effectiveContentMap, // ← Use built contentMap from sections!
+            activeContext
+          }
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to answer question: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      return data.answer
+      
+    } catch (error) {
+      console.error('Failed to answer question:', error)
+      return `I apologize, but I encountered an error trying to answer your question: ${error instanceof Error ? error.message : 'Unknown error'}`
+    }
+  }, [currentStoryStructureNodeId, currentStructureItems, currentContentMap, currentSections, activeContext])
+
   const handleVisibilityChange = async (newVisibility: 'private' | 'shared' | 'public') => {
     if (!storyId) return
     
@@ -2563,22 +2862,108 @@ export default function CanvasPage() {
           onAddEdge={(newEdge) => setEdges((eds) => [...eds, newEdge])}
           edges={edges}
           nodes={nodes}
+          onSelectNode={(nodeId: string, sectionId?: string) => {
+            // Load document for writing WITHOUT switching away from orchestrator panel
+            const node = nodes.find(n => n.id === nodeId)
+            if (!node) {
+              console.error('[onSelectNode] Node not found:', nodeId)
+              return
+            }
+            
+            // Extract node data
+            const nodeData = node.data as StoryStructureNodeData
+            // Check for both 'items' (database field) and 'structureItems' (legacy)
+            const structureItems = nodeData.structureItems || nodeData.items
+            if (!structureItems || !nodeData.format) {
+              console.error('[onSelectNode] Node missing structure data:', {
+                nodeId,
+                hasStructureItems: !!nodeData.structureItems,
+                hasItems: !!nodeData.items,
+                hasFormat: !!nodeData.format,
+                nodeData
+              })
+              
+              // Notify user via orchestrator chat
+              const nodeName = nodeData.label || nodeData.name || 'document'
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('orchestratorMessage', {
+                  detail: {
+                    message: `⚠️ Cannot open "${nodeName}": Document structure not loaded. Try clicking the node directly to reload it.`,
+                    role: 'orchestrator',
+                    type: 'error'
+                  }
+                }))
+              }
+              return
+            }
+            
+            // Load the document's structure and content
+            const latestContentMap = nodeData.contentMap || {}
+            setCurrentStoryStructureNodeId(nodeId)
+            setCurrentStructureItems(structureItems) // Use the resolved structureItems
+            setCurrentStructureFormat(nodeData.format)
+            setCurrentContentMap(latestContentMap)
+            
+            // Set initial section if provided (for auto-selecting a specific section)
+            if (sectionId) {
+              setInitialSectionId(sectionId)
+            }
+            
+            // Open document panel (but keep orchestrator selected!)
+            setIsAIDocPanelOpen(true)
+            
+            console.log('📂 [open_and_write] Loaded document for writing:', {
+              nodeId,
+              format: nodeData.format,
+              sections: structureItems?.length || 0,
+              contentKeys: Object.keys(latestContentMap).length,
+              autoSelectSection: sectionId || 'none'
+            })
+          }}
           canvasChatHistory={canvasChatHistory}
-          onAddChatMessage={(message) => {
-            const userMsg = {
-              id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          onAddChatMessage={(message, role = 'orchestrator', type) => {
+            // Auto-detect type from message content if not provided
+            let messageType: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' = type || 'user'
+            
+            if (!type && role === 'orchestrator') {
+              // Auto-detect based on message prefix emojis
+              if (message.startsWith('🧠') || message.startsWith('💭') || message.startsWith('🔍')) {
+                messageType = 'thinking'
+              } else if (message.startsWith('⚡') || message.startsWith('✓') || message.startsWith('📌')) {
+                messageType = 'decision'
+              } else if (message.startsWith('🚀') || message.startsWith('📝') || message.startsWith('✨')) {
+                messageType = 'task'
+              } else if (message.startsWith('✅') || message.startsWith('📊') || message.startsWith('🎉')) {
+                messageType = 'result'
+              } else if (message.startsWith('❌') || message.startsWith('⚠️')) {
+                messageType = 'error'
+              }
+            }
+            
+            const msg = {
+              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               timestamp: new Date().toISOString(),
               content: message,
-              type: 'user' as const,
-              role: 'user' as const
+              type: messageType,
+              role: role as 'user' | 'orchestrator'
             }
-            setCanvasChatHistory(prev => [...prev, userMsg])
+            setCanvasChatHistory(prev => [...prev, msg])
           }}
           onClearChat={() => {
             if (confirm('Clear all chat history? This cannot be undone.')) {
               setCanvasChatHistory([])
             }
           }}
+          onToggleDocumentView={() => setIsAIDocPanelOpen(!isAIDocPanelOpen)}
+          isDocumentViewOpen={isAIDocPanelOpen}
+          onPanelWidthChange={setOrchestratorPanelWidth}
+          activeContext={activeContext}
+          onClearContext={() => setActiveContext(null)}
+          onWriteContent={handleWriteContent}
+          onAnswerQuestion={handleAnswerQuestion}
+          structureItems={currentStructureItems}
+          contentMap={currentContentMap}
+          currentStoryStructureNodeId={currentStoryStructureNodeId}
         />
 
         {/* Loading indicator now integrated into Orchestrator node */}
@@ -2591,6 +2976,7 @@ export default function CanvasPage() {
 
         {/* AI Document Panel */}
         <AIDocumentPanel 
+          key={currentStoryStructureNodeId || 'no-document'} // Force re-mount when document changes
           isOpen={isAIDocPanelOpen} 
           onClose={() => {
             setIsAIDocPanelOpen(false)
@@ -2601,9 +2987,10 @@ export default function CanvasPage() {
             setCurrentStructureItems([])
             setCurrentStructureFormat(undefined)
             setCurrentContentMap({})
+            setCurrentSections([]) // Also clear sections
             setInitialSectionId(null)
+            setActiveContext(null) // Clear context when closing document panel
           }}
-          initialPrompt={initialPrompt}
           storyStructureNodeId={currentStoryStructureNodeId}
           structureItems={currentStructureItems}
           contentMap={currentContentMap}
@@ -2611,6 +2998,11 @@ export default function CanvasPage() {
           onUpdateStructure={handleStructureItemsUpdate}
           canvasEdges={edges}
           canvasNodes={nodes}
+          orchestratorPanelWidth={orchestratorPanelWidth}
+          onSwitchDocument={handleSwitchDocument}
+          onSetContext={setActiveContext}
+          onSectionsLoaded={handleSectionsLoaded}
+          onRefreshSections={handleRefreshSectionsCallback}
         />
       </div>
     </div>
