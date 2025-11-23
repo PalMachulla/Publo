@@ -18,6 +18,19 @@ import { buildCanvasContext, formatCanvasContextForLLM, findReferencedNode } fro
 import { enhanceContextWithRAG, buildRAGEnhancedPrompt } from '@/lib/orchestrator/ragIntegration'
 import { Edge } from 'reactflow'
 
+// Helper: Identify orchestrator models (matches ProfilePage logic)
+const isOrchestratorModel = (modelId: string): boolean => {
+  const id = modelId.toLowerCase()
+  const orchestratorPatterns = [
+    'gpt-4', 'o1', 'o3', 
+    'claude-3-5-sonnet', 'claude-3-opus', 
+    'gemini-1.5-pro', 'gemini-2.0-flash-exp', 
+    'llama-3.3-70b', 'llama-3.1-70b', 'llama-3.1-8b', 
+    'mixtral-8x7b', 'qwen2.5-72b', 'gemma'
+  ]
+  return orchestratorPatterns.some(pattern => id.includes(pattern))
+}
+
 interface ActiveContext {
   type: 'section' | 'segment'
   id: string
@@ -243,6 +256,9 @@ export default function CreateStoryPanel({
     writerCount: number
   }>({ orchestrator: null, writerCount: 0 })
   const [loadingConfig, setLoadingConfig] = useState(true)
+  const [availableOrchestrators, setAvailableOrchestrators] = useState<Array<{id: string, name: string, keyId: string, provider: string}>>([])
+  const [activeKeyId, setActiveKeyId] = useState<string | null>(null)
+  const [updatingModel, setUpdatingModel] = useState(false)
   const [selectedFormat, setSelectedFormat] = useState<StoryFormat>('novel') // Default to 'novel'
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false) // Prevent double-clicks
@@ -1205,6 +1221,29 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
       const response = await fetch('/api/user/api-keys')
       const data = await response.json()
       
+      // Populate available orchestrators
+      if (data.success && data.keys?.length > 0) {
+        const allOrchestrators: Array<{id: string, name: string, keyId: string, provider: string}> = []
+        
+        data.keys.forEach((key: any) => {
+          if (key.models_cache) {
+            key.models_cache.forEach((model: any) => {
+              if (isOrchestratorModel(model.id)) {
+                allOrchestrators.push({
+                  id: model.id,
+                  name: model.name || model.id,
+                  keyId: key.id,
+                  provider: key.provider
+                })
+              }
+            })
+          }
+        })
+        setAvailableOrchestrators(allOrchestrators)
+      } else {
+        setAvailableOrchestrators([])
+      }
+
       console.log('[CreateStoryPanel] 📦 API Response:', {
         success: data.success,
         keyCount: data.keys?.length,
@@ -1234,6 +1273,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
             writers: configuredKey.writer_model_ids?.length || 0
           })
           
+          setActiveKeyId(configuredKey.id)
           setConfiguredModel({
             orchestrator: configuredKey.orchestrator_model_id,
             writerCount: configuredKey.writer_model_ids?.length || 0
@@ -1241,6 +1281,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
         } else {
           console.log('[CreateStoryPanel] ⚠️ No orchestrator found, defaulting to Auto-select')
           // No explicit configuration - will auto-select
+          setActiveKeyId(null)
           setConfiguredModel({
             orchestrator: 'Auto-select',
             writerCount: 0
@@ -1249,6 +1290,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
       } else {
         console.log('[CreateStoryPanel] ❌ No API keys found')
         // No API keys configured
+        setActiveKeyId(null)
         setConfiguredModel({
           orchestrator: null,
           writerCount: 0
@@ -1423,17 +1465,82 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
           {/* Model Accordion Content */}
           {isModelPillExpanded && (
             <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 animate-in slide-in-from-top-2 duration-200">
-              <div className="text-xs text-gray-600 mb-2">
-                <span className="font-semibold">Orchestrator:</span> {configuredModel?.orchestrator || 'Auto-select best model'}
-              </div>
-              <div className="text-xs text-gray-600 mb-3">
-                <span className="font-semibold">Writers:</span> {configuredModel?.writerCount || 0} models
-              </div>
+              {availableOrchestrators.length > 0 ? (
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                       <label className="text-xs font-semibold text-gray-600">Select Model:</label>
+                       {updatingModel && <span className="text-[10px] text-purple-600 animate-pulse font-medium">Switching...</span>}
+                    </div>
+                    <select
+                      value={configuredModel.orchestrator || ''}
+                      onChange={async (e) => {
+                        const selectedId = e.target.value
+                        const selectedOption = availableOrchestrators.find(m => m.id === selectedId)
+                        
+                        if (selectedOption) {
+                          setUpdatingModel(true)
+                          // Optimistic UI update
+                          setConfiguredModel(prev => ({ ...prev, orchestrator: selectedId }))
+                          
+                          try {
+                             // 1. Get current key data to preserve writers
+                             const keysResponse = await fetch('/api/user/api-keys')
+                             const keysData = await keysResponse.json()
+                             const targetKey = keysData.keys.find((k: any) => k.id === selectedOption.keyId)
+                             
+                             if (targetKey) {
+                               // 2. Update preference
+                               await fetch(`/api/user/api-keys/${targetKey.id}/preferences`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    orchestratorModelId: selectedId,
+                                    writerModelIds: targetKey.writer_model_ids || [] 
+                                  })
+                               })
+                               
+                               // 3. Dispatch event
+                               window.dispatchEvent(new CustomEvent('orchestratorConfigUpdated', {
+                                  detail: { orchestratorModelId: selectedId }
+                               }))
+                               
+                               // 4. Refresh
+                               await fetchConfiguredModels()
+                             }
+                          } catch (err) {
+                            console.error('Failed to switch model', err)
+                            fetchConfiguredModels() // Revert
+                          } finally {
+                            setUpdatingModel(false)
+                          }
+                        }
+                      }}
+                      disabled={updatingModel}
+                      className="w-full text-xs border-gray-300 rounded shadow-sm focus:border-purple-500 focus:ring-purple-500 py-1.5 bg-white text-gray-700"
+                    >
+                      {availableOrchestrators.map((model) => (
+                        <option key={`${model.keyId}-${model.id}`} value={model.id}>
+                          {model.name} ({model.provider})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    <span className="font-semibold">Writers:</span> {configuredModel.writerCount} models available
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-gray-500 italic mb-2">
+                  No compatible models found.
+                </div>
+              )}
+              
               <button
                 onClick={() => router.push('/profile')}
-                className="text-xs font-medium text-blue-600 hover:text-blue-700 underline"
+                className="text-xs font-medium text-blue-600 hover:text-blue-700 underline mt-2 block"
               >
-                Change in Profile →
+                Manage Keys in Profile →
               </button>
             </div>
           )}
