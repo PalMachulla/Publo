@@ -159,7 +159,7 @@ Current user message: "${context.currentMessage}"
 
 Analyze this message and determine the user's intent. Consider the conversation history and current context.
 
-Return ONLY valid JSON with your analysis.`
+Return ONLY valid JSON with your analysis. Do not include markdown formatting (```json). Just the raw JSON object.`
 
   try {
     // Call the orchestrator via our API
@@ -170,7 +170,7 @@ Return ONLY valid JSON with your analysis.`
         system_prompt: INTENT_ANALYSIS_SYSTEM_PROMPT,
         user_prompt: analysisPrompt,
         conversation_history: context.conversationHistory.slice(-5), // Last 5 messages
-        temperature: 0.3 // Lower temp for more consistent intent detection
+        temperature: 0.1 // Lower temp for consistent JSON
       })
     })
 
@@ -184,13 +184,18 @@ Return ONLY valid JSON with your analysis.`
     // Parse the LLM's JSON response
     let analysis: LLMIntentResult
     try {
-      // The LLM should return JSON, but might wrap it in markdown
-      const jsonMatch = data.content.match(/\{[\s\S]*\}/)
+      let content = data.content.trim()
+      
+      // Remove markdown code blocks if present
+      content = content.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '')
+      
+      // Extract JSON object if wrapped in text
+      const jsonMatch = content.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
-        analysis = JSON.parse(jsonMatch[0])
-      } else {
-        analysis = JSON.parse(data.content)
+        content = jsonMatch[0]
       }
+      
+      analysis = JSON.parse(content)
     } catch (parseError) {
       console.error('[LLM Intent] Failed to parse JSON:', data.content)
       // Fallback to conservative intent
