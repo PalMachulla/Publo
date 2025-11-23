@@ -32,6 +32,7 @@ const getCanonicalModel = (modelId: string) => {
   if (id === 'gpt-4' || id.includes('gpt-4-0613') || id.includes('gpt-4-0314')) return { name: 'GPT-4 (Legacy)', priority: 60, group: 'OpenAI', isReasoning: true }
   
   // Anthropic Models
+  if (id.includes('claude-sonnet-4.5') || id.includes('claude-4.5-sonnet')) return { name: 'Claude Sonnet 4.5', priority: 95, group: 'Anthropic', isReasoning: true }
   if (id.includes('claude-3-5-sonnet')) return { name: 'Claude 3.5 Sonnet', priority: 92, group: 'Anthropic', isReasoning: true }
   if (id.includes('claude-3-opus')) return { name: 'Claude 3 Opus', priority: 88, group: 'Anthropic', isReasoning: true }
   if (id.includes('claude-3-haiku')) return { name: 'Claude 3 Haiku', priority: 70, group: 'Anthropic', isReasoning: false }
