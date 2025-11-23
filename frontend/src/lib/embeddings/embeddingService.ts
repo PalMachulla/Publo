@@ -1,10 +1,12 @@
 /**
  * Embedding Service
  * Handles generation of vector embeddings using OpenAI's text-embedding-3-small model
+ * 
+ * NOTE: This service should ONLY be used server-side (API routes).
+ * Client-side code should call API routes instead.
  */
 
 import { createClient } from '@/lib/supabase/client'
-import { decryptAPIKey } from '@/lib/security/encryption'
 
 export interface EmbeddingConfig {
   model: 'text-embedding-3-small' | 'text-embedding-3-large'
@@ -56,9 +58,11 @@ export async function generateEmbedding(
     throw new Error('OpenAI API key not found. Please configure your API key in Settings.')
   }
 
-  // Decrypt the API key
+  // Decrypt the API key (only works server-side)
   let openaiApiKey: string
   try {
+    // Dynamic import to avoid bundling crypto in client
+    const { decryptAPIKey } = await import('@/lib/security/encryption')
     openaiApiKey = decryptAPIKey(apiKeyData.encrypted_key)
   } catch (decryptError) {
     throw new Error(`Failed to decrypt API key: ${decryptError instanceof Error ? decryptError.message : 'Unknown error'}`)
@@ -132,9 +136,11 @@ export async function generateBatchEmbeddings(
     throw new Error('OpenAI API key not found. Please configure your API key in Settings.')
   }
 
-  // Decrypt the API key
+  // Decrypt the API key (only works server-side)
   let openaiApiKey: string
   try {
+    // Dynamic import to avoid bundling crypto in client
+    const { decryptAPIKey } = await import('@/lib/security/encryption')
     openaiApiKey = decryptAPIKey(apiKeyData.encrypted_key)
   } catch (decryptError) {
     throw new Error(`Failed to decrypt API key: ${decryptError instanceof Error ? decryptError.message : 'Unknown error'}`)
