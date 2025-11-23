@@ -801,20 +801,22 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
           
           // Found a node - open it!
           if (onAddChatMessage) {
-            onAddChatMessage(`✅ Opening "${nodeToOpen.label}" for editing...`, 'orchestrator', 'result')
+            onAddChatMessage(`✅ Opening "${nodeToOpen.label}" (${nodeToOpen.detailedContext?.format || 'document'}) for editing...`, 'orchestrator', 'result')
           }
           
-          // Trigger document open by setting the selected node
+          // Trigger document load (keeps orchestrator panel visible!)
           if (onSelectNode && nodeToOpen.nodeId) {
             onSelectNode(nodeToOpen.nodeId)
           }
           
-          // Wait a bit for the document to open, then guide the user
+          // Guide the user
           setTimeout(() => {
             if (onAddChatMessage) {
-              onAddChatMessage(`📝 Document opened! Now please select which section you'd like to write in, and I'll help you craft the content.`, 'orchestrator', 'result')
+              const sectionCount = nodeToOpen.detailedContext?.allSections?.length || 0
+              onAddChatMessage(`📂 Document loaded with ${sectionCount} section(s)!`, 'orchestrator', 'result')
+              onAddChatMessage(`💡 **Next step**: Click on any section in the document view to select it, then tell me what you'd like to write!`, 'orchestrator', 'result')
             }
-          }, 500)
+          }, 300)
           break
         
         case 'general_chat':

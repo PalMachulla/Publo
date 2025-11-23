@@ -2863,12 +2863,33 @@ export default function CanvasPage() {
           edges={edges}
           nodes={nodes}
           onSelectNode={(nodeId: string) => {
+            // Load document for writing WITHOUT switching away from orchestrator panel
             const node = nodes.find(n => n.id === nodeId)
-            if (node) {
-              setSelectedNode(node)
-              setIsPanelOpen(true)
-              setIsAIDocPanelOpen(true) // Auto-open document view
+            if (!node) return
+            
+            // Extract node data
+            const nodeData = node.data as StoryStructureNodeData
+            if (!nodeData.structureItems || !nodeData.format) {
+              console.warn('Node does not have structure data:', nodeId)
+              return
             }
+            
+            // Load the document's structure and content
+            const latestContentMap = nodeData.contentMap || {}
+            setCurrentStoryStructureNodeId(nodeId)
+            setCurrentStructureItems(nodeData.structureItems)
+            setCurrentStructureFormat(nodeData.format)
+            setCurrentContentMap(latestContentMap)
+            
+            // Open document panel (but keep orchestrator selected!)
+            setIsAIDocPanelOpen(true)
+            
+            console.log('📂 [open_and_write] Loaded document for writing:', {
+              nodeId,
+              format: nodeData.format,
+              sections: nodeData.structureItems?.length || 0,
+              contentKeys: Object.keys(latestContentMap).length
+            })
           }}
           canvasChatHistory={canvasChatHistory}
           onAddChatMessage={(message, role = 'orchestrator', type) => {
