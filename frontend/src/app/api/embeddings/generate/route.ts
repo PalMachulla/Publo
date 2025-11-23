@@ -182,15 +182,22 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get embedding count
+    // Get embedding count (handle case where table doesn't exist)
     const { count: embeddingCount, error: countError } = await supabase
       .from('document_embeddings')
       .select('*', { count: 'exact', head: true })
       .eq('story_structure_node_id', nodeId)
       .eq('embedding_status', 'completed')
 
+    // If table doesn't exist or other error, return unavailable status
     if (countError) {
-      throw countError
+      console.warn('Embeddings table not available:', countError.message)
+      return NextResponse.json({
+        exists: false,
+        chunkCount: 0,
+        queueStatus: 'unavailable',
+        error: 'Embeddings feature not set up. Run migration 013_create_document_embeddings.sql',
+      })
     }
 
     // Get queue status (don't use .single() as it throws error if no rows)
@@ -200,6 +207,11 @@ export async function GET(request: NextRequest) {
       .eq('story_structure_node_id', nodeId)
       .order('created_at', { ascending: false })
       .limit(1)
+
+    // Ignore queue errors (queue table might not exist yet)
+    if (queueError) {
+      console.warn('Embedding queue table not available:', queueError.message)
+    }
 
     // Get first item from array (or null if no queue entries)
     const latestQueueEntry = queueData && queueData.length > 0 ? queueData[0] : null

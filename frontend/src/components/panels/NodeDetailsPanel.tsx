@@ -142,19 +142,31 @@ export default function NodeDetailsPanel({
     setEmbeddingStatus(prev => ({ ...prev, loading: true }))
     try {
       const response = await fetch(`/api/embeddings/generate?nodeId=${nodeId}`)
-      if (response.ok) {
-        const data = await response.json()
-        setEmbeddingStatus({
-          exists: data.exists || false,
-          chunkCount: data.chunkCount || 0,
-          queueStatus: data.queueStatus || 'none',
-          loading: false,
-          generating: false
-        })
+      const data = await response.json()
+      
+      // Handle both success and error responses
+      setEmbeddingStatus({
+        exists: data.exists || false,
+        chunkCount: data.chunkCount || 0,
+        queueStatus: data.queueStatus || 'none',
+        loading: false,
+        generating: false
+      })
+      
+      // Log if tables are not set up
+      if (data.queueStatus === 'unavailable') {
+        console.warn('Embeddings feature not set up:', data.error)
       }
     } catch (error) {
       console.error('Failed to check embedding status:', error)
-      setEmbeddingStatus(prev => ({ ...prev, loading: false }))
+      // Set unavailable status on error
+      setEmbeddingStatus({
+        exists: false,
+        chunkCount: 0,
+        queueStatus: 'unavailable',
+        loading: false,
+        generating: false
+      })
     }
   }
   
@@ -644,6 +656,18 @@ export default function NodeDetailsPanel({
                   
                   {embeddingStatus.loading ? (
                     <div className="text-sm text-gray-600 animate-pulse">Checking status...</div>
+                  ) : embeddingStatus.queueStatus === 'unavailable' ? (
+                    <div className="space-y-2">
+                      <div className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded p-3">
+                        <strong>⚙️ Setup Required</strong>
+                        <p className="mt-1 text-xs">
+                          Embeddings feature not set up. Run database migration:
+                          <code className="block mt-1 p-1 bg-yellow-100 rounded text-xs">
+                            013_create_document_embeddings.sql
+                          </code>
+                        </p>
+                      </div>
+                    </div>
                   ) : embeddingStatus.exists ? (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
