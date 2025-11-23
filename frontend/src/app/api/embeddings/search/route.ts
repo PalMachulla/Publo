@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if embeddings exist
-    const embeddingStatus = await checkEmbeddingsExist(nodeId)
+    const embeddingStatus = await checkEmbeddingsExist(supabase, nodeId)
     
     if (!embeddingStatus.exists) {
       return NextResponse.json(

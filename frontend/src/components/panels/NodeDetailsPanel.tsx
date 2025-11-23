@@ -331,7 +331,7 @@ export default function NodeDetailsPanel({
     if (node && node.type === 'storyStructureNode') {
       checkEmbeddingStatus(node.id)
     }
-  }, [node?.id])
+  }, [node, checkEmbeddingStatus])
 
   // Early returns AFTER all hooks
   if (!node) return null

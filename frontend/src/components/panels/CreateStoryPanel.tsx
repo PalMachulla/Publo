@@ -2010,7 +2010,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
               ))}
             </div>
             <p className="text-xs text-gray-500 mt-3">
-              💬 Or just tell me which one: "The interview one looks good" or "Let's go with blank canvas"
+              💬 Or just tell me which one: &quot;The interview one looks good&quot; or &quot;Let&apos;s go with blank canvas&quot;
             </p>
           </div>
         )}

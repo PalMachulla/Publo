@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         .eq('id', sectionData.story_structure_node_id)
         .single()
 
-      if (nodeError || !nodeData || (nodeData.stories as { user_id: string }).user_id !== user.id) {
+      if (nodeError || !nodeData || (nodeData.stories as any)?.user_id !== user.id) {
         return NextResponse.json(
           { error: 'Unauthorized access to this document' },
           { status: 403 }
@@ -70,7 +70,8 @@ export async function POST(request: NextRequest) {
       const structureItem: StoryStructureItem = {
         id: sectionData.structure_item_id,
         level: 0,
-        type: 'scene',
+        name: 'Section',
+        order: 0,
         content: sectionData.content,
       }
 
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
         .eq('id', nodeId)
         .single()
 
-      if (nodeError || !nodeData || (nodeData.stories as { user_id: string }).user_id !== user.id) {
+      if (nodeError || !nodeData || (nodeData.stories as any)?.user_id !== user.id) {
         return NextResponse.json(
           { error: 'Unauthorized access to this story' },
           { status: 403 }

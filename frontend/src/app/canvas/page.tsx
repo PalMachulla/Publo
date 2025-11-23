@@ -2872,19 +2872,18 @@ export default function CanvasPage() {
             
             // Extract node data
             const nodeData = node.data as StoryStructureNodeData
-            // Check for both 'items' (database field) and 'structureItems' (legacy)
-            const structureItems = nodeData.structureItems || nodeData.items
+            // Get structure items
+            const structureItems = nodeData.items
             if (!structureItems || !nodeData.format) {
               console.error('[onSelectNode] Node missing structure data:', {
                 nodeId,
-                hasStructureItems: !!nodeData.structureItems,
                 hasItems: !!nodeData.items,
                 hasFormat: !!nodeData.format,
                 nodeData
               })
               
               // Notify user via orchestrator chat
-              const nodeName = nodeData.label || nodeData.name || 'document'
+              const nodeName = nodeData.label || 'document'
               if (typeof window !== 'undefined') {
                 window.dispatchEvent(new CustomEvent('orchestratorMessage', {
                   detail: {
@@ -2921,11 +2920,12 @@ export default function CanvasPage() {
             })
           }}
           canvasChatHistory={canvasChatHistory}
-          onAddChatMessage={(message, role = 'orchestrator', type) => {
+          onAddChatMessage={(message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user') => {
             // Auto-detect type from message content if not provided
+            const actualRole = role || 'orchestrator'
             let messageType: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' = type || 'user'
             
-            if (!type && role === 'orchestrator') {
+            if (!type && actualRole === 'orchestrator') {
               // Auto-detect based on message prefix emojis
               if (message.startsWith('🧠') || message.startsWith('💭') || message.startsWith('🔍')) {
                 messageType = 'thinking'
@@ -2945,7 +2945,7 @@ export default function CanvasPage() {
               timestamp: new Date().toISOString(),
               content: message,
               type: messageType,
-              role: role as 'user' | 'orchestrator'
+              role: actualRole
             }
             setCanvasChatHistory(prev => [...prev, msg])
           }}

@@ -93,25 +93,24 @@ function extractThemes(text: string): string[] {
  * Build hierarchy path from structure item
  */
 function buildHierarchyPath(item: StoryStructureItem): string {
-  const parts: string[] = []
-  
-  if (item.act) parts.push(item.act)
-  if (item.sequence) parts.push(item.sequence)
-  if (item.scene) parts.push(item.scene)
-  if (item.beat) parts.push(item.beat)
-  
-  return parts.join(' / ')
+  // Use the item's name as the hierarchy path
+  // The name already contains the hierarchical information (e.g., "Act I", "Scene 1")
+  return item.name || 'Unknown Section'
 }
 
 /**
  * Get section type from structure item
  */
 function getSectionType(item: StoryStructureItem): string {
-  if (item.beat) return 'beat'
-  if (item.scene) return 'scene'
-  if (item.sequence) return 'sequence'
-  if (item.act) return 'act'
-  return 'unknown'
+  // Infer type from the item's name
+  const name = item.name.toLowerCase()
+  if (name.includes('beat')) return 'beat'
+  if (name.includes('scene')) return 'scene'
+  if (name.includes('sequence')) return 'sequence'
+  if (name.includes('act')) return 'act'
+  if (name.includes('chapter')) return 'chapter'
+  if (name.includes('part')) return 'part'
+  return 'section'
 }
 
 /**
@@ -121,13 +120,16 @@ function buildChunkMetadata(
   item: StoryStructureItem,
   text: string
 ): ChunkMetadata {
+  // Extract hierarchy information from the item name
+  const sectionType = getSectionType(item)
+  
   return {
-    act: item.act,
-    sequence: item.sequence,
-    scene: item.scene,
-    beat: item.beat,
+    act: sectionType === 'act' ? item.name : undefined,
+    sequence: sectionType === 'sequence' ? item.name : undefined,
+    scene: sectionType === 'scene' ? item.name : undefined,
+    beat: sectionType === 'beat' ? item.name : undefined,
     hierarchy_path: buildHierarchyPath(item),
-    section_type: getSectionType(item),
+    section_type: sectionType,
     character_mentions: extractCharacterMentions(text),
     themes: extractThemes(text),
   }

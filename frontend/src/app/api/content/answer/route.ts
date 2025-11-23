@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getProviderAdapter, detectProviderFromModel } from '@/lib/providers'
 import { decryptAPIKey } from '@/lib/security/encryption'
+import { LLMProvider } from '@/types/api-keys'
 
 export async function POST(request: NextRequest) {
   try {
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     let orchestratorModelId: string
     let userKey: any
-    let provider: string
+    let provider: LLMProvider
 
     if (configuredKeys && configuredKeys.length > 0) {
       // Found explicit user preference

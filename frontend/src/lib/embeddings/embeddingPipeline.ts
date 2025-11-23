@@ -243,13 +243,14 @@ export async function processStoryStructureNode(
  * Process the embedding queue (background job)
  */
 export async function processEmbeddingQueue(
+  supabase: SupabaseClient,
+  userId: string,
   config: EmbeddingPipelineConfig = DEFAULT_PIPELINE_CONFIG
 ): Promise<{
   processed: number
   successful: number
   failed: number
 }> {
-  const supabase = createClient()
 
   // Get pending items from queue
   const { data: queueItems, error: queueError } = await supabase
@@ -304,11 +305,14 @@ export async function processEmbeddingQueue(
     const structureItem: StoryStructureItem = {
       id: sectionData.structure_item_id,
       level: 0,
-      type: 'scene',
+      name: 'Section',
+      order: 0,
       content: sectionData.content,
     }
 
     const result = await processSingleSection(
+      supabase,
+      userId,
       item.document_section_id,
       sectionData.content,
       structureItem,

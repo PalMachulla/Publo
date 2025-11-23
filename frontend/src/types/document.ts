@@ -2,6 +2,9 @@
 
 import { StoryStructureItem } from './nodes'
 
+// Re-export StoryStructureItem for convenience
+export type { StoryStructureItem }
+
 // ============================================================================
 // Document Section
 // ============================================================================
