@@ -13,7 +13,7 @@
  * 6. Inject retrieved content into orchestrator prompt
  */
 
-import { checkEmbeddingsExist, searchDocumentChunks, buildContextFromResults } from '@/lib/embeddings/retrievalService'
+import { buildContextFromResults, type RetrievalResult } from '@/lib/embeddings/retrievalService'
 import { CanvasContext, NodeContext, findReferencedNode } from './canvasContextProvider'
 
 export interface RAGEnhancedContext {
@@ -73,8 +73,18 @@ export async function enhanceContextWithRAG(
       }
     }
 
-    // Step 2: Check if embeddings exist for this node
-    const embeddingStatus = await checkEmbeddingsExist(targetNodeId)
+    // Step 2: Check if embeddings exist for this node (via API)
+    const statusResponse = await fetch(`/api/embeddings/generate?nodeId=${targetNodeId}`)
+    if (!statusResponse.ok) {
+      console.error('⚠️ [RAG] Failed to check embedding status')
+      return {
+        hasRAG: false,
+        fallbackReason: 'Failed to check embedding status',
+        referencedNode,
+      }
+    }
+    
+    const embeddingStatus = await statusResponse.json()
     console.log('📊 [RAG] Embedding status:', embeddingStatus)
 
     if (!embeddingStatus.exists) {
@@ -86,23 +96,40 @@ export async function enhanceContextWithRAG(
       }
     }
 
-    if (embeddingStatus.status !== 'completed') {
-      console.log('⚠️ [RAG] Embeddings not ready:', embeddingStatus.status)
+    if (embeddingStatus.queueStatus && embeddingStatus.queueStatus !== 'completed' && embeddingStatus.queueStatus !== 'none') {
+      console.log('⚠️ [RAG] Embeddings not ready:', embeddingStatus.queueStatus)
       return {
         hasRAG: false,
-        fallbackReason: `Embeddings are ${embeddingStatus.status}`,
+        fallbackReason: `Embeddings are ${embeddingStatus.queueStatus}`,
         referencedNode,
       }
     }
 
-    // Step 3: Perform semantic search
+    // Step 3: Perform semantic search (via API)
     console.log('🚀 [RAG] Performing semantic search...')
-    const searchResult = await searchDocumentChunks(userMessage, {
-      matchThreshold: 0.6, // Lower threshold for broader retrieval
-      matchCount: 8, // Get more chunks for better context
-      filterNodeId: targetNodeId,
-      includeMetadata: true,
+    const searchResponse = await fetch('/api/embeddings/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: userMessage,
+        matchThreshold: 0.6, // Lower threshold for broader retrieval
+        matchCount: 8, // Get more chunks for better context
+        nodeId: targetNodeId,
+        includeMetadata: true,
+      }),
     })
+
+    if (!searchResponse.ok) {
+      const errorData = await searchResponse.json()
+      console.error('⚠️ [RAG] Search API error:', errorData)
+      return {
+        hasRAG: false,
+        fallbackReason: `Search failed: ${errorData.error || 'Unknown error'}`,
+        referencedNode,
+      }
+    }
+
+    const searchResult = await searchResponse.json()
 
     console.log('✅ [RAG] Search complete:', {
       resultsFound: searchResult.results.length,
@@ -201,10 +228,20 @@ export async function checkRAGAvailability(
   const nodesWithoutEmbeddings: string[] = []
 
   for (const node of storyNodes) {
-    const status = await checkEmbeddingsExist(node.nodeId)
-    if (status.exists && status.status === 'completed') {
-      nodesWithEmbeddings.push(node.nodeId)
-    } else {
+    try {
+      const statusResponse = await fetch(`/api/embeddings/generate?nodeId=${node.nodeId}`)
+      if (statusResponse.ok) {
+        const status = await statusResponse.json()
+        if (status.exists && (status.queueStatus === 'completed' || status.queueStatus === 'none')) {
+          nodesWithEmbeddings.push(node.nodeId)
+        } else {
+          nodesWithoutEmbeddings.push(node.nodeId)
+        }
+      } else {
+        nodesWithoutEmbeddings.push(node.nodeId)
+      }
+    } catch (error) {
+      console.error('Error checking embedding status for node:', node.nodeId, error)
       nodesWithoutEmbeddings.push(node.nodeId)
     }
   }

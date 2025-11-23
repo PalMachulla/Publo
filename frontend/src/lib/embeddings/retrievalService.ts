@@ -3,9 +3,9 @@
  * Handles semantic search and retrieval of document chunks using vector similarity
  */
 
-import { createClient } from '@/lib/supabase/client'
 import { generateEmbedding } from './embeddingService'
 import { ChunkMetadata } from './chunkingService'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface RetrievalConfig {
   matchThreshold: number // Minimum similarity score (0-1)
@@ -40,6 +40,8 @@ const DEFAULT_RETRIEVAL_CONFIG: RetrievalConfig = {
  * Search for relevant document chunks using semantic similarity
  */
 export async function searchDocumentChunks(
+  supabase: SupabaseClient,
+  userId: string,
   query: string,
   config: RetrievalConfig = DEFAULT_RETRIEVAL_CONFIG
 ): Promise<{
@@ -47,10 +49,9 @@ export async function searchDocumentChunks(
   stats: RetrievalStats
 }> {
   const startTime = Date.now()
-  const supabase = createClient()
 
   // Step 1: Generate embedding for the query
-  const { embedding, usage } = await generateEmbedding(query)
+  const { embedding, usage } = await generateEmbedding(supabase, userId, query)
 
   // Step 2: Call Supabase RPC function for vector search
   const { data, error } = await supabase.rpc('search_document_embeddings', {
@@ -166,6 +167,8 @@ export async function reRankResults(
  * Hybrid search: Combine vector similarity with keyword matching
  */
 export async function hybridSearch(
+  supabase: SupabaseClient,
+  userId: string,
   query: string,
   config: RetrievalConfig = DEFAULT_RETRIEVAL_CONFIG
 ): Promise<{
@@ -173,10 +176,9 @@ export async function hybridSearch(
   stats: RetrievalStats
 }> {
   // Step 1: Semantic search
-  const semanticResults = await searchDocumentChunks(query, config)
+  const semanticResults = await searchDocumentChunks(supabase, userId, query, config)
 
   // Step 2: Keyword search (using full-text search)
-  const supabase = createClient()
   const keywords = query
     .toLowerCase()
     .split(/\s+/)
@@ -229,6 +231,8 @@ export async function hybridSearch(
  * Useful when user is focused on a particular node in canvas view
  */
 export async function getNodeContext(
+  supabase: SupabaseClient,
+  userId: string,
   nodeId: string,
   query?: string,
   config: Partial<RetrievalConfig> = {}
@@ -244,10 +248,9 @@ export async function getNodeContext(
 
   if (query) {
     // Semantic search within this node
-    return await searchDocumentChunks(query, finalConfig)
+    return await searchDocumentChunks(supabase, userId, query, finalConfig)
   } else {
     // Return all chunks for this node (no query)
-    const supabase = createClient()
     
     const { data, error } = await supabase
       .from('document_embeddings')
@@ -283,12 +286,14 @@ export async function getNodeContext(
 /**
  * Check if embeddings exist for a story structure node
  */
-export async function checkEmbeddingsExist(nodeId: string): Promise<{
+export async function checkEmbeddingsExist(
+  supabase: SupabaseClient,
+  nodeId: string
+): Promise<{
   exists: boolean
   chunkCount: number
   status: 'completed' | 'pending' | 'processing' | 'failed' | 'none'
 }> {
-  const supabase = createClient()
 
   const { count, error } = await supabase
     .from('document_embeddings')

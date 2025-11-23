@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     // Check if embeddings exist for the target node
     if (nodeId) {
-      const embeddingStatus = await checkEmbeddingsExist(nodeId)
+      const embeddingStatus = await checkEmbeddingsExist(supabase, nodeId)
       
       if (!embeddingStatus.exists) {
         return NextResponse.json(
@@ -77,14 +77,14 @@ export async function POST(request: NextRequest) {
     // Perform search
     let searchResult
     if (searchMode === 'hybrid') {
-      searchResult = await hybridSearch(query, {
+      searchResult = await hybridSearch(supabase, user.id, query, {
         matchThreshold,
         matchCount,
         filterNodeId: nodeId,
         includeMetadata,
       })
     } else {
-      searchResult = await searchDocumentChunks(query, {
+      searchResult = await searchDocumentChunks(supabase, user.id, query, {
         matchThreshold,
         matchCount,
         filterNodeId: nodeId,
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get node context
-    const result = await getNodeContext(nodeId, query || undefined, {
+    const result = await getNodeContext(supabase, user.id, nodeId, query || undefined, {
       matchCount,
       includeMetadata: true,
     })
