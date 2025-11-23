@@ -159,7 +159,7 @@ Current user message: "${context.currentMessage}"
 
 Analyze this message and determine the user's intent. Consider the conversation history and current context.
 
-Return ONLY valid JSON with your analysis. Do not include markdown formatting (```json). Just the raw JSON object.`
+Return ONLY valid JSON with your analysis. Do not include markdown formatting. Just the raw JSON object.`
 
   try {
     // Call the orchestrator via our API
