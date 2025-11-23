@@ -18,17 +18,33 @@ import { buildCanvasContext, formatCanvasContextForLLM, findReferencedNode } fro
 import { enhanceContextWithRAG, buildRAGEnhancedPrompt } from '@/lib/orchestrator/ragIntegration'
 import { Edge } from 'reactflow'
 
-// Helper: Identify orchestrator models (matches ProfilePage logic)
-const isOrchestratorModel = (modelId: string): boolean => {
+// Helper: Get canonical model details for filtering and display
+const getCanonicalModel = (modelId: string) => {
   const id = modelId.toLowerCase()
-  const orchestratorPatterns = [
-    'gpt-4', 'o1', 'o3', 
-    'claude-3-5-sonnet', 'claude-3-opus', 
-    'gemini-1.5-pro', 'gemini-2.0-flash-exp', 
-    'llama-3.3-70b', 'llama-3.1-70b', 'llama-3.1-8b', 
-    'mixtral-8x7b', 'qwen2.5-72b', 'gemma'
-  ]
-  return orchestratorPatterns.some(pattern => id.includes(pattern))
+  
+  // OpenAI Models
+  if (id.includes('o1-preview')) return { name: 'OpenAI o1 Preview', priority: 100, group: 'OpenAI (Reasoning)', isReasoning: true }
+  if (id.includes('o1-mini')) return { name: 'OpenAI o1 Mini', priority: 95, group: 'OpenAI (Reasoning)', isReasoning: true }
+  if (id.includes('gpt-4o') && !id.includes('mini')) return { name: 'GPT-4o', priority: 90, group: 'OpenAI', isReasoning: true }
+  if (id.includes('gpt-4o') && id.includes('mini')) return { name: 'GPT-4o Mini', priority: 70, group: 'OpenAI', isReasoning: false }
+  if (id.includes('gpt-4-turbo') || id.includes('gpt-4-1106') || id.includes('gpt-4-0125')) return { name: 'GPT-4 Turbo', priority: 85, group: 'OpenAI', isReasoning: true }
+  if (id === 'gpt-4' || id.includes('gpt-4-0613') || id.includes('gpt-4-0314')) return { name: 'GPT-4 (Legacy)', priority: 60, group: 'OpenAI', isReasoning: true }
+  
+  // Anthropic Models
+  if (id.includes('claude-3-5-sonnet')) return { name: 'Claude 3.5 Sonnet', priority: 92, group: 'Anthropic', isReasoning: true }
+  if (id.includes('claude-3-opus')) return { name: 'Claude 3 Opus', priority: 88, group: 'Anthropic', isReasoning: true }
+  
+  // Google Models
+  if (id.includes('gemini-1.5-pro')) return { name: 'Gemini 1.5 Pro', priority: 89, group: 'Google', isReasoning: true }
+  if (id.includes('gemini-2.0-flash')) return { name: 'Gemini 2.0 Flash', priority: 87, group: 'Google', isReasoning: true }
+  
+  // Groq Models
+  if (id.includes('llama-3.3-70b')) return { name: 'Llama 3.3 70B', priority: 85, group: 'Groq', isReasoning: true }
+  if (id.includes('llama-3.1-70b')) return { name: 'Llama 3.1 70B', priority: 80, group: 'Groq', isReasoning: true }
+  if (id.includes('llama-3.1-8b')) return { name: 'Llama 3.1 8B (Fast)', priority: 75, group: 'Groq', isReasoning: false }
+  if (id.includes('mixtral-8x7b')) return { name: 'Mixtral 8x7B', priority: 70, group: 'Groq', isReasoning: false }
+  
+  return null
 }
 
 interface ActiveContext {
@@ -256,7 +272,7 @@ export default function CreateStoryPanel({
     writerCount: number
   }>({ orchestrator: null, writerCount: 0 })
   const [loadingConfig, setLoadingConfig] = useState(true)
-  const [availableOrchestrators, setAvailableOrchestrators] = useState<Array<{id: string, name: string, keyId: string, provider: string}>>([])
+  const [availableOrchestrators, setAvailableOrchestrators] = useState<Array<{id: string, name: string, keyId: string, provider: string, group?: string, priority?: number}>>([])
   const [activeKeyId, setActiveKeyId] = useState<string | null>(null)
   const [updatingModel, setUpdatingModel] = useState(false)
   const [selectedFormat, setSelectedFormat] = useState<StoryFormat>('novel') // Default to 'novel'
@@ -1221,28 +1237,50 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
       const response = await fetch('/api/user/api-keys')
       const data = await response.json()
       
-      // Populate available orchestrators (Deduplicated)
+      // Populate available orchestrators (Refined & Canonical)
       if (data.success && data.keys?.length > 0) {
-        const uniqueModels = new Map<string, {id: string, name: string, keyId: string, provider: string}>()
+        const uniqueModels = new Map<string, {
+            id: string, 
+            name: string, 
+            keyId: string, 
+            provider: string,
+            group: string,
+            priority: number
+        }>()
         
         data.keys.forEach((key: any) => {
           if (key.models_cache) {
             key.models_cache.forEach((model: any) => {
-              if (isOrchestratorModel(model.id)) {
-                // Deduplicate by model ID - keep the first one encountered
-                if (!uniqueModels.has(model.id)) {
-                  uniqueModels.set(model.id, {
+              const canonical = getCanonicalModel(model.id)
+              if (canonical) {
+                // Deduplicate by Canonical Name + Provider (e.g. "GPT-4 Turbo" on OpenAI)
+                // This merges "gpt-4-1106-preview" and "gpt-4-0125-preview" into one "GPT-4 Turbo" entry
+                const dedupKey = `${canonical.name}-${key.provider}`
+                
+                // Only add if not exists, or maybe overwrite if we want "latest" logic? 
+                // For now, first found is fine as they are usually equivalent aliases.
+                if (!uniqueModels.has(dedupKey)) {
+                  uniqueModels.set(dedupKey, {
                     id: model.id,
-                    name: model.name || model.id,
+                    name: canonical.name,
                     keyId: key.id,
-                    provider: key.provider
+                    provider: key.provider,
+                    group: canonical.group,
+                    priority: canonical.priority
                   })
                 }
               }
             })
           }
         })
-        setAvailableOrchestrators(Array.from(uniqueModels.values()))
+        
+        // Sort by priority (High to Low)
+        const sortedModels = Array.from(uniqueModels.values()).sort((a, b) => {
+            if (a.priority !== b.priority) return b.priority - a.priority
+            return a.name.localeCompare(b.name)
+        })
+        
+        setAvailableOrchestrators(sortedModels)
       } else {
         setAvailableOrchestrators([])
       }
@@ -1538,19 +1576,15 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                       className="w-full text-xs border-gray-300 rounded shadow-sm focus:border-purple-500 focus:ring-purple-500 py-1.5 bg-white text-gray-700"
                     >
                       <option value="" disabled>Select an orchestrator...</option>
-                      {/* Group models by provider */}
+                      {/* Group models by Canonical Group */}
                       {Object.entries(availableOrchestrators.reduce((acc, model) => {
-                        const group = model.provider === 'openai' ? 'OpenAI' : 
-                                      model.provider === 'groq' ? 'Groq' : 
-                                      model.provider === 'anthropic' ? 'Anthropic' : 
-                                      model.provider === 'google' ? 'Google' : 
-                                      model.provider.charAt(0).toUpperCase() + model.provider.slice(1)
-                        
+                        // Use the explicit group from canonical details
+                        const group = model.group || 'Other'
                         if (!acc[group]) acc[group] = []
                         acc[group].push(model)
                         return acc
-                      }, {} as Record<string, typeof availableOrchestrators>)).sort().map(([provider, models]) => (
-                        <optgroup key={provider} label={provider}>
+                      }, {} as Record<string, typeof availableOrchestrators>)).map(([group, models]) => (
+                        <optgroup key={group} label={group}>
                           {models.map((model) => (
                             <option key={model.id} value={model.id}>
                               {model.name}
