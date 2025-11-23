@@ -305,7 +305,7 @@ export default function CreateStoryPanel({
   const [collapsedMessages, setCollapsedMessages] = useState<Set<string>>(new Set())
   
   // LLM reasoning mode toggle
-  const [useLLMReasoning, setUseLLMReasoning] = useState(false) // false = semi (pattern + LLM fallback), true = always LLM
+  const [useLLMReasoning, setUseLLMReasoning] = useState(true) // true = always LLM (recommended for GPT-5.1), false = pattern + LLM fallback
   
   // Reasoning chat state
   const [isReasoningOpen, setIsReasoningOpen] = useState(true) // Open by default to see streaming
@@ -1104,6 +1104,20 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
               targetSectionId = mentionedSection.id
               if (onAddChatMessage) {
                 onAddChatMessage(`🎯 Auto-selecting "${mentionedSection.name}" section...`, 'orchestrator', 'result')
+              }
+            } else {
+              // No section mentioned - default to Introduction (or first section)
+              const defaultSection = sections.find((s: any) => 
+                s.name.toLowerCase().includes('intro') || 
+                s.name.toLowerCase().includes('opening') ||
+                s.level === 1 // First top-level section
+              ) || sections[0] // Fallback to first section
+              
+              if (defaultSection) {
+                targetSectionId = defaultSection.id
+                if (onAddChatMessage) {
+                  onAddChatMessage(`📄 Opening to "${defaultSection.name}" (default section)...`, 'orchestrator', 'result')
+                }
               }
             }
           }
