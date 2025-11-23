@@ -184,19 +184,20 @@ export default function NodeDetailsPanel({
         })
       })
       
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          // Refresh status
-          await checkEmbeddingStatus(nodeId)
-          alert(`✅ Embeddings generated!\n\nSections: ${data.successfulSections}/${data.totalSections}\nChunks: ${data.totalChunks}\nTokens: ${data.totalTokens}`)
-        } else {
-          alert(`⚠️ Embedding generation failed:\n${data.errors?.join('\n') || 'Unknown error'}`)
-          setEmbeddingStatus(prev => ({ ...prev, generating: false }))
-        }
+      const data = await response.json()
+      
+      if (response.ok && data.success) {
+        // Success - refresh status and show results
+        await checkEmbeddingStatus(nodeId)
+        alert(`✅ Embeddings generated!\n\nSections: ${data.successfulSections}/${data.totalSections}\nChunks: ${data.totalChunks}\nTokens: ${data.totalTokens}`)
+      } else if (response.status === 503) {
+        // Service unavailable - tables don't exist
+        alert(`⚙️ Setup Required\n\n${data.error}\n\n${data.details}\n\n💡 ${data.hint}`)
+        setEmbeddingStatus(prev => ({ ...prev, generating: false, queueStatus: 'unavailable' }))
       } else {
-        const error = await response.json()
-        alert(`❌ Failed to generate embeddings:\n${error.error || error.details || 'Unknown error'}`)
+        // Other errors
+        const errorMsg = data.errors?.join('\n') || data.error || data.details || 'Unknown error'
+        alert(`❌ Failed to generate embeddings:\n\n${errorMsg}`)
         setEmbeddingStatus(prev => ({ ...prev, generating: false }))
       }
     } catch (error) {

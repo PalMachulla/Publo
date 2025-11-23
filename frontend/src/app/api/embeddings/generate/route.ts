@@ -110,16 +110,35 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const result = await processStoryStructureNode(nodeId, sections)
+      // Try to generate embeddings (may fail if tables don't exist)
+      try {
+        const result = await processStoryStructureNode(nodeId, sections)
 
-      return NextResponse.json({
-        success: result.success,
-        totalSections: result.totalSections,
-        successfulSections: result.successfulSections,
-        totalChunks: result.totalChunks,
-        totalTokens: result.totalTokens,
-        errors: result.errors,
-      })
+        return NextResponse.json({
+          success: result.success,
+          totalSections: result.totalSections,
+          successfulSections: result.successfulSections,
+          totalChunks: result.totalChunks,
+          totalTokens: result.totalTokens,
+          errors: result.errors,
+        })
+      } catch (embeddingError) {
+        // Check if error is due to missing tables
+        const errorMessage = embeddingError instanceof Error ? embeddingError.message : String(embeddingError)
+        if (errorMessage.includes('relation') && errorMessage.includes('does not exist')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Embeddings feature not set up',
+              details: 'Database tables do not exist. Please run migration: 013_create_document_embeddings.sql',
+              hint: 'Go to Supabase → SQL Editor → Paste and run the migration file'
+            },
+            { status: 503 } // Service Unavailable
+          )
+        }
+        // Re-throw other errors
+        throw embeddingError
+      }
     } else if (mode === 'estimate') {
       // Estimate cost without generating embeddings
       if (!sections || !Array.isArray(sections)) {
