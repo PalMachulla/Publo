@@ -116,7 +116,7 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
       }
     }
     
-    // Coherence-aware rewriting (ghostwriter-level intelligence)
+    // Coherence-aware rewriting and Multi-section generation
     const coherencePatterns = [
       /keep (it |the story |everything )?coherent/i,
       /maintain consistency/i,
@@ -126,14 +126,18 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
       /(rewrite|change).*(and|then) (update|fix|adjust)/i,
       /fix (any )?continuity/i,
       /keep (the )?story consistent/i,
+      // Multi-section generation patterns
+      /(write|generate|create|fill).*(all|every|multiple).*(scenes?|chapters?|sections?)/i,
+      /(write|generate|create|fill).*(scene|chapter|section).*(after|following).*(scene|chapter|section)/i,
+      /start with.*and (write|continue|finish).*(rest|all|others)/i,
     ]
     
     if (coherencePatterns.some(pattern => pattern.test(message))) {
       return {
         intent: 'rewrite_with_coherence',
         confidence: 0.95,
-        reasoning: `User wants ghostwriter-level rewrite: modify "${activeSegmentName}" and update related sections for narrative coherence`,
-        suggestedAction: `Analyze dependencies, rewrite "${activeSegmentName}", then update earlier/later sections to maintain story consistency`,
+        reasoning: `User wants multi-section operation: modify "${activeSegmentName}" and/or other sections (coherence/batch generation)`,
+        suggestedAction: `Analyze dependencies, write/rewrite sections, and ensure story consistency`,
         requiresContext: true,
         suggestedModel: 'orchestrator' // Orchestrator plans, then delegates to writers
       }
