@@ -530,22 +530,48 @@ Request: ${message}`
           break
         
         case 'answer_question':
-          // Answer question using orchestrator model
+          // Answer question using orchestrator model with canvas context
           if (onAddChatMessage) {
             onAddChatMessage(`💬 Answering with orchestrator model...`)
           }
           
+          // Build context-aware prompt
+          let questionPrompt = message
+          
+          // Add canvas context if available
+          if (canvasContext.connectedNodes.length > 0) {
+            const contextSummary = canvasContext.connectedNodes
+              .map(node => `- ${node.label}: ${node.summary}`)
+              .join('\n')
+            
+            questionPrompt = `User Question: ${message}\n\nAvailable Context:\n${contextSummary}`
+            
+            // Add RAG-enhanced content if available
+            if (ragEnhancedContext?.hasRAG && ragEnhancedContext.ragContent) {
+              questionPrompt += `\n\nRelevant Content (from semantic search):\n${ragEnhancedContext.ragContent}`
+            }
+            
+            if (onAddChatMessage) {
+              onAddChatMessage(`📚 Using context from ${canvasContext.connectedNodes.length} connected node(s)`)
+              if (ragEnhancedContext?.hasRAG) {
+                onAddChatMessage(`🎯 Enhanced with ${ragEnhancedContext.ragStats?.resultsFound || 0} relevant chunks`)
+              }
+            }
+          }
+          
           if (onAnswerQuestion) {
-            const answer = await onAnswerQuestion(message)
+            const answer = await onAnswerQuestion(questionPrompt)
             if (onAddChatMessage) {
               onAddChatMessage(`📖 ${answer}`)
             }
           } else {
-            // Fallback: show message that Q&A is not implemented yet
+            // Fallback: Use general chat format
             if (onAddChatMessage) {
-              onAddChatMessage(`⚠️ Q&A functionality not yet fully implemented. For now, I'll generate a response using the orchestrator.`)
+              onAddChatMessage(`⚠️ Using fallback answer mode...`)
             }
-            onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+            // Create a chat-style response instead of generating story structure
+            const chatPrompt = `Answer this question conversationally:\n\n${questionPrompt}`
+            onCreateStory('podcast', undefined, chatPrompt) // Using podcast format as it's most conversational
           }
           break
         

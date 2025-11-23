@@ -86,12 +86,17 @@ CRITICAL CONTEXT RULES:
   * "write about X" → create_structure (needs new document first)
 
 Guidelines:
-- If user says "write more", "expand", "continue" → write_content
-- If user says "explain", "what is", "tell me about" → answer_question
-- If user says "improve", "make it better", "polish" (ONE section) → improve_content
-- If user says "rewrite X and update other sections", "keep it coherent", "maintain consistency", "fix earlier parts too" → rewrite_with_coherence (GHOSTWRITER MODE)
+- If user says "write more", "expand", "continue" → write_content (requiresContext: true)
+- If user says "explain", "what is", "tell me about" → answer_question (requiresContext: false - can answer from canvas context or general knowledge)
+- If user says "improve", "make it better", "polish" (ONE section) → improve_content (requiresContext: true)
+- If user says "rewrite X and update other sections", "keep it coherent", "maintain consistency", "fix earlier parts too" → rewrite_with_coherence (GHOSTWRITER MODE, requiresContext: true)
 - If user references previous chat ("add it", "put that") → check conversation history
 - If ambiguous or unclear → clarify_intent (ask a question)
+
+IMPORTANT - requiresContext Rules:
+- answer_question → ALWAYS requiresContext: false (can answer from canvas, conversation, or general knowledge)
+- write_content, improve_content, rewrite_with_coherence → requiresContext: true (needs selected segment)
+- create_structure, general_chat, clarify_intent → requiresContext: false
 
 GHOSTWRITER MODE INDICATORS:
 - "and update related/earlier/other sections"
