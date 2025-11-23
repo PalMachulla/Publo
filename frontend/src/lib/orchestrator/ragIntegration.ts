@@ -51,7 +51,7 @@ export async function enhanceContextWithRAG(
 
     if (!targetNodeId) {
       // Try to infer node from user message
-      referencedNode = findReferencedNode(userMessage, canvasContext)
+      referencedNode = findReferencedNode(userMessage, canvasContext) || undefined
       
       if (referencedNode && referencedNode.nodeType === 'story-structure') {
         targetNodeId = referencedNode.nodeId

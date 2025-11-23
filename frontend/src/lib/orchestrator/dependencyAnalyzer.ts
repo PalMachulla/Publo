@@ -237,7 +237,7 @@ Which OTHER sections (not the target) will be affected by this change? Return JS
     }
     
     // Map to AffectedSection objects
-    const affectedSections: AffectedSection[] = deps
+    const affectedSections = deps
       .map(dep => {
         const section = allSections.find(s => s.id === dep.sectionId)
         if (!section) return null
@@ -248,7 +248,7 @@ Which OTHER sections (not the target) will be affected by this change? Return JS
           reason: dep.reason,
           priority: dep.priority as 'high' | 'medium' | 'low',
           suggestedChange: dep.suggestedChange
-        }
+        } as AffectedSection
       })
       .filter((dep): dep is AffectedSection => dep !== null)
     
