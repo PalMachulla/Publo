@@ -39,7 +39,7 @@ interface CreateStoryPanelProps {
     type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
     role?: 'user' | 'orchestrator'
   }>
-  onAddChatMessage?: (message: string) => void
+  onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator') => void
   onClearChat?: () => void
   onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
   isDocumentViewOpen?: boolean // NEW: Document panel visibility state
@@ -297,7 +297,7 @@ export default function CreateStoryPanel({
   const handleSendMessage = async (message: string) => {
     // Add user message to chat history
     if (onAddChatMessage) {
-      onAddChatMessage(message)
+      onAddChatMessage(message, 'user')  // Actual user input
     }
     
     // Show canvas context if available

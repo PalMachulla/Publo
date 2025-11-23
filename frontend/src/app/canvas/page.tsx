@@ -2863,15 +2863,15 @@ export default function CanvasPage() {
           edges={edges}
           nodes={nodes}
           canvasChatHistory={canvasChatHistory}
-          onAddChatMessage={(message) => {
-            const userMsg = {
-              id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          onAddChatMessage={(message, role = 'orchestrator') => {
+            const msg = {
+              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               timestamp: new Date().toISOString(),
               content: message,
               type: 'user' as const,
-              role: 'user' as const
+              role: role as 'user' | 'orchestrator'
             }
-            setCanvasChatHistory(prev => [...prev, userMsg])
+            setCanvasChatHistory(prev => [...prev, msg])
           }}
           onClearChat={() => {
             if (confirm('Clear all chat history? This cannot be undone.')) {
