@@ -66,6 +66,14 @@ CANVAS AWARENESS (CRITICAL!):
 - If canvas shows a screenplay/story node AND user says "make interview" or "interview the characters", this is create_structure (NOT general_chat!)
 - Pattern: "Make an interview with characters in [screenplay]" → create_structure intent using screenplay as reference
 
+EXISTING vs NEW DOCUMENT (CRITICAL!):
+- If user says "MY podcast", "THE podcast", "MY screenplay" → Check canvas context!
+  * If canvas shows a matching node (e.g., "Podcast: PODCAST document") → open_and_write (open existing node)
+  * If canvas shows NO matching node → create_structure (make new document)
+- "get content to MY podcast" with Podcast node visible → open_and_write (NOT create_structure!)
+- "help me with THE screenplay" with Screenplay node visible → open_and_write (NOT general_chat!)
+- Only use create_structure when creating something BRAND NEW that doesn't exist yet
+
 Available intents:
 - write_content: User wants to generate NEW narrative content for a section
 - answer_question: User wants information, explanation, or discussion (respond in chat)
@@ -83,16 +91,19 @@ CRITICAL CONTEXT RULES:
   * NEVER create_structure (don't make new documents)
   
 - If document panel is CLOSED → User is on the canvas
-  * "create a novel" → create_structure (new document node)
-  * "write about X" → create_structure (needs new document first)
+  * "get content to MY podcast" + Podcast exists → open_and_write (HELPFUL: open existing node)
+  * "help me with THE screenplay" + Screenplay exists → open_and_write (HELPFUL: open existing node)
   * "craft/write in that node" → open_and_write (HELPFUL MODE: open existing node for writing)
+  * "create a novel" + NO Novel on canvas → create_structure (new document node)
+  * "write about X" + NO matching node → create_structure (needs new document first)
 
 Guidelines:
 - If user says "write more", "expand", "continue" → write_content (requiresContext: true)
 - If user says "explain", "what is", "tell me about" → answer_question (requiresContext: false - can answer from canvas context or general knowledge)
 - If user says "improve", "make it better", "polish" (ONE section) → improve_content (requiresContext: true)
 - If user says "rewrite X and update other sections", "keep it coherent", "maintain consistency", "fix earlier parts too" → rewrite_with_coherence (GHOSTWRITER MODE, requiresContext: true)
-- If user says "craft/write/fill in that node", "help me write the podcast" → open_and_write (HELPFUL: auto-open document for them)
+- If user says "craft/write/fill in that node", "help me write the podcast", "get content to MY podcast" → open_and_write (HELPFUL: auto-open document for them)
+- CRITICAL: "MY podcast" / "THE screenplay" when canvas shows matching node → open_and_write (NOT create_structure!)
 - If user references previous chat ("add it", "put that") → check conversation history
 - If ambiguous or unclear → clarify_intent (ask a question)
 

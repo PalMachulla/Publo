@@ -230,10 +230,18 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
   // HELPFUL MODE: Auto-open the document when user wants to write in a node
   if (!context.isDocumentViewOpen && !hasActiveSegment && context.canvasContext) {
     const writeInNodePatterns = [
-      /(craft|write|fill|expand|develop).*(in |to )(that|the|this) (node|document|podcast|screenplay|novel|report)/i,
-      /(add|put|insert|write).*(content|text|words).*(in |to )(that|the|this)/i,
-      /(work on|edit|improve).*(that|the|this) (node|document)/i,
-      /help (me )?(craft|write|fill|expand).*(node|document)/i,
+      // Direct "write in" phrases
+      /(craft|write|fill|expand|develop).*(in |to )(that|the|this|my) (node|document|podcast|screenplay|novel|report)/i,
+      /(add|put|insert|write|get).*(content|text|words).*(in |to |for )(that|the|this|my)/i,
+      /(work on|edit|improve).*(that|the|this|my) (node|document|podcast|screenplay|novel|report)/i,
+      /help (me )?(craft|write|fill|expand).*(node|document|podcast|screenplay|novel|report)/i,
+      
+      // "Get/add content to/for my X" - CRITICAL for "get some content to my podcast"
+      /(get|add|create|generate).*(content|text|words).*(to|for|in) (my|the|that|this) (podcast|screenplay|novel|report|document)/i,
+      /help (me )?(get|add|create).*(my|the|that) (podcast|screenplay|novel|report|document)/i,
+      
+      // "Help me with X" when X is an existing node
+      /help (me )?with (the|my|that|this) (podcast|screenplay|novel|report|document)/i,
     ]
     
     if (writeInNodePatterns.some(pattern => pattern.test(message))) {
