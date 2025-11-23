@@ -75,7 +75,7 @@ export async function processSingleSection(
       const batch = chunks.slice(i, i + config.batchSize)
       const batchTexts = batch.map(chunk => chunk.text)
       
-      const { embeddings: batchEmbeddings } = await generateBatchEmbeddings(batchTexts)
+      const { embeddings: batchEmbeddings } = await generateBatchEmbeddings(supabase, userId, batchTexts)
       embeddings.push(...batchEmbeddings)
 
       config.onProgress?.({

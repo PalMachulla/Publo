@@ -6,7 +6,7 @@
  * Client-side code should call API routes instead.
  */
 
-import { createClient } from '@/lib/supabase/client'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface EmbeddingConfig {
   model: 'text-embedding-3-small' | 'text-embedding-3-large'
@@ -40,16 +40,17 @@ const DEFAULT_CONFIG: EmbeddingConfig = {
  * Generate embedding for a single text using OpenAI API
  */
 export async function generateEmbedding(
+  supabase: SupabaseClient,
+  userId: string,
   text: string,
   config: EmbeddingConfig = DEFAULT_CONFIG
 ): Promise<EmbeddingResult> {
-  const supabase = createClient()
-  
   // Get user's OpenAI API key
   const { data: apiKeyData, error: apiKeyError } = await supabase
     .from('user_api_keys')
     .select('encrypted_key, is_active, validation_status')
     .eq('provider', 'openai')
+    .eq('user_id', userId)
     .eq('is_active', true)
     .eq('validation_status', 'valid')
     .single()
@@ -110,6 +111,8 @@ export async function generateEmbedding(
  * Generate embeddings for multiple texts in a single batch (more efficient)
  */
 export async function generateBatchEmbeddings(
+  supabase: SupabaseClient,
+  userId: string,
   texts: string[],
   config: EmbeddingConfig = DEFAULT_CONFIG
 ): Promise<BatchEmbeddingResult> {
@@ -120,14 +123,13 @@ export async function generateBatchEmbeddings(
   if (texts.length > 2048) {
     throw new Error('Batch size too large. Maximum 2048 texts per batch.')
   }
-
-  const supabase = createClient()
   
   // Get user's OpenAI API key
   const { data: apiKeyData, error: apiKeyError } = await supabase
     .from('user_api_keys')
     .select('encrypted_key, is_active, validation_status')
     .eq('provider', 'openai')
+    .eq('user_id', userId)
     .eq('is_active', true)
     .eq('validation_status', 'valid')
     .single()
