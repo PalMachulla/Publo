@@ -2862,7 +2862,7 @@ export default function CanvasPage() {
           onAddEdge={(newEdge) => setEdges((eds) => [...eds, newEdge])}
           edges={edges}
           nodes={nodes}
-          onSelectNode={(nodeId: string) => {
+          onSelectNode={(nodeId: string, sectionId?: string) => {
             // Load document for writing WITHOUT switching away from orchestrator panel
             const node = nodes.find(n => n.id === nodeId)
             if (!node) return
@@ -2881,6 +2881,11 @@ export default function CanvasPage() {
             setCurrentStructureFormat(nodeData.format)
             setCurrentContentMap(latestContentMap)
             
+            // Set initial section if provided (for auto-selecting a specific section)
+            if (sectionId) {
+              setInitialSectionId(sectionId)
+            }
+            
             // Open document panel (but keep orchestrator selected!)
             setIsAIDocPanelOpen(true)
             
@@ -2888,7 +2893,8 @@ export default function CanvasPage() {
               nodeId,
               format: nodeData.format,
               sections: nodeData.structureItems?.length || 0,
-              contentKeys: Object.keys(latestContentMap).length
+              contentKeys: Object.keys(latestContentMap).length,
+              autoSelectSection: sectionId || 'none'
             })
           }}
           canvasChatHistory={canvasChatHistory}

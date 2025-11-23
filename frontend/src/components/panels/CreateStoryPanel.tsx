@@ -53,7 +53,7 @@ interface CreateStoryPanelProps {
   canvasNodes?: Node[] // CANVAS VISIBILITY: All nodes on canvas
   canvasEdges?: Edge[] // CANVAS VISIBILITY: All edges on canvas
   currentStoryStructureNodeId?: string | null // CANVAS CONTENT: ID of currently loaded story structure
-  onSelectNode?: (nodeId: string) => void // HELPFUL MODE: Select and open a specific canvas node
+  onSelectNode?: (nodeId: string, sectionId?: string) => void // HELPFUL MODE: Select and open a specific canvas node, optionally auto-select a section
 }
 
 interface Template {
@@ -996,9 +996,34 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
             onAddChatMessage(`✅ Opening "${nodeToOpen.label}" (${nodeToOpen.detailedContext?.format || 'document'}) for editing...`, 'orchestrator', 'result')
           }
           
+          // Try to detect if user mentioned a specific section
+          let targetSectionId: string | undefined
+          if (nodeToOpen.detailedContext?.allSections) {
+            const lowerMessage = message.toLowerCase()
+            const sections = nodeToOpen.detailedContext.allSections as Array<{id: string, name: string, level: number}>
+            
+            // Find section that matches user's message
+            const mentionedSection = sections.find((section: {id: string, name: string}) => {
+              const lowerSectionName = section.name.toLowerCase()
+              // Check if message mentions this section name
+              return lowerMessage.includes(lowerSectionName) || 
+                     // Also check for common section keywords
+                     (lowerMessage.includes('intro') && lowerSectionName.includes('intro')) ||
+                     (lowerMessage.includes('background') && lowerSectionName.includes('background')) ||
+                     (lowerMessage.includes('conclusion') && lowerSectionName.includes('conclusion'))
+            })
+            
+            if (mentionedSection) {
+              targetSectionId = mentionedSection.id
+              if (onAddChatMessage) {
+                onAddChatMessage(`🎯 Auto-selecting "${mentionedSection.name}" section...`, 'orchestrator', 'result')
+              }
+            }
+          }
+          
           // Trigger document load (keeps orchestrator panel visible!)
           if (onSelectNode && nodeToOpen.nodeId) {
-            onSelectNode(nodeToOpen.nodeId)
+            onSelectNode(nodeToOpen.nodeId, targetSectionId)
           }
           
           // Open the document view if it's not already open
@@ -1010,8 +1035,13 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
           setTimeout(() => {
             if (onAddChatMessage) {
               const sectionCount = nodeToOpen.detailedContext?.allSections?.length || 0
-              onAddChatMessage(`📂 Document loaded with ${sectionCount} section(s)!`, 'orchestrator', 'result')
-              onAddChatMessage(`💡 **Next step**: Click on any section in the document view to select it, then tell me what you'd like to write!`, 'orchestrator', 'result')
+              if (targetSectionId) {
+                onAddChatMessage(`📂 Document loaded and section selected!`, 'orchestrator', 'result')
+                onAddChatMessage(`💡 Ready to write! Tell me what you'd like to add.`, 'orchestrator', 'result')
+              } else {
+                onAddChatMessage(`📂 Document loaded with ${sectionCount} section(s)!`, 'orchestrator', 'result')
+                onAddChatMessage(`💡 **Next step**: Click on any section in the document view to select it, then tell me what you'd like to write!`, 'orchestrator', 'result')
+              }
             }
           }, 300)
           break

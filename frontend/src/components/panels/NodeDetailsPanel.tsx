@@ -68,7 +68,7 @@ interface NodeDetailsPanelProps {
   onAddEdge?: (edge: Edge) => void
   edges?: Edge[]
   nodes?: Node[]
-  onSelectNode?: (nodeId: string) => void // NEW: Select and open a specific node
+  onSelectNode?: (nodeId: string, sectionId?: string) => void // NEW: Select and open a specific node, optionally auto-select a section
   canvasChatHistory?: Array<{
     id: string
     timestamp: string
