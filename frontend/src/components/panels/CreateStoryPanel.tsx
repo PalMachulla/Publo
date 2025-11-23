@@ -13,6 +13,8 @@ import {
   Button
 } from '@/components/ui'
 import { analyzeIntent, validateIntent, explainIntent, type IntentAnalysis } from '@/lib/orchestrator/intentRouter'
+import { buildCanvasContext, formatCanvasContextForLLM, findReferencedNode } from '@/lib/orchestrator/canvasContextProvider'
+import { Edge } from 'reactflow'
 
 interface ActiveContext {
   type: 'section' | 'segment'
@@ -44,6 +46,11 @@ interface CreateStoryPanelProps {
   onClearContext?: () => void // NEW: Clear the active context
   onWriteContent?: (segmentId: string, prompt: string) => Promise<void> // NEW: Write content to specific segment
   onAnswerQuestion?: (question: string) => Promise<string> // NEW: Answer questions about content
+  structureItems?: any[] // GHOSTWRITER: Document structure for dependency analysis
+  contentMap?: Record<string, string> // GHOSTWRITER: Existing content by section ID (currently open document)
+  canvasNodes?: Node[] // CANVAS VISIBILITY: All nodes on canvas
+  canvasEdges?: Edge[] // CANVAS VISIBILITY: All edges on canvas
+  currentStoryStructureNodeId?: string | null // CANVAS CONTENT: ID of currently loaded story structure
 }
 
 interface Template {
@@ -194,9 +201,24 @@ export default function CreateStoryPanel({
   activeContext = null,
   onClearContext,
   onWriteContent,
-  onAnswerQuestion
+  onAnswerQuestion,
+  structureItems = [],
+  contentMap = {},
+  canvasNodes = [],
+  canvasEdges = [],
+  currentStoryStructureNodeId = null
 }: CreateStoryPanelProps) {
   const router = useRouter()
+  
+  // Debug: Log received props on mount and when they change
+  useEffect(() => {
+    console.log('🎯 [CreateStoryPanel] Props received:', {
+      canvasNodesCount: canvasNodes.length,
+      canvasEdgesCount: canvasEdges.length,
+      canvasNodesList: canvasNodes.map(n => ({ id: n.id, type: n.type, label: n.data?.label })),
+      canvasEdgesList: canvasEdges.map(e => ({ source: e.source, target: e.target }))
+    })
+  }, [canvasNodes, canvasEdges])
   const [configuredModel, setConfiguredModel] = useState<{
     orchestrator: string | null
     writerCount: number
@@ -226,6 +248,48 @@ export default function CreateStoryPanel({
     reasoningMessages[reasoningMessages.length - 1].role === 'orchestrator' &&
     reasoningMessages[reasoningMessages.length - 1].content.startsWith('🤖 Model')
   
+  // Build external content map for connected story structure nodes
+  // This injects Supabase content that's not in the node's local state
+  const externalContentMap: Record<string, { contentMap: Record<string, string> }> = {}
+  
+  // If we have a currently loaded story structure with content from Supabase, inject it
+  if (currentStoryStructureNodeId && contentMap && Object.keys(contentMap).length > 0) {
+    externalContentMap[currentStoryStructureNodeId] = {
+      contentMap: contentMap
+    }
+    console.log('💉 [Content Injection] Injecting Supabase content for node:', {
+      nodeId: currentStoryStructureNodeId,
+      sectionsWithContent: Object.keys(contentMap).length,
+      totalWords: Object.values(contentMap).reduce((sum, content) => sum + content.split(/\s+/).length, 0)
+    })
+  }
+  
+  // Also check node's own contentMap as fallback (might be from Test nodes or other sources)
+  canvasNodes.forEach(node => {
+    if ((node.type === 'storyStructureNode' || node.data?.nodeType === 'story-structure') && 
+        !externalContentMap[node.id]) {
+      if (node.data?.contentMap && Object.keys(node.data.contentMap).length > 0) {
+        externalContentMap[node.id] = {
+          contentMap: node.data.contentMap
+        }
+      }
+    }
+  })
+  
+  // Build canvas context - orchestrator's "eyes" on the canvas
+  const canvasContext = buildCanvasContext('context', canvasNodes, canvasEdges, externalContentMap)
+  
+  // Debug logging
+  console.log('🔍 [Canvas Context Debug]', {
+    canvasNodesCount: canvasNodes.length,
+    canvasEdgesCount: canvasEdges.length,
+    connectedNodesFound: canvasContext.connectedNodes.length,
+    externalContentMapKeys: Object.keys(externalContentMap),
+    canvasNodes: canvasNodes.map(n => ({ id: n.id, type: n.type, label: n.data?.label, hasContentMap: !!n.data?.contentMap })),
+    canvasEdges: canvasEdges.map(e => ({ source: e.source, target: e.target })),
+    orchestratorId: 'context'
+  })
+  
   /**
    * Agentic message handler - analyzes intent and routes to appropriate action
    */
@@ -233,6 +297,14 @@ export default function CreateStoryPanel({
     // Add user message to chat history
     if (onAddChatMessage) {
       onAddChatMessage(message)
+    }
+    
+    // Show canvas context if available
+    if (onAddChatMessage && canvasContext.connectedNodes.length > 0) {
+      onAddChatMessage(`👁️ Canvas visibility: ${canvasContext.connectedNodes.length} node(s) connected`)
+      canvasContext.connectedNodes.forEach(ctx => {
+        onAddChatMessage(`   • ${ctx.label}: ${ctx.summary}`)
+      })
     }
     
     // STEP 1: Analyze user intent using Hybrid IntentRouter
@@ -247,13 +319,14 @@ export default function CreateStoryPanel({
       activeSegmentId: activeContext?.id,
       activeSegmentHasContent: false, // TODO: Track if segment has content
       conversationHistory: canvasChatHistory.slice(-5).map(msg => ({
-        role: msg.role || 'user',
+        role: (msg.role === 'orchestrator' ? 'assistant' : msg.role) || 'user',
         content: msg.content,
         timestamp: msg.timestamp
       })),
-      documentStructure: [], // TODO: Pass structure items
+      documentStructure: structureItems, // Pass current document structure
       isDocumentViewOpen: isDocumentViewOpen, // CRITICAL: Tell intent analyzer about document state
-      documentFormat: selectedFormat // Novel, Report, etc.
+      documentFormat: selectedFormat, // Novel, Report, etc.
+      canvasContext: formatCanvasContextForLLM(canvasContext) // NEW: Canvas visibility!
     })
     
     // Log intent analysis to reasoning chat
@@ -321,6 +394,110 @@ Request: ${message}`
           }
           break
         
+        case 'rewrite_with_coherence':
+          // Ghostwriter-level coherent rewriting across multiple sections
+          if (onAddChatMessage) {
+            onAddChatMessage(`🎭 Activating ghostwriter mode - analyzing story dependencies...`)
+          }
+          
+          if (!activeContext) {
+            if (onAddChatMessage) {
+              onAddChatMessage(`⚠️ Please select a section to rewrite first.`)
+            }
+            break
+          }
+          
+          // Import the coherence rewriter dynamically
+          const { createCoherenceRewritePlan, executeRewriteStep } = await import('@/lib/orchestrator/coherenceRewriter')
+          
+          // Get all sections and their content for dependency analysis
+          // TODO: Pass from props - for now, use placeholder
+          const allSections = structureItems || []
+          const existingContent: Record<string, string> = contentMap || {}
+          
+          // Create the rewrite plan
+          if (onAddChatMessage) {
+            onAddChatMessage(`🔍 Analyzing which sections will be affected...`)
+          }
+          
+          try {
+            const plan = await createCoherenceRewritePlan({
+              targetSectionId: activeContext.id,
+              userRequest: message,
+              allSections: allSections.map(item => ({
+                id: item.id,
+                name: item.name,
+                level: item.level,
+                order: item.order,
+                content: existingContent[item.id],
+                parentId: item.parentId
+              })),
+              existingContent,
+              storyFormat: selectedFormat
+            })
+            
+            // Show the plan to the user
+            if (onAddChatMessage) {
+              onAddChatMessage(plan.reasoning)
+              onAddChatMessage(`\n⏱️ This will take approximately ${plan.estimatedTime}`)
+              onAddChatMessage(`\n🚀 Starting ${plan.totalSteps}-step rewrite process...`)
+            }
+            
+            // Execute each step sequentially
+            for (const step of plan.steps) {
+              if (onAddChatMessage) {
+                onAddChatMessage(`\n📝 Step ${step.stepNumber}/${plan.totalSteps}: ${step.action.toUpperCase()} "${step.sectionName}"`)
+                onAddChatMessage(`   ${step.reason}`)
+              }
+              
+              const result = await executeRewriteStep(step, {
+                targetSectionId: activeContext.id,
+                userRequest: message,
+                allSections: allSections.map(item => ({
+                  id: item.id,
+                  name: item.name,
+                  level: item.level,
+                  order: item.order,
+                  content: existingContent[item.id],
+                  parentId: item.parentId
+                })),
+                existingContent,
+                storyFormat: selectedFormat
+              })
+              
+              if (result.success && result.content) {
+                // Update the content map with new content
+                existingContent[step.sectionId] = result.content
+                
+                // Save to database if onWriteContent is available
+                if (onWriteContent) {
+                  await onWriteContent(step.sectionId, result.content)
+                }
+                
+                if (onAddChatMessage) {
+                  onAddChatMessage(`   ✅ Completed - ${result.content.split(/\s+/).length} words`)
+                }
+              } else {
+                if (onAddChatMessage) {
+                  onAddChatMessage(`   ❌ Failed: ${result.error}`)
+                }
+                // Continue with remaining steps even if one fails
+              }
+            }
+            
+            // Final success message
+            if (onAddChatMessage) {
+              onAddChatMessage(`\n🎉 Ghostwriter rewrite complete! All ${plan.totalSteps} sections updated with narrative coherence maintained.`)
+            }
+            
+          } catch (planError: any) {
+            console.error('❌ Coherence rewrite failed:', planError)
+            if (onAddChatMessage) {
+              onAddChatMessage(`❌ Ghostwriter mode failed: ${planError.message}`)
+            }
+          }
+          break
+        
         case 'answer_question':
           // Answer question using orchestrator model
           if (onAddChatMessage) {
@@ -351,18 +528,114 @@ Request: ${message}`
             break
           }
           
+          // CANVAS INTELLIGENCE: Check if user is referencing a connected node
+          let enhancedPrompt = message
+          const referencePhrases = [
+            'our screenplay', 'the screenplay', 'that screenplay',
+            'our story', 'our other story', 'that story',
+            'the document', 'that document',
+            'the characters', 'characters in',
+            'based on', 'base this on', 'using the',
+            'from the', 'adapt',
+          ]
+          const hasReference = referencePhrases.some(phrase => message.toLowerCase().includes(phrase)) || 
+                              (canvasContext.connectedNodes.length > 0 && 
+                               (message.toLowerCase().includes('interview') || 
+                                message.toLowerCase().includes('characters')))
+          
+          if (hasReference && canvasContext.connectedNodes.length > 0) {
+            // Find the referenced node
+            const referencedNode = findReferencedNode(message, canvasContext)
+            
+            if (referencedNode && referencedNode.detailedContext) {
+              if (onAddChatMessage) {
+                onAddChatMessage(`📖 Reading content from "${referencedNode.label}"...`)
+              }
+              
+              // Extract detailed content based on node type
+              if (referencedNode.nodeType === 'story-structure') {
+                const contentMap = referencedNode.detailedContext.contentMap as Record<string, string> || {}
+                const allSections = referencedNode.detailedContext.allSections || []
+                
+                // Try to extract written content first
+                const hasWrittenContent = Object.keys(contentMap).length > 0
+                
+                if (hasWrittenContent) {
+                  // Extract full story content
+                  const allContent = Object.entries(contentMap)
+                    .map(([sectionId, content]) => {
+                      const section = allSections.find((s: any) => s.id === sectionId)
+                      return `## ${section?.name || 'Section'}\n${content}`
+                    })
+                    .join('\n\n')
+                  
+                  // Enhance prompt with actual content
+                  enhancedPrompt = `${message}
+
+REFERENCE CONTENT FROM "${referencedNode.label}" (${referencedNode.detailedContext.format}):
+
+STRUCTURE:
+${referencedNode.detailedContext.structure}
+
+FULL CONTENT:
+${allContent.substring(0, 8000)}
+
+${allContent.length > 8000 ? '... (content truncated for length)' : ''}
+
+INSTRUCTION: Use the above ${referencedNode.detailedContext.format} content as inspiration for creating the new ${selectedFormat} structure. 
+
+${message.toLowerCase().includes('interview') || message.toLowerCase().includes('character') ? 
+`FOCUS ON CHARACTERS: The user wants to feature the characters from this content. Carefully read through the content above and identify all named characters, their roles, personalities, and key characteristics. Build the ${selectedFormat} structure around interviewing or featuring these specific characters.` : 
+`Extract characters, themes, plot points, and narrative elements to adapt them for the ${selectedFormat} format.`}`
+
+                  if (onAddChatMessage) {
+                    onAddChatMessage(`✅ Extracted ${Object.keys(contentMap).length} sections (${referencedNode.detailedContext.wordsWritten} words) from "${referencedNode.label}"`)
+                    onAddChatMessage(`🎯 Creating new ${selectedFormat} inspired by this content...`)
+                  }
+                } else {
+                  // Use structure summaries if no written content yet
+                  const structureDetails = allSections
+                    .map((s: any) => `${'  '.repeat(s.level - 1)}- ${s.name}${s.summary ? ': ' + s.summary : ''}`)
+                    .join('\n')
+                  
+                  enhancedPrompt = `${message}
+
+REFERENCE STRUCTURE FROM "${referencedNode.label}" (${referencedNode.detailedContext.format}):
+
+${structureDetails}
+
+INSTRUCTION: Use the above ${referencedNode.detailedContext.format} structure and summaries as inspiration for creating the new ${selectedFormat} structure.`
+
+                  if (onAddChatMessage) {
+                    onAddChatMessage(`✅ Using structure from "${referencedNode.label}" (${allSections.length} sections)`)
+                    onAddChatMessage(`ℹ️ Note: No written content found, using structure summaries only`)
+                  }
+                }
+              } else if (referencedNode.nodeType === 'test' && referencedNode.detailedContext.markdown) {
+                // Use markdown content from test node
+                const markdown = referencedNode.detailedContext.markdown as string
+                enhancedPrompt = `${message}
+
+REFERENCE CONTENT:
+${markdown.substring(0, 8000)}
+
+${markdown.length > 8000 ? '... (content truncated for length)' : ''}
+
+Use the above content as inspiration for creating the new ${selectedFormat} structure.`
+
+                if (onAddChatMessage) {
+                  onAddChatMessage(`✅ Extracted ${referencedNode.detailedContext.wordCount} words from "${referencedNode.label}"`)
+                }
+              }
+            } else if (onAddChatMessage) {
+              onAddChatMessage(`⚠️ Found node "${referencedNode?.label}" but couldn't extract content. Proceeding with user prompt only.`)
+            }
+          }
+          
           if (onAddChatMessage) {
             onAddChatMessage(`🏗️ Planning structure with orchestrator model...`)
           }
-          onCreateStory(selectedFormat, selectedTemplate || undefined, message)
-          break
-        
-        case 'modify_structure':
-          // Modify existing structure
-          if (onAddChatMessage) {
-            onAddChatMessage(`🔧 Modifying structure...`)
-          }
-          onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+          onCreateStory(selectedFormat, selectedTemplate || undefined, enhancedPrompt)
           break
         
         case 'modify_structure':
@@ -583,17 +856,20 @@ Request: ${message}`
           {onToggleDocumentView && (
             <button
               onClick={onToggleDocumentView}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                isDocumentViewOpen
-                  ? 'bg-yellow-100 text-yellow-900 hover:bg-yellow-200'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-              title={isDocumentViewOpen ? 'Hide document view' : 'Show document view'}
+              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+              title={isDocumentViewOpen ? 'Switch to Canvas View' : 'Switch to Document View'}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span>{isDocumentViewOpen ? 'Hide' : 'Show'} Document</span>
+              {isDocumentViewOpen ? (
+                // Node/Network icon for Canvas View
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 100 4 2 2 0 000-4zM4 16a2 2 0 100 4 2 2 0 000-4zM18 16a2 2 0 100 4 2 2 0 000-4zM11 14a2 2 0 100 4 2 2 0 000-4zM11 8v4M6.5 17.5l3.5-2M14 17.5l-3.5-2" />
+                </svg>
+              ) : (
+                // Document icon
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              )}
             </button>
           )}
           <button

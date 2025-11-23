@@ -16,6 +16,7 @@ export type UserIntent =
   | 'create_structure'     // User wants to create new story structure
   | 'improve_content'      // User wants to refine/edit existing content
   | 'modify_structure'     // User wants to change the story structure
+  | 'rewrite_with_coherence' // User wants to rewrite section(s) AND update related sections for consistency
   | 'clarify_intent'       // Orchestrator needs clarification
   | 'general_chat'         // General conversation/unclear intent
 
@@ -42,6 +43,7 @@ export interface IntentContext {
   isDocumentViewOpen?: boolean // CRITICAL: Is user working in a document?
   documentFormat?: string // Novel, Report, Screenplay, etc.
   useLLM?: boolean // Force LLM analysis (for testing or complex cases)
+  canvasContext?: string // CANVAS VISIBILITY: Formatted canvas context for LLM
 }
 
 /**
@@ -70,7 +72,8 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
         documentStructure: context.documentStructure,
         isDocumentViewOpen: context.isDocumentViewOpen || false, // CRITICAL
         documentFormat: context.documentFormat,
-        availableActions: ['write_content', 'answer_question', 'improve_content', 'modify_structure', 'general_chat']
+        availableActions: ['write_content', 'answer_question', 'improve_content', 'modify_structure', 'general_chat'],
+        canvasContext: context.canvasContext // CANVAS VISIBILITY
       })
       
       return {
@@ -112,7 +115,30 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
       }
     }
     
-    // Improvement indicators
+    // Coherence-aware rewriting (ghostwriter-level intelligence)
+    const coherencePatterns = [
+      /keep (it |the story |everything )?coherent/i,
+      /maintain consistency/i,
+      /(update|fix|adjust|revise) (earlier|previous|other|related) (sections?|parts?|chapters?)/i,
+      /and (also )?(update|change|fix|adjust|rewrite) (earlier|previous|related)/i,
+      /make sure (it |everything )?makes sense/i,
+      /(rewrite|change).*(and|then) (update|fix|adjust)/i,
+      /fix (any )?continuity/i,
+      /keep (the )?story consistent/i,
+    ]
+    
+    if (coherencePatterns.some(pattern => pattern.test(message))) {
+      return {
+        intent: 'rewrite_with_coherence',
+        confidence: 0.95,
+        reasoning: `User wants ghostwriter-level rewrite: modify "${activeSegmentName}" and update related sections for narrative coherence`,
+        suggestedAction: `Analyze dependencies, rewrite "${activeSegmentName}", then update earlier/later sections to maintain story consistency`,
+        requiresContext: true,
+        suggestedModel: 'orchestrator' // Orchestrator plans, then delegates to writers
+      }
+    }
+    
+    // Improvement indicators (single-section only)
     const improvePatterns = [
       /^improve/i,
       /^refine/i,
@@ -201,11 +227,16 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
   if (!context.isDocumentViewOpen && !hasActiveSegment) {
     const structurePatterns = [
       /create (a |an )?story/i,
-      /create (a |an )?(novel|screenplay|article|report)/i,
+      /create (a |an )?(novel|screenplay|article|report|podcast|interview)/i,
       /generate (a )?structure/i,
       /plan (a )?story/i,
       /outline/i,
       /^i want to (write|create)/i,
+      /make (a |an )?interview/i,
+      /interview (the )?characters/i,
+      /base(d)? (this|it) on/i,
+      /using (the |our )?screenplay/i,
+      /adapt (the |our )?(screenplay|story|novel)/i,
     ]
     
     if (structurePatterns.some(pattern => pattern.test(message))) {
@@ -310,6 +341,8 @@ export function explainIntent(analysis: IntentAnalysis): string {
       return '✨ Improving existing content'
     case 'modify_structure':
       return '🔧 Modifying story structure'
+    case 'rewrite_with_coherence':
+      return '🎭 Ghostwriter mode: Analyzing dependencies and planning coherent rewrites'
     case 'clarify_intent':
       return '❓ Need clarification'
     case 'general_chat':

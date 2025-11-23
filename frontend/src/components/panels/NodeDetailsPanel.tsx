@@ -83,6 +83,9 @@ interface NodeDetailsPanelProps {
   onClearContext?: () => void // NEW: Clear the active context
   onWriteContent?: (segmentId: string, prompt: string) => Promise<void> // NEW: Write content to specific segment
   onAnswerQuestion?: (question: string) => Promise<string> // NEW: Answer questions about content
+  structureItems?: any[] // GHOSTWRITER: Current document structure
+  contentMap?: Record<string, string> // GHOSTWRITER: Existing content by section ID
+  currentStoryStructureNodeId?: string | null // CANVAS CONTENT: ID of currently loaded story
 }
 
 export default function NodeDetailsPanel({
@@ -105,7 +108,10 @@ export default function NodeDetailsPanel({
   activeContext = null,
   onClearContext,
   onWriteContent,
-  onAnswerQuestion
+  onAnswerQuestion,
+  structureItems = [],
+  contentMap = {},
+  currentStoryStructureNodeId = null
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
   const [commentText, setCommentText] = useState('')
@@ -460,6 +466,11 @@ export default function NodeDetailsPanel({
               onClearContext={onClearContext}
               onWriteContent={onWriteContent}
               onAnswerQuestion={onAnswerQuestion}
+              structureItems={structureItems}
+              contentMap={contentMap}
+              canvasNodes={nodes}
+              canvasEdges={edges}
+              currentStoryStructureNodeId={currentStoryStructureNodeId}
             />
           ) : nodeType === 'story-structure' ? (
             // Story Structure Metadata Panel

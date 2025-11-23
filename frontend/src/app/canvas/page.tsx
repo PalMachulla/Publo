@@ -2885,6 +2885,9 @@ export default function CanvasPage() {
           onClearContext={() => setActiveContext(null)}
           onWriteContent={handleWriteContent}
           onAnswerQuestion={handleAnswerQuestion}
+          structureItems={currentStructureItems}
+          contentMap={currentContentMap}
+          currentStoryStructureNodeId={currentStoryStructureNodeId}
         />
 
         {/* Loading indicator now integrated into Orchestrator node */}

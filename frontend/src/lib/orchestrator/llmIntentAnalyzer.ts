@@ -34,6 +34,7 @@ export interface LLMIntentContext {
   isDocumentViewOpen: boolean // Is user working inside a document?
   documentFormat?: string // Novel, Report, Screenplay, etc.
   availableActions: UserIntent[]
+  canvasContext?: string // CANVAS VISIBILITY: Connected nodes visible to orchestrator
 }
 
 export interface LLMIntentResult extends IntentAnalysis {
@@ -51,16 +52,25 @@ export interface LLMIntentResult extends IntentAnalysis {
 const INTENT_ANALYSIS_SYSTEM_PROMPT = `You are an intelligent intent analyzer for a creative writing assistant.
 
 Your job is to analyze user messages and determine their intent, considering:
-1. The current message
-2. Recent conversation history (to understand "it", "this", "that")
-3. The active segment/section in the document
-4. Whether the document panel is open (CRITICAL FOR INTENT!)
-5. Available actions the system can perform
+1. Canvas context - WHAT NODES ARE VISIBLE to the orchestrator (stories, documents, research, etc.)
+2. The current message
+3. Recent conversation history (to understand "it", "this", "that")
+4. The active segment/section in the document
+5. Whether the document panel is open (CRITICAL FOR INTENT!)
+6. Available actions the system can perform
+
+CANVAS AWARENESS (CRITICAL!):
+- When user says "our other story", "that screenplay", "the characters", look at the canvas context to identify it
+- If user wants to "base this on X", "interview characters in X", "adapt X", use the canvas context to find node X
+- Canvas context shows ALL nodes connected to the orchestrator - these are resources you can reference
+- If canvas shows a screenplay/story node AND user says "make interview" or "interview the characters", this is create_structure (NOT general_chat!)
+- Pattern: "Make an interview with characters in [screenplay]" → create_structure intent using screenplay as reference
 
 Available intents:
 - write_content: User wants to generate NEW narrative content for a section
 - answer_question: User wants information, explanation, or discussion (respond in chat)
-- improve_content: User wants to refine/enhance existing content
+- improve_content: User wants to refine/enhance existing content IN ONE SECTION ONLY
+- rewrite_with_coherence: User wants GHOSTWRITER-LEVEL rewrite - modify section AND update related sections for narrative consistency/coherence
 - modify_structure: User wants to change document structure (add/remove sections)
 - create_structure: User wants to create a BRAND NEW story/document (only when document panel is CLOSED)
 - clarify_intent: You're unsure and need to ask a clarifying question
@@ -78,9 +88,17 @@ CRITICAL CONTEXT RULES:
 Guidelines:
 - If user says "write more", "expand", "continue" → write_content
 - If user says "explain", "what is", "tell me about" → answer_question
-- If user says "improve", "make it better", "polish" → improve_content
+- If user says "improve", "make it better", "polish" (ONE section) → improve_content
+- If user says "rewrite X and update other sections", "keep it coherent", "maintain consistency", "fix earlier parts too" → rewrite_with_coherence (GHOSTWRITER MODE)
 - If user references previous chat ("add it", "put that") → check conversation history
 - If ambiguous or unclear → clarify_intent (ask a question)
+
+GHOSTWRITER MODE INDICATORS:
+- "and update related/earlier/other sections"
+- "keep the story coherent/consistent"
+- "make sure everything makes sense"
+- "fix continuity"
+- Any request that implies MULTIPLE sections need updating for coherence
 
 Be context-aware:
 - "it" or "this" usually refers to the most recent explanation or the selected segment
@@ -90,7 +108,7 @@ Be context-aware:
 
 Return your analysis as JSON with this structure:
 {
-  "intent": "write_content" | "answer_question" | "improve_content" | "modify_structure" | "clarify_intent",
+  "intent": "write_content" | "answer_question" | "improve_content" | "rewrite_with_coherence" | "modify_structure" | "clarify_intent",
   "confidence": 0.0-1.0,
   "reasoning": "Explain your thought process",
   "suggestedAction": "What the system should do",
@@ -181,7 +199,15 @@ Return ONLY valid JSON with your analysis.`
 function buildContextString(context: LLMIntentContext): string {
   let str = 'Context:\n\n'
 
-  // MOST IMPORTANT: Document panel state
+  // CANVAS VISIBILITY - MOST IMPORTANT!
+  if (context.canvasContext) {
+    str += context.canvasContext
+    str += '\n'
+  } else {
+    str += '👁️ Canvas: No nodes visible to orchestrator (nothing connected)\n\n'
+  }
+
+  // Document panel state
   str += `**Document Panel Status: ${context.isDocumentViewOpen ? 'OPEN (user is working inside a document)' : 'CLOSED (user is on canvas)'}**\n`
   if (context.isDocumentViewOpen && context.documentFormat) {
     str += `Document Type: ${context.documentFormat}\n`
