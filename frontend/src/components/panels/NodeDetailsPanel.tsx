@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { Node, Edge } from 'reactflow'
 import { AnyNodeData, Comment, StoryStructureItem, StoryStructureNodeData, TestNodeData, AIPromptNodeData, StoryFormat } from '@/types/nodes'
 import { useAuth } from '@/contexts/AuthContext'
+import { createClient } from '@/lib/supabase/client'
 import StoryBookPanel from './StoryBookPanel'
 import CharacterPanel from './CharacterPanel'
 import ResearchPanel from './ResearchPanel'
@@ -116,6 +117,7 @@ export default function NodeDetailsPanel({
   currentStoryStructureNodeId = null
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
+  const supabase = createClient()
   const [commentText, setCommentText] = useState('')
   
   // Panel resize state
@@ -171,9 +173,45 @@ export default function NodeDetailsPanel({
   }
   
   // Generate embeddings for current node
-  const generateEmbeddings = async (nodeId: string, sections: any[]) => {
+  const generateEmbeddings = async (nodeId: string, structureItems: any[]) => {
     setEmbeddingStatus(prev => ({ ...prev, generating: true }))
     try {
+      // Fetch document sections from database with content
+      const { data: documentSections, error: sectionsError } = await supabase
+        .from('document_sections')
+        .select('id, content, structure_item_id, story_structure_node_id')
+        .eq('story_structure_node_id', nodeId)
+      
+      if (sectionsError) {
+        console.error('Failed to fetch document sections:', sectionsError)
+        alert(`❌ Failed to fetch document sections:\n\n${sectionsError.message}`)
+        setEmbeddingStatus(prev => ({ ...prev, generating: false }))
+        return
+      }
+      
+      if (!documentSections || documentSections.length === 0) {
+        alert('⚠️ No content found to vectorize.\n\nThis document appears to be empty.')
+        setEmbeddingStatus(prev => ({ ...prev, generating: false }))
+        return
+      }
+      
+      // Map to the format expected by the API
+      const sections = documentSections.map((docSection) => {
+        // Find matching structure item
+        const structureItem = structureItems.find((item: any) => item.id === docSection.structure_item_id)
+        
+        return {
+          documentSectionId: docSection.id,
+          content: docSection.content || '',
+          structureItem: structureItem || {
+            id: docSection.structure_item_id,
+            level: 0,
+            type: 'section',
+            content: docSection.content
+          }
+        }
+      })
+      
       const response = await fetch('/api/embeddings/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
