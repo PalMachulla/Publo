@@ -531,24 +531,40 @@ export default function CreateStoryPanel({
           // Smart Section Detection: Find target section from message if none selected
           let writeTargetId = activeContext?.id
           
-          if (!writeTargetId && structureItems.length > 0) {
-            const lowerMessage = message.toLowerCase()
-            const matchedSection = structureItems.find(item => {
-              const name = item.name.toLowerCase()
-              // Match full name or key parts
-              return lowerMessage.includes(name) || 
-                     // Match partial names like "welfare" for "Animal Welfare Consideration"
-                     name.split(' ').some((word: string) => word.length > 4 && lowerMessage.includes(word))
+          if (!writeTargetId) {
+            // Try to get structure from props or canvas context
+            const availableStructure = structureItems.length > 0 ? structureItems : 
+                                      (canvasContext.connectedNodes.find(n => n.nodeType === 'story-structure')?.detailedContext?.allSections || [])
+            
+            console.log('[write_content] Section detection:', {
+              hasActiveContext: !!activeContext,
+              structureItemsCount: structureItems.length,
+              canvasContextNodes: canvasContext.connectedNodes.length,
+              availableStructureCount: availableStructure.length,
+              message: message.substring(0, 50)
             })
             
-            if (matchedSection) {
-              writeTargetId = matchedSection.id
-              if (onAddChatMessage) {
-                onAddChatMessage(`🎯 Auto-selecting section: "${matchedSection.name}"`, 'orchestrator', 'result')
-              }
-              // Auto-select the section visually
-              if (currentStoryStructureNodeId && onSelectNode) {
-                onSelectNode(currentStoryStructureNodeId, writeTargetId)
+            if (availableStructure.length > 0) {
+              const lowerMessage = message.toLowerCase()
+              const matchedSection = availableStructure.find((item: any) => {
+                const name = item.name.toLowerCase()
+                // Match full name or key parts
+                return lowerMessage.includes(name) || 
+                       // Match partial names like "welfare" for "Animal Welfare Consideration"
+                       name.split(' ').some((word: string) => word.length > 4 && lowerMessage.includes(word))
+              })
+              
+              if (matchedSection) {
+                writeTargetId = matchedSection.id
+                if (onAddChatMessage) {
+                  onAddChatMessage(`🎯 Auto-selecting section: "${matchedSection.name}"`, 'orchestrator', 'result')
+                }
+                // Auto-select the section visually
+                if (currentStoryStructureNodeId && onSelectNode) {
+                  onSelectNode(currentStoryStructureNodeId, writeTargetId)
+                }
+              } else {
+                console.log('[write_content] No section matched. Available sections:', availableStructure.map((s: any) => s.name))
               }
             }
           }
