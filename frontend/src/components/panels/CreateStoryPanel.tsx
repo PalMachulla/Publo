@@ -235,6 +235,7 @@ export default function CreateStoryPanel({
   
   // Chat state (local input only, history is canvas-level)
   const [chatMessage, setChatMessage] = useState('')
+  const [collapsedMessages, setCollapsedMessages] = useState<Set<string>>(new Set())
   
   // Reasoning chat state
   const [isReasoningOpen, setIsReasoningOpen] = useState(true) // Open by default to see streaming
@@ -1180,15 +1181,70 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
               </div>
             ) : (
               reasoningMessages.map((msg, i) => {
-                // Distinguish model reasoning from orchestrator messages
+                //  ATOMIC DESIGN: Two message types
+                // 1. CHAT MESSAGES: Simple conversational (user ↔ orchestrator)
+                // 2. STATUS MESSAGES: Collapsible system feedback (thinking, result, etc.)
+                
+                const isUserMessage = msg.role === 'user'
+                const isOrchestratorMessage = msg.role === 'orchestrator' && msg.type === 'user'
+                const isStatusMessage = ['thinking', 'decision', 'task', 'result', 'error'].includes(msg.type)
                 const isModelMessage = msg.content.startsWith('🤖 Model reasoning:')
-                const isUserMessage = msg.type === 'user' || msg.role === 'user'
-                const isOrchestratorMessage = msg.role === 'orchestrator'
                 const isLastMessage = i === reasoningMessages.length - 1
                 
+                // CHAT MESSAGE: Simple, clean conversation
+                if (isUserMessage || (isOrchestratorMessage && !isStatusMessage)) {
+                  return (
+                    <div key={i} className={`p-3 rounded ${isUserMessage ? 'bg-gray-100' : 'bg-white border border-gray-200'}`}>
+                      <div className="flex items-start gap-2">
+                        <div className="flex-shrink-0 mt-0.5">
+                          {isUserMessage ? (
+                            <svg className="w-3.5 h-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+                              {isUserMessage ? 'PUBLO' : 'ORCHESTRATOR'}
+                            </span>
+                            <span className="text-[10px] text-gray-400">
+                              {new Date(msg.timestamp).toLocaleTimeString('en-US', { 
+                                hour: '2-digit', 
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+                            {msg.content}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+                
+                // STATUS MESSAGE: Collapsible accordion with colored tint
+                const messageId = msg.id
+                const isCollapsed = collapsedMessages.has(messageId) && !isLastMessage
+                
+                const toggleCollapse = () => {
+                  setCollapsedMessages(prev => {
+                    const next = new Set(prev)
+                    if (next.has(messageId)) {
+                      next.delete(messageId)
+                    } else {
+                      next.add(messageId)
+                    }
+                    return next
+                  })
+                }
+                
                 const bgColor = 
-                  isUserMessage ? 'bg-gray-100 border-l-4 border-gray-300' :
-                  isOrchestratorMessage ? 'bg-white border-l-4 border-gray-200' :
                   isModelMessage ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-l-4 border-indigo-500' :
                   msg.type === 'thinking' ? 'bg-purple-50 border-l-4 border-purple-400' :
                   msg.type === 'decision' ? 'bg-blue-50 border-l-4 border-blue-400' :
@@ -1196,18 +1252,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                   msg.type === 'result' ? 'bg-green-50 border-l-4 border-green-400' :
                   'bg-red-50 border-l-4 border-red-400'
                 
-                const icon = 
-                  isUserMessage ? (
-                    <svg className="w-3.5 h-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  ) :
-                  isOrchestratorMessage ? (
-                    <svg className="w-3.5 h-3.5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                    </svg>
-                  ) :
-                  isModelMessage ? (
+                const icon = isModelMessage ? (
                     <svg className="w-3.5 h-3.5 text-indigo-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
                     </svg>
@@ -1238,45 +1283,52 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                     </svg>
                   )
                 
-                const label = 
-                  isUserMessage ? 'PUBLO' :
-                  isOrchestratorMessage ? 'ORCHESTRATOR' :
-                  isModelMessage ? 'MODEL' : 
-                  msg.type.toUpperCase()
+                const label = isModelMessage ? 'MODEL' : msg.type.toUpperCase()
                 
                 return (
-                  <div key={i} className={`p-3 rounded ${bgColor} ${isLastMessage && isStreaming ? 'animate-pulse' : ''}`}>
-                    <div className="flex items-start gap-2">
-                      <div className="flex-shrink-0 mt-0.5">
-                        {icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`text-[10px] font-medium uppercase tracking-wide ${
-                            isUserMessage ? 'text-gray-600 font-semibold' :
-                            isOrchestratorMessage ? 'text-gray-700 font-semibold' :
-                            isModelMessage ? 'text-indigo-600 font-bold' : 
-                            'text-gray-500'
-                          }`}>
-                            {label}
-                          </span>
-                          <span className="text-[10px] text-gray-400">
-                            {new Date(msg.timestamp).toLocaleTimeString('en-US', { 
-                              hour: '2-digit', 
-                              minute: '2-digit', 
-                              second: '2-digit' 
-                            })}
-                          </span>
+                  <div key={i} className={`rounded ${bgColor} overflow-hidden ${isLastMessage && isStreaming ? 'animate-pulse' : ''}`}>
+                    {/* Collapsible header */}
+                    <button
+                      onClick={toggleCollapse}
+                      className="w-full p-2 flex items-center justify-between hover:opacity-80 transition-opacity"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="flex-shrink-0">
+                          {icon}
                         </div>
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-gray-600">
+                          {label}
+                        </span>
+                        <span className="text-[10px] text-gray-400">
+                          {new Date(msg.timestamp).toLocaleTimeString('en-US', { 
+                            hour: '2-digit', 
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                      {!isLastMessage && (
+                        <svg 
+                          className={`w-4 h-4 text-gray-400 transition-transform ${isCollapsed ? '' : 'rotate-180'}`} 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      )}
+                    </button>
+                    
+                    {/* Collapsible content */}
+                    {!isCollapsed && (
+                      <div className="px-3 pb-3">
                         <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
                           {msg.content}
-                          {/* Typing indicator for last message when streaming */}
                           {isLastMessage && isStreaming && (
                             <span className="inline-block ml-1 w-1.5 h-4 bg-indigo-600 animate-pulse" />
                           )}
                         </p>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )
               })
