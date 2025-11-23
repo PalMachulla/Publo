@@ -28,8 +28,10 @@ const isOrchestratorModel = (modelId: string): boolean => {
     'gemini-2.0-flash-exp',
     'llama-3.3-70b',
     'llama-3.1-70b',
+    'llama-3.1-8b', // Added for fallback/speed
     'mixtral-8x7b',
-    'qwen2.5-72b'
+    'qwen2.5-72b',
+    'gemma' // Added for flexibility
   ]
   
   return orchestratorPatterns.some(pattern => id.includes(pattern))
