@@ -741,14 +741,7 @@ Request: ${message}`
           break
         
         case 'create_structure':
-          // Create new story structure (ONLY when document panel is closed!)
-          if (isDocumentViewOpen) {
-            // Safety check: If document panel is open, don't create new structure
-            if (onAddChatMessage) {
-              onAddChatMessage(`⚠️ Cannot create new structure while editing a document. Close the document panel first, or try "write more" to add content.`)
-            }
-            break
-          }
+          // Create new story structure (Allowed even if document panel is open)
           
           // CANVAS INTELLIGENCE: Check if user is referencing connected nodes
           let enhancedPrompt = message
