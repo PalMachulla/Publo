@@ -193,21 +193,23 @@ export async function GET(request: NextRequest) {
       throw countError
     }
 
-    // Get queue status
+    // Get queue status (don't use .single() as it throws error if no rows)
     const { data: queueData, error: queueError } = await supabase
       .from('embedding_queue')
       .select('status, created_at, processed_at')
       .eq('story_structure_node_id', nodeId)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single()
+
+    // Get first item from array (or null if no queue entries)
+    const latestQueueEntry = queueData && queueData.length > 0 ? queueData[0] : null
 
     return NextResponse.json({
       exists: embeddingCount !== null && embeddingCount > 0,
       chunkCount: embeddingCount || 0,
-      queueStatus: queueData?.status || 'none',
-      queuedAt: queueData?.created_at,
-      processedAt: queueData?.processed_at,
+      queueStatus: latestQueueEntry?.status || 'none',
+      queuedAt: latestQueueEntry?.created_at,
+      processedAt: latestQueueEntry?.processed_at,
     })
   } catch (error) {
     console.error('Error checking embedding status:', error)
