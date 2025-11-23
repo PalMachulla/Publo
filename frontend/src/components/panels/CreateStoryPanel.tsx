@@ -1001,6 +1001,11 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
             onSelectNode(nodeToOpen.nodeId)
           }
           
+          // Open the document view if it's not already open
+          if (!isDocumentViewOpen && onToggleDocumentView) {
+            onToggleDocumentView()
+          }
+          
           // Guide the user
           setTimeout(() => {
             if (onAddChatMessage) {
