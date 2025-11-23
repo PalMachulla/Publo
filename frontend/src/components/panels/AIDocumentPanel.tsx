@@ -44,6 +44,13 @@ export default function AIDocumentPanel({
 }: AIDocumentPanelProps) {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(initialSectionId)
   
+  // Update active section when initialSectionId changes (e.g., orchestrator opens a specific section)
+  useEffect(() => {
+    if (initialSectionId) {
+      setActiveSectionId(initialSectionId)
+    }
+  }, [initialSectionId])
+  
   // Detect all story structure nodes on canvas for tabs
   const storyStructureNodes = useMemo(() => {
     return canvasNodes.filter(node => node.type === 'storyStructureNode').map(node => ({

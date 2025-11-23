@@ -2953,6 +2953,7 @@ export default function CanvasPage() {
 
         {/* AI Document Panel */}
         <AIDocumentPanel 
+          key={currentStoryStructureNodeId || 'no-document'} // Force re-mount when document changes
           isOpen={isAIDocPanelOpen} 
           onClose={() => {
             setIsAIDocPanelOpen(false)
