@@ -776,13 +776,66 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
         
         case 'general_chat':
         default:
-          // General conversation
+          // General conversation - but still provide canvas context!
           if (onAddChatMessage) {
-            onAddChatMessage(`💭 Responding conversationally...`)
+            onAddChatMessage(`💭 Responding conversationally...`, 'orchestrator', 'thinking')
           }
           
           if (onAnswerQuestion) {
-            const response = await onAnswerQuestion(message)
+            // Build context-aware prompt just like answer_question
+            let chatPrompt = message
+            
+            if (canvasContext.connectedNodes.length > 0) {
+              let contextSummary = ''
+              let totalContentChars = 0
+              
+              // Extract content from canvas nodes
+              canvasContext.connectedNodes.forEach(node => {
+                contextSummary += `\n--- ${node.label} (${node.nodeType}) ---\n`
+                contextSummary += `Summary: ${node.summary}\n`
+                
+                // Include actual content if available
+                if (node.nodeType === 'story-structure' && node.detailedContext?.contentMap) {
+                  const contentMap = node.detailedContext.contentMap as Record<string, string>
+                  const contentEntries = Object.entries(contentMap)
+                  
+                  if (contentEntries.length > 0) {
+                    contextSummary += `\nContent (${contentEntries.length} sections):\n`
+                    
+                    contentEntries.slice(0, 10).forEach(([sectionId, content]) => {
+                      if (content && content.trim()) {
+                        const sectionInfo = node.detailedContext?.allSections?.find((s: any) => s.id === sectionId)
+                        const sectionName = sectionInfo?.name || sectionId
+                        const truncatedContent = content.length > 1000 ? content.substring(0, 1000) + '...' : content
+                        contextSummary += `\n## ${sectionName}\n${truncatedContent}\n`
+                        totalContentChars += truncatedContent.length
+                      }
+                    })
+                    
+                    if (contentEntries.length > 10) {
+                      contextSummary += `\n(... ${contentEntries.length - 10} more sections available)\n`
+                    }
+                  }
+                }
+                
+                contextSummary += '\n'
+              })
+              
+              chatPrompt = `User Message: ${message}\n\nAvailable Context from Canvas:${contextSummary}`
+              
+              // Add RAG content if available
+              if (ragEnhancedContext?.hasRAG && ragEnhancedContext.ragContent) {
+                chatPrompt += `\n\nAdditional Relevant Content (from semantic search):\n${ragEnhancedContext.ragContent}`
+              }
+              
+              if (onAddChatMessage && totalContentChars > 0) {
+                const wordCount = Math.round(totalContentChars / 5)
+                onAddChatMessage(`📚 Using context from ${canvasContext.connectedNodes.length} connected node(s)`)
+                onAddChatMessage(`📄 Including ~${wordCount} words of actual content`)
+              }
+            }
+            
+            const response = await onAnswerQuestion(chatPrompt)
             if (onAddChatMessage) {
               onAddChatMessage(`💬 ${response}`)
             }

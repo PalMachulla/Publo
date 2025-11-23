@@ -208,7 +208,9 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
     /^describe/i,
     /^tell me (about|why|how|what)/i,
     /^can you (tell|explain|describe)/i,
-    /what (is|are|does)/i,
+    /^help me (figure out|understand|with)/i,
+    /what (is|are|does|was|were)/i,
+    /what.*all about/i,
     /\?$/,
   ]
   
