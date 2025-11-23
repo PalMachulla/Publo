@@ -707,24 +707,82 @@ Request: ${message}`
             break
           }
           
-          // CANVAS INTELLIGENCE: Check if user is referencing a connected node
+          // CANVAS INTELLIGENCE: Check if user is referencing connected nodes
           let enhancedPrompt = message
           const referencePhrases = [
             'our screenplay', 'the screenplay', 'that screenplay',
-            'our story', 'our other story', 'that story',
-            'the document', 'that document',
-            'the characters', 'characters in',
-            'based on', 'base this on', 'using the',
-            'from the', 'adapt',
+            'our story', 'our other story', 'that story', 'our stories', 'the stories', 'these stories',
+            'the document', 'that document', 'our documents', 'the documents',
+            'the characters', 'characters in', 'characters from',
+            'based on', 'base this on', 'based upon', 'base it on', 'using the', 'using our',
+            'from the', 'from our', 'adapt', 'stories we have', 'documents we have',
           ]
+          
+          // Detect plural references (user wants ALL stories, not just one)
+          const pluralPhrases = [
+            'our stories', 'the stories', 'these stories', 'all stories', 'all the stories',
+            'our documents', 'the documents', 'these documents', 'all documents',
+            'stories we have', 'documents we have', 'everything we have'
+          ]
+          const wantsAllStories = pluralPhrases.some(phrase => message.toLowerCase().includes(phrase))
+          
           const hasReference = referencePhrases.some(phrase => message.toLowerCase().includes(phrase)) || 
                               (canvasContext.connectedNodes.length > 0 && 
                                (message.toLowerCase().includes('interview') || 
                                 message.toLowerCase().includes('characters')))
           
           if (hasReference && canvasContext.connectedNodes.length > 0) {
-            // Find the referenced node
-            const referencedNode = findReferencedNode(message, canvasContext)
+            if (wantsAllStories) {
+              // User wants content from ALL story nodes!
+              if (onAddChatMessage) {
+                onAddChatMessage(`📚 Reading content from ${canvasContext.connectedNodes.filter(n => n.nodeType === 'story-structure').length} connected stories...`, 'orchestrator', 'thinking')
+              }
+              
+              const allStoryContent: string[] = []
+              let totalWords = 0
+              
+              for (const node of canvasContext.connectedNodes) {
+                if (node.nodeType === 'story-structure' && node.detailedContext) {
+                  const contentMap = node.detailedContext.contentMap as Record<string, string> || {}
+                  const allSections = node.detailedContext.allSections || []
+                  const hasContent = Object.keys(contentMap).length > 0
+                  
+                  if (hasContent) {
+                    const storyContent = Object.entries(contentMap)
+                      .map(([sectionId, content]) => {
+                        const section = allSections.find((s: any) => s.id === sectionId)
+                        return `### ${section?.name || 'Section'}\n${content}`
+                      })
+                      .join('\n\n')
+                    
+                    allStoryContent.push(`## ${node.label} (${node.detailedContext.format})\n\n${storyContent.substring(0, 5000)}`)
+                    totalWords += node.detailedContext.wordsWritten || 0
+                  } else {
+                    // Include structure even if no content
+                    const structureDetails = allSections
+                      .map((s: any) => `${'  '.repeat(s.level - 1)}- ${s.name}${s.summary ? ': ' + s.summary : ''}`)
+                      .join('\n')
+                    allStoryContent.push(`## ${node.label} (${node.detailedContext.format})\n\nStructure:\n${structureDetails}`)
+                  }
+                }
+              }
+              
+              if (allStoryContent.length > 0) {
+                enhancedPrompt = `${message}
+
+REFERENCE CONTENT FROM ALL CONNECTED STORIES:
+
+${allStoryContent.join('\n\n---\n\n')}
+
+INSTRUCTION: Use the above stories as inspiration for creating the new podcast structure. Extract characters, themes, plot points, and narrative elements from ALL the stories above. ${message.toLowerCase().includes('interview') || message.toLowerCase().includes('character') ? 'Identify all named characters across these stories, their roles, personalities, and characteristics. Build the podcast around interviewing or featuring these characters.' : ''}`
+
+                if (onAddChatMessage) {
+                  onAddChatMessage(`✅ Extracted content from ${allStoryContent.length} story nodes (~${totalWords} words total)`, 'orchestrator', 'result')
+                }
+              }
+            } else {
+              // Find a single referenced node
+              const referencedNode = findReferencedNode(message, canvasContext)
             
             if (referencedNode && referencedNode.detailedContext) {
               if (onAddChatMessage) {
@@ -809,6 +867,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
             } else if (onAddChatMessage) {
               onAddChatMessage(`⚠️ Found node "${referencedNode?.label}" but couldn't extract content. Proceeding with user prompt only.`)
             }
+            } // Close the else block for single-node extraction
           }
           
           // Detect format from user message
