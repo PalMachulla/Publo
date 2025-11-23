@@ -1182,9 +1182,13 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
               reasoningMessages.map((msg, i) => {
                 // Distinguish model reasoning from orchestrator messages
                 const isModelMessage = msg.content.startsWith('🤖 Model reasoning:')
+                const isUserMessage = msg.type === 'user' || msg.role === 'user'
+                const isOrchestratorMessage = msg.role === 'orchestrator'
                 const isLastMessage = i === reasoningMessages.length - 1
                 
                 const bgColor = 
+                  isUserMessage ? 'bg-gray-100 border-l-4 border-gray-300' :
+                  isOrchestratorMessage ? 'bg-white border-l-4 border-gray-200' :
                   isModelMessage ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-l-4 border-indigo-500' :
                   msg.type === 'thinking' ? 'bg-purple-50 border-l-4 border-purple-400' :
                   msg.type === 'decision' ? 'bg-blue-50 border-l-4 border-blue-400' :
@@ -1193,6 +1197,16 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                   'bg-red-50 border-l-4 border-red-400'
                 
                 const icon = 
+                  isUserMessage ? (
+                    <svg className="w-3.5 h-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  ) :
+                  isOrchestratorMessage ? (
+                    <svg className="w-3.5 h-3.5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
+                  ) :
                   isModelMessage ? (
                     <svg className="w-3.5 h-3.5 text-indigo-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
@@ -1224,7 +1238,11 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                     </svg>
                   )
                 
-                const label = isModelMessage ? 'MODEL' : msg.type.toUpperCase()
+                const label = 
+                  isUserMessage ? 'PUBLO' :
+                  isOrchestratorMessage ? 'ORCHESTRATOR' :
+                  isModelMessage ? 'MODEL' : 
+                  msg.type.toUpperCase()
                 
                 return (
                   <div key={i} className={`p-3 rounded ${bgColor} ${isLastMessage && isStreaming ? 'animate-pulse' : ''}`}>
@@ -1234,7 +1252,12 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className={`text-[10px] font-medium uppercase tracking-wide ${isModelMessage ? 'text-indigo-600 font-bold' : 'text-gray-500'}`}>
+                          <span className={`text-[10px] font-medium uppercase tracking-wide ${
+                            isUserMessage ? 'text-gray-600 font-semibold' :
+                            isOrchestratorMessage ? 'text-gray-700 font-semibold' :
+                            isModelMessage ? 'text-indigo-600 font-bold' : 
+                            'text-gray-500'
+                          }`}>
                             {label}
                           </span>
                           <span className="text-[10px] text-gray-400">
