@@ -67,6 +67,7 @@ interface NodeDetailsPanelProps {
   onAddEdge?: (edge: Edge) => void
   edges?: Edge[]
   nodes?: Node[]
+  onSelectNode?: (nodeId: string) => void // NEW: Select and open a specific node
   canvasChatHistory?: Array<{
     id: string
     timestamp: string
@@ -99,6 +100,7 @@ export default function NodeDetailsPanel({
   onAddEdge,
   edges = [],
   nodes = [],
+  onSelectNode,
   canvasChatHistory = [],
   onAddChatMessage,
   onClearChat,
@@ -471,6 +473,7 @@ export default function NodeDetailsPanel({
               canvasNodes={nodes}
               canvasEdges={edges}
               currentStoryStructureNodeId={currentStoryStructureNodeId}
+              onSelectNode={onSelectNode}
             />
           ) : nodeType === 'story-structure' ? (
             // Story Structure Metadata Panel

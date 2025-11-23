@@ -52,6 +52,7 @@ interface CreateStoryPanelProps {
   canvasNodes?: Node[] // CANVAS VISIBILITY: All nodes on canvas
   canvasEdges?: Edge[] // CANVAS VISIBILITY: All edges on canvas
   currentStoryStructureNodeId?: string | null // CANVAS CONTENT: ID of currently loaded story structure
+  onSelectNode?: (nodeId: string) => void // HELPFUL MODE: Select and open a specific canvas node
 }
 
 interface Template {
@@ -207,7 +208,8 @@ export default function CreateStoryPanel({
   contentMap = {},
   canvasNodes = [],
   canvasEdges = [],
-  currentStoryStructureNodeId = null
+  currentStoryStructureNodeId = null,
+  onSelectNode
 }: CreateStoryPanelProps) {
   const router = useRouter()
   
@@ -772,6 +774,47 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
           if (onAddChatMessage) {
             onAddChatMessage(`❓ I need more information. Could you clarify what you'd like me to do?`)
           }
+          break
+        
+        case 'open_and_write':
+          // HELPFUL MODE: User wants to write in an existing canvas node
+          // Auto-open the document for them!
+          if (onAddChatMessage) {
+            onAddChatMessage(`📂 Finding the document to open...`, 'orchestrator', 'thinking')
+          }
+          
+          // Identify which node to open
+          const nodeToOpen = findReferencedNode(message, canvasContext)
+          
+          if (!nodeToOpen) {
+            // No clear node reference - ask for clarification
+            if (onAddChatMessage) {
+              if (canvasContext.connectedNodes.length > 0) {
+                const nodeList = canvasContext.connectedNodes.map(n => `• ${n.label}`).join('\n')
+                onAddChatMessage(`❓ Which document would you like to work on?\n\n${nodeList}`, 'orchestrator', 'result')
+              } else {
+                onAddChatMessage(`⚠️ I don't see any documents connected to the orchestrator. Please connect a story node first.`, 'orchestrator', 'error')
+              }
+            }
+            break
+          }
+          
+          // Found a node - open it!
+          if (onAddChatMessage) {
+            onAddChatMessage(`✅ Opening "${nodeToOpen.label}" for editing...`, 'orchestrator', 'result')
+          }
+          
+          // Trigger document open by setting the selected node
+          if (onSelectNode && nodeToOpen.nodeId) {
+            onSelectNode(nodeToOpen.nodeId)
+          }
+          
+          // Wait a bit for the document to open, then guide the user
+          setTimeout(() => {
+            if (onAddChatMessage) {
+              onAddChatMessage(`📝 Document opened! Now please select which section you'd like to write in, and I'll help you craft the content.`, 'orchestrator', 'result')
+            }
+          }, 500)
           break
         
         case 'general_chat':

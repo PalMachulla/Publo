@@ -17,6 +17,7 @@ export type UserIntent =
   | 'improve_content'      // User wants to refine/edit existing content
   | 'modify_structure'     // User wants to change the story structure
   | 'rewrite_with_coherence' // User wants to rewrite section(s) AND update related sections for consistency
+  | 'open_and_write'       // User wants to write in an existing canvas node (auto-open document)
   | 'clarify_intent'       // Orchestrator needs clarification
   | 'general_chat'         // General conversation/unclear intent
 
@@ -225,7 +226,29 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
     }
   }
   
-  // PRIORITY 3: Structure creation (ONLY when document panel is CLOSED)
+  // PRIORITY 3: Write in existing node (user references a canvas node)
+  // HELPFUL MODE: Auto-open the document when user wants to write in a node
+  if (!context.isDocumentViewOpen && !hasActiveSegment && context.canvasContext) {
+    const writeInNodePatterns = [
+      /(craft|write|fill|expand|develop).*(in |to )(that|the|this) (node|document|podcast|screenplay|novel|report)/i,
+      /(add|put|insert|write).*(content|text|words).*(in |to )(that|the|this)/i,
+      /(work on|edit|improve).*(that|the|this) (node|document)/i,
+      /help (me )?(craft|write|fill|expand).*(node|document)/i,
+    ]
+    
+    if (writeInNodePatterns.some(pattern => pattern.test(message))) {
+      return {
+        intent: 'open_and_write',
+        confidence: 0.95,
+        reasoning: 'User wants to write content in an existing canvas node - will auto-open document',
+        suggestedAction: 'Open the referenced document and prepare for content writing',
+        requiresContext: false,
+        suggestedModel: 'orchestrator'
+      }
+    }
+  }
+  
+  // PRIORITY 4: Structure creation (ONLY when document panel is CLOSED)
   if (!context.isDocumentViewOpen && !hasActiveSegment) {
     const structurePatterns = [
       /create (a |an )?story/i,
@@ -272,7 +295,7 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
     }
   }
   
-  // PRIORITY 4: Structure modification
+  // PRIORITY 5: Structure modification
   const modifyStructurePatterns = [
     /add (a |an )?(chapter|section|act|scene)/i,
     /remove (this |the )?(chapter|section|act|scene)/i,
@@ -345,6 +368,8 @@ export function explainIntent(analysis: IntentAnalysis): string {
       return '🔧 Modifying story structure'
     case 'rewrite_with_coherence':
       return '🎭 Ghostwriter mode: Analyzing dependencies and planning coherent rewrites'
+    case 'open_and_write':
+      return '📂 Opening document to write content'
     case 'clarify_intent':
       return '❓ Need clarification'
     case 'general_chat':

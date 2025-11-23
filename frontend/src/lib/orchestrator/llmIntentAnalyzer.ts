@@ -73,6 +73,7 @@ Available intents:
 - rewrite_with_coherence: User wants GHOSTWRITER-LEVEL rewrite - modify section AND update related sections for narrative consistency/coherence
 - modify_structure: User wants to change document structure (add/remove sections)
 - create_structure: User wants to create a BRAND NEW story/document (only when document panel is CLOSED)
+- open_and_write: User wants to write content IN AN EXISTING canvas node (auto-open document view)
 - clarify_intent: You're unsure and need to ask a clarifying question
 
 CRITICAL CONTEXT RULES:
@@ -84,19 +85,21 @@ CRITICAL CONTEXT RULES:
 - If document panel is CLOSED → User is on the canvas
   * "create a novel" → create_structure (new document node)
   * "write about X" → create_structure (needs new document first)
+  * "craft/write in that node" → open_and_write (HELPFUL MODE: open existing node for writing)
 
 Guidelines:
 - If user says "write more", "expand", "continue" → write_content (requiresContext: true)
 - If user says "explain", "what is", "tell me about" → answer_question (requiresContext: false - can answer from canvas context or general knowledge)
 - If user says "improve", "make it better", "polish" (ONE section) → improve_content (requiresContext: true)
 - If user says "rewrite X and update other sections", "keep it coherent", "maintain consistency", "fix earlier parts too" → rewrite_with_coherence (GHOSTWRITER MODE, requiresContext: true)
+- If user says "craft/write/fill in that node", "help me write the podcast" → open_and_write (HELPFUL: auto-open document for them)
 - If user references previous chat ("add it", "put that") → check conversation history
 - If ambiguous or unclear → clarify_intent (ask a question)
 
 IMPORTANT - requiresContext Rules:
 - answer_question → ALWAYS requiresContext: false (can answer from canvas, conversation, or general knowledge)
 - write_content, improve_content, rewrite_with_coherence → requiresContext: true (needs selected segment)
-- create_structure, general_chat, clarify_intent → requiresContext: false
+- create_structure, open_and_write, general_chat, clarify_intent → requiresContext: false
 
 GHOSTWRITER MODE INDICATORS:
 - "and update related/earlier/other sections"
@@ -113,7 +116,7 @@ Be context-aware:
 
 Return your analysis as JSON with this structure:
 {
-  "intent": "write_content" | "answer_question" | "improve_content" | "rewrite_with_coherence" | "modify_structure" | "clarify_intent",
+  "intent": "write_content" | "answer_question" | "improve_content" | "rewrite_with_coherence" | "modify_structure" | "open_and_write" | "clarify_intent",
   "confidence": 0.0-1.0,
   "reasoning": "Explain your thought process",
   "suggestedAction": "What the system should do",

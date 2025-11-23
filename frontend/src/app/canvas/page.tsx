@@ -2862,6 +2862,14 @@ export default function CanvasPage() {
           onAddEdge={(newEdge) => setEdges((eds) => [...eds, newEdge])}
           edges={edges}
           nodes={nodes}
+          onSelectNode={(nodeId: string) => {
+            const node = nodes.find(n => n.id === nodeId)
+            if (node) {
+              setSelectedNode(node)
+              setIsPanelOpen(true)
+              setIsAIDocPanelOpen(true) // Auto-open document view
+            }
+          }}
           canvasChatHistory={canvasChatHistory}
           onAddChatMessage={(message, role = 'orchestrator', type) => {
             // Auto-detect type from message content if not provided
