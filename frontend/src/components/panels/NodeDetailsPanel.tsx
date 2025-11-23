@@ -141,6 +141,9 @@ export default function NodeDetailsPanel({
   
   // Check embedding status for current node
   const checkEmbeddingStatus = async (nodeId: string) => {
+    // Skip during SSR
+    if (typeof window === 'undefined') return
+    
     setEmbeddingStatus(prev => ({ ...prev, loading: true }))
     try {
       const response = await fetch(`/api/embeddings/generate?nodeId=${nodeId}`)
@@ -327,7 +330,9 @@ export default function NodeDetailsPanel({
   }, [panelWidth, onPanelWidthChange])
   
   // Check embedding status when story-structure node is selected
+  // Only run on client-side, not during SSR
   useEffect(() => {
+    if (typeof window === 'undefined') return // Skip during SSR
     if (node && node.type === 'storyStructureNode') {
       checkEmbeddingStatus(node.id)
     }
