@@ -50,6 +50,11 @@ const getCanonicalModel = (modelId: string) => {
   return null
 }
 
+// Helper: Check if a model is an orchestrator (uses canonical list)
+const isOrchestratorModel = (modelId: string): boolean => {
+  return getCanonicalModel(modelId) !== null
+}
+
 // Helper: Identify writer models (everything else that's chat-capable)
 const isWriterModel = (modelId: string): boolean => {
   const id = modelId.toLowerCase()
