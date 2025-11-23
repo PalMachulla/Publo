@@ -1221,25 +1221,28 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
       const response = await fetch('/api/user/api-keys')
       const data = await response.json()
       
-      // Populate available orchestrators
+      // Populate available orchestrators (Deduplicated)
       if (data.success && data.keys?.length > 0) {
-        const allOrchestrators: Array<{id: string, name: string, keyId: string, provider: string}> = []
+        const uniqueModels = new Map<string, {id: string, name: string, keyId: string, provider: string}>()
         
         data.keys.forEach((key: any) => {
           if (key.models_cache) {
             key.models_cache.forEach((model: any) => {
               if (isOrchestratorModel(model.id)) {
-                allOrchestrators.push({
-                  id: model.id,
-                  name: model.name || model.id,
-                  keyId: key.id,
-                  provider: key.provider
-                })
+                // Deduplicate by model ID - keep the first one encountered
+                if (!uniqueModels.has(model.id)) {
+                  uniqueModels.set(model.id, {
+                    id: model.id,
+                    name: model.name || model.id,
+                    keyId: key.id,
+                    provider: key.provider
+                  })
+                }
               }
             })
           }
         })
-        setAvailableOrchestrators(allOrchestrators)
+        setAvailableOrchestrators(Array.from(uniqueModels.values()))
       } else {
         setAvailableOrchestrators([])
       }
@@ -1484,13 +1487,13 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                           setConfiguredModel(prev => ({ ...prev, orchestrator: selectedId }))
                           
                           try {
-                             // 1. Get current key data to preserve writers
+                             // 1. Get current key data
                              const keysResponse = await fetch('/api/user/api-keys')
                              const keysData = await keysResponse.json()
                              const targetKey = keysData.keys.find((k: any) => k.id === selectedOption.keyId)
                              
                              if (targetKey) {
-                               // 2. Update preference
+                               // 2. Update preference on TARGET key
                                await fetch(`/api/user/api-keys/${targetKey.id}/preferences`, {
                                   method: 'PATCH',
                                   headers: { 'Content-Type': 'application/json' },
@@ -1499,13 +1502,28 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                                     writerModelIds: targetKey.writer_model_ids || [] 
                                   })
                                })
+
+                               // 3. Clear orchestrator on ALL OTHER keys (Ensure single active orchestrator)
+                               const otherKeys = keysData.keys.filter((k: any) => k.id !== targetKey.id && k.orchestrator_model_id)
+                               if (otherKeys.length > 0) {
+                                 await Promise.all(otherKeys.map((k: any) => 
+                                   fetch(`/api/user/api-keys/${k.id}/preferences`, {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        orchestratorModelId: null, // Clear
+                                        writerModelIds: k.writer_model_ids || [] // Preserve
+                                      })
+                                   })
+                                 ))
+                               }
                                
-                               // 3. Dispatch event
+                               // 4. Dispatch event
                                window.dispatchEvent(new CustomEvent('orchestratorConfigUpdated', {
                                   detail: { orchestratorModelId: selectedId }
                                }))
                                
-                               // 4. Refresh
+                               // 5. Refresh
                                await fetchConfiguredModels()
                              }
                           } catch (err) {
@@ -1519,10 +1537,26 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                       disabled={updatingModel}
                       className="w-full text-xs border-gray-300 rounded shadow-sm focus:border-purple-500 focus:ring-purple-500 py-1.5 bg-white text-gray-700"
                     >
-                      {availableOrchestrators.map((model) => (
-                        <option key={`${model.keyId}-${model.id}`} value={model.id}>
-                          {model.name} ({model.provider})
-                        </option>
+                      <option value="" disabled>Select an orchestrator...</option>
+                      {/* Group models by provider */}
+                      {Object.entries(availableOrchestrators.reduce((acc, model) => {
+                        const group = model.provider === 'openai' ? 'OpenAI' : 
+                                      model.provider === 'groq' ? 'Groq' : 
+                                      model.provider === 'anthropic' ? 'Anthropic' : 
+                                      model.provider === 'google' ? 'Google' : 
+                                      model.provider.charAt(0).toUpperCase() + model.provider.slice(1)
+                        
+                        if (!acc[group]) acc[group] = []
+                        acc[group].push(model)
+                        return acc
+                      }, {} as Record<string, typeof availableOrchestrators>)).sort().map(([provider, models]) => (
+                        <optgroup key={provider} label={provider}>
+                          {models.map((model) => (
+                            <option key={model.id} value={model.id}>
+                              {model.name}
+                            </option>
+                          ))}
+                        </optgroup>
                       ))}
                     </select>
                   </div>
