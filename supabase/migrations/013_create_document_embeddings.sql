@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS public.document_embeddings (
 
 -- HNSW index for fast cosine similarity search
 -- This is the key index for semantic search performance
-CREATE INDEX document_embeddings_embedding_idx 
+CREATE INDEX IF NOT EXISTS document_embeddings_embedding_idx 
   ON public.document_embeddings 
   USING hnsw (embedding vector_cosine_ops)
   WITH (m = 16, ef_construction = 64);
@@ -67,24 +67,24 @@ CREATE INDEX document_embeddings_embedding_idx
 -- ef_construction = size of dynamic candidate list (higher = better quality, slower build)
 
 -- Index for filtering by story structure node (performance optimization)
-CREATE INDEX document_embeddings_node_idx 
+CREATE INDEX IF NOT EXISTS document_embeddings_node_idx 
   ON public.document_embeddings(story_structure_node_id);
 
 -- Index for filtering by user (for user-specific searches)
-CREATE INDEX document_embeddings_user_idx 
+CREATE INDEX IF NOT EXISTS document_embeddings_user_idx 
   ON public.document_embeddings(user_id);
 
 -- Index for document section lookups
-CREATE INDEX document_embeddings_section_idx 
+CREATE INDEX IF NOT EXISTS document_embeddings_section_idx 
   ON public.document_embeddings(document_section_id);
 
 -- Index for status filtering (useful for batch operations)
-CREATE INDEX document_embeddings_status_idx 
+CREATE INDEX IF NOT EXISTS document_embeddings_status_idx 
   ON public.document_embeddings(embedding_status)
   WHERE embedding_status != 'completed';
 
 -- GIN index for metadata queries (e.g., searching by character mentions)
-CREATE INDEX document_embeddings_metadata_idx 
+CREATE INDEX IF NOT EXISTS document_embeddings_metadata_idx 
   ON public.document_embeddings USING GIN (metadata);
 
 -- ============================================================================
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS public.embedding_queue (
 );
 
 -- Index for queue processing
-CREATE INDEX embedding_queue_status_priority_idx 
+CREATE INDEX IF NOT EXISTS embedding_queue_status_priority_idx 
   ON public.embedding_queue(status, priority, created_at)
   WHERE status = 'pending';
 
@@ -297,12 +297,14 @@ $$;
 -- ============================================================================
 
 -- Update updated_at timestamp for document_embeddings
+DROP TRIGGER IF EXISTS update_document_embeddings_updated_at ON public.document_embeddings;
 CREATE TRIGGER update_document_embeddings_updated_at
   BEFORE UPDATE ON public.document_embeddings
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
 -- Update updated_at timestamp for embedding_queue
+DROP TRIGGER IF EXISTS update_embedding_queue_updated_at ON public.embedding_queue;
 CREATE TRIGGER update_embedding_queue_updated_at
   BEFORE UPDATE ON public.embedding_queue
   FOR EACH ROW
@@ -327,6 +329,7 @@ END;
 $$;
 
 -- Attach trigger to document_sections (debounced via queue system)
+DROP TRIGGER IF EXISTS auto_queue_embedding_on_document_change ON public.document_sections;
 CREATE TRIGGER auto_queue_embedding_on_document_change
   AFTER INSERT OR UPDATE OF content ON public.document_sections
   FOR EACH ROW
