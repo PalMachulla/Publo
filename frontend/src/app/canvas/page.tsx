@@ -2872,10 +2872,13 @@ export default function CanvasPage() {
             
             // Extract node data
             const nodeData = node.data as StoryStructureNodeData
-            if (!nodeData.structureItems || !nodeData.format) {
+            // Check for both 'items' (database field) and 'structureItems' (legacy)
+            const structureItems = nodeData.structureItems || nodeData.items
+            if (!structureItems || !nodeData.format) {
               console.error('[onSelectNode] Node missing structure data:', {
                 nodeId,
                 hasStructureItems: !!nodeData.structureItems,
+                hasItems: !!nodeData.items,
                 hasFormat: !!nodeData.format,
                 nodeData
               })
@@ -2897,7 +2900,7 @@ export default function CanvasPage() {
             // Load the document's structure and content
             const latestContentMap = nodeData.contentMap || {}
             setCurrentStoryStructureNodeId(nodeId)
-            setCurrentStructureItems(nodeData.structureItems)
+            setCurrentStructureItems(structureItems) // Use the resolved structureItems
             setCurrentStructureFormat(nodeData.format)
             setCurrentContentMap(latestContentMap)
             
@@ -2912,7 +2915,7 @@ export default function CanvasPage() {
             console.log('📂 [open_and_write] Loaded document for writing:', {
               nodeId,
               format: nodeData.format,
-              sections: nodeData.structureItems?.length || 0,
+              sections: structureItems?.length || 0,
               contentKeys: Object.keys(latestContentMap).length,
               autoSelectSection: sectionId || 'none'
             })
