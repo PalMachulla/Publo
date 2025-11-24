@@ -460,31 +460,78 @@ export class OrchestratorEngine {
             return null
           }
           
-          // Try to extract section name from message
-          // Patterns: "add to X", "write in X", "add text to X", "write X"
-          const patterns = [
-            /(?:add|write|put|insert).*(?:to|in|into)\s+(?:the\s+)?(.+?)(?:\s+(?:section|part|chapter|scene|act|sequence))?$/i,
-            /(?:add|write|put|insert)\s+(?:some\s+)?(?:text|content|words).*?(?:to|in|into)\s+(?:the\s+)?(.+?)$/i,
-          ]
+          // ✅ NEW: Handle ordinal/positional references (first scene, second act, etc.)
+          const ordinalPattern = /(?:start with|write|begin with)?\s*(?:the\s+)?(first|second|third|1st|2nd|3rd|opening|initial)\s+(scene|act|sequence|chapter|section|beat)/i
+          const ordinalMatch = request.message.match(ordinalPattern)
           
-          let sectionName: string | null = null
-          for (const pattern of patterns) {
-            const match = request.message.match(pattern)
-            if (match && match[1]) {
-              sectionName = match[1].trim().toLowerCase()
-              break
+          if (ordinalMatch) {
+            const position = ordinalMatch[1].toLowerCase()
+            const type = ordinalMatch[2].toLowerCase()
+            
+            // Map ordinals to numbers
+            const ordinalMap: Record<string, number> = {
+              'first': 0, '1st': 0, 'opening': 0, 'initial': 0,
+              'second': 1, '2nd': 1,
+              'third': 2, '3rd': 2
+            }
+            
+            const targetIndex = ordinalMap[position] ?? 0
+            
+            // Find all sections of the specified type
+            const findSectionsByType = (items: any[], searchType: string): any[] => {
+              const results: any[] = []
+              for (const item of items) {
+                const itemName = item.name?.toLowerCase() || ''
+                if (itemName.includes(searchType)) {
+                  results.push(item)
+                }
+                if (item.children) {
+                  results.push(...findSectionsByType(item.children, searchType))
+                }
+              }
+              return results
+            }
+            
+            const matchingSections = findSectionsByType(request.structureItems, type)
+            if (matchingSections[targetIndex]) {
+              targetSectionId = matchingSections[targetIndex].id
+              console.log('🎯 [Ordinal Detection] Found section:', {
+                position,
+                type,
+                targetIndex,
+                foundSection: matchingSections[targetIndex].name,
+                sectionId: targetSectionId
+              })
             }
           }
           
-          if (sectionName) {
-            const foundSection = findSectionByName(request.structureItems, sectionName)
-            if (foundSection) {
-              targetSectionId = foundSection.id
-              console.log('🎯 [Smart Section Detection] Found section:', {
-                searchTerm: sectionName,
-                foundSection: foundSection.name,
-                sectionId: targetSectionId
-              })
+          // Try to extract section name from message (if ordinal didn't match)
+          if (!targetSectionId) {
+            // Patterns: "add to X", "write in X", "add text to X", "write X"
+            const patterns = [
+              /(?:add|write|put|insert).*(?:to|in|into)\s+(?:the\s+)?(.+?)(?:\s+(?:section|part|chapter|scene|act|sequence))?$/i,
+              /(?:add|write|put|insert)\s+(?:some\s+)?(?:text|content|words).*?(?:to|in|into)\s+(?:the\s+)?(.+?)$/i,
+            ]
+            
+            let sectionName: string | null = null
+            for (const pattern of patterns) {
+              const match = request.message.match(pattern)
+              if (match && match[1]) {
+                sectionName = match[1].trim().toLowerCase()
+                break
+              }
+            }
+            
+            if (sectionName) {
+              const foundSection = findSectionByName(request.structureItems, sectionName)
+              if (foundSection) {
+                targetSectionId = foundSection.id
+                console.log('🎯 [Smart Section Detection] Found section:', {
+                  searchTerm: sectionName,
+                  foundSection: foundSection.name,
+                  sectionId: targetSectionId
+                })
+              }
             }
           }
         }

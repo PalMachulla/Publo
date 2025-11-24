@@ -1505,6 +1505,46 @@ export default function CanvasPage() {
       
       onReasoning(`📊 Structure initialized with ${structureItems.length} sections`, 'result')
       
+      // ✅ CRITICAL: Initialize document_data in database for hierarchical system
+      try {
+        onReasoning('💾 Initializing hierarchical document system...', 'progress')
+        
+        const { DocumentManager } = await import('@/lib/document/DocumentManager')
+        const supabase = createClient()
+        
+        // Map StoryFormat to DocumentManager format (only supports subset)
+        let docManagerFormat: 'novel' | 'screenplay' | 'report'
+        if (format === 'short-story') {
+          docManagerFormat = 'novel'
+        } else if (format === 'novel' || format === 'screenplay' || format === 'report') {
+          docManagerFormat = format
+        } else {
+          // podcast, essay, article, custom → default to report
+          docManagerFormat = 'report'
+        }
+        
+        // Create document_data from structure items
+        const docManager = DocumentManager.fromStructureItems(structureItems, docManagerFormat)
+        const documentData = docManager.getData()
+        
+        // Save to database
+        const { error: saveError } = await supabase
+          .from('nodes')
+          .update({ document_data: documentData })
+          .eq('id', structureNodeId)
+        
+        if (saveError) {
+          console.error('❌ Failed to initialize document_data:', saveError)
+          onReasoning('⚠️ Warning: Document structure saved to canvas but not to database', 'error')
+        } else {
+          console.log('✅ document_data initialized successfully')
+          onReasoning('✅ Hierarchical document system initialized', 'result')
+        }
+      } catch (initError) {
+        console.error('❌ Error initializing document_data:', initError)
+        onReasoning('⚠️ Warning: Could not initialize hierarchical document', 'error')
+      }
+      
       // Save canvas with structure
       hasUnsavedChangesRef.current = true
       await handleSave()
