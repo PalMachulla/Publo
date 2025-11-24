@@ -4,7 +4,10 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useDocumentSections } from '@/hooks/useDocumentSections'
 import { useDocumentEditor } from '@/hooks/useDocumentEditor'
 import MarkdownEditor from '../editor/MarkdownEditor'
-import NarrationArrangementView from '../document/NarrationArrangementView'
+import SectionTreeView from '../document/SectionTreeView'
+import NarrationCardView from '../document/NarrationCardView'
+import DocumentCardView from '../document/DocumentCardView'
+import SidebarViewToggle, { type SidebarView } from '../document/SidebarViewToggle'
 import type { StoryStructureItem, TestNodeData } from '@/types/nodes'
 import type { DocumentSection } from '@/types/document'
 import type { Edge, Node } from 'reactflow'
@@ -69,20 +72,29 @@ export default function AIDocumentPanel({
     return false
   })
   
+  // Persist sidebar view (tree vs narration)
+  const [sidebarView, setSidebarView] = useState<SidebarView>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('publo-sidebar-view')
+      return (saved as SidebarView) || 'tree'
+    }
+    return 'tree'
+  })
+  
+  // Theme colors for cards (persisted per document)
+  const [themeColors, setThemeColors] = useState<Record<string, string>>(() => {
+    if (typeof window !== 'undefined' && storyStructureNodeId) {
+      const saved = localStorage.getItem(`publo-theme-colors-${storyStructureNodeId}`)
+      return saved ? JSON.parse(saved) : {}
+    }
+    return {}
+  })
+  
   const [showAddSectionModal, setShowAddSectionModal] = useState(false)
   const [newSectionName, setNewSectionName] = useState('')
   const [newSectionTitle, setNewSectionTitle] = useState('')
   const [newSectionParentId, setNewSectionParentId] = useState<string | null>(null)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
-  
-  // Persist arrangement view collapse state
-  const [isArrangementCollapsed, setIsArrangementCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('publo-arrangement-collapsed')
-      return saved ? JSON.parse(saved) : true // Default: collapsed
-    }
-    return true
-  })
 
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -147,13 +159,20 @@ export default function AIDocumentPanel({
       localStorage.setItem('publo-sections-collapsed', JSON.stringify(isSidebarCollapsed))
     }
   }, [isSidebarCollapsed])
-
-  // Persist arrangement view collapse state
+  
+  // Persist sidebar view (tree vs narration)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('publo-arrangement-collapsed', JSON.stringify(isArrangementCollapsed))
+      localStorage.setItem('publo-sidebar-view', sidebarView)
     }
-  }, [isArrangementCollapsed])
+  }, [sidebarView])
+  
+  // Persist theme colors
+  useEffect(() => {
+    if (typeof window !== 'undefined' && storyStructureNodeId) {
+      localStorage.setItem(`publo-theme-colors-${storyStructureNodeId}`, JSON.stringify(themeColors))
+    }
+  }, [themeColors, storyStructureNodeId])
 
   // Track if full document has been loaded to avoid re-loading on every render
   const [hasLoadedFullDocument, setHasLoadedFullDocument] = useState(false)
@@ -556,6 +575,36 @@ export default function AIDocumentPanel({
   }
 
   // Open add section modal with default parent (Cover if exists)
+  // Handle color change for cards
+  const handleColorChange = (itemId: string, color: string) => {
+    setThemeColors(prev => ({
+      ...prev,
+      [itemId]: color
+    }))
+  }
+  
+  // Handle add sub-agent (placeholder)
+  const handleAddSubAgent = (itemId: string) => {
+    // TODO: Implement sub-agent functionality
+    console.log('🤖 Add sub-agent for:', itemId)
+    alert('Sub-agent functionality coming soon!')
+  }
+  
+  // Handle edit summary
+  const handleEditSummary = (itemId: string) => {
+    const item = structureItems.find(i => i.id === itemId)
+    if (!item) return
+    
+    const newSummary = prompt('Edit summary:', item.summary || '')
+    if (newSummary !== null && onUpdateStructure && storyStructureNodeId) {
+      // Update the structure item with new summary
+      const updatedItems = structureItems.map(i =>
+        i.id === itemId ? { ...i, summary: newSummary } : i
+      )
+      onUpdateStructure(storyStructureNodeId, updatedItems)
+    }
+  }
+
   const openAddSectionModal = () => {
     // Find Cover section (default parent)
     const coverItem = structureItems.find(item => 
@@ -565,224 +614,6 @@ export default function AIDocumentPanel({
     setNewSectionParentId(coverItem?.id || null)
     setShowAddSectionModal(true)
   }
-
-  // Render enhanced section tree with add/edit capabilities
-  const renderSectionTree = () => {
-    // Don't wait for Supabase sections - show structure items immediately (like Word's navigation)
-    // Sections loading/error only affects content persistence, not navigation tree
-    
-    // Optionally show error as a warning, but still render the tree
-    const errorBanner = sectionsError ? (
-      <div className="p-2 mb-2">
-        <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
-          ⚠️ Content persistence unavailable (sections not initialized)
-        </div>
-      </div>
-    ) : null
-
-    // Build hierarchical structure from structure items (like Word's nav tree)
-    const buildTree = (items: typeof structureItems, parentId?: string): typeof structureItems => {
-      return items
-        .filter(item => {
-          // For root items, match undefined, null, or empty string
-          if (parentId === undefined) {
-            return !item.parentId || item.parentId === ''
-          }
-          return item.parentId === parentId
-        })
-        .sort((a, b) => a.order - b.order)
-    }
-
-    const renderTreeLevel = (items: typeof structureItems, level: number = 0) => {
-      return items.map((item) => {
-        // Work directly with structure items, don't require Supabase sections
-        const section = sections.find(s => s.structure_item_id === item.id)
-        const children = buildTree(structureItems, item.id)
-        const hasChildren = children.length > 0
-        const isExpanded = expandedSections.has(item.id)
-        // Use structure item ID for active state (not Supabase section ID)
-        const isActive = activeSectionId === item.id || section?.id === activeSectionId
-
-        return (
-          <div key={item.id}>
-            {/* Section Item Row */}
-            <div
-              className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors cursor-pointer group ${
-                isActive
-                  ? 'bg-yellow-50 text-yellow-900'
-                  : 'hover:bg-gray-100 text-gray-700'
-              }`}
-              style={{ paddingLeft: `${level * 16 + 8}px` }}
-            >
-              {/* Chevron (if has children) */}
-              {hasChildren ? (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleSectionExpansion(item.id)
-                  }}
-                  className="flex-shrink-0 w-4 h-4 flex items-center justify-center hover:bg-gray-200 rounded transition-colors"
-                >
-                  <svg
-                    className={`w-3 h-3 text-gray-500 transition-transform ${
-                      isExpanded ? 'rotate-90' : ''
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              ) : (
-                <div className="w-4 h-4 flex-shrink-0" />
-              )}
-
-              {/* Document Icon */}
-              <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-
-              {/* Section Name & Title */}
-              <button
-                onClick={() => {
-                  // Update active section (this will trigger context update)
-                  console.log('👆 [Sidebar Click] Setting active section:', item.id, item.name)
-                  setActiveSectionId(item.id)
-                  
-                  // Sidebar acts as table of contents - scroll to section anchor
-                  // Note: Full document is already loaded, we just scroll to the anchor
-                  const sectionId = `section-${item.id}`
-                  const container = editorContainerRef.current
-                  
-                  // Scroll to the section anchor
-                  const scrollToSection = () => {
-                    const element = document.getElementById(sectionId)
-                    if (element && container) {
-                      const containerRect = container.getBoundingClientRect()
-                      const elementRect = element.getBoundingClientRect()
-                      const offsetTop = elementRect.top - containerRect.top + container.scrollTop - 20
-                      
-                      container.scrollTo({
-                        top: offsetTop,
-                        behavior: 'smooth'
-                      })
-                      return true
-                    }
-                    return false
-                  }
-                  
-                  // Try to scroll immediately
-                  const scrolled = scrollToSection()
-                  
-                  // If the element wasn't found, wait and retry (document might be rendering)
-                  if (!scrolled) {
-                    console.log('⏳ [Sidebar Click] Section anchor not found, waiting for render...')
-                    setTimeout(() => {
-                      const retried = scrollToSection()
-                      if (!retried) {
-                        console.warn('⚠️ [Sidebar Click] Section anchor still not found:', sectionId)
-                      }
-                    }, 200)
-                  }
-                }}
-                className="flex-1 text-left text-sm truncate min-w-0 px-1"
-              >
-                <span className="font-normal">{item.name}</span>
-                {item.title && (
-                  <span className="text-xs text-gray-400 ml-1">• {item.title}</span>
-                )}
-              </button>
-
-              {/* Word Count */}
-              <div className="flex-shrink-0 text-xs text-gray-400 font-mono pr-1">
-                {section?.word_count || 0}w
-              </div>
-
-              {/* Status Indicator */}
-              <div
-                className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${
-                  section?.status === 'completed'
-                    ? 'bg-green-500'
-                    : section?.status === 'in_progress'
-                    ? 'bg-yellow-500'
-                    : 'bg-gray-300'
-                }`}
-                title={section?.status || 'draft'}
-              />
-            </div>
-
-            {/* Render children (if expanded) */}
-            {hasChildren && isExpanded && (
-              <div>
-                {renderTreeLevel(children, level + 1)}
-              </div>
-            )}
-          </div>
-        )
-      })
-    }
-
-    const rootItems = buildTree(structureItems, undefined)
-
-    console.log('🌲 [renderSectionTree] Rendering tree:', {
-      structureItemsCount: structureItems.length,
-      rootItemsCount: rootItems.length,
-      structureItems: structureItems.map(i => ({ id: i.id, name: i.name, parentId: i.parentId, level: i.level })),
-      rootItems: rootItems.map(i => ({ id: i.id, name: i.name, level: i.level }))
-    })
-
-    if (rootItems.length === 0 && structureItems.length === 0) {
-      return (
-        <>
-          {errorBanner}
-          <div className="p-8 text-center">
-            <div className="text-gray-400 text-sm mb-4">No structure yet</div>
-            <button
-              onClick={openAddSectionModal}
-              className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-lg text-sm font-medium transition-colors"
-            >
-              + Add First Section
-            </button>
-          </div>
-        </>
-      )
-    }
-    
-    // If we have structure items but no root items, show ALL items (flat list)
-    if (rootItems.length === 0 && structureItems.length > 0) {
-      console.warn('⚠️ No root items found! Showing all structure items as flat list')
-      return (
-        <>
-          {errorBanner}
-          <div className="py-1">
-            {renderTreeLevel(structureItems, 0)}
-          </div>
-        </>
-      )
-    }
-
-    return (
-      <div className="py-1">
-        {errorBanner}
-        {renderTreeLevel(rootItems, 0)}
-        
-        {/* Add Section Button at bottom */}
-        <button
-          onClick={openAddSectionModal}
-          className="w-full mt-2 mx-2 p-2.5 border-2 border-dashed border-gray-300 hover:border-yellow-400 hover:bg-yellow-50 rounded-md text-sm text-gray-500 hover:text-yellow-900 transition-all"
-        >
-          <div className="flex items-center justify-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            <span className="font-medium">Add Section</span>
-          </div>
-        </button>
-      </div>
-    )
-  }
-
   // Render Add Section Modal
   const renderAddSectionModal = () => {
     if (!showAddSectionModal) return null
@@ -1023,19 +854,45 @@ export default function AIDocumentPanel({
               {/* Section Navigation Sidebar */}
               {!isSidebarCollapsed && (
                 <div className="w-64 border-r border-gray-200 bg-gray-50 flex flex-col">
-                  <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-                    <h3 className="font-semibold text-gray-900">Sections</h3>
-                    <button
-                      onClick={() => setIsSidebarCollapsed(true)}
-                      className="p-1 hover:bg-gray-200 rounded transition-colors"
-                      title="Collapse sidebar"
-                    >
-                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
+                  {/* Sidebar Header with Toggle and Controls */}
+                  <div className="p-3 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <SidebarViewToggle value={sidebarView} onChange={setSidebarView} />
+                      <button
+                        onClick={() => setIsSidebarCollapsed(true)}
+                        className="p-1 hover:bg-gray-200 rounded transition-colors"
+                        title="Collapse sidebar"
+                      >
+                        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto">{renderSectionTree()}</div>
+                  
+                  {/* Sidebar Content */}
+                  {sidebarView === 'tree' ? (
+                    <SectionTreeView
+                      structureItems={structureItems}
+                      sections={sections}
+                      activeSectionId={activeSectionId}
+                      expandedSections={expandedSections}
+                      toggleSectionExpansion={toggleSectionExpansion}
+                      onSectionClick={setActiveSectionId}
+                      editorContainerRef={editorContainerRef}
+                      onAddSection={openAddSectionModal}
+                    />
+                  ) : (
+                    <NarrationCardView
+                      structureItems={structureItems}
+                      activeSectionId={activeSectionId}
+                      onSectionClick={setActiveSectionId}
+                      onColorChange={handleColorChange}
+                      onAddSubAgent={handleAddSubAgent}
+                      onEdit={handleEditSummary}
+                      themeColors={themeColors}
+                    />
+                  )}
                 </div>
               )}
 
@@ -1055,16 +912,31 @@ export default function AIDocumentPanel({
                 />
                 
                 {/* Scrollable Container with Document */}
-                <div ref={editorContainerRef} className="flex-1 overflow-y-auto relative z-10 p-8">
-                  {/* Document Container - Like a real paper with shadow */}
-                  <div className="max-w-7xl mx-auto bg-white shadow-lg rounded-lg">
-                    <MarkdownEditor
-                      content={content}
-                      onUpdate={handleEditorUpdate}
-                      placeholder="Click to start writing..."
-                      className="min-h-[calc(100vh-8rem)]"
+                <div ref={editorContainerRef} className="flex-1 overflow-y-auto relative z-10">
+                  {sidebarView === 'narration' ? (
+                    /* Card View: Show structure as cards with headers and summaries */
+                    <DocumentCardView
+                      structureItems={structureItems}
+                      activeSectionId={activeSectionId}
+                      onSectionClick={setActiveSectionId}
+                      onColorChange={handleColorChange}
+                      onAddSubAgent={handleAddSubAgent}
+                      onEdit={handleEditSummary}
+                      themeColors={themeColors}
                     />
-                  </div>
+                  ) : (
+                    /* Tree View: Show full markdown content */
+                    <div className="p-8">
+                      <div className="max-w-7xl mx-auto bg-white shadow-lg rounded-lg">
+                        <MarkdownEditor
+                          content={content}
+                          onUpdate={handleEditorUpdate}
+                          placeholder="Click to start writing..."
+                          className="min-h-[calc(100vh-8rem)]"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Sidebar Expand Button (when collapsed) */}
@@ -1083,20 +955,6 @@ export default function AIDocumentPanel({
             </div>
           </div>
           </div>
-          
-          {/* Bottom: Narration Arrangement View */}
-          <NarrationArrangementView
-            sections={sections}
-            structureItems={structureItems}
-            activeSectionId={activeSectionId}
-            onSectionClick={handleSectionClick}
-            onItemClick={handleSegmentClick}
-            format={structureItems[0]?.level === 1 ? 'screenplay' : undefined} // TODO: Derive format properly
-            isCollapsed={isArrangementCollapsed}
-            onToggleCollapse={() => setIsArrangementCollapsed(!isArrangementCollapsed)}
-            canvasEdges={canvasEdges}
-            canvasNodes={canvasNodes}
-          />
         </div>
       </div>
 
