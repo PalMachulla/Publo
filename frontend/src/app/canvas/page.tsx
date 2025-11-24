@@ -854,45 +854,49 @@ export default function CanvasPage() {
   useEffect(() => {
     if (isLoadingRef.current) return // Don't run during initial load
     
-    // Check if cluster count changed OR agent data changed (e.g., color, isActive)
+    // ✅ FIX: Only depend on clusterCount to avoid dependency loops
+    // Check if cluster count actually changed
     const countChanged = prevClusterCountRef.current !== clusterCount
-    const agentsChanged = JSON.stringify(prevAvailableAgentsRef.current) !== JSON.stringify(availableAgents)
     
-    if (!countChanged && !agentsChanged) return
+    if (!countChanged) return // Exit early if count hasn't changed
     
     prevClusterCountRef.current = clusterCount
-    prevAvailableAgentsRef.current = availableAgents
     
     if (clusterCount === 0) return
     
-    console.log('Cluster data changed, updating structure nodes with', availableAgents.length, 'agents')
+    console.log('Cluster count changed to', clusterCount, '- updating structure nodes')
     
-    // ✅ FIX: Only update availableAgents, NOT onAgentAssign (prevents infinite loop)
-    // onAgentAssign callback is set when node is created, doesn't need updating
+    // Compute agents from current nodes state
     setNodes((currentNodes) => {
+      // Compute fresh agents from the current nodes
+      const currentAvailableAgents = currentNodes
+        .filter(n => n.type === 'clusterNode')
+        .map(n => ({
+          id: n.id,
+          agentNumber: n.data.agentNumber || 0,
+          color: n.data.color || '#9ca3af',
+          label: n.data.label || 'Agent',
+          isActive: n.data.isActive ?? true,
+          assignmentMode: n.data.assignmentMode || 'manual'
+        }))
+        .sort((a, b) => a.agentNumber - b.agentNumber)
+      
+      // Update structure nodes with fresh agent list
       return currentNodes.map((node) => {
         if (node.type === 'storyStructureNode') {
-          // Check if availableAgents actually changed to avoid unnecessary updates
-          const currentAgentsStr = JSON.stringify(node.data.availableAgents || [])
-          const newAgentsStr = JSON.stringify(availableAgents)
-          
-          if (currentAgentsStr === newAgentsStr) {
-            return node // No change, return as-is
-          }
-          
           return {
             ...node,
             data: {
               ...node.data,
-              availableAgents: availableAgents,
-              // ✅ FIX: Don't update onAgentAssign - it's already set and stable
+              availableAgents: currentAvailableAgents,
+              // ✅ onAgentAssign is already set when node is created, don't update it
             }
           }
         }
         return node
       })
     })
-  }, [clusterCount, availableAgents]) // When cluster count or data changes
+  }, [clusterCount]) // ✅ FIX: ONLY depend on clusterCount, not nodes or availableAgents
 
   // Handle Create Story node click - spawn new story structure node
   const handleCreateStory = useCallback((format: StoryFormat, template?: string, userPromptDirect?: string, plan?: any) => {
