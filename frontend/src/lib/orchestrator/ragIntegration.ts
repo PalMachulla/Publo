@@ -43,6 +43,15 @@ export async function enhanceContextWithRAG(
   explicitNodeId?: string
 ): Promise<RAGEnhancedContext> {
   try {
+    // Skip during SSR
+    if (typeof window === 'undefined') {
+      console.log('⚠️ [RAG] Skipping during SSR')
+      return {
+        hasRAG: false,
+        fallbackReason: 'RAG not available during server-side rendering',
+      }
+    }
+
     console.log('🔍 [RAG] Attempting RAG enhancement for message:', userMessage)
 
     // Step 1: Determine target node
@@ -220,6 +229,15 @@ export async function checkRAGAvailability(
   nodesWithEmbeddings: string[]
   nodesWithoutEmbeddings: string[]
 }> {
+  // Skip during SSR
+  if (typeof window === 'undefined') {
+    return {
+      available: false,
+      nodesWithEmbeddings: [],
+      nodesWithoutEmbeddings: [],
+    }
+  }
+
   const storyNodes = canvasContext.connectedNodes.filter(
     node => node.nodeType === 'story-structure'
   )
@@ -261,6 +279,14 @@ export async function triggerEmbeddingGeneration(nodeId: string): Promise<{
   success: boolean
   message: string
 }> {
+  // Skip during SSR
+  if (typeof window === 'undefined') {
+    return {
+      success: false,
+      message: 'Cannot generate embeddings during server-side rendering',
+    }
+  }
+
   try {
     const response = await fetch('/api/embeddings/generate', {
       method: 'POST',
