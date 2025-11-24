@@ -44,7 +44,7 @@ export const StructurePlanSchema = z.object({
   tasks: z.array(TaskSchema)
     .min(1)
     .describe('Writing tasks to complete the work'),
-  metadata: MetadataSchema.optional().describe('Additional metadata about the project')
+  metadata: MetadataSchema.describe('Additional metadata about the project')
 })
 
 // ============================================================
@@ -120,7 +120,7 @@ export function getStructurePlanJsonSchema() {
         additionalProperties: false
       }
     },
-    required: ['reasoning', 'structure', 'tasks'],
+    required: ['reasoning', 'structure', 'tasks', 'metadata'],
     additionalProperties: false
   }
 }

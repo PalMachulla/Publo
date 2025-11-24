@@ -1122,12 +1122,12 @@ export class OrchestratorEngine {
 
 ${formatInstructions}
 
-Generate a structure plan with:
+Generate a complete structure plan with:
 - Concise reasoning (max 1000 characters)
-- 3-20 hierarchical structure items
-- Clear parent-child relationships
-- Realistic word count estimates
-- Specific writing tasks`
+- 3-20 hierarchical structure items with clear parent-child relationships
+- Realistic word count estimates for each section
+- Specific writing tasks (minimum 1)
+- Metadata with total word count, estimated time, and recommended models (REQUIRED)`
 
     const formatLabel = format.charAt(0).toUpperCase() + format.slice(1).replace(/-/g, ' ')
     const userMessage = `The user wants to create a ${formatLabel}.\n\nUser's creative prompt:\n${userPrompt}\n\nAnalyze this prompt and create a detailed structure plan optimized for the ${formatLabel} format.`
