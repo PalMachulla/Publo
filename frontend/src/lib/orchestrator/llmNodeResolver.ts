@@ -35,22 +35,15 @@ export async function resolveNodeWithLLM(
       .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
       .join('\n')
 
-    const prompt = `You are helping determine which document/node a user is referring to.
+    const systemPrompt = `You are a context-aware assistant helping determine which document/node a user is referring to.
 
-AVAILABLE NODES ON CANVAS:
-${availableNodes}
+Your task is to analyze the user's message and conversation history to identify which node they're talking about.
 
-RECENT CONVERSATION:
-${recentConversation}
-
-CURRENT USER MESSAGE:
-"${userMessage}"
-
-TASK: Determine which node (if any) the user is referring to in their current message.
-- Consider pronouns like "it", "this", "that", "the plot", "the story"
-- Look at what was recently discussed in the conversation
-- If the user says "the screenplay" after just discussing a screenplay, that's the reference
-- If the user says "the plot" or "it" right after discussing a specific document, resolve to that document
+Consider:
+- Direct references: "the screenplay", "the report", "the novel"
+- Pronouns: "it", "this", "that"
+- Contextual references: "the plot", "the story", "the characters"
+- Recent conversation context
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
@@ -62,12 +55,23 @@ OUTPUT FORMAT (JSON only, no markdown):
 
 If no clear reference exists, return nodeId: null with low confidence.`
 
+    const userPrompt = `AVAILABLE NODES ON CANVAS:
+${availableNodes}
+
+RECENT CONVERSATION:
+${recentConversation}
+
+CURRENT USER MESSAGE:
+"${userMessage}"
+
+Which node (if any) is the user referring to?`
+
     const response = await fetch('/api/intent/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        system_prompt: SYSTEM_PROMPT,
-        user_prompt: prompt,
+        system_prompt: systemPrompt,
+        user_prompt: userPrompt,
         conversation_history: recentConversation.map(m => ({
           role: m.role === 'orchestrator' ? 'assistant' : m.role,
           content: m.content
