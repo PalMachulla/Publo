@@ -497,6 +497,17 @@ export default function OrchestratorPanel({
       console.log('🔑 [OrchestratorPanel] Available providers:', availableProviders)
       console.log('🔑 [OrchestratorPanel] User key ID:', userKeyId)
       
+      // ✅ FIX: Detect format from user's message BEFORE calling orchestrator
+      const detectedFormat = detectFormatFromMessage(message)
+      const formatToUse = detectedFormat || selectedFormat
+      
+      console.log('📋 [OrchestratorPanel] Format detection:', {
+        detected: detectedFormat,
+        selected: selectedFormat,
+        using: formatToUse,
+        message: message.substring(0, 100)
+      })
+      
       // Call the new orchestrator
       const response = await getOrchestrator(user.id).orchestrate({
         message,
@@ -504,7 +515,7 @@ export default function OrchestratorPanel({
         canvasEdges,
         activeContext: activeContext || undefined, // Convert null to undefined
         isDocumentViewOpen,
-        documentFormat: selectedFormat,
+        documentFormat: formatToUse, // ✅ FIX: Use detected format instead of selectedFormat
         structureItems,
         contentMap,
         currentStoryStructureNodeId,

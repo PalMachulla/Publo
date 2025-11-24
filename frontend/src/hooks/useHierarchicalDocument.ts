@@ -52,7 +52,7 @@ export function useHierarchicalDocument({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient()) // ✅ FIX: Use ref to prevent recreation
 
   // Fetch document from database
   const fetchDocument = useCallback(async () => {
@@ -67,7 +67,7 @@ export function useHierarchicalDocument({
       setLoading(true)
       setError(null)
 
-      const { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await supabaseRef.current
         .from('nodes')
         .select('document_data')
         .eq('id', nodeId)
@@ -100,18 +100,20 @@ export function useHierarchicalDocument({
       console.error('❌ [useHierarchicalDocument] Failed to fetch document:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch document')
       
-      // Fallback: Create from structure items
-      try {
-        console.log('🔄 [useHierarchicalDocument] Fallback: Creating from structure items')
-        const docManager = DocumentManager.fromStructureItems(structureItems, format)
-        setManager(docManager)
-      } catch (fallbackErr) {
-        console.error('❌ [useHierarchicalDocument] Fallback failed:', fallbackErr)
+      // Fallback: Create from structure items if structureItems are available
+      if (structureItems && structureItems.length > 0) {
+        try {
+          console.log('🔄 [useHierarchicalDocument] Fallback: Creating from structure items')
+          const docManager = DocumentManager.fromStructureItems(structureItems, format)
+          setManager(docManager)
+        } catch (fallbackErr) {
+          console.error('❌ [useHierarchicalDocument] Fallback failed:', fallbackErr)
+        }
       }
     } finally {
       setLoading(false)
     }
-  }, [nodeId, enabled, structureItems, format, supabase])
+  }, [nodeId, enabled, structureItems, format]) // ✅ FIX: Removed supabase from deps
 
   // Save document to database
   const saveDocument = async (docManager: DocumentManager, targetNodeId: string): Promise<boolean> => {
@@ -120,7 +122,7 @@ export function useHierarchicalDocument({
       
       const documentData = docManager.getData()
       
-      const { error: updateError } = await supabase
+      const { error: updateError} = await supabaseRef.current
         .from('nodes')
         .update({ document_data: documentData })
         .eq('id', targetNodeId)
