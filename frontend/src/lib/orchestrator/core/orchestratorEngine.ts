@@ -71,6 +71,7 @@ export interface OrchestratorResponse {
   canvasChanged: boolean
   requiresUserInput: boolean
   estimatedCost: number
+  thinkingSteps?: Array<{ content: string; type: string }> // NEW: Detailed thinking from blackboard
 }
 
 export interface OrchestratorAction {
@@ -252,6 +253,12 @@ export class OrchestratorEngine {
     )
     
     // Step 11: Build response
+    // Extract thinking steps from blackboard (last 10 orchestrator messages)
+    const recentMessages = this.blackboard.getRecentMessages(10)
+    const thinkingSteps = recentMessages
+      .filter(m => m.role === 'orchestrator' && (m.type === 'thinking' || m.type === 'decision'))
+      .map(m => ({ content: m.content, type: m.type || 'thinking' }))
+    
     const response: OrchestratorResponse = {
       intent: intentAnalysis.intent,
       confidence: intentAnalysis.confidence,
@@ -260,7 +267,8 @@ export class OrchestratorEngine {
       actions,
       canvasChanged,
       requiresUserInput: intentAnalysis.needsClarification || false,
-      estimatedCost: modelSelection.estimatedCost
+      estimatedCost: modelSelection.estimatedCost,
+      thinkingSteps // Include detailed thinking from blackboard
     }
     
     // Step 11: Learn pattern if enabled

@@ -512,8 +512,13 @@ export default function OrchestratorPanel({
         availableProviders: availableProviders.length > 0 ? availableProviders : undefined
       })
       
-      // Display reasoning
-      if (onAddChatMessage) {
+      // Display detailed thinking steps from blackboard
+      if (onAddChatMessage && response.thinkingSteps && response.thinkingSteps.length > 0) {
+        response.thinkingSteps.forEach(step => {
+          onAddChatMessage(step.content, 'orchestrator', step.type as any)
+        })
+      } else if (onAddChatMessage) {
+        // Fallback to basic reasoning if no thinking steps
         onAddChatMessage(`⚡ Intent: ${response.intent} (${Math.round(response.confidence * 100)}%)`, 'orchestrator', 'decision')
         onAddChatMessage(`💭 ${response.reasoning}`, 'orchestrator', 'thinking')
         onAddChatMessage(`🤖 Model: ${response.modelUsed}`, 'orchestrator', 'model')
