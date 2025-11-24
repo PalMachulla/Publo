@@ -30,27 +30,23 @@ export async function resolveNodeWithLLM(
       .map(node => `- "${node.label}" (${node.detailedContext?.format || node.nodeType}): ${node.summary}`)
       .join('\n')
 
-    const recentConversation = conversationHistory
-      .slice(-5)
+    // Keep conversation as array for API call
+    const recentConversation = conversationHistory.slice(-5)
+    
+    // Format conversation as string for the prompt
+    const conversationText = recentConversation
       .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
       .join('\n')
 
-    const prompt = `You are helping determine which document/node a user is referring to.
+    const systemPrompt = `You are a context-aware assistant helping determine which document/node a user is referring to.
 
-AVAILABLE NODES ON CANVAS:
-${availableNodes}
+Your task is to analyze the user's message and conversation history to identify which node they're talking about.
 
-RECENT CONVERSATION:
-${recentConversation}
-
-CURRENT USER MESSAGE:
-"${userMessage}"
-
-TASK: Determine which node (if any) the user is referring to in their current message.
-- Consider pronouns like "it", "this", "that", "the plot", "the story"
-- Look at what was recently discussed in the conversation
-- If the user says "the screenplay" after just discussing a screenplay, that's the reference
-- If the user says "the plot" or "it" right after discussing a specific document, resolve to that document
+Consider:
+- Direct references: "the screenplay", "the report", "the novel"
+- Pronouns: "it", "this", "that"
+- Contextual references: "the plot", "the story", "the characters"
+- Recent conversation context
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
@@ -62,15 +58,28 @@ OUTPUT FORMAT (JSON only, no markdown):
 
 If no clear reference exists, return nodeId: null with low confidence.`
 
+    const userPrompt = `AVAILABLE NODES ON CANVAS:
+${availableNodes}
+
+RECENT CONVERSATION:
+${conversationText}
+
+CURRENT USER MESSAGE:
+"${userMessage}"
+
+Which node (if any) is the user referring to?`
+
     const response = await fetch('/api/intent/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: prompt,
-        context: {
-          canvasNodes: availableNodes,
-          conversationHistory: recentConversation
-        }
+        system_prompt: systemPrompt,
+        user_prompt: userPrompt,
+        conversation_history: recentConversation.map(m => ({
+          role: m.role === 'orchestrator' ? 'assistant' : m.role,
+          content: m.content
+        })),
+        temperature: 0.1 // Low temperature for more deterministic node resolution
       })
     })
 
@@ -84,12 +93,20 @@ If no clear reference exists, return nodeId: null with low confidence.`
     // Parse the LLM's response
     let resolution: NodeResolutionResult
     try {
+      // The API returns content, not analysis
+      const llmResponse = result.content || result.analysis
+      
+      if (!llmResponse) {
+        console.error('[LLM Node Resolver] No content in response:', result)
+        return null
+      }
+      
       // The LLM might return the JSON directly or wrapped in markdown
-      const jsonMatch = result.analysis?.match(/\{[\s\S]*\}/)
+      const jsonMatch = llmResponse.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         resolution = JSON.parse(jsonMatch[0])
       } else {
-        resolution = JSON.parse(result.analysis)
+        resolution = JSON.parse(llmResponse)
       }
     } catch (parseError) {
       console.error('[LLM Node Resolver] Failed to parse LLM response:', result)

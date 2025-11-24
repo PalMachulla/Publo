@@ -17,7 +17,9 @@ export type UserIntent =
   | 'improve_content'      // User wants to refine/edit existing content
   | 'modify_structure'     // User wants to change the story structure
   | 'rewrite_with_coherence' // User wants to rewrite section(s) AND update related sections for consistency
+  | 'navigate_section'     // User wants to navigate/jump to a specific section within open document
   | 'open_and_write'       // User wants to write in an existing canvas node (auto-open document)
+  | 'delete_node'          // User wants to delete/remove a canvas node
   | 'clarify_intent'       // Orchestrator needs clarification
   | 'general_chat'         // General conversation/unclear intent
 
@@ -89,6 +91,33 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
   
   // FAST PATH: Pattern-based analysis (original logic)
   console.log('⚡ Using pattern matching for intent analysis...')
+  
+  // PRIORITY 0: Navigation within open document (CRITICAL: must come before other intents)
+  if (context.isDocumentViewOpen) {
+    const navigationPatterns = [
+      // Generic navigation
+      /^(go to|jump to|navigate to|show me|open|scroll to|take me to)\s+(the\s+)?(chapter|section|scene|act|part|sequence|beat)/i,
+      /^(go to|jump to|navigate to|show me)\s+(chapter|section|scene|act|part|beat)\s+\d+/i,
+      
+      // Screenplay-specific (scenes and beats)
+      /^(scene|beat)\s+\d+/i,
+      /^(open|show|go to)\s+(scene|beat)/i,
+      
+      // Short forms like "scene 1" or "beat 2"
+      /^(chapter|section|scene|act|part|sequence|beat)\s+\d+/i,
+    ]
+    
+    if (navigationPatterns.some(pattern => pattern.test(message))) {
+      return {
+        intent: 'navigate_section',
+        confidence: 0.95,
+        reasoning: `User wants to navigate to a specific section within the currently open ${context.documentFormat || 'document'}`,
+        suggestedAction: `Find and select the requested section: "${message}"`,
+        requiresContext: false,
+        suggestedModel: 'orchestrator'
+      }
+    }
+  }
   
   // PRIORITY 1: Content writing/expansion (when segment is selected)
   if (hasActiveSegment) {
@@ -200,7 +229,25 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
     }
   }
   
-  // PRIORITY 2: Questions and Explanations (regardless of context)
+  // PRIORITY 2: Delete/Remove Node (canvas operations)
+  const deletePatterns = [
+    /^(remove|delete|get rid of|discard|trash|eliminate).*(the |this |that )?(novel|screenplay|report|podcast|story|node)/i,
+    /(remove|delete).*(node|document|story)/i,
+    /^(remove|delete)/i,
+  ]
+  
+  if (deletePatterns.some(pattern => pattern.test(message))) {
+    return {
+      intent: 'delete_node',
+      confidence: 0.9,
+      reasoning: `User wants to delete/remove a canvas node`,
+      suggestedAction: `Identify which node to delete and confirm with user`,
+      requiresContext: false,
+      suggestedModel: 'orchestrator'
+    }
+  }
+  
+  // PRIORITY 3: Questions and Explanations (regardless of context)
   // These should NEVER trigger content generation, only conversation
   const questionPatterns = [
     /^what/i,
@@ -234,6 +281,10 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
   // HELPFUL MODE: Auto-open the document when user wants to write in a node
   if (!context.isDocumentViewOpen && !hasActiveSegment && context.canvasContext) {
     const writeInNodePatterns = [
+      // "Open" commands - CRITICAL for "open the novel", "let's open the screenplay"
+      /^(open|show|display|view).*(the|that|this|my) (novel|screenplay|report|podcast|document|node)/i,
+      /^let'?s (open|work on|edit).*(the|that|this|my) (novel|screenplay|report|podcast|document)/i,
+      
       // Direct "write in" phrases
       /(craft|write|fill|expand|develop).*(in |to )(that|the|this|my) (node|document|podcast|screenplay|novel|report)/i,
       /(add|put|insert|write|get).*(content|text|words).*(in |to |for )(that|the|this|my)/i,
@@ -380,8 +431,12 @@ export function explainIntent(analysis: IntentAnalysis): string {
       return '🔧 Modifying story structure'
     case 'rewrite_with_coherence':
       return '🎭 Ghostwriter mode: Analyzing dependencies and planning coherent rewrites'
+    case 'navigate_section':
+      return '🧭 Navigating to section'
     case 'open_and_write':
       return '📂 Opening document to write content'
+    case 'delete_node':
+      return '🗑️ Deleting node'
     case 'clarify_intent':
       return '❓ Need clarification'
     case 'general_chat':

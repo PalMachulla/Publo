@@ -13,14 +13,35 @@ import {
   RadioItem,
   Button
 } from '@/components/ui'
-import { analyzeIntent, validateIntent, explainIntent, type IntentAnalysis } from '@/lib/orchestrator/intentRouter'
-import { buildCanvasContext, formatCanvasContextForLLM, findReferencedNode } from '@/lib/orchestrator/canvasContextProvider'
-import { enhanceContextWithRAG, buildRAGEnhancedPrompt } from '@/lib/orchestrator/ragIntegration'
+import { 
+  getOrchestrator, 
+  buildCanvasContext, 
+  type OrchestratorRequest,
+  type OrchestratorAction,
+  type UserIntent,
+  analyzeIntent,
+  validateIntent,
+  explainIntent,
+  enhanceContextWithRAG,
+  buildRAGEnhancedPrompt,
+  formatCanvasContextForLLM
+} from '@/lib/orchestrator'
+import { findReferencedNode } from '@/lib/orchestrator/canvasContextProvider'
 import { Edge } from 'reactflow'
 
 // Helper: Get canonical model details for filtering and display
 const getCanonicalModel = (modelId: string) => {
   const id = modelId.toLowerCase()
+  
+  // ❌ FILTER OUT: Non-text-generation models
+  if (id.includes('embedding')) return null // text-embedding-*
+  if (id.includes('tts')) return null // tts-1, tts-1-hd
+  if (id.includes('whisper')) return null // whisper-1
+  if (id.includes('dall-e')) return null // dall-e-2, dall-e-3
+  if (id.includes('moderation')) return null // text-moderation-*
+  if (id.includes('babbage') || id.includes('davinci') || id.includes('curie')) return null // Legacy completion models
+  if (id.includes('gpt-3.5') && !id.includes('turbo')) return null // Old GPT-3.5 base models
+  if (id.includes('text-davinci') || id.includes('text-curie')) return null // Legacy text models
 
   // Frontier / Future Models (GPT-5, 4.1)
   if (id.includes('gpt-5.1')) return { name: 'GPT-5.1 (Frontier)', priority: 110, group: 'OpenAI (Frontier)', isReasoning: true }
@@ -35,6 +56,7 @@ const getCanonicalModel = (modelId: string) => {
   if (id.includes('gpt-4o') && id.includes('mini')) return { name: 'GPT-4o Mini', priority: 70, group: 'OpenAI', isReasoning: false }
   if (id.includes('gpt-4-turbo') || id.includes('gpt-4-1106') || id.includes('gpt-4-0125')) return { name: 'GPT-4 Turbo', priority: 85, group: 'OpenAI', isReasoning: true }
   if (id === 'gpt-4' || id.includes('gpt-4-0613') || id.includes('gpt-4-0314')) return { name: 'GPT-4 (Legacy)', priority: 60, group: 'OpenAI', isReasoning: true }
+  if (id.includes('gpt-3.5-turbo')) return { name: 'GPT-3.5 Turbo (Legacy)', priority: 40, group: 'OpenAI', isReasoning: false }
   
   // Anthropic Models
   if (id.includes('claude-sonnet-4.5') || id.includes('claude-4.5-sonnet')) return { name: 'Claude Sonnet 4.5', priority: 95, group: 'Anthropic', isReasoning: true }
@@ -46,13 +68,17 @@ const getCanonicalModel = (modelId: string) => {
   if (id.includes('gemini-1.5-pro')) return { name: 'Gemini 1.5 Pro', priority: 89, group: 'Google', isReasoning: true }
   if (id.includes('gemini-1.5-flash')) return { name: 'Gemini 1.5 Flash', priority: 75, group: 'Google', isReasoning: false }
   if (id.includes('gemini-2.0-flash')) return { name: 'Gemini 2.0 Flash', priority: 87, group: 'Google', isReasoning: true }
+  if (id.includes('gemini-pro')) return { name: 'Gemini Pro', priority: 65, group: 'Google', isReasoning: false }
   
   // Groq Models
   if (id.includes('llama-3.3-70b')) return { name: 'Llama 3.3 70B', priority: 85, group: 'Groq', isReasoning: true }
   if (id.includes('llama-3.1-70b')) return { name: 'Llama 3.1 70B', priority: 80, group: 'Groq', isReasoning: true }
   if (id.includes('llama-3.1-8b')) return { name: 'Llama 3.1 8B (Fast)', priority: 75, group: 'Groq', isReasoning: false }
+  if (id.includes('llama-3.2')) return { name: 'Llama 3.2', priority: 72, group: 'Groq', isReasoning: false }
   if (id.includes('mixtral-8x7b')) return { name: 'Mixtral 8x7B', priority: 70, group: 'Groq', isReasoning: false }
+  if (id.includes('gemma')) return { name: 'Gemma', priority: 50, group: 'Groq', isReasoning: false }
   
+  // If we don't recognize it, filter it out (safer than showing unknown models)
   return null
 }
 
@@ -65,6 +91,17 @@ interface ActiveContext {
   description?: string
 }
 
+interface ConfirmationRequest {
+  actionId: string
+  actionType: OrchestratorAction['type']
+  actionPayload: any
+  message: string
+  confirmationType: 'destructive' | 'clarification' | 'permission'
+  options?: Array<{ id: string; label: string; description?: string }> // For multiple choice clarifications
+  createdAt: number
+  expiresAt: number // Timeout after 2 minutes
+}
+
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
   onCreateStory: (format: StoryFormat, template?: string, userPrompt?: string) => void
@@ -75,10 +112,10 @@ interface CreateStoryPanelProps {
     id: string
     timestamp: string
     content: string
-    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model'
     role?: 'user' | 'orchestrator'
   }>
-  onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user') => void
+  onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model') => void
   onClearChat?: () => void
   onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
   isDocumentViewOpen?: boolean // NEW: Document panel visibility state
@@ -92,6 +129,7 @@ interface CreateStoryPanelProps {
   canvasEdges?: Edge[] // CANVAS VISIBILITY: All edges on canvas
   currentStoryStructureNodeId?: string | null // CANVAS CONTENT: ID of currently loaded story structure
   onSelectNode?: (nodeId: string, sectionId?: string) => void // HELPFUL MODE: Select and open a specific canvas node, optionally auto-select a section
+  onDeleteNode?: (nodeId: string) => Promise<void> // DELETE: Delete a canvas node
 }
 
 interface Template {
@@ -224,7 +262,7 @@ interface ReasoningMessage {
   id: string
   timestamp: string
   content: string
-  type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+  type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model'
   role?: 'user' | 'orchestrator'
 }
 
@@ -242,7 +280,7 @@ function detectFormatFromMessage(message: string): StoryFormat | null {
   return null
 }
 
-export default function CreateStoryPanel({ 
+export default function OrchestratorPanel({ 
   node, 
   onCreateStory, 
   onClose, 
@@ -262,7 +300,8 @@ export default function CreateStoryPanel({
   canvasNodes = [],
   canvasEdges = [],
   currentStoryStructureNodeId = null,
-  onSelectNode
+  onSelectNode,
+  onDeleteNode
 }: CreateStoryPanelProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -296,9 +335,14 @@ export default function CreateStoryPanel({
     enhancedPrompt?: string
   } | null>(null)
   
-  // Pill expansion state
-  const [isModelPillExpanded, setIsModelPillExpanded] = useState(false)
-  const [isFormatPillExpanded, setIsFormatPillExpanded] = useState(false)
+  // Model selector state (Cursor-style dropdown at bottom)
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
+  const [modelMode, setModelMode] = useState<'automatic' | 'fixed'>('automatic') // Default to Auto
+  const [fixedModeStrategy, setFixedModeStrategy] = useState<'consistent' | 'loose'>('loose') // Default to Loose (cost-effective)
+  const [currentlyUsedModels, setCurrentlyUsedModels] = useState<{intent: string, writer: string}>({intent: '', writer: ''})
+  
+  // Confirmation state - for 2-step execution flow
+  const [pendingConfirmation, setPendingConfirmation] = useState<ConfirmationRequest | null>(null)
   
   // Chat state (local input only, history is canvas-level)
   const [chatMessage, setChatMessage] = useState('')
@@ -369,6 +413,22 @@ export default function CreateStoryPanel({
     orchestratorId: 'context'
   })
   
+  // Handle confirmation timeout and auto-clear
+  useEffect(() => {
+    if (!pendingConfirmation) return
+    
+    const checkInterval = setInterval(() => {
+      if (isConfirmationExpired(pendingConfirmation)) {
+        setPendingConfirmation(null)
+        if (onAddChatMessage) {
+          onAddChatMessage('⏱️ Confirmation expired. Please try again.', 'orchestrator', 'error')
+        }
+      }
+    }, 1000) // Check every second
+    
+    return () => clearInterval(checkInterval)
+  }, [pendingConfirmation, onAddChatMessage])
+  
   /**
    * Agentic message handler - analyzes intent and routes to appropriate action
    */
@@ -389,7 +449,432 @@ export default function CreateStoryPanel({
     onCreateStory(creation.format, templateId, creation.enhancedPrompt)
   }
 
-  const handleSendMessage = async (message: string) => {
+  // ============================================================
+  // NEW ORCHESTRATOR ARCHITECTURE
+  // ============================================================
+  
+  const handleSendMessage_NEW = async (message: string) => {
+    // Check if there's a pending confirmation
+    if (pendingConfirmation) {
+      // This message is a response to the confirmation
+      await handleConfirmationResponse(message)
+      return
+    }
+    
+    // Add user message to chat
+    if (onAddChatMessage) {
+      onAddChatMessage(message, 'user')
+    }
+    setChatMessage('')
+    
+    // Show canvas context if changed
+    const currentCanvasState = JSON.stringify(canvasNodes.map(n => ({ id: n.id, type: n.type })))
+    if (onAddChatMessage && canvasContext.connectedNodes.length > 0 && currentCanvasState !== lastCanvasState) {
+      onAddChatMessage(`👁️ Canvas visibility: ${canvasContext.connectedNodes.length} node(s) connected`, 'orchestrator', 'thinking')
+      canvasContext.connectedNodes.forEach(ctx => {
+        onAddChatMessage(`   • ${ctx.label}: ${ctx.summary}`, 'orchestrator', 'thinking')
+      })
+      setLastCanvasState(currentCanvasState)
+    }
+    
+    try {
+      // Get user ID from Supabase
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        throw new Error('User not authenticated')
+      }
+      
+      if (onAddChatMessage) {
+        onAddChatMessage(`🧠 Analyzing your request...`, 'orchestrator', 'thinking')
+      }
+      
+      // Call the new orchestrator
+      const response = await getOrchestrator(user.id).orchestrate({
+        message,
+        canvasNodes,
+        canvasEdges,
+        activeContext: activeContext || undefined, // Convert null to undefined
+        isDocumentViewOpen,
+        documentFormat: selectedFormat,
+        structureItems,
+        contentMap,
+        currentStoryStructureNodeId,
+        // Model selection preferences
+        modelMode,
+        fixedModeStrategy: modelMode === 'fixed' ? fixedModeStrategy : undefined,
+        fixedModelId: modelMode === 'fixed' ? configuredModel.orchestrator : undefined
+      })
+      
+      // Display reasoning
+      if (onAddChatMessage) {
+        onAddChatMessage(`⚡ Intent: ${response.intent} (${Math.round(response.confidence * 100)}%)`, 'orchestrator', 'decision')
+        onAddChatMessage(`💭 ${response.reasoning}`, 'orchestrator', 'thinking')
+        onAddChatMessage(`🤖 Model: ${response.modelUsed}`, 'orchestrator', 'model')
+      }
+      
+      // Execute actions generated by the orchestrator
+      if (response.actions.length > 0) {
+        console.log('🎬 [Orchestrator] Executing actions:', response.actions)
+        
+        if (onAddChatMessage) {
+          onAddChatMessage(`🚀 Executing ${response.actions.length} action(s)...`, 'orchestrator', 'thinking')
+        }
+        
+        for (const action of response.actions) {
+          console.log('▶️ [Orchestrator] Executing action:', action.type, action.payload)
+          await executeAction(action)
+        }
+        
+        if (onAddChatMessage) {
+          onAddChatMessage(`✅ Actions completed!`, 'orchestrator', 'result')
+        }
+      } else {
+        // No actions generated - inform user
+        console.warn('⚠️ [Orchestrator] No actions generated for intent:', response.intent)
+        if (onAddChatMessage) {
+          onAddChatMessage(`💡 I understood your intent (${response.intent}) but couldn't generate specific actions. Could you provide more details?`, 'orchestrator', 'result')
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Orchestration error:', error)
+      if (onAddChatMessage) {
+        onAddChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
+      }
+    }
+  }
+  
+  // Helper: Execute action based on intent (uses OLD implementation logic)
+  const handleSendMessage_OLD_ExecuteOnly = async (message: string, intent: UserIntent) => {
+    // Execute the action using the OLD handler's proven logic
+    // But with context awareness from the NEW orchestrator
+    
+    switch (intent) {
+      case 'answer_question': {
+        // Build a context-aware prompt that includes ALL canvas nodes
+        let enhancedPrompt = `User Question: ${message}\n\n`
+        
+        // Add canvas context (structure and summaries from ALL connected nodes)
+        if (canvasContext.connectedNodes.length > 0) {
+          enhancedPrompt += `Available Context from Canvas:\n`
+          canvasContext.connectedNodes.forEach(node => {
+            enhancedPrompt += `\n--- ${node.label} (${node.nodeType}) ---\n`
+            enhancedPrompt += `Summary: ${node.summary}\n`
+            
+            if (node.detailedContext?.structure) {
+              enhancedPrompt += `Structure:\n${node.detailedContext.structure}\n`
+            }
+            
+            // If there's actual content, include it
+            if (node.detailedContext?.contentMap && currentStoryStructureNodeId === node.nodeId) {
+              const contentEntries = Object.entries(node.detailedContext.contentMap)
+              if (contentEntries.length > 0) {
+                enhancedPrompt += `\nContent (${contentEntries.length} sections):\n`
+                contentEntries.slice(0, 5).forEach(([sectionId, content]: [string, any]) => {
+                  if (content && content.trim()) {
+                    const truncated = content.length > 500 ? content.substring(0, 500) + '...' : content
+                    enhancedPrompt += `\n${truncated}\n`
+                  }
+                })
+              }
+            }
+          })
+        }
+        
+        // Call the answer handler with enhanced prompt
+        if (onAnswerQuestion) {
+          const answer = await onAnswerQuestion(enhancedPrompt)
+          if (onAddChatMessage) {
+            onAddChatMessage(`📖 ${answer}`, 'orchestrator', 'result')
+          }
+        }
+        break
+      }
+        
+      case 'write_content':
+        if (activeContext && onWriteContent) {
+          await onWriteContent(activeContext.id, message)
+        }
+        break
+        
+      case 'create_structure':
+        onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+        break
+        
+      case 'general_chat':
+      default:
+        // For general chat, also use enhanced context
+        if (onAnswerQuestion) {
+          const answer = await onAnswerQuestion(message)
+          if (onAddChatMessage) {
+            onAddChatMessage(`💬 ${answer}`, 'orchestrator', 'result')
+          }
+        }
+        break
+    }
+  }
+  
+  // Helper: Create a confirmation request
+  const createConfirmationRequest = (
+    action: OrchestratorAction,
+    confirmationType: ConfirmationRequest['confirmationType'],
+    message: string,
+    options?: ConfirmationRequest['options']
+  ): ConfirmationRequest => {
+    const now = Date.now()
+    return {
+      actionId: `${action.type}_${now}`,
+      actionType: action.type,
+      actionPayload: action.payload,
+      message,
+      confirmationType,
+      options,
+      createdAt: now,
+      expiresAt: now + 2 * 60 * 1000 // 2 minutes
+    }
+  }
+  
+  // Helper: Check if confirmation has expired
+  const isConfirmationExpired = (confirmation: ConfirmationRequest): boolean => {
+    return Date.now() > confirmation.expiresAt
+  }
+  
+  // Helper: Handle confirmation response
+  const handleConfirmationResponse = async (response: string | { id: string }) => {
+    if (!pendingConfirmation) {
+      console.warn('No pending confirmation')
+      return
+    }
+    
+    // Check if expired
+    if (isConfirmationExpired(pendingConfirmation)) {
+      setPendingConfirmation(null)
+      if (onAddChatMessage) {
+        onAddChatMessage('⏱️ Confirmation expired. Please try again.', 'orchestrator', 'error')
+      }
+      return
+    }
+    
+    // Handle clarification (multiple choice)
+    if (pendingConfirmation.confirmationType === 'clarification' && pendingConfirmation.options) {
+      let selectedOption: typeof pendingConfirmation.options[0] | undefined
+      
+      if (typeof response === 'object' && 'id' in response) {
+        // Direct option selection (button click)
+        selectedOption = pendingConfirmation.options.find(opt => opt.id === response.id)
+      } else if (typeof response === 'string') {
+        // Natural language response - try to match
+        const lowerResponse = response.toLowerCase()
+        selectedOption = pendingConfirmation.options.find(opt => 
+          lowerResponse.includes(opt.id.toLowerCase()) ||
+          lowerResponse.includes(opt.label.toLowerCase()) ||
+          (opt.description && lowerResponse.includes(opt.description.toLowerCase()))
+        )
+      }
+      
+      if (selectedOption) {
+        // Build the appropriate action based on the original action type
+        let updatedAction: OrchestratorAction
+        
+        // Check originalAction type (stored in actionType by createConfirmationRequest)
+        const originalAction = pendingConfirmation.actionType as string
+        
+        if (originalAction === 'delete_node') {
+          // For delete_node, we need nodeId and nodeName
+          updatedAction = {
+            type: 'delete_node',
+            payload: {
+              nodeId: selectedOption.id,
+              nodeName: selectedOption.label
+            },
+            status: 'pending'
+          }
+        } else if (originalAction === 'open_and_write') {
+          // For open_and_write, we need nodeId
+          updatedAction = {
+            type: 'open_document',
+            payload: {
+              nodeId: selectedOption.id,
+              sectionId: null
+            },
+            status: 'pending'
+          }
+        } else {
+          // Generic fallback
+          updatedAction = {
+            type: pendingConfirmation.actionType,
+            payload: {
+              ...pendingConfirmation.actionPayload,
+              selectedOptionId: selectedOption.id
+            },
+            status: 'pending'
+          }
+        }
+        
+        // Clear confirmation and execute
+        setPendingConfirmation(null)
+        await executeActionDirectly(updatedAction)
+      } else {
+        if (onAddChatMessage) {
+          onAddChatMessage('❓ I didn\'t understand which option you meant. Please try again or click one of the buttons.', 'orchestrator', 'error')
+        }
+      }
+      return
+    }
+    
+    // Handle destructive/permission confirmations (yes/no)
+    if (pendingConfirmation.confirmationType === 'destructive' || pendingConfirmation.confirmationType === 'permission') {
+      const lowerResponse = typeof response === 'string' ? response.toLowerCase().trim() : ''
+      const isConfirmed = lowerResponse === 'yes' || lowerResponse === 'y' || lowerResponse === 'confirm' || lowerResponse === 'ok'
+      const isCancelled = lowerResponse === 'no' || lowerResponse === 'n' || lowerResponse === 'cancel'
+      
+      if (isConfirmed) {
+        // Execute the action
+        const actionToExecute: OrchestratorAction = {
+          type: pendingConfirmation.actionType,
+          payload: pendingConfirmation.actionPayload,
+          status: 'pending'
+        }
+        
+        setPendingConfirmation(null)
+        await executeActionDirectly(actionToExecute)
+      } else if (isCancelled) {
+        setPendingConfirmation(null)
+        if (onAddChatMessage) {
+          onAddChatMessage('❌ Action cancelled.', 'orchestrator', 'result')
+        }
+      } else {
+        if (onAddChatMessage) {
+          onAddChatMessage('❓ Please reply "yes" to confirm or "no" to cancel.', 'orchestrator', 'error')
+        }
+      }
+    }
+  }
+  
+  // Action executor - handles actions from the orchestrator (with confirmation checks)
+  const executeAction = async (action: OrchestratorAction) => {
+    // Check if this action requires confirmation
+    const requiresConfirmation = action.type === 'delete_node'
+    
+    if (requiresConfirmation) {
+      // Create confirmation request instead of executing directly
+      let confirmationMessage = ''
+      let confirmationType: ConfirmationRequest['confirmationType'] = 'destructive'
+      
+      if (action.type === 'delete_node') {
+        confirmationMessage = `⚠️ Delete "${action.payload.nodeName}"?\nThis cannot be undone.`
+        confirmationType = 'destructive'
+      }
+      
+      const confirmation = createConfirmationRequest(action, confirmationType, confirmationMessage)
+      setPendingConfirmation(confirmation)
+      
+      if (onAddChatMessage) {
+        onAddChatMessage(confirmationMessage, 'orchestrator', 'result')
+      }
+      
+      return // Don't execute yet, wait for confirmation
+    }
+    
+    // No confirmation needed, execute directly
+    await executeActionDirectly(action)
+  }
+  
+  // Action executor - direct execution (bypasses confirmation)
+  const executeActionDirectly = async (action: OrchestratorAction) => {
+    try {
+      switch (action.type) {
+        case 'message':
+          if (onAddChatMessage) {
+            onAddChatMessage(action.payload.content, 'orchestrator', action.payload.type || 'result')
+          }
+          break
+          
+        case 'open_document':
+          if (onSelectNode) {
+            onSelectNode(action.payload.nodeId, action.payload.sectionId)
+          }
+          if (!isDocumentViewOpen && onToggleDocumentView) {
+            onToggleDocumentView()
+          }
+          break
+          
+        case 'select_section':
+          if (onSelectNode && currentStoryStructureNodeId) {
+            onSelectNode(currentStoryStructureNodeId, action.payload.sectionId)
+          }
+          break
+          
+        case 'generate_content':
+          // Handle both answer generation and content writing
+          if (action.payload.isAnswer && onAnswerQuestion) {
+            // This is an answer to a question
+            const answer = await onAnswerQuestion(action.payload.prompt)
+            if (onAddChatMessage) {
+              onAddChatMessage(`📖 ${answer}`, 'orchestrator', 'result')
+            }
+          } else if (action.payload.sectionId && onWriteContent) {
+            // This is content for a specific section
+            await onWriteContent(action.payload.sectionId, action.payload.prompt)
+          }
+          break
+          
+        case 'modify_structure':
+          // Handle structure creation/modification
+          if (action.payload.action === 'create') {
+            onCreateStory(
+              action.payload.format || selectedFormat,
+              selectedTemplate || undefined,
+              action.payload.prompt
+            )
+          }
+          break
+          
+        case 'delete_node':
+          // Handle node deletion
+          if (action.payload.nodeId && onDeleteNode) {
+            await onDeleteNode(action.payload.nodeId)
+            if (onAddChatMessage) {
+              onAddChatMessage(`✅ Deleted "${action.payload.nodeName}"`, 'orchestrator', 'result')
+            }
+          }
+          break
+          
+        case 'request_clarification':
+          // Handle clarification request - create a confirmation with options
+          const clarificationConfirmation = createConfirmationRequest(
+            {
+              type: action.payload.originalAction,
+              payload: {},
+              status: 'pending'
+            },
+            'clarification',
+            action.payload.message,
+            action.payload.options
+          )
+          setPendingConfirmation(clarificationConfirmation)
+          
+          if (onAddChatMessage) {
+            onAddChatMessage(action.payload.message, 'orchestrator', 'result')
+          }
+          break
+          
+        default:
+          console.warn('Unknown action type:', action.type)
+      }
+    } catch (error) {
+      console.error('Action execution error:', error)
+      if (onAddChatMessage) {
+        onAddChatMessage(`❌ Action failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
+      }
+    }
+  }
+  
+  // ============================================================
+  // OLD ORCHESTRATOR (BACKUP - TO BE REMOVED)
+  // ============================================================
+  
+  const handleSendMessage_OLD = async (message: string) => {
     // Check if user is responding to template selection
     if (pendingCreation) {
       // Parse conversational template selection
@@ -878,6 +1363,10 @@ export default function CreateStoryPanel({
         case 'create_structure':
           // Create new story structure (Allowed even if document panel is open)
           
+          // 🎯 DETECT FORMAT FIRST (before building prompts)
+          const detectedFormat = detectFormatFromMessage(message)
+          const formatToUse = detectedFormat || selectedFormat
+          
           // CANVAS INTELLIGENCE: Check if user is referencing connected nodes
           let enhancedPrompt = message
           const referencePhrases = [
@@ -990,15 +1479,15 @@ ${allContent.substring(0, 8000)}
 
 ${allContent.length > 8000 ? '... (content truncated for length)' : ''}
 
-INSTRUCTION: Use the above ${referencedNode.detailedContext.format} content as inspiration for creating the new ${selectedFormat} structure. 
+INSTRUCTION: Use the above ${referencedNode.detailedContext.format} content as inspiration for creating the new ${formatToUse} structure. 
 
 ${message.toLowerCase().includes('interview') || message.toLowerCase().includes('character') ? 
-`FOCUS ON CHARACTERS: The user wants to feature the characters from this content. Carefully read through the content above and identify all named characters, their roles, personalities, and key characteristics. Build the ${selectedFormat} structure around interviewing or featuring these specific characters.` : 
-`Extract characters, themes, plot points, and narrative elements to adapt them for the ${selectedFormat} format.`}`
+`FOCUS ON CHARACTERS: The user wants to feature the characters from this content. Carefully read through the content above and identify all named characters, their roles, personalities, and key characteristics. Build the ${formatToUse} structure around interviewing or featuring these specific characters.` : 
+`Extract characters, themes, plot points, and narrative elements to adapt them for the ${formatToUse} format.`}`
 
                   if (onAddChatMessage) {
                     onAddChatMessage(`✅ Extracted ${Object.keys(contentMap).length} sections (${referencedNode.detailedContext.wordsWritten} words) from "${referencedNode.label}"`)
-                    onAddChatMessage(`🎯 Creating new ${selectedFormat} inspired by this content...`)
+                    onAddChatMessage(`🎯 Creating new ${formatToUse} inspired by this content...`)
                   }
                 } else {
                   // Use structure summaries if no written content yet
@@ -1012,7 +1501,7 @@ REFERENCE STRUCTURE FROM "${referencedNode.label}" (${referencedNode.detailedCon
 
 ${structureDetails}
 
-INSTRUCTION: Use the above ${referencedNode.detailedContext.format} structure and summaries as inspiration for creating the new ${selectedFormat} structure.`
+INSTRUCTION: Use the above ${referencedNode.detailedContext.format} structure and summaries as inspiration for creating the new ${formatToUse} structure.`
 
                   if (onAddChatMessage) {
                     onAddChatMessage(`✅ Using structure from "${referencedNode.label}" (${allSections.length} sections)`)
@@ -1029,7 +1518,7 @@ ${markdown.substring(0, 8000)}
 
 ${markdown.length > 8000 ? '... (content truncated for length)' : ''}
 
-Use the above content as inspiration for creating the new ${selectedFormat} structure.`
+Use the above content as inspiration for creating the new ${formatToUse} structure.`
 
                 if (onAddChatMessage) {
                   onAddChatMessage(`✅ Extracted ${referencedNode.detailedContext.wordCount} words from "${referencedNode.label}"`)
@@ -1041,11 +1530,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
             } // Close the else block for single-node extraction
           }
           
-          // Detect format from user message
-          const detectedFormat = detectFormatFromMessage(message)
-          const formatToUse = detectedFormat || selectedFormat
-          
-          // Store pending creation and ask for template choice
+          // Store pending creation and ask for template choice (formatToUse already detected at top)
           setPendingCreation({
             format: formatToUse,
             userMessage: message,
@@ -1612,276 +2097,13 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
         </div>
       </div>
 
-      {/* Active Context Display - Compact (only show when document view is open) */}
-      {activeContext && isDocumentViewOpen && (
-        <div className="px-3 py-2 bg-yellow-50 border-b border-yellow-200 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <svg className="w-4 h-4 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-            </svg>
-            <span className="text-xs text-yellow-900 truncate">
-              <span className="font-medium">Writing:</span> {activeContext.name}
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => {
-                if (onAddChatMessage && activeContext) {
-                  onAddChatMessage(`Write content for "${activeContext.name}"`)
-                  onCreateStory(selectedFormat, selectedTemplate || undefined, `Write detailed content for "${activeContext.name}"`)
-                }
-              }}
-              className="px-2 py-1 bg-yellow-200 hover:bg-yellow-300 text-yellow-900 rounded text-xs font-medium transition-colors"
-              title="Write this section"
-            >
-              Write
-            </button>
-            <button
-              onClick={onClearContext}
-              className="p-1 hover:bg-yellow-200 rounded transition-colors"
-              title="Clear context"
-            >
-              <svg className="w-3.5 h-3.5 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Active Context Display - REMOVED: Sidebar already shows active section */}
       
-      {/* Thin Stacked Accordion Tiles */}
-      <div className="border-b border-gray-200 bg-gray-50">
-        {/* Model Tile */}
-        <div className="border-b border-gray-200">
-          <button
-            onClick={() => setIsModelPillExpanded(!isModelPillExpanded)}
-            className="w-full flex items-center justify-between px-4 py-2 bg-white hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-              </svg>
-              <span className="text-xs font-medium text-gray-700">
-                {loadingConfig ? 'Loading...' : (configuredModel?.orchestrator || 'Auto-select model')}
-              </span>
-            </div>
-            <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isModelPillExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          
-          {/* Model Accordion Content */}
-          {isModelPillExpanded && (
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 animate-in slide-in-from-top-2 duration-200">
-              {availableOrchestrators.length > 0 ? (
-                <div className="space-y-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                       <label className="text-xs font-semibold text-gray-600">Select Model:</label>
-                       {updatingModel && <span className="text-[10px] text-purple-600 animate-pulse font-medium">Switching...</span>}
-                    </div>
-                    <select
-                      value={configuredModel.orchestrator || ''}
-                      onChange={async (e) => {
-                        const selectedId = e.target.value
-                        const selectedOption = availableOrchestrators.find(m => m.id === selectedId)
-                        
-                        if (selectedOption) {
-                          setUpdatingModel(true)
-                          // Optimistic UI update
-                          setConfiguredModel(prev => ({ ...prev, orchestrator: selectedId }))
-                          
-                          try {
-                             // 1. Get current key data
-                             const keysResponse = await fetch('/api/user/api-keys')
-                             const keysData = await keysResponse.json()
-                             const targetKey = keysData.keys.find((k: any) => k.id === selectedOption.keyId)
-                             
-                             if (targetKey) {
-                               // 2. Update preference on TARGET key
-                               await fetch(`/api/user/api-keys/${targetKey.id}/preferences`, {
-                                  method: 'PATCH',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    orchestratorModelId: selectedId,
-                                    writerModelIds: targetKey.writer_model_ids || [] 
-                                  })
-                               })
-
-                               // 3. Clear orchestrator on ALL OTHER keys (Ensure single active orchestrator)
-                               const otherKeys = keysData.keys.filter((k: any) => k.id !== targetKey.id && k.orchestrator_model_id)
-                               if (otherKeys.length > 0) {
-                                 await Promise.all(otherKeys.map((k: any) => 
-                                   fetch(`/api/user/api-keys/${k.id}/preferences`, {
-                                      method: 'PATCH',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        orchestratorModelId: null, // Clear
-                                        writerModelIds: k.writer_model_ids || [] // Preserve
-                                      })
-                                   })
-                                 ))
-                               }
-                               
-                               // 4. Dispatch event
-                               window.dispatchEvent(new CustomEvent('orchestratorConfigUpdated', {
-                                  detail: { orchestratorModelId: selectedId }
-                               }))
-                               
-                               // 5. Refresh
-                               await fetchConfiguredModels()
-                             }
-                          } catch (err) {
-                            console.error('Failed to switch model', err)
-                            fetchConfiguredModels() // Revert
-                          } finally {
-                            setUpdatingModel(false)
-                          }
-                        }
-                      }}
-                      disabled={updatingModel}
-                      className="w-full text-xs border-gray-300 rounded shadow-sm focus:border-purple-500 focus:ring-purple-500 py-1.5 bg-white text-gray-700"
-                    >
-                      <option value="" disabled>Select an orchestrator...</option>
-                      {/* Group models by Canonical Group */}
-                      {Object.entries(availableOrchestrators.reduce((acc, model) => {
-                        // Use the explicit group from canonical details
-                        const group = model.group || 'Other'
-                        if (!acc[group]) acc[group] = []
-                        acc[group].push(model)
-                        return acc
-                      }, {} as Record<string, typeof availableOrchestrators>)).map(([group, models]) => (
-                        <optgroup key={group} label={group}>
-                          {models.map((model) => (
-                            <option key={model.id} value={model.id}>
-                              {model.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    <span className="font-semibold">Writers:</span> {configuredModel.writerCount} models available
-                  </div>
-                </div>
-              ) : (
-                <div className="text-xs text-gray-500 italic mb-2">
-                  No compatible models found.
-                </div>
-              )}
-              
-              <button
-                onClick={() => router.push('/profile')}
-                className="text-xs font-medium text-blue-600 hover:text-blue-700 underline mt-2 block"
-              >
-                Manage Keys in Profile →
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Format Tile */}
-        <div>
-          <button
-            onClick={() => setIsFormatPillExpanded(!isFormatPillExpanded)}
-            className="w-full flex items-center justify-between px-4 py-2 bg-white hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-              <span className="text-xs font-medium text-gray-700">
-                {selectedFormat && selectedTemplate 
-                  ? `${storyFormats.find(f => f.type === selectedFormat)?.label} - ${templates[selectedFormat].find(t => t.id === selectedTemplate)?.name}`
-                  : selectedFormat 
-                  ? storyFormats.find(f => f.type === selectedFormat)?.label
-                  : 'Select format'}
-              </span>
-            </div>
-            <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isFormatPillExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        </div>
-      </div>
+      {/* Model & Format selection moved to bottom input area (Cursor-style) */}
 
       {/* Orchestrator Reasoning - Center Stage */}
       <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-gray-50 to-white">
         <div className="max-w-4xl mx-auto h-full flex flex-col">
-          {/* Format Selection Accordion (expands when tile clicked) */}
-          {isFormatPillExpanded && (
-            <div className="mb-4 bg-white rounded-md border border-gray-200 shadow-sm animate-in slide-in-from-top-2 duration-200">
-              <div className="p-4 max-h-96 overflow-y-auto">
-                <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">Choose Format & Template</h3>
-                <div className="space-y-3">
-                  {storyFormats.map((format) => {
-                    const formatTemplates = templates[format.type]
-                    const isSelected = selectedFormat === format.type
-                    
-                    return (
-                      <div key={format.type} className="border border-gray-200 rounded-md overflow-hidden hover:border-gray-300 transition-colors">
-                        <button
-                          onClick={() => {
-                            setSelectedFormat(format.type)
-                            setSelectedTemplate(null)
-                          }}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-                            isSelected ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className={`text-xl ${isSelected ? 'text-gray-700' : 'text-gray-400'}`}>
-                            {format.icon}
-                          </div>
-                          <div className="flex-1">
-                            <div className={`text-xs font-semibold ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
-                              {format.label}
-                            </div>
-                            <div className="text-xs text-gray-500">{format.description}</div>
-                          </div>
-                          <svg 
-                            className={`w-4 h-4 text-gray-400 transition-transform ${isSelected ? 'rotate-180' : ''}`} 
-                            fill="none" 
-                            stroke="currentColor" 
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-                        
-                        {isSelected && (
-                          <div className="bg-gray-50 border-t border-gray-200 p-3 space-y-1.5">
-                            <p className="text-xs font-medium text-gray-600 mb-2">Templates:</p>
-                            {formatTemplates.map((template) => (
-                              <button
-                                key={template.id}
-                                onClick={() => {
-                                  setSelectedTemplate(template.id)
-                                  setIsFormatPillExpanded(false)
-                                  // Auto-create when template selected
-                                  if (!isCreating) {
-                                    handleCreateStory()
-                                  }
-                                }}
-                                className={`w-full text-left px-3 py-2 rounded text-xs transition-colors ${
-                                  selectedTemplate === template.id
-                                    ? 'bg-gray-700 text-white font-medium'
-                                    : 'bg-white text-gray-700 hover:bg-gray-200 border border-gray-200'
-                                }`}
-                              >
-                                {template.name}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-          
           <div className="flex-1 overflow-y-auto space-y-3">
             {reasoningMessages.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
@@ -2136,27 +2358,308 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
           </div>
         )}
         
-        <textarea
-          ref={chatInputRef}
-          value={chatMessage}
-          onChange={(e) => setChatMessage(e.target.value)}
-          onKeyDown={async (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              if (chatMessage.trim()) {
-                await handleSendMessage(chatMessage)
+        {/* Confirmation UI - shown when waiting for user confirmation */}
+        {pendingConfirmation && (
+          <div className={`mb-4 p-4 border-2 rounded-lg ${
+            pendingConfirmation.confirmationType === 'destructive' 
+              ? 'bg-red-50 border-red-300' 
+              : pendingConfirmation.confirmationType === 'permission'
+              ? 'bg-yellow-50 border-yellow-300'
+              : 'bg-blue-50 border-blue-300'
+          }`}>
+            {/* Confirmation message */}
+            <p className="text-sm font-medium text-gray-900 mb-3 whitespace-pre-wrap">
+              {pendingConfirmation.message}
+            </p>
+            
+            {/* Clarification options (multiple choice) */}
+            {pendingConfirmation.confirmationType === 'clarification' && pendingConfirmation.options && (
+              <div className="space-y-2">
+                {pendingConfirmation.options.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => handleConfirmationResponse({ id: option.id })}
+                    className="w-full flex items-start gap-3 p-3 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all text-left group"
+                  >
+                    <span className="text-lg">📄</span>
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900 group-hover:text-blue-700">
+                        {option.label}
+                      </div>
+                      {option.description && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          {option.description}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+                <p className="text-xs text-gray-500 mt-2">
+                  💬 Or describe it: &quot;The one with 79,200 words&quot;
+                </p>
+              </div>
+            )}
+            
+            {/* Destructive/Permission actions (yes/no) */}
+            {(pendingConfirmation.confirmationType === 'destructive' || pendingConfirmation.confirmationType === 'permission') && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleConfirmationResponse('no')}
+                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleConfirmationResponse('yes')}
+                  className={`flex-1 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${
+                    pendingConfirmation.confirmationType === 'destructive'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  {pendingConfirmation.confirmationType === 'destructive' ? 'Yes, Delete' : 'Confirm'}
+                </button>
+              </div>
+            )}
+            
+            {/* Timeout indicator */}
+            <p className="text-[10px] text-gray-500 mt-2">
+              ⏱️ Expires in {Math.max(0, Math.ceil((pendingConfirmation.expiresAt - Date.now()) / 1000))}s
+            </p>
+          </div>
+        )}
+        
+        {/* Input area - Cursor-style Composer */}
+        <div className="relative border border-gray-300 rounded-lg bg-white shadow-sm hover:border-gray-400 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200 transition-all">
+          {/* Text Input */}
+          <textarea
+            ref={chatInputRef}
+            value={chatMessage}
+            onChange={(e) => setChatMessage(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                if (chatMessage.trim()) {
+                  await handleSendMessage_NEW(chatMessage)
+                }
               }
-            }
-          }}
-          placeholder={activeContext 
-            ? `Write about "${activeContext.name}"...` 
-            : `Chat with the orchestrator (${selectedFormat.charAt(0).toUpperCase() + selectedFormat.slice(1).replace('-', ' ')})...`}
-          rows={2}
-          className="w-full resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent placeholder-gray-400"
-        />
-        <p className="text-xs text-gray-500 mt-2">
-          Press Enter to send • Shift+Enter for new line • Format: <span className="font-semibold text-gray-700">{selectedFormat.charAt(0).toUpperCase() + selectedFormat.slice(1).replace('-', ' ')}</span>
-        </p>
+            }}
+            placeholder={activeContext 
+              ? `Write about "${activeContext.name}"...` 
+              : "Chat with the orchestrator..."}
+            rows={3}
+            className="w-full resize-none px-4 pt-3 pb-12 text-sm focus:outline-none placeholder-gray-400 bg-transparent"
+          />
+          
+          {/* Bottom Bar with Model Selector */}
+          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-2 border-t border-gray-200 bg-gray-50/50 backdrop-blur-sm">
+            {/* Left: Helper text */}
+            <p className="text-[10px] text-gray-500">
+              <kbd className="px-1 py-0.5 text-[9px] bg-white border border-gray-300 rounded shadow-sm">Enter</kbd> to send • <kbd className="px-1 py-0.5 text-[9px] bg-white border border-gray-300 rounded shadow-sm">Shift+Enter</kbd> for new line
+            </p>
+            
+            {/* Right: Model Selector Button */}
+            <div className="relative">
+              <button
+                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
+              >
+                {modelMode === 'automatic' ? (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span>Auto</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                    </svg>
+                    <span className="max-w-[100px] truncate">{configuredModel.orchestrator || 'Fixed'}</span>
+                  </>
+                )}
+                <svg className={`w-3 h-3 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            
+            {/* Dropdown Menu */}
+            {isModelDropdownOpen && (
+              <div className="absolute bottom-full left-0 mb-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
+                {/* Mode Toggle */}
+                <div className="p-3 border-b border-gray-200 bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setModelMode('automatic')}
+                      className={`flex-1 px-3 py-2 text-xs font-medium rounded transition-colors ${
+                        modelMode === 'automatic' 
+                          ? 'bg-purple-600 text-white' 
+                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                      }`}
+                    >
+                      ⚡ Automatic
+                    </button>
+                    <button
+                      onClick={() => setModelMode('fixed')}
+                      className={`flex-1 px-3 py-2 text-xs font-medium rounded transition-colors ${
+                        modelMode === 'fixed' 
+                          ? 'bg-purple-600 text-white' 
+                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                      }`}
+                    >
+                      📌 Fixed
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-2">
+                    {modelMode === 'automatic' 
+                      ? 'Best model selected per task (intent, writing, etc.)'
+                      : 'Use one model for all tasks'}
+                  </p>
+                </div>
+                
+                {/* Currently Using (if Auto mode) */}
+                {modelMode === 'automatic' && currentlyUsedModels.intent && (
+                  <div className="p-3 bg-blue-50 border-b border-blue-200">
+                    <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Currently Using:</p>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">🧠 Intent:</span>
+                        <span className="font-medium text-gray-900">{currentlyUsedModels.intent}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">✍️ Writer:</span>
+                        <span className="font-medium text-gray-900">{currentlyUsedModels.writer}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Strategy Toggle (only show if Fixed mode) */}
+                {modelMode === 'fixed' && (
+                  <div className="p-3 border-b border-gray-200 bg-gray-50">
+                    <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide mb-2">Strategy:</p>
+                    <div className="space-y-2">
+                      <label className="flex items-start gap-2 cursor-pointer group">
+                        <input
+                          type="radio"
+                          name="strategy"
+                          checked={fixedModeStrategy === 'consistent'}
+                          onChange={() => setFixedModeStrategy('consistent')}
+                          className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                        />
+                        <div className="flex-1">
+                          <div className="text-xs font-medium text-gray-900 group-hover:text-purple-700">
+                            🎯 Consistent
+                          </div>
+                          <div className="text-[10px] text-gray-500">
+                            Use selected model for ALL tasks (expensive)
+                          </div>
+                        </div>
+                      </label>
+                      
+                      <label className="flex items-start gap-2 cursor-pointer group">
+                        <input
+                          type="radio"
+                          name="strategy"
+                          checked={fixedModeStrategy === 'loose'}
+                          onChange={() => setFixedModeStrategy('loose')}
+                          className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                        />
+                        <div className="flex-1">
+                          <div className="text-xs font-medium text-gray-900 group-hover:text-purple-700">
+                            💡 Loose (Strategic)
+                          </div>
+                          <div className="text-[10px] text-gray-500">
+                            Strategic tasks only, cheaper models for writing
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Model List (only show if Fixed mode) */}
+                {modelMode === 'fixed' && (
+                  <div className="p-2">
+                    <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide px-2 py-1.5">Select Model:</p>
+                    {availableOrchestrators.length > 0 ? (
+                      Object.entries(availableOrchestrators.reduce((acc, model) => {
+                        const group = model.group || 'Other'
+                        if (!acc[group]) acc[group] = []
+                        acc[group].push(model)
+                        return acc
+                      }, {} as Record<string, typeof availableOrchestrators>)).map(([group, models]) => (
+                        <div key={group} className="mb-2">
+                          <p className="text-[10px] font-medium text-gray-500 px-2 py-1">{group}</p>
+                          {models.map((model) => (
+                            <button
+                              key={model.id}
+                              onClick={async () => {
+                                // Same logic as before for updating model
+                                setUpdatingModel(true)
+                                setConfiguredModel(prev => ({ ...prev, orchestrator: model.id }))
+                                
+                                try {
+                                  const keysResponse = await fetch('/api/user/api-keys')
+                                  const keysData = await keysResponse.json()
+                                  const targetKey = keysData.keys.find((k: any) => k.id === model.keyId)
+                                  
+                                  if (targetKey) {
+                                    await fetch(`/api/user/api-keys/${targetKey.id}/preferences`, {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        orchestratorModelId: model.id,
+                                        writerModelIds: targetKey.writer_model_ids || [] 
+                                      })
+                                    })
+
+                                    const otherKeys = keysData.keys.filter((k: any) => k.id !== targetKey.id && k.orchestrator_model_id)
+                                    if (otherKeys.length > 0) {
+                                      await Promise.all(otherKeys.map((k: any) => 
+                                        fetch(`/api/user/api-keys/${k.id}/preferences`, {
+                                          method: 'PATCH',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({
+                                            orchestratorModelId: null,
+                                            writerModelIds: k.writer_model_ids || []
+                                          })
+                                        })
+                                      ))
+                                    }
+                                    
+                                    await fetchConfiguredModels()
+                                    setIsModelDropdownOpen(false)
+                                  }
+                                } catch (err) {
+                                  console.error('Failed to switch model', err)
+                                  fetchConfiguredModels()
+                                } finally {
+                                  setUpdatingModel(false)
+                                }
+                              }}
+                              className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-gray-100 transition-colors ${
+                                configuredModel.orchestrator === model.id 
+                                  ? 'bg-purple-50 text-purple-700 font-medium' 
+                                  : 'text-gray-700'
+                              }`}
+                            >
+                              {model.name}
+                            </button>
+                          ))}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-gray-500 px-2 py-2">No models available</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

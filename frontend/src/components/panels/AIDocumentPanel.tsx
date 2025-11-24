@@ -219,8 +219,9 @@ export default function AIDocumentPanel({
   }, [isOpen, storyStructureNodeId, structureItems, sections, initializeSections])
 
   // Get the active section
+  // activeSectionId is a structure_item_id, not a section.id
   const activeSection = activeSectionId
-    ? sections.find(s => s.id === activeSectionId)
+    ? sections.find(s => s.structure_item_id === activeSectionId) || sections.find(s => s.id === activeSectionId)
     : sections[0]
 
   // Document editor with auto-save
@@ -284,13 +285,81 @@ export default function AIDocumentPanel({
     }
   }, [structureItems, activeSectionId, initialSectionId])
 
-  // Load initial section content
+  // Handle section navigation (when orchestrator or user wants to jump to a section)
   useEffect(() => {
     if (isOpen && initialSectionId && structureItems.length > 0) {
-      // Use structure item ID directly
-      setActiveSectionId(initialSectionId)
+      console.log('🧭 [AIDocumentPanel] Navigating to section:', {
+        initialSectionId,
+        currentActiveSectionId: activeSectionId,
+        willUpdate: initialSectionId !== activeSectionId
+      })
+      // Always update to the requested section (even if one is already active)
+      if (initialSectionId !== activeSectionId) {
+        setActiveSectionId(initialSectionId)
+      }
     }
-  }, [isOpen, initialSectionId, structureItems])
+  }, [isOpen, initialSectionId, structureItems, activeSectionId])
+
+  // Notify parent when active section changes (update context for orchestrator)
+  useEffect(() => {
+    if (activeSectionId && onSetContext) {
+      const activeItem = structureItems.find(i => i.id === activeSectionId)
+      if (activeItem) {
+        console.log('📍 [AIDocumentPanel] Setting context for active section:', {
+          id: activeSectionId,
+          name: activeItem.name
+        })
+        onSetContext({
+          type: 'section',
+          id: activeSectionId,
+          name: activeItem.name,
+          title: activeItem.title,
+          level: activeItem.level
+        })
+      }
+    }
+  }, [activeSectionId, structureItems, onSetContext])
+
+
+  // Scroll to section when active section changes (e.g., via orchestrator navigation)
+  useEffect(() => {
+    if (activeSectionId && editorContainerRef.current) {
+      const sectionId = `section-${activeSectionId}`
+      const container = editorContainerRef.current
+      
+      // Helper function to scroll to the section
+      const scrollToSection = () => {
+        const element = document.getElementById(sectionId)
+        if (element && container) {
+          console.log('📜 [AIDocumentPanel] Scrolling to section:', activeSectionId)
+          const containerRect = container.getBoundingClientRect()
+          const elementRect = element.getBoundingClientRect()
+          const offsetTop = elementRect.top - containerRect.top + container.scrollTop - 20
+          
+          container.scrollTo({
+            top: offsetTop,
+            behavior: 'smooth'
+          })
+          return true
+        }
+        return false
+      }
+      
+      // Try to scroll immediately
+      const scrolled = scrollToSection()
+      
+      // If element not found, wait a bit for the document to render, then retry
+      if (!scrolled) {
+        console.log('⏳ [AIDocumentPanel] Section not found yet, waiting for render...')
+        setTimeout(() => {
+          const retried = scrollToSection()
+          if (!retried) {
+            console.warn('⚠️ [AIDocumentPanel] Section element not found after retry:', sectionId)
+          }
+        }, 200)
+      }
+    }
+  }, [activeSectionId])
 
 
   // Aggregate content hierarchically for a structure item
@@ -359,24 +428,12 @@ export default function AIDocumentPanel({
     }
   }
   
-  // Handle segment click (from Narration Arrangement View timeline)
-  // Timeline shows focused content (summaries for high-level, full content for low-level)
+  // Handle segment click (from Narration Arrangement View timeline or sidebar)
+  // Full document is always loaded - just scroll to the section
   const handleSegmentClick = (item: StoryStructureItem) => {
-    // For high-level segments (1-3), show summary if available
-    // For detailed segments (4+), show full content
-    if (item.level <= 3 && item.summary) {
-      setContent(`# ${item.name}\n\n**Summary:**\n\n${item.summary}`)
-    } else {
-      const aggregatedContent = aggregateHierarchicalContent(item.id)
-      
-      if (aggregatedContent) {
-        setContent(aggregatedContent)
-      } else {
-        console.warn('⚠️ No content found for segment:', item.name)
-        setContent(`_No content yet for ${item.name}_`)
-      }
-    }
+    console.log('📍 [handleSegmentClick] Navigating to section:', item.name)
     
+    // Set active section (this will trigger context update and scroll)
     setActiveSectionId(item.id)
     
     // Set orchestrator context when segment is clicked
@@ -389,6 +446,40 @@ export default function AIDocumentPanel({
         level: item.level,
         description: item.description
       })
+    }
+    
+    // Scroll to the section anchor in the full document
+    const sectionId = `section-${item.id}`
+    const container = editorContainerRef.current
+    
+    const scrollToSection = () => {
+      const element = document.getElementById(sectionId)
+      if (element && container) {
+        const containerRect = container.getBoundingClientRect()
+        const elementRect = element.getBoundingClientRect()
+        const offsetTop = elementRect.top - containerRect.top + container.scrollTop - 20
+        
+        container.scrollTo({
+          top: offsetTop,
+          behavior: 'smooth'
+        })
+        return true
+      }
+      return false
+    }
+    
+    // Try to scroll immediately
+    const scrolled = scrollToSection()
+    
+    // If element not found, wait and retry
+    if (!scrolled) {
+      console.log('⏳ [handleSegmentClick] Section anchor not found, waiting for render...')
+      setTimeout(() => {
+        const retried = scrollToSection()
+        if (!retried) {
+          console.warn('⚠️ [handleSegmentClick] Section anchor still not found:', sectionId)
+        }
+      }, 200)
     }
   }
 
@@ -555,11 +646,16 @@ export default function AIDocumentPanel({
               {/* Section Name & Title */}
               <button
                 onClick={() => {
-                  // Sidebar acts as table of contents
+                  // Update active section (this will trigger context update)
+                  console.log('👆 [Sidebar Click] Setting active section:', item.id, item.name)
+                  setActiveSectionId(item.id)
+                  
+                  // Sidebar acts as table of contents - scroll to section anchor
+                  // Note: Full document is already loaded, we just scroll to the anchor
                   const sectionId = `section-${item.id}`
                   const container = editorContainerRef.current
                   
-                  // Helper function to scroll to the section
+                  // Scroll to the section anchor
                   const scrollToSection = () => {
                     const element = document.getElementById(sectionId)
                     if (element && container) {
@@ -579,19 +675,15 @@ export default function AIDocumentPanel({
                   // Try to scroll immediately
                   const scrolled = scrollToSection()
                   
-                  // If the element wasn't found, reload the full document first
+                  // If the element wasn't found, wait and retry (document might be rendering)
                   if (!scrolled) {
-                    const rootItems = structureItems.filter(i => i.level === 1).sort((a, b) => a.order - b.order)
-                    const fullDocContent = rootItems.map(rootItem => 
-                      aggregateHierarchicalContent(rootItem.id, true)
-                    ).join('\n\n')
-                    
-                    setContent(fullDocContent)
-                    
-                    // Wait for React to update the DOM, then scroll
+                    console.log('⏳ [Sidebar Click] Section anchor not found, waiting for render...')
                     setTimeout(() => {
-                      scrollToSection()
-                    }, 100)
+                      const retried = scrollToSection()
+                      if (!retried) {
+                        console.warn('⚠️ [Sidebar Click] Section anchor still not found:', sectionId)
+                      }
+                    }, 200)
                   }
                 }}
                 className="flex-1 text-left text-sm truncate min-w-0 px-1"
@@ -792,9 +884,15 @@ export default function AIDocumentPanel({
     )
   }
 
-  // Load full document when panel opens (after aggregateHierarchicalContent is defined)
+  // Load full document when panel opens or when sections/content changes
   useEffect(() => {
-    if (isOpen && structureItems.length > 0 && Object.keys(contentMap).length > 0 && !hasLoadedFullDocument) {
+    if (isOpen && structureItems.length > 0 && sections.length > 0) {
+      console.log('📄 [AIDocumentPanel] Loading full document:', {
+        structureItemsCount: structureItems.length,
+        sectionsCount: sections.length,
+        contentMapSize: Object.keys(contentMap).length
+      })
+      
       // Build the complete document from all root-level structure items
       const rootItems = structureItems.filter(item => !item.parentId)
       const fullDocument = rootItems
@@ -804,14 +902,15 @@ export default function AIDocumentPanel({
         .join('\n\n')
       
       if (fullDocument) {
+        console.log('✅ [AIDocumentPanel] Full document loaded:', fullDocument.length, 'chars')
         setContent(fullDocument)
         setHasLoadedFullDocument(true)
       } else {
-        console.warn('⚠️ No full document content generated')
+        console.warn('⚠️ [AIDocumentPanel] No full document content generated')
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, structureItems, contentMap, hasLoadedFullDocument, setContent])
+  }, [isOpen, structureItems, sections, contentMap])
 
   // Reset loaded flag when panel closes
   useEffect(() => {
