@@ -29,6 +29,7 @@ export interface TieredModel {
   contextWindow: number
   reasoning: boolean
   multimodal: boolean
+  structuredOutput: 'full' | 'json-mode' | 'none' // NEW: Structured output support
   
   // Performance
   speed: 'instant' | 'fast' | 'medium' | 'slow'
@@ -73,6 +74,29 @@ export interface TaskRequirements {
 // MODEL TIER REGISTRY - SINGLE SOURCE OF TRUTH
 // ============================================================
 
+/**
+ * STRUCTURED OUTPUT SUPPORT LEVELS:
+ * 
+ * 'full' - Native structured output with schema validation
+ *   - OpenAI: response_format: { type: "json_schema", json_schema: {...} }
+ *   - Anthropic: Tool use with forced tool call
+ *   - Google: Function calling
+ *   - Guarantees valid JSON matching exact schema
+ *   - Best for: Critical data extraction, structure generation
+ * 
+ * 'json-mode' - Basic JSON formatting (no schema validation)
+ *   - Groq/Llama: response_format: { type: "json_object" }
+ *   - Encourages JSON output but doesn't validate structure
+ *   - May produce invalid or non-conformant JSON
+ *   - Best for: Simple JSON, with fallback parsing
+ * 
+ * 'none' - String-based responses only
+ *   - DeepSeek and other models without JSON support
+ *   - Requires manual prompt engineering + regex parsing
+ *   - Highest risk of parsing errors
+ *   - Best for: Narrative content, not structured data
+ */
+
 export const MODEL_TIERS: TieredModel[] = [
   // ============================================================
   // FRONTIER TIER - For Orchestration & Complex Planning
@@ -85,6 +109,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 200000,
     reasoning: true,
     multimodal: false,
+    structuredOutput: 'full', // OpenAI native JSON schema support
     speed: 'medium',
     cost: 'expensive',
     bestFor: ['orchestration', 'complex-writing']
@@ -97,6 +122,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 200000,
     reasoning: true,
     multimodal: true,
+    structuredOutput: 'full', // Anthropic tool use (forced tool call)
     speed: 'medium',
     cost: 'expensive',
     bestFor: ['orchestration', 'complex-writing']
@@ -109,6 +135,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 128000,
     reasoning: true,
     multimodal: false,
+    structuredOutput: 'full', // OpenAI native JSON schema support
     speed: 'slow',
     cost: 'expensive',
     bestFor: ['orchestration']
@@ -125,6 +152,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 200000,
     reasoning: false,
     multimodal: true,
+    structuredOutput: 'full', // Anthropic tool use
     speed: 'medium',
     cost: 'expensive',
     bestFor: ['complex-writing', 'general-writing']
@@ -137,6 +165,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 128000,
     reasoning: false,
     multimodal: true,
+    structuredOutput: 'full', // OpenAI JSON schema (2024-08-06+)
     speed: 'fast',
     cost: 'expensive',
     bestFor: ['complex-writing', 'general-writing']
@@ -149,6 +178,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 128000,
     reasoning: false,
     multimodal: true,
+    structuredOutput: 'full', // OpenAI JSON schema
     speed: 'fast',
     cost: 'expensive',
     bestFor: ['complex-writing', 'general-writing']
@@ -161,6 +191,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 1000000,
     reasoning: false,
     multimodal: true,
+    structuredOutput: 'full', // Google function calling
     speed: 'fast',
     cost: 'cheap',
     bestFor: ['complex-writing', 'general-writing']
@@ -177,6 +208,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 128000,
     reasoning: false,
     multimodal: false,
+    structuredOutput: 'json-mode', // Groq JSON mode (no schema validation)
     speed: 'instant',
     cost: 'cheap',
     bestFor: ['general-writing', 'editing']
@@ -189,6 +221,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 128000,
     reasoning: false,
     multimodal: true,
+    structuredOutput: 'full', // OpenAI JSON schema
     speed: 'fast',
     cost: 'cheap',
     bestFor: ['general-writing', 'editing']
@@ -201,6 +234,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 200000,
     reasoning: false,
     multimodal: false,
+    structuredOutput: 'full', // Anthropic tool use
     speed: 'fast',
     cost: 'cheap',
     bestFor: ['general-writing', 'editing', 'speed-writing']
@@ -217,6 +251,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 8192,
     reasoning: false,
     multimodal: false,
+    structuredOutput: 'json-mode', // Groq JSON mode
     speed: 'instant',
     cost: 'cheap',
     bestFor: ['speed-writing', 'editing']
@@ -229,6 +264,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 8192,
     reasoning: false,
     multimodal: false,
+    structuredOutput: 'json-mode', // Groq JSON mode
     speed: 'instant',
     cost: 'cheap',
     bestFor: ['speed-writing', 'editing']
@@ -241,6 +277,7 @@ export const MODEL_TIERS: TieredModel[] = [
     contextWindow: 1000000,
     reasoning: false,
     multimodal: true,
+    structuredOutput: 'full', // Google function calling
     speed: 'fast',
     cost: 'cheap',
     bestFor: ['speed-writing', 'general-writing']
@@ -270,6 +307,36 @@ export function getFrontierModels(): TieredModel[] {
  */
 export function getWorkerModels(): TieredModel[] {
   return MODEL_TIERS.filter(m => m.tier === 'standard' || m.tier === 'fast')
+}
+
+/**
+ * Get models with structured output support
+ * @param level - 'full' for schema validation, 'json-mode' for basic JSON, 'any' for json-mode or better
+ */
+export function getModelsWithStructuredOutput(
+  level: 'full' | 'json-mode' | 'any' = 'full'
+): TieredModel[] {
+  if (level === 'full') {
+    return MODEL_TIERS.filter(m => m.structuredOutput === 'full')
+  } else if (level === 'json-mode') {
+    return MODEL_TIERS.filter(m => m.structuredOutput === 'json-mode')
+  } else {
+    return MODEL_TIERS.filter(m => m.structuredOutput !== 'none')
+  }
+}
+
+/**
+ * Check if a model supports structured outputs
+ */
+export function supportsStructuredOutput(modelId: string, requireFull: boolean = true): boolean {
+  const model = MODEL_TIERS.find(m => m.id === modelId)
+  if (!model) return false
+  
+  if (requireFull) {
+    return model.structuredOutput === 'full'
+  } else {
+    return model.structuredOutput === 'full' || model.structuredOutput === 'json-mode'
+  }
 }
 
 /**

@@ -629,19 +629,59 @@ export class OrchestratorEngine {
           throw new Error('userKeyId is required for create_structure intent')
         }
         
-        // Select model for structure generation (use frontier tier for best quality)
-        const availableModels = MODEL_TIERS.filter(m => 
-          request.availableProviders?.includes(m.provider) && m.tier === 'frontier'
+        // Import structured output helper
+        const { getModelsWithStructuredOutput, supportsStructuredOutput } = await import('./modelRouter')
+        
+        // PREFER models with full structured output support
+        let availableModels = MODEL_TIERS.filter(m => 
+          request.availableProviders?.includes(m.provider) && 
+          m.tier === 'frontier' &&
+          m.structuredOutput === 'full' // Prioritize full structured output
         )
+        
+        // Fallback: If no frontier models with full support, allow json-mode
+        if (availableModels.length === 0) {
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: '⚠️ No frontier models with full structured output, trying json-mode...',
+            type: 'thinking'
+          })
+          
+          availableModels = MODEL_TIERS.filter(m => 
+            request.availableProviders?.includes(m.provider) && 
+            m.tier === 'frontier' &&
+            m.structuredOutput !== 'none'
+          )
+        }
+        
+        // Final fallback: Any frontier model
+        if (availableModels.length === 0) {
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: '⚠️ Falling back to any available frontier model',
+            type: 'thinking'
+          })
+          
+          availableModels = MODEL_TIERS.filter(m => 
+            request.availableProviders?.includes(m.provider) && 
+            m.tier === 'frontier'
+          )
+        }
         
         if (availableModels.length === 0) {
           throw new Error('No frontier models available for structure generation')
         }
         
         const selectedModel = availableModels[0]
+        const structuredSupportLabel = selectedModel.structuredOutput === 'full' 
+          ? '✅ Full structured output' 
+          : selectedModel.structuredOutput === 'json-mode'
+          ? '⚠️ JSON mode (basic)'
+          : '❌ No structured output'
+        
         this.blackboard.addMessage({
           role: 'orchestrator',
-          content: `🎯 Using ${selectedModel.id} for structure generation`,
+          content: `🎯 Using ${selectedModel.displayName} (${structuredSupportLabel})`,
           type: 'decision'
         })
         
