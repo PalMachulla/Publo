@@ -206,6 +206,68 @@ export class OpenAIAdapter implements LLMProviderAdapter {
   }
 
   /**
+   * Generate streaming response from OpenAI
+   */
+  async *generateStream(apiKey: string, params: GenerateParams) {
+    try {
+      const client = this.createClient(apiKey)
+
+      // Check if this is a reasoning model (o1, gpt-5, etc.)
+      const isReasoningModel = params.model.toLowerCase().includes('gpt-5') || 
+                               params.model.toLowerCase().includes('o1')
+
+      // Build request parameters
+      const requestParams: any = {
+        model: params.model,
+        messages: [
+          { role: 'system', content: params.system_prompt },
+          { role: 'user', content: params.user_prompt },
+        ],
+        max_completion_tokens: params.max_tokens,
+        stream: true, // Enable streaming
+      }
+
+      // Reasoning models: Add reasoning_effort parameter
+      if (isReasoningModel) {
+        requestParams.reasoning_effort = 'medium'
+      } else {
+        // Standard models: Add temperature/top_p if provided
+        if (params.temperature !== undefined) {
+          requestParams.temperature = params.temperature
+        }
+        if (params.top_p !== undefined) {
+          requestParams.top_p = params.top_p
+        }
+      }
+
+      const stream = await client.chat.completions.create(requestParams)
+
+      // Stream the response
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content
+        if (content) {
+          yield content
+        }
+      }
+    } catch (error: any) {
+      if (error?.status === 401) {
+        throw new InvalidAPIKeyError('openai', error)
+      }
+
+      if (error?.status === 429) {
+        throw new RateLimitError('openai', undefined, error)
+      }
+
+      throw new ProviderError(
+        error?.message || 'Failed to generate stream with OpenAI',
+        'openai',
+        error?.status,
+        error
+      )
+    }
+  }
+
+  /**
    * Validate OpenAI API key
    */
   async validateKey(apiKey: string): Promise<boolean> {

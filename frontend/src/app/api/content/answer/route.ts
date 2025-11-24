@@ -194,14 +194,19 @@ Please answer this question based on the available context. Be helpful and speci
       generateOptions.temperature = 0.7
     }
     
-    // Generate answer using provider adapter
-    const result = await adapter.generate(apiKey, generateOptions)
+    // Generate answer using provider adapter with streaming
+    const stream = await adapter.generateStream(apiKey, generateOptions)
     
-    console.log('[API /content/answer] Generated answer length:', result.content.length)
+    console.log('[API /content/answer] Streaming response started')
     
-    return NextResponse.json({
-      success: true,
-      answer: result.content
+    // Return streaming response as plain text stream (not SSE)
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Transfer-Encoding': 'chunked',
+      },
     })
     
   } catch (error) {

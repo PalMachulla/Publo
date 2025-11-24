@@ -438,9 +438,33 @@ export function findReferencedNode(
     if (anyStory) return anyStory
   }
   
-  // STEP 5: Generic "story" or "document" reference
-  if (lowerRef.includes('story') || lowerRef.includes('document')) {
-    // Return first story structure node
+  // STEP 5: Generic "story", "document", "plot", "it", "this" reference
+  // These pronouns/generic terms should resolve to the most recently discussed node
+  if (lowerRef.includes('story') || lowerRef.includes('document') || 
+      lowerRef.includes('plot') || lowerRef.includes(' it ') || 
+      lowerRef.includes('this ') || lowerRef.includes('that ')) {
+    
+    // First, check conversation history to see what was recently discussed
+    if (conversationHistory && conversationHistory.length > 0) {
+      const recentMessages = conversationHistory.slice(-5).reverse()
+      
+      for (const msg of recentMessages) {
+        const lowerMsg = msg.content.toLowerCase()
+        
+        // Check if any node format was mentioned
+        for (const ctx of canvasContext.connectedNodes) {
+          if (ctx.detailedContext?.format) {
+            const format = ctx.detailedContext.format.toLowerCase()
+            if (lowerMsg.includes(format)) {
+              console.log(`[findReferencedNode] Resolved pronoun/generic term to recently mentioned: "${ctx.label}" (${format})`)
+              return ctx
+            }
+          }
+        }
+      }
+    }
+    
+    // Fall back to first story structure node
     const story = canvasContext.connectedNodes.find(
       ctx => ctx.nodeType === 'story-structure'
     )

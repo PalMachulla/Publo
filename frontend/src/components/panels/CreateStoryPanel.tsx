@@ -351,6 +351,13 @@ export default function CreateStoryPanel({
   // Build canvas context - orchestrator's "eyes" on the canvas
   const canvasContext = buildCanvasContext('context', canvasNodes, canvasEdges, externalContentMap)
   
+  // Track canvas state to detect changes
+  const [lastCanvasState, setLastCanvasState] = useState<string>('')
+  const currentCanvasState = JSON.stringify({
+    nodes: canvasContext.connectedNodes.map(n => ({ id: n.nodeId, label: n.label, sections: n.detailedContext?.allSections?.length || 0 })),
+    edges: canvasEdges.length
+  })
+  
   // Debug logging
   console.log('🔍 [Canvas Context Debug]', {
     canvasNodesCount: canvasNodes.length,
@@ -433,12 +440,13 @@ export default function CreateStoryPanel({
       .slice(-5)
       .map(m => ({ role: m.role || 'orchestrator', content: m.content }))
     
-    // Show canvas context if available
-    if (onAddChatMessage && canvasContext.connectedNodes.length > 0) {
+    // Show canvas context ONLY if it changed (new nodes, new sections, etc.)
+    if (onAddChatMessage && canvasContext.connectedNodes.length > 0 && currentCanvasState !== lastCanvasState) {
       onAddChatMessage(`👁️ Canvas visibility: ${canvasContext.connectedNodes.length} node(s) connected`)
       canvasContext.connectedNodes.forEach(ctx => {
         onAddChatMessage(`   • ${ctx.label}: ${ctx.summary}`)
       })
+      setLastCanvasState(currentCanvasState)
     }
     
     // STEP 0.5: Enhance context with RAG (semantic search) if available
@@ -449,7 +457,7 @@ export default function CreateStoryPanel({
       }
       
       try {
-        ragEnhancedContext = await enhanceContextWithRAG(message, canvasContext)
+        ragEnhancedContext = await enhanceContextWithRAG(message, canvasContext, undefined, conversationForContext)
         
         if (ragEnhancedContext.hasRAG) {
           if (onAddChatMessage) {
@@ -480,11 +488,14 @@ export default function CreateStoryPanel({
       activeSegmentName: activeContext?.name,
       activeSegmentId: activeContext?.id,
       activeSegmentHasContent: false, // TODO: Track if segment has content
-      conversationHistory: canvasChatHistory.slice(-5).map(msg => ({
-        role: (msg.role === 'orchestrator' ? 'assistant' : msg.role) || 'user',
-        content: msg.content,
-        timestamp: msg.timestamp
-      })),
+      conversationHistory: canvasChatHistory
+        .filter(msg => msg.role === 'user' || (msg.role === 'orchestrator' && msg.type === 'user'))
+        .slice(-10) // Increased from 5 to 10 for better context
+        .map(msg => ({
+          role: (msg.role === 'orchestrator' ? 'assistant' : msg.role) || 'user',
+          content: msg.content,
+          timestamp: msg.timestamp
+        })),
       documentStructure: structureItems, // Pass current document structure
       isDocumentViewOpen: isDocumentViewOpen, // CRITICAL: Tell intent analyzer about document state
       documentFormat: selectedFormat, // Novel, Report, etc.
@@ -702,9 +713,9 @@ export default function CreateStoryPanel({
           break
         
         case 'answer_question':
-          // Answer question using orchestrator model with canvas context
+          // Answer question using orchestrator model with canvas context (STREAMING)
           if (onAddChatMessage) {
-            onAddChatMessage(`💬 Answering with orchestrator model...`)
+            onAddChatMessage(`💬 Answering with orchestrator model...`, 'orchestrator', 'thinking')
           }
           
           // Build context-aware prompt
@@ -803,30 +814,64 @@ export default function CreateStoryPanel({
             }
             
             if (onAddChatMessage) {
-              onAddChatMessage(`📚 Using context from ${canvasContext.connectedNodes.length} connected node(s)`)
+              onAddChatMessage(`📚 Using context from ${canvasContext.connectedNodes.length} connected node(s)`, 'orchestrator', 'result')
               if (totalContentChars > 0) {
                 const wordCount = Math.round(totalContentChars / 5)
-                onAddChatMessage(`📄 Including ~${wordCount} words of actual content`)
+                onAddChatMessage(`📄 Including ~${wordCount} words of actual content`, 'orchestrator', 'result')
               }
               if (ragEnhancedContext?.hasRAG) {
-                onAddChatMessage(`🎯 Enhanced with ${ragEnhancedContext.ragStats?.resultsFound || 0} relevant chunks`)
+                onAddChatMessage(`🎯 Enhanced with ${ragEnhancedContext.ragStats?.resultsFound || 0} relevant chunks`, 'orchestrator', 'result')
               }
             }
           }
           
-          if (onAnswerQuestion) {
-            const answer = await onAnswerQuestion(questionPrompt)
-            if (onAddChatMessage) {
-              onAddChatMessage(`📖 ${answer}`)
+          // Call API with streaming support
+          try {
+            const response = await fetch('/api/content/answer', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                question: questionPrompt,
+                context: {
+                  storyStructureNodeId: currentStoryStructureNodeId,
+                  structureItems: structureItems,
+                  contentMap: contentMap,
+                  activeContext
+                }
+              })
+            })
+            
+            if (!response.ok) {
+              throw new Error(`Failed to answer question: ${response.statusText}`)
             }
-          } else {
-            // Fallback: Use general chat format
-            if (onAddChatMessage) {
-              onAddChatMessage(`⚠️ Using fallback answer mode...`)
+            
+            // Handle streaming response
+            const reader = response.body?.getReader()
+            const decoder = new TextDecoder()
+            let streamedText = ''
+            
+            if (reader) {
+              while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                
+                const chunk = decoder.decode(value, { stream: true })
+                streamedText += chunk
+                
+                // Log progress (we'll add a proper streaming UI update later)
+                console.log('📖 Streaming...', streamedText.length, 'chars')
+              }
+              
+              // After streaming is complete, add the full message
+              if (onAddChatMessage && streamedText) {
+                onAddChatMessage(`📖 ${streamedText}`, 'orchestrator', 'result')
+              }
             }
-            // Create a chat-style response instead of generating story structure
-            const chatPrompt = `Answer this question conversationally:\n\n${questionPrompt}`
-            onCreateStory('podcast', undefined, chatPrompt) // Using podcast format as it's most conversational
+          } catch (error) {
+            console.error('Failed to answer question:', error)
+            if (onAddChatMessage) {
+              onAddChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
+            }
           }
           break
         
@@ -1281,6 +1326,27 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
     if (reasoningMessages.length > 0) {
       setIsReasoningOpen(true)
       console.log('[CreateStoryPanel] Auto-opening reasoning panel, messages:', reasoningMessages.length)
+    }
+  }, [reasoningMessages])
+
+  // Auto-collapse thinking/decision/error messages when new messages arrive
+  useEffect(() => {
+    if (reasoningMessages.length === 0) return
+
+    // Find all thinking/decision/error messages except the last one
+    const thinkingMessages = reasoningMessages.filter(msg => 
+      ['thinking', 'decision', 'error'].includes(msg.type)
+    )
+
+    if (thinkingMessages.length > 1) {
+      // Auto-collapse all thinking messages except the most recent one
+      setCollapsedMessages(prev => {
+        const next = new Set(prev)
+        thinkingMessages.slice(0, -1).forEach(msg => {
+          next.add(msg.id)
+        })
+        return next
+      })
     }
   }, [reasoningMessages])
 
