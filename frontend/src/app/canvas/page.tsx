@@ -2238,9 +2238,12 @@ export default function CanvasPage() {
   const handleNodeDelete = useCallback((nodeId: string) => {
     setNodes((nds) => nds.filter((node) => node.id !== nodeId))
     setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId))
-    setIsPanelOpen(false)
-    setSelectedNode(null)
-  }, [setNodes, setEdges])
+    // Don't close panel - let user continue working with orchestrator
+    // Only clear selection if the deleted node was selected
+    if (selectedNode?.id === nodeId) {
+      setSelectedNode(null)
+    }
+  }, [setNodes, setEdges, selectedNode])
 
   const addNewNode = (nodeType: NodeType) => {
     // Don't allow manual creation of create-story or story-draft nodes

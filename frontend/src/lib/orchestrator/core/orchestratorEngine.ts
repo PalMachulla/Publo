@@ -62,7 +62,7 @@ export interface OrchestratorResponse {
 }
 
 export interface OrchestratorAction {
-  type: 'message' | 'open_document' | 'select_section' | 'generate_content' | 'modify_structure'
+  type: 'message' | 'open_document' | 'select_section' | 'generate_content' | 'modify_structure' | 'delete_node' | 'request_clarification'
   payload: any
   status: 'pending' | 'executing' | 'completed' | 'failed'
   error?: string
@@ -155,7 +155,7 @@ export class OrchestratorEngine {
       activeSegmentName: request.activeContext?.name,
       activeSegmentId: request.activeContext?.id,
       conversationHistory: conversationHistory.map(m => ({
-        role: m.role === 'orchestrator' ? 'assistant' : m.role,
+        role: m.role === 'orchestrator' ? 'assistant' : (m.role === 'system' ? 'assistant' : m.role),
         content: m.content,
         timestamp: m.timestamp
       })),
@@ -360,10 +360,72 @@ export class OrchestratorEngine {
           message: request.message,
           selectedModel: modelSelection.modelId,
           modelMode: request.modelMode,
-          fixedModeStrategy: request.fixedModeStrategy
+          fixedModeStrategy: request.fixedModeStrategy,
+          hasStructureItems: !!request.structureItems?.length
         })
         
-        if (request.activeContext) {
+        let targetSectionId = request.activeContext?.id
+        
+        // If no active context, try to detect section from message
+        if (!targetSectionId && request.structureItems && request.structureItems.length > 0) {
+          const lowerMessage = request.message.toLowerCase()
+          
+          // Helper to find section by name (case-insensitive, partial match)
+          const findSectionByName = (items: any[], searchTerm: string): any => {
+            for (const item of items) {
+              if (item.name?.toLowerCase().includes(searchTerm)) {
+                return item
+              }
+              if (item.children) {
+                const found = findSectionByName(item.children, searchTerm)
+                if (found) return found
+              }
+            }
+            return null
+          }
+          
+          // Try to extract section name from message
+          // Patterns: "add to X", "write in X", "add text to X", "write X"
+          const patterns = [
+            /(?:add|write|put|insert).*(?:to|in|into)\s+(?:the\s+)?(.+?)(?:\s+(?:section|part|chapter|scene|act|sequence))?$/i,
+            /(?:add|write|put|insert)\s+(?:some\s+)?(?:text|content|words).*?(?:to|in|into)\s+(?:the\s+)?(.+?)$/i,
+          ]
+          
+          let sectionName: string | null = null
+          for (const pattern of patterns) {
+            const match = request.message.match(pattern)
+            if (match && match[1]) {
+              sectionName = match[1].trim().toLowerCase()
+              break
+            }
+          }
+          
+          if (sectionName) {
+            const foundSection = findSectionByName(request.structureItems, sectionName)
+            if (foundSection) {
+              targetSectionId = foundSection.id
+              console.log('🎯 [Smart Section Detection] Found section:', {
+                searchTerm: sectionName,
+                foundSection: foundSection.name,
+                sectionId: targetSectionId
+              })
+            }
+          }
+        }
+        
+        if (targetSectionId) {
+          // If we detected a section from the message (not already selected), auto-select it first
+          if (!request.activeContext?.id || request.activeContext.id !== targetSectionId) {
+            actions.push({
+              type: 'select_section',
+              payload: {
+                sectionId: targetSectionId
+              },
+              status: 'pending'
+            })
+            console.log('🎯 [Auto-Select] Selecting section:', targetSectionId)
+          }
+          
           // Determine which model to use based on mode and strategy
           let writerModel: any
           
@@ -384,7 +446,7 @@ export class OrchestratorEngine {
           actions.push({
             type: 'generate_content',
             payload: {
-              sectionId: request.activeContext.id,
+              sectionId: targetSectionId,
               prompt: request.message,
               model: writerModel.modelId,
               provider: writerModel.provider
@@ -392,13 +454,22 @@ export class OrchestratorEngine {
             status: 'pending'
           })
           console.log('✅ [generateActions] Created write_content action:', {
-            section: request.activeContext.id,
+            section: targetSectionId,
             model: writerModel.modelId,
             provider: writerModel.provider,
             strategy: request.modelMode === 'fixed' ? request.fixedModeStrategy : 'automatic'
           })
         } else {
-          console.warn('⚠️ [generateActions] No activeContext for write_content!')
+          console.warn('⚠️ [generateActions] No section found for write_content! Message:', request.message)
+          // Return a helpful message instead of failing silently
+          actions.push({
+            type: 'message',
+            payload: {
+              content: `I want to add content, but I need you to select a section first. Which section would you like me to write in?`,
+              type: 'result'
+            },
+            status: 'pending'
+          })
         }
         break
       }
@@ -417,15 +488,310 @@ export class OrchestratorEngine {
       }
       
       case 'open_and_write': {
-        // Resolve which node to open
+        // Try to detect the node type from the message
+        const lowerMessage = request.message.toLowerCase()
+        let targetType: string | null = null
+        
+        // Extract node type from message
+        if (lowerMessage.includes('novel')) targetType = 'novel'
+        else if (lowerMessage.includes('screenplay')) targetType = 'screenplay'
+        else if (lowerMessage.includes('report')) targetType = 'report'
+        else if (lowerMessage.includes('podcast')) targetType = 'podcast'
+        
+        // Resolve which specific node to open
         const targetNode = await resolveNode(request.message, canvasContext, this.blackboard)
         
-        if (targetNode) {
+        // Search ALL nodes on canvas (not just connected ones)
+        let candidateNodes = canvasContext.allNodes
+        if (targetType) {
+          // For story-structure nodes, check the format field (novel, screenplay, etc.)
+          // For other nodes, check the nodeType directly
+          candidateNodes = candidateNodes.filter(n => {
+            if (n.nodeType === 'story-structure') {
+              return n.detailedContext?.format?.toLowerCase() === targetType
+            }
+            return n.nodeType.toLowerCase() === targetType
+          })
+        } else if (targetNode) {
+          // Fall back to using the resolved node's type
+          candidateNodes = candidateNodes.filter(n => n.nodeType.toLowerCase() === targetNode.nodeType.toLowerCase())
+        }
+        
+        console.log('📂 [open_and_write] Search results:', {
+          targetType,
+          allNodesCount: canvasContext.allNodes.length,
+          candidatesCount: candidateNodes.length,
+          candidates: candidateNodes.map(n => ({ 
+            label: n.label, 
+            type: n.nodeType, 
+            format: n.detailedContext?.format 
+          }))
+        })
+        
+        if (candidateNodes.length === 0) {
+          // No matching nodes found
+          actions.push({
+            type: 'message',
+            payload: {
+              content: `I couldn't find any ${targetType || 'matching'} nodes. Could you be more specific?`,
+              type: 'error'
+            },
+            status: 'pending'
+          })
+        } else if (candidateNodes.length === 1) {
+          // Single match - proceed with opening
           actions.push({
             type: 'open_document',
             payload: {
-              nodeId: targetNode.nodeId,
+              nodeId: candidateNodes[0].nodeId,
               sectionId: null
+            },
+            status: 'pending'
+          })
+        } else {
+          // Multiple matches - request clarification with options
+          const options = candidateNodes.map(n => {
+            const wordCount = n.detailedContext?.wordsWritten || 0
+            return {
+              id: n.nodeId,
+              label: n.label,
+              description: `${wordCount.toLocaleString()} words`
+            }
+          })
+          
+          actions.push({
+            type: 'request_clarification',
+            payload: {
+              message: `🤔 I found ${candidateNodes.length} ${targetType || candidateNodes[0].nodeType} node(s). Which one would you like to open?`,
+              originalAction: 'open_and_write',
+              options
+            },
+            status: 'pending'
+          })
+        }
+        break
+      }
+      
+      case 'delete_node': {
+        // Try to detect the node type from the message
+        const lowerMessage = request.message.toLowerCase()
+        let targetType: string | null = null
+        
+        // Extract node type from message
+        if (lowerMessage.includes('novel')) targetType = 'novel'
+        else if (lowerMessage.includes('screenplay')) targetType = 'screenplay'
+        else if (lowerMessage.includes('report')) targetType = 'report'
+        else if (lowerMessage.includes('podcast')) targetType = 'podcast'
+        
+        // Resolve which specific node to delete
+        const targetNode = await resolveNode(request.message, canvasContext, this.blackboard)
+        
+        // Search ALL nodes on canvas (not just connected ones)
+        let candidateNodes = canvasContext.allNodes
+        if (targetType) {
+          // For story-structure nodes, check the format field (novel, screenplay, etc.)
+          // For other nodes, check the nodeType directly
+          candidateNodes = candidateNodes.filter(n => {
+            if (n.nodeType === 'story-structure') {
+              return n.detailedContext?.format?.toLowerCase() === targetType
+            }
+            return n.nodeType.toLowerCase() === targetType
+          })
+        } else if (targetNode) {
+          // Fall back to using the resolved node's type
+          candidateNodes = candidateNodes.filter(n => n.nodeType.toLowerCase() === targetNode.nodeType.toLowerCase())
+        }
+        
+        console.log('🗑️ [delete_node] Search results:', {
+          targetType,
+          allNodesCount: canvasContext.allNodes.length,
+          candidatesCount: candidateNodes.length,
+          candidates: candidateNodes.map(n => ({ 
+            label: n.label, 
+            type: n.nodeType, 
+            format: n.detailedContext?.format 
+          }))
+        })
+        
+        if (candidateNodes.length === 0) {
+          // No matching nodes found
+          actions.push({
+            type: 'message',
+            payload: {
+              content: `I couldn't find any ${targetType || 'matching'} nodes. Could you be more specific?`,
+              type: 'error'
+            },
+            status: 'pending'
+          })
+        } else if (candidateNodes.length === 1) {
+          // Single match - proceed with deletion
+          actions.push({
+            type: 'delete_node',
+            payload: {
+              nodeId: candidateNodes[0].nodeId,
+              nodeName: candidateNodes[0].label
+            },
+            status: 'pending'
+          })
+        } else {
+          // Multiple matches - request clarification with options
+          const options = candidateNodes.map(n => {
+            const wordCount = n.detailedContext?.wordsWritten || 0
+            return {
+              id: n.nodeId,
+              label: n.label,
+              description: `${wordCount.toLocaleString()} words`
+            }
+          })
+          
+          actions.push({
+            type: 'request_clarification',
+            payload: {
+              message: `🤔 I found ${candidateNodes.length} ${targetType || candidateNodes[0].nodeType} node(s). Which one would you like to remove?`,
+              originalAction: 'delete_node',
+              options
+            },
+            status: 'pending'
+          })
+        }
+        break
+      }
+      
+      case 'navigate_section': {
+        // User wants to navigate to a section within the current open document
+        const lowerMessage = request.message.toLowerCase()
+        
+        // Extract section identifier (chapter number, section name, etc.)
+        let targetSectionId: string | null = null
+        let targetSectionName: string | null = null
+        
+        if (request.structureItems && request.structureItems.length > 0) {
+          // Try to match by chapter/section/scene/beat number
+          const numberMatch = lowerMessage.match(/(chapter|section|scene|act|part|sequence|beat)\s+(\d+)/i)
+          if (numberMatch) {
+            const sectionType = numberMatch[1].toLowerCase()
+            const sectionNumber = parseInt(numberMatch[2])
+            
+            console.log('🔍 [navigate_section] Searching for:', { sectionType, sectionNumber })
+            
+            // Find section by number and type
+            const findByNumber = (items: any[], type: string, num: number, count: { value: number }): any => {
+              for (const item of items) {
+                const itemName = item.name?.toLowerCase() || ''
+                // Match by type keyword in name
+                if (itemName.includes(type)) {
+                  count.value++
+                  console.log(`  Checking: "${item.name}" (count: ${count.value}, target: ${num})`)
+                  if (count.value === num) {
+                    return item
+                  }
+                }
+                if (item.children) {
+                  const found = findByNumber(item.children, type, num, count)
+                  if (found) return found
+                }
+              }
+              return null
+            }
+            
+            const counter = { value: 0 }
+            const foundSection = findByNumber(request.structureItems, sectionType, sectionNumber, counter)
+            if (foundSection) {
+              targetSectionId = foundSection.id
+              targetSectionName = foundSection.name
+              console.log('✅ [navigate_section] Found by number:', foundSection.name)
+            }
+          }
+          
+          // If number matching failed, try short forms with optional prefix ("scene 1", "go to scene 1", "open beat 2")
+          if (!targetSectionId) {
+            const shortMatch = lowerMessage.match(/(?:go to |jump to |open |show |navigate to )?(scene|beat|chapter|section)\s+(\d+)/i)
+            if (shortMatch) {
+              const type = shortMatch[1].toLowerCase()
+              const num = parseInt(shortMatch[2])
+              
+              console.log('🔍 [navigate_section] Short form search:', { type, num })
+              
+              const findByType = (items: any[]): any => {
+                let count = 0
+                for (const item of items) {
+                  const itemName = item.name?.toLowerCase() || ''
+                  if (itemName.includes(type)) {
+                    count++
+                    console.log(`  Checking: "${item.name}" (count: ${count}, target: ${num})`)
+                    if (count === num) return item
+                  }
+                  if (item.children) {
+                    const found = findByType(item.children)
+                    if (found) return found
+                  }
+                }
+                return null
+              }
+              
+              const foundSection = findByType(request.structureItems)
+              if (foundSection) {
+                targetSectionId = foundSection.id
+                targetSectionName = foundSection.name
+                console.log('✅ [navigate_section] Found by short form:', foundSection.name)
+              }
+            }
+          }
+          
+          // If number matching failed, try name matching
+          if (!targetSectionId) {
+            const namePattern = /(chapter|section|scene|act|part|sequence|beat)\s+\d+:?\s*(.+?)$/i
+            const nameMatch = lowerMessage.match(namePattern)
+            
+            if (nameMatch && nameMatch[2]) {
+              const searchTerm = nameMatch[2].trim().toLowerCase()
+              
+              const findByName = (items: any[], term: string): any => {
+                for (const item of items) {
+                  if (item.name?.toLowerCase().includes(term)) {
+                    return item
+                  }
+                  if (item.children) {
+                    const found = findByName(item.children, term)
+                    if (found) return found
+                  }
+                }
+                return null
+              }
+              
+              const foundSection = findByName(request.structureItems, searchTerm)
+              if (foundSection) {
+                targetSectionId = foundSection.id
+                targetSectionName = foundSection.name
+              }
+            }
+          }
+        }
+        
+        console.log('🧭 [navigate_section] Search results:', {
+          message: request.message,
+          targetSectionId,
+          targetSectionName,
+          hasStructure: !!request.structureItems?.length
+        })
+        
+        if (targetSectionId) {
+          // Found the section - navigate to it
+          actions.push({
+            type: 'select_section',
+            payload: {
+              sectionId: targetSectionId,
+              sectionName: targetSectionName
+            },
+            status: 'pending'
+          })
+        } else {
+          // Could not find the section
+          actions.push({
+            type: 'message',
+            payload: {
+              content: `I couldn't find that section. Could you be more specific about which section you want to navigate to?`,
+              type: 'error'
             },
             status: 'pending'
           })

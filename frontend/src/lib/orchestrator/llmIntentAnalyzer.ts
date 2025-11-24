@@ -81,8 +81,16 @@ Available intents:
 - rewrite_with_coherence: User wants GHOSTWRITER-LEVEL rewrite - modify section AND update related sections for narrative consistency/coherence
 - modify_structure: User wants to change document structure (add/remove sections)
 - create_structure: User wants to create a BRAND NEW story/document (only when document panel is CLOSED)
-- open_and_write: User wants to write content IN AN EXISTING canvas node (auto-open document view)
-- clarify_intent: You're unsure and need to ask a clarifying question
+- navigate_section: User wants to navigate/jump to a specific section WITHIN the currently open document (e.g., "go to chapter 1", "jump to the third scene")
+  * ONLY use when document panel is OPEN
+  * User is trying to navigate within the current document, not open a different one
+- open_and_write: User wants to write content IN AN EXISTING canvas node (auto-open document view) (e.g., "open the novel", "let's work on the screenplay")
+  * Use this even if multiple nodes match - the system will automatically show options to the user
+  * Do NOT use clarify_intent for opening - always use open_and_write
+- delete_node: User wants to DELETE/REMOVE a canvas node (e.g., "remove the screenplay", "delete the novel", "delete one of the novels")
+  * Use this even if multiple nodes match - the system will automatically show options to the user
+  * Do NOT use clarify_intent for deletions - always use delete_node
+- clarify_intent: You're unsure and need to ask a clarifying question (NOT for deletions/opening - use delete_node/open_and_write instead)
 
 CRITICAL CONTEXT RULES:
 - If document panel is OPEN → User is working INSIDE that document
@@ -102,7 +110,16 @@ Guidelines:
 - If user says "explain", "what is", "tell me about" → answer_question (requiresContext: false - can answer from canvas context or general knowledge)
 - If user says "improve", "make it better", "polish" (ONE section) → improve_content (requiresContext: true)
 - If user says "rewrite X and update other sections", "keep it coherent", "maintain consistency", "fix earlier parts too" → rewrite_with_coherence (GHOSTWRITER MODE, requiresContext: true)
+- If user says "go to chapter X", "jump to section Y", "navigate to scene Z" WHILE document is open → navigate_section (navigate within current document)
+  * CRITICAL: Only use when document panel is OPEN
+  * This is for navigation WITHIN the current document, not opening a different document
 - If user says "craft/write/fill in that node", "help me write the podcast", "get content to MY podcast" → open_and_write (HELPFUL: auto-open document for them)
+- If user says "open the X", "let's open X", "open X" → open_and_write (open existing node for editing)
+  * IMPORTANT: Even if there are MULTIPLE matching nodes, still use open_and_write intent (the system will handle asking which one)
+  * Do NOT use clarify_intent for opening - always use open_and_write and let the system handle ambiguity
+- If user says "remove", "delete", "get rid of" a node/document → delete_node (requiresContext: false - operates on canvas nodes)
+  * IMPORTANT: Even if there are MULTIPLE matching nodes, still use delete_node intent (the system will handle asking which one)
+  * Do NOT use clarify_intent for deletion - always use delete_node and let the system handle ambiguity
 - CRITICAL: "MY podcast" / "THE screenplay" when canvas shows matching node → open_and_write (NOT create_structure!)
 - If user references previous chat ("add it", "put that") → check conversation history
 - If ambiguous or unclear → clarify_intent (ask a question)
@@ -110,7 +127,7 @@ Guidelines:
 IMPORTANT - requiresContext Rules:
 - answer_question → ALWAYS requiresContext: false (can answer from canvas, conversation, or general knowledge)
 - write_content, improve_content, rewrite_with_coherence → requiresContext: true (needs selected segment)
-- create_structure, open_and_write, general_chat, clarify_intent → requiresContext: false
+- create_structure, navigate_section, open_and_write, delete_node, general_chat, clarify_intent → requiresContext: false
 
 GHOSTWRITER MODE INDICATORS:
 - "and update related/earlier/other sections"
@@ -127,7 +144,7 @@ Be context-aware:
 
 Return your analysis as JSON with this structure:
 {
-  "intent": "write_content" | "answer_question" | "improve_content" | "rewrite_with_coherence" | "modify_structure" | "open_and_write" | "clarify_intent",
+  "intent": "write_content" | "answer_question" | "improve_content" | "rewrite_with_coherence" | "modify_structure" | "create_structure" | "navigate_section" | "open_and_write" | "delete_node" | "clarify_intent" | "general_chat",
   "confidence": 0.0-1.0,
   "reasoning": "Explain your thought process",
   "suggestedAction": "What the system should do",

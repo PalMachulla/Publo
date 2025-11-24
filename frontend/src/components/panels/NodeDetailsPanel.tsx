@@ -626,6 +626,9 @@ export default function NodeDetailsPanel({
               canvasEdges={edges}
               currentStoryStructureNodeId={currentStoryStructureNodeId}
               onSelectNode={onSelectNode}
+              onDeleteNode={async (nodeId: string) => {
+                await onDelete(nodeId)
+              }}
             />
           ) : nodeType === 'story-structure' ? (
             // Story Structure Metadata Panel

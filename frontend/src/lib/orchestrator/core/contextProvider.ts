@@ -36,6 +36,7 @@ export interface NodeContext {
 
 export interface CanvasContext {
   connectedNodes: NodeContext[]
+  allNodes: NodeContext[] // All nodes on canvas (for deletion, opening, etc.)
   totalNodes: number
   orchestratorId: string
   reasoning: string
@@ -131,6 +132,25 @@ export function buildCanvasContext(
   edges: Edge[],
   externalContentMap?: Record<string, { contentMap: Record<string, string> }>
 ): CanvasContext {
+  // Helper to extract node context
+  const extractNodeContext = (node: Node): NodeContext => {
+    const externalContent = externalContentMap?.[node.id]?.contentMap
+    
+    if (node.type === 'storyStructureNode' || node.data?.nodeType === 'story-structure') {
+      return extractStoryStructureContext(node, externalContent)
+    } else if (node.type === 'testNode') {
+      return extractTestNodeContext(node)
+    }
+    
+    // Generic node
+    return {
+      nodeId: node.id,
+      nodeType: node.type || 'unknown',
+      label: node.data?.label || 'Untitled Node',
+      summary: 'Generic node'
+    }
+  }
+  
   // Find nodes connected to orchestrator
   const connectedNodeIds = edges
     .filter(e => e.source === orchestratorId || e.target === orchestratorId)
@@ -138,23 +158,12 @@ export function buildCanvasContext(
   
   const connectedNodes = nodes
     .filter(n => connectedNodeIds.includes(n.id))
-    .map(node => {
-      const externalContent = externalContentMap?.[node.id]?.contentMap
-      
-      if (node.type === 'storyStructureNode' || node.data?.nodeType === 'story-structure') {
-        return extractStoryStructureContext(node, externalContent)
-      } else if (node.type === 'testNode') {
-        return extractTestNodeContext(node)
-      }
-      
-      // Generic node
-      return {
-        nodeId: node.id,
-        nodeType: node.type || 'unknown',
-        label: node.data?.label || 'Untitled Node',
-        summary: 'Generic node'
-      }
-    })
+    .map(extractNodeContext)
+  
+  // Get ALL nodes on canvas (excluding the orchestrator itself)
+  const allNodes = nodes
+    .filter(n => n.id !== orchestratorId)
+    .map(extractNodeContext)
   
   const reasoning = connectedNodes.length > 0
     ? `Connected to ${connectedNodes.length} node(s): ${connectedNodes.map(n => n.label).join(', ')}`
@@ -162,6 +171,7 @@ export function buildCanvasContext(
   
   return {
     connectedNodes,
+    allNodes,
     totalNodes: nodes.length,
     orchestratorId,
     reasoning

@@ -91,6 +91,17 @@ interface ActiveContext {
   description?: string
 }
 
+interface ConfirmationRequest {
+  actionId: string
+  actionType: OrchestratorAction['type']
+  actionPayload: any
+  message: string
+  confirmationType: 'destructive' | 'clarification' | 'permission'
+  options?: Array<{ id: string; label: string; description?: string }> // For multiple choice clarifications
+  createdAt: number
+  expiresAt: number // Timeout after 2 minutes
+}
+
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
   onCreateStory: (format: StoryFormat, template?: string, userPrompt?: string) => void
@@ -118,6 +129,7 @@ interface CreateStoryPanelProps {
   canvasEdges?: Edge[] // CANVAS VISIBILITY: All edges on canvas
   currentStoryStructureNodeId?: string | null // CANVAS CONTENT: ID of currently loaded story structure
   onSelectNode?: (nodeId: string, sectionId?: string) => void // HELPFUL MODE: Select and open a specific canvas node, optionally auto-select a section
+  onDeleteNode?: (nodeId: string) => Promise<void> // DELETE: Delete a canvas node
 }
 
 interface Template {
@@ -288,7 +300,8 @@ export default function OrchestratorPanel({
   canvasNodes = [],
   canvasEdges = [],
   currentStoryStructureNodeId = null,
-  onSelectNode
+  onSelectNode,
+  onDeleteNode
 }: CreateStoryPanelProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -327,6 +340,9 @@ export default function OrchestratorPanel({
   const [modelMode, setModelMode] = useState<'automatic' | 'fixed'>('automatic') // Default to Auto
   const [fixedModeStrategy, setFixedModeStrategy] = useState<'consistent' | 'loose'>('loose') // Default to Loose (cost-effective)
   const [currentlyUsedModels, setCurrentlyUsedModels] = useState<{intent: string, writer: string}>({intent: '', writer: ''})
+  
+  // Confirmation state - for 2-step execution flow
+  const [pendingConfirmation, setPendingConfirmation] = useState<ConfirmationRequest | null>(null)
   
   // Chat state (local input only, history is canvas-level)
   const [chatMessage, setChatMessage] = useState('')
@@ -397,6 +413,22 @@ export default function OrchestratorPanel({
     orchestratorId: 'context'
   })
   
+  // Handle confirmation timeout and auto-clear
+  useEffect(() => {
+    if (!pendingConfirmation) return
+    
+    const checkInterval = setInterval(() => {
+      if (isConfirmationExpired(pendingConfirmation)) {
+        setPendingConfirmation(null)
+        if (onAddChatMessage) {
+          onAddChatMessage('⏱️ Confirmation expired. Please try again.', 'orchestrator', 'error')
+        }
+      }
+    }, 1000) // Check every second
+    
+    return () => clearInterval(checkInterval)
+  }, [pendingConfirmation, onAddChatMessage])
+  
   /**
    * Agentic message handler - analyzes intent and routes to appropriate action
    */
@@ -422,6 +454,13 @@ export default function OrchestratorPanel({
   // ============================================================
   
   const handleSendMessage_NEW = async (message: string) => {
+    // Check if there's a pending confirmation
+    if (pendingConfirmation) {
+      // This message is a response to the confirmation
+      await handleConfirmationResponse(message)
+      return
+    }
+    
     // Add user message to chat
     if (onAddChatMessage) {
       onAddChatMessage(message, 'user')
@@ -575,8 +614,174 @@ export default function OrchestratorPanel({
     }
   }
   
-  // Action executor - handles actions from the orchestrator
+  // Helper: Create a confirmation request
+  const createConfirmationRequest = (
+    action: OrchestratorAction,
+    confirmationType: ConfirmationRequest['confirmationType'],
+    message: string,
+    options?: ConfirmationRequest['options']
+  ): ConfirmationRequest => {
+    const now = Date.now()
+    return {
+      actionId: `${action.type}_${now}`,
+      actionType: action.type,
+      actionPayload: action.payload,
+      message,
+      confirmationType,
+      options,
+      createdAt: now,
+      expiresAt: now + 2 * 60 * 1000 // 2 minutes
+    }
+  }
+  
+  // Helper: Check if confirmation has expired
+  const isConfirmationExpired = (confirmation: ConfirmationRequest): boolean => {
+    return Date.now() > confirmation.expiresAt
+  }
+  
+  // Helper: Handle confirmation response
+  const handleConfirmationResponse = async (response: string | { id: string }) => {
+    if (!pendingConfirmation) {
+      console.warn('No pending confirmation')
+      return
+    }
+    
+    // Check if expired
+    if (isConfirmationExpired(pendingConfirmation)) {
+      setPendingConfirmation(null)
+      if (onAddChatMessage) {
+        onAddChatMessage('⏱️ Confirmation expired. Please try again.', 'orchestrator', 'error')
+      }
+      return
+    }
+    
+    // Handle clarification (multiple choice)
+    if (pendingConfirmation.confirmationType === 'clarification' && pendingConfirmation.options) {
+      let selectedOption: typeof pendingConfirmation.options[0] | undefined
+      
+      if (typeof response === 'object' && 'id' in response) {
+        // Direct option selection (button click)
+        selectedOption = pendingConfirmation.options.find(opt => opt.id === response.id)
+      } else if (typeof response === 'string') {
+        // Natural language response - try to match
+        const lowerResponse = response.toLowerCase()
+        selectedOption = pendingConfirmation.options.find(opt => 
+          lowerResponse.includes(opt.id.toLowerCase()) ||
+          lowerResponse.includes(opt.label.toLowerCase()) ||
+          (opt.description && lowerResponse.includes(opt.description.toLowerCase()))
+        )
+      }
+      
+      if (selectedOption) {
+        // Build the appropriate action based on the original action type
+        let updatedAction: OrchestratorAction
+        
+        // Check originalAction type (stored in actionType by createConfirmationRequest)
+        const originalAction = pendingConfirmation.actionType as string
+        
+        if (originalAction === 'delete_node') {
+          // For delete_node, we need nodeId and nodeName
+          updatedAction = {
+            type: 'delete_node',
+            payload: {
+              nodeId: selectedOption.id,
+              nodeName: selectedOption.label
+            },
+            status: 'pending'
+          }
+        } else if (originalAction === 'open_and_write') {
+          // For open_and_write, we need nodeId
+          updatedAction = {
+            type: 'open_document',
+            payload: {
+              nodeId: selectedOption.id,
+              sectionId: null
+            },
+            status: 'pending'
+          }
+        } else {
+          // Generic fallback
+          updatedAction = {
+            type: pendingConfirmation.actionType,
+            payload: {
+              ...pendingConfirmation.actionPayload,
+              selectedOptionId: selectedOption.id
+            },
+            status: 'pending'
+          }
+        }
+        
+        // Clear confirmation and execute
+        setPendingConfirmation(null)
+        await executeActionDirectly(updatedAction)
+      } else {
+        if (onAddChatMessage) {
+          onAddChatMessage('❓ I didn\'t understand which option you meant. Please try again or click one of the buttons.', 'orchestrator', 'error')
+        }
+      }
+      return
+    }
+    
+    // Handle destructive/permission confirmations (yes/no)
+    if (pendingConfirmation.confirmationType === 'destructive' || pendingConfirmation.confirmationType === 'permission') {
+      const lowerResponse = typeof response === 'string' ? response.toLowerCase().trim() : ''
+      const isConfirmed = lowerResponse === 'yes' || lowerResponse === 'y' || lowerResponse === 'confirm' || lowerResponse === 'ok'
+      const isCancelled = lowerResponse === 'no' || lowerResponse === 'n' || lowerResponse === 'cancel'
+      
+      if (isConfirmed) {
+        // Execute the action
+        const actionToExecute: OrchestratorAction = {
+          type: pendingConfirmation.actionType,
+          payload: pendingConfirmation.actionPayload,
+          status: 'pending'
+        }
+        
+        setPendingConfirmation(null)
+        await executeActionDirectly(actionToExecute)
+      } else if (isCancelled) {
+        setPendingConfirmation(null)
+        if (onAddChatMessage) {
+          onAddChatMessage('❌ Action cancelled.', 'orchestrator', 'result')
+        }
+      } else {
+        if (onAddChatMessage) {
+          onAddChatMessage('❓ Please reply "yes" to confirm or "no" to cancel.', 'orchestrator', 'error')
+        }
+      }
+    }
+  }
+  
+  // Action executor - handles actions from the orchestrator (with confirmation checks)
   const executeAction = async (action: OrchestratorAction) => {
+    // Check if this action requires confirmation
+    const requiresConfirmation = action.type === 'delete_node'
+    
+    if (requiresConfirmation) {
+      // Create confirmation request instead of executing directly
+      let confirmationMessage = ''
+      let confirmationType: ConfirmationRequest['confirmationType'] = 'destructive'
+      
+      if (action.type === 'delete_node') {
+        confirmationMessage = `⚠️ Delete "${action.payload.nodeName}"?\nThis cannot be undone.`
+        confirmationType = 'destructive'
+      }
+      
+      const confirmation = createConfirmationRequest(action, confirmationType, confirmationMessage)
+      setPendingConfirmation(confirmation)
+      
+      if (onAddChatMessage) {
+        onAddChatMessage(confirmationMessage, 'orchestrator', 'result')
+      }
+      
+      return // Don't execute yet, wait for confirmation
+    }
+    
+    // No confirmation needed, execute directly
+    await executeActionDirectly(action)
+  }
+  
+  // Action executor - direct execution (bypasses confirmation)
+  const executeActionDirectly = async (action: OrchestratorAction) => {
     try {
       switch (action.type) {
         case 'message':
@@ -622,6 +827,35 @@ export default function OrchestratorPanel({
               selectedTemplate || undefined,
               action.payload.prompt
             )
+          }
+          break
+          
+        case 'delete_node':
+          // Handle node deletion
+          if (action.payload.nodeId && onDeleteNode) {
+            await onDeleteNode(action.payload.nodeId)
+            if (onAddChatMessage) {
+              onAddChatMessage(`✅ Deleted "${action.payload.nodeName}"`, 'orchestrator', 'result')
+            }
+          }
+          break
+          
+        case 'request_clarification':
+          // Handle clarification request - create a confirmation with options
+          const clarificationConfirmation = createConfirmationRequest(
+            {
+              type: action.payload.originalAction,
+              payload: {},
+              status: 'pending'
+            },
+            'clarification',
+            action.payload.message,
+            action.payload.options
+          )
+          setPendingConfirmation(clarificationConfirmation)
+          
+          if (onAddChatMessage) {
+            onAddChatMessage(action.payload.message, 'orchestrator', 'result')
           }
           break
           
@@ -1863,42 +2097,7 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
         </div>
       </div>
 
-      {/* Active Context Display - Compact (only show when document view is open) */}
-      {activeContext && isDocumentViewOpen && (
-        <div className="px-3 py-2 bg-yellow-50 border-b border-yellow-200 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <svg className="w-4 h-4 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-            </svg>
-            <span className="text-xs text-yellow-900 truncate">
-              <span className="font-medium">Writing:</span> {activeContext.name}
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => {
-                if (onAddChatMessage && activeContext) {
-                  onAddChatMessage(`Write content for "${activeContext.name}"`)
-                  onCreateStory(selectedFormat, selectedTemplate || undefined, `Write detailed content for "${activeContext.name}"`)
-                }
-              }}
-              className="px-2 py-1 bg-yellow-200 hover:bg-yellow-300 text-yellow-900 rounded text-xs font-medium transition-colors"
-              title="Write this section"
-            >
-              Write
-            </button>
-            <button
-              onClick={onClearContext}
-              className="p-1 hover:bg-yellow-200 rounded transition-colors"
-              title="Clear context"
-            >
-              <svg className="w-3.5 h-3.5 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Active Context Display - REMOVED: Sidebar already shows active section */}
       
       {/* Model & Format selection moved to bottom input area (Cursor-style) */}
 
@@ -2159,33 +2358,131 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
           </div>
         )}
         
-        {/* Input area with model selector (Cursor-style) */}
-        <div className="flex items-end gap-2">
-          {/* Model Selector Button */}
-          <div className="relative">
-            <button
-              onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors border border-gray-300"
-            >
-              {modelMode === 'automatic' ? (
-                <>
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  <span>Auto</span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                  </svg>
-                  <span className="max-w-[100px] truncate">{configuredModel.orchestrator || 'Fixed'}</span>
-                </>
-              )}
-              <svg className={`w-3 h-3 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+        {/* Confirmation UI - shown when waiting for user confirmation */}
+        {pendingConfirmation && (
+          <div className={`mb-4 p-4 border-2 rounded-lg ${
+            pendingConfirmation.confirmationType === 'destructive' 
+              ? 'bg-red-50 border-red-300' 
+              : pendingConfirmation.confirmationType === 'permission'
+              ? 'bg-yellow-50 border-yellow-300'
+              : 'bg-blue-50 border-blue-300'
+          }`}>
+            {/* Confirmation message */}
+            <p className="text-sm font-medium text-gray-900 mb-3 whitespace-pre-wrap">
+              {pendingConfirmation.message}
+            </p>
+            
+            {/* Clarification options (multiple choice) */}
+            {pendingConfirmation.confirmationType === 'clarification' && pendingConfirmation.options && (
+              <div className="space-y-2">
+                {pendingConfirmation.options.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => handleConfirmationResponse({ id: option.id })}
+                    className="w-full flex items-start gap-3 p-3 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all text-left group"
+                  >
+                    <span className="text-lg">📄</span>
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900 group-hover:text-blue-700">
+                        {option.label}
+                      </div>
+                      {option.description && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          {option.description}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+                <p className="text-xs text-gray-500 mt-2">
+                  💬 Or describe it: &quot;The one with 79,200 words&quot;
+                </p>
+              </div>
+            )}
+            
+            {/* Destructive/Permission actions (yes/no) */}
+            {(pendingConfirmation.confirmationType === 'destructive' || pendingConfirmation.confirmationType === 'permission') && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleConfirmationResponse('no')}
+                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleConfirmationResponse('yes')}
+                  className={`flex-1 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${
+                    pendingConfirmation.confirmationType === 'destructive'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  {pendingConfirmation.confirmationType === 'destructive' ? 'Yes, Delete' : 'Confirm'}
+                </button>
+              </div>
+            )}
+            
+            {/* Timeout indicator */}
+            <p className="text-[10px] text-gray-500 mt-2">
+              ⏱️ Expires in {Math.max(0, Math.ceil((pendingConfirmation.expiresAt - Date.now()) / 1000))}s
+            </p>
+          </div>
+        )}
+        
+        {/* Input area - Cursor-style Composer */}
+        <div className="relative border border-gray-300 rounded-lg bg-white shadow-sm hover:border-gray-400 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200 transition-all">
+          {/* Text Input */}
+          <textarea
+            ref={chatInputRef}
+            value={chatMessage}
+            onChange={(e) => setChatMessage(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                if (chatMessage.trim()) {
+                  await handleSendMessage_NEW(chatMessage)
+                }
+              }
+            }}
+            placeholder={activeContext 
+              ? `Write about "${activeContext.name}"...` 
+              : "Chat with the orchestrator..."}
+            rows={3}
+            className="w-full resize-none px-4 pt-3 pb-12 text-sm focus:outline-none placeholder-gray-400 bg-transparent"
+          />
+          
+          {/* Bottom Bar with Model Selector */}
+          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-2 border-t border-gray-200 bg-gray-50/50 backdrop-blur-sm">
+            {/* Left: Helper text */}
+            <p className="text-[10px] text-gray-500">
+              <kbd className="px-1 py-0.5 text-[9px] bg-white border border-gray-300 rounded shadow-sm">Enter</kbd> to send • <kbd className="px-1 py-0.5 text-[9px] bg-white border border-gray-300 rounded shadow-sm">Shift+Enter</kbd> for new line
+            </p>
+            
+            {/* Right: Model Selector Button */}
+            <div className="relative">
+              <button
+                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
+              >
+                {modelMode === 'automatic' ? (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span>Auto</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                    </svg>
+                    <span className="max-w-[100px] truncate">{configuredModel.orchestrator || 'Fixed'}</span>
+                  </>
+                )}
+                <svg className={`w-3 h-3 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
             
             {/* Dropdown Menu */}
             {isModelDropdownOpen && (
@@ -2360,32 +2657,9 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
                 )}
               </div>
             )}
+            </div>
           </div>
-          
-          {/* Text Input */}
-          <textarea
-            ref={chatInputRef}
-            value={chatMessage}
-            onChange={(e) => setChatMessage(e.target.value)}
-            onKeyDown={async (e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                if (chatMessage.trim()) {
-                  await handleSendMessage_NEW(chatMessage)
-                }
-              }
-            }}
-            placeholder={activeContext 
-              ? `Write about "${activeContext.name}"...` 
-              : "Chat with the orchestrator..."}
-            rows={2}
-            className="flex-1 resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent placeholder-gray-400"
-          />
         </div>
-        
-        <p className="text-xs text-gray-500 mt-2">
-          Press Enter to send • Shift+Enter for new line
-        </p>
       </div>
     </div>
   )
