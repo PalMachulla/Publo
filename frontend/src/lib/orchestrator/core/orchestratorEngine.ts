@@ -1209,6 +1209,13 @@ Generate a complete structure plan with:
     const data = await response.json()
     let planData: any
     
+    // Log what we received for debugging
+    this.blackboard.addMessage({
+      role: 'orchestrator',
+      content: `📦 Received response with keys: ${Object.keys(data).join(', ')}`,
+      type: 'thinking'
+    })
+    
     // Handle different response formats
     if (useStructuredOutput) {
       // Structured output - response is already parsed JSON object
@@ -1228,12 +1235,37 @@ Generate a complete structure plan with:
           content: '✅ Received validated structured output',
           type: 'thinking'
         })
-      } else {
-        // Fallback: might be in content field
-        planData = typeof data.content === 'object' ? data.content : JSON.parse(data.content || '{}')
+      } else if (typeof data.content === 'string') {
+        // OpenAI returns JSON as string in content field
+        try {
+          planData = JSON.parse(data.content)
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: '✅ Parsed JSON from content string',
+            type: 'thinking'
+          })
+        } catch (e) {
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `⚠️ Failed to parse content as JSON: ${e}`,
+            type: 'thinking'
+          })
+          planData = data.content
+        }
+      } else if (typeof data.content === 'object') {
+        // Content is already an object
+        planData = data.content
         this.blackboard.addMessage({
           role: 'orchestrator',
-          content: '✅ Parsed from content field',
+          content: '✅ Using content object directly',
+          type: 'thinking'
+        })
+      } else {
+        // Last resort fallback
+        planData = data
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: '⚠️ Using entire response as planData',
           type: 'thinking'
         })
       }
