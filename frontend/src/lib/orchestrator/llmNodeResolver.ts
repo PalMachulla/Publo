@@ -30,8 +30,11 @@ export async function resolveNodeWithLLM(
       .map(node => `- "${node.label}" (${node.detailedContext?.format || node.nodeType}): ${node.summary}`)
       .join('\n')
 
-    const recentConversation = conversationHistory
-      .slice(-5)
+    // Keep conversation as array for API call
+    const recentConversation = conversationHistory.slice(-5)
+    
+    // Format conversation as string for the prompt
+    const conversationText = recentConversation
       .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
       .join('\n')
 
@@ -59,7 +62,7 @@ If no clear reference exists, return nodeId: null with low confidence.`
 ${availableNodes}
 
 RECENT CONVERSATION:
-${recentConversation}
+${conversationText}
 
 CURRENT USER MESSAGE:
 "${userMessage}"
