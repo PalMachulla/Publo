@@ -1207,6 +1207,16 @@ Generate a complete structure plan with:
     })
     
     const data = await response.json()
+    
+    // DEBUG: Log to console what we actually received
+    console.log('🔍 [Structure Generation] API Response:', {
+      keys: Object.keys(data),
+      hasContent: !!data.content,
+      hasStructuredOutput: !!data.structured_output,
+      contentType: typeof data.content,
+      contentPreview: typeof data.content === 'string' ? data.content.substring(0, 200) : data.content
+    })
+    
     let planData: any
     
     // Log what we received for debugging

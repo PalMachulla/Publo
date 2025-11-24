@@ -189,11 +189,26 @@ export class OpenAIAdapter implements LLMProviderAdapter {
       // Handle structured output response
       let content = response.choices[0]?.message?.content || ''
       
+      console.log('🔍 [OpenAI Adapter] Response:', {
+        hasResponseFormat: !!params.response_format,
+        responseFormatType: params.response_format?.type,
+        contentLength: content.length,
+        contentPreview: content.substring(0, 200)
+      })
+      
       // If response_format was used, the content is already structured JSON
       if (params.response_format && params.response_format.type === 'json_schema') {
+        console.log('✅ [OpenAI Adapter] Using structured output path')
         // Parse the JSON content and return as structured_output
         try {
           const parsedContent = JSON.parse(content)
+          console.log('✅ [OpenAI Adapter] Successfully parsed structured output:', {
+            keys: Object.keys(parsedContent),
+            hasReasoning: !!parsedContent.reasoning,
+            hasStructure: !!parsedContent.structure,
+            hasTasks: !!parsedContent.tasks,
+            hasMetadata: !!parsedContent.metadata
+          })
           return {
             content: content, // Keep raw JSON string for backwards compatibility
             structured_output: parsedContent, // Add parsed object
@@ -207,8 +222,10 @@ export class OpenAIAdapter implements LLMProviderAdapter {
           }
         } catch (e) {
           // If parsing fails, fallback to standard response
-          console.warn('Failed to parse structured output:', e)
+          console.warn('❌ [OpenAI Adapter] Failed to parse structured output:', e)
         }
+      } else {
+        console.log('⚠️ [OpenAI Adapter] No response_format, using standard path')
       }
 
       return {
