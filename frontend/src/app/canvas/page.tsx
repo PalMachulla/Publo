@@ -1897,9 +1897,8 @@ export default function CanvasPage() {
         [segmentId]: data.content
       }))
       
-      // CRITICAL: Save generated content to Supabase sections
-      // This ensures content persists and appears in document view
-      console.log('💾 Saving generated content to Supabase section:', {
+      // ✅ NEW HIERARCHICAL SYSTEM: Save content to document_data JSONB
+      console.log('💾 Saving generated content to hierarchical document:', {
         segmentId,
         contentLength: data.content.length,
         nodeId: currentStoryStructureNodeId
@@ -1908,39 +1907,52 @@ export default function CanvasPage() {
       try {
         const supabase = createClient()
         
-        // Update or insert the section content
-        const { data: sectionData, error: sectionError } = await supabase
-          .from('document_sections')
-          .upsert({
-            story_structure_node_id: currentStoryStructureNodeId,
-            structure_item_id: segmentId,
-            content: data.content,
-            word_count: data.content.split(/\s+/).filter((w: string) => w.length > 0).length,
-            status: 'completed',
-            order_index: currentStructureItems.findIndex((item: any) => item.id === segmentId)
-          }, {
-            onConflict: 'story_structure_node_id,structure_item_id',
-            ignoreDuplicates: false
-          })
-          .select()
+        // Fetch current document_data
+        const { data: nodeData, error: fetchError } = await supabase
+          .from('nodes')
+          .select('document_data')
+          .eq('id', currentStoryStructureNodeId)
+          .single()
         
-        if (sectionError) {
-          console.error('❌ Failed to save section to Supabase:', sectionError)
-          // Don't throw - content is still in local state
-        } else {
-          console.log('✅ Section saved to Supabase:', sectionData)
+        if (fetchError) {
+          console.error('❌ Failed to fetch document_data:', fetchError)
+        } else if (nodeData?.document_data) {
+          // Import DocumentManager dynamically
+          const { DocumentManager } = await import('@/lib/document/DocumentManager')
           
-          // Refresh sections in document panel to show new content
-          if (refreshSectionsRef.current) {
-            console.log('🔄 Refreshing sections in document panel...')
-            await refreshSectionsRef.current()
+          // Load existing document
+          const docManager = new DocumentManager(nodeData.document_data)
+          
+          // Update the segment content
+          const success = docManager.updateContent(segmentId, data.content)
+          
+          if (success) {
+            // Save back to database
+            const { error: updateError } = await supabase
+              .from('nodes')
+              .update({ document_data: docManager.getData() })
+              .eq('id', currentStoryStructureNodeId)
+            
+            if (updateError) {
+              console.error('❌ Failed to save document_data:', updateError)
+            } else {
+              console.log('✅ Content saved to hierarchical document')
+              
+              // Refresh document panel to show new content
+              if (refreshSectionsRef.current) {
+                console.log('🔄 Refreshing document view...')
+                await refreshSectionsRef.current()
+              }
+            }
           } else {
-            console.warn('⚠️ No refresh function available - sections may not update in UI')
+            console.error('❌ Failed to update segment in DocumentManager')
           }
+        } else {
+          console.warn('⚠️ No document_data found - content only in local state')
         }
       } catch (saveError) {
-        console.error('❌ Error saving section:', saveError)
-        // Don't throw - content is still in local state
+        console.error('❌ Error saving to hierarchical document:', saveError)
+        // Don't throw - content is still in local contentMap
       }
       
       // Add success message
