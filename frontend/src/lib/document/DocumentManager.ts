@@ -7,6 +7,8 @@
 import type { DocumentData, DocumentNode, FlatDocumentSection } from '@/types/document-hierarchy'
 import { findNodeById, flattenDocumentStructure, buildFullDocument } from '@/types/document-hierarchy'
 import type { StoryStructureItem } from '@/types/nodes'
+import { generateSummary, autoGenerateSummariesForDocument, needsSummaryUpdate } from './summaryGenerator'
+import type { SummaryGenerationOptions } from './summaryGenerator'
 
 export class DocumentManager {
   private data: DocumentData
@@ -274,6 +276,76 @@ export class DocumentManager {
     
     traverse(this.data.structure)
     return summaries
+  }
+
+  // Generate summary for a specific node
+  async generateSummaryForNode(nodeId: string): Promise<boolean> {
+    const node = this.findNode(nodeId)
+    if (!node) return false
+    
+    // Find parent for context
+    const findParent = (nodes: DocumentNode[], targetId: string, parent: DocumentNode | null = null): DocumentNode | null => {
+      for (const n of nodes) {
+        if (n.id === targetId) return parent
+        const found = findParent(n.children, targetId, n)
+        if (found !== null) return found
+      }
+      return null
+    }
+    
+    const parentNode = findParent(this.data.structure, nodeId)
+    
+    try {
+      const result = await generateSummary({
+        sectionId: node.id,
+        sectionName: node.title || node.name,
+        sectionLevel: node.level,
+        content: node.content,
+        parentSummary: parentNode?.summary,
+        documentFormat: this.data.format
+      })
+      
+      node.summary = result.summary
+      node.updatedAt = new Date().toISOString()
+      this.data.lastEditedAt = new Date().toISOString()
+      
+      return true
+    } catch (error) {
+      console.error('[DocumentManager] Failed to generate summary:', error)
+      return false
+    }
+  }
+
+  // Auto-generate all missing summaries
+  async autoGenerateAllSummaries(onProgress?: (message: string) => void): Promise<number> {
+    const count = await autoGenerateSummariesForDocument(
+      this.data.structure,
+      this.data.format,
+      onProgress
+    )
+    
+    if (count > 0) {
+      this.data.lastEditedAt = new Date().toISOString()
+    }
+    
+    return count
+  }
+
+  // Check which nodes need summary updates
+  getNodesNeedingSummaries(): DocumentNode[] {
+    const needsUpdate: DocumentNode[] = []
+    
+    const traverse = (nodes: DocumentNode[]) => {
+      for (const node of nodes) {
+        if (needsSummaryUpdate(node)) {
+          needsUpdate.push(node)
+        }
+        traverse(node.children)
+      }
+    }
+    
+    traverse(this.data.structure)
+    return needsUpdate
   }
 
   // Export as JSON
