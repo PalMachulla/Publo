@@ -14,7 +14,7 @@
 
 import { Blackboard } from './blackboard'
 import { buildCanvasContext, resolveNode, formatCanvasContextForLLM, type CanvasContext } from './contextProvider'
-import { selectModel, assessTaskComplexity, type ModelPriority } from './modelRouter'
+import { selectModel, assessTaskComplexity, type ModelPriority, type ModelSelection } from './modelRouter'
 import { analyzeIntent, type IntentAnalysis, type UserIntent } from '../intentRouter'
 import { enhanceContextWithRAG } from '../ragIntegration'
 import { Node, Edge } from 'reactflow'
@@ -353,20 +353,30 @@ export class OrchestratorEngine {
         console.log('📝 [generateActions] write_content:', {
           hasActiveContext: !!request.activeContext,
           activeContextId: request.activeContext?.id,
-          message: request.message
+          message: request.message,
+          selectedModel: modelSelection.modelId
         })
         
         if (request.activeContext) {
+          // For write_content, we want a WRITER model, not the orchestrator model
+          // Use the fastest available model for content generation
+          const writerModel = selectModel('moderate', 'speed', ['groq', 'openai'])
+          
           actions.push({
             type: 'generate_content',
             payload: {
               sectionId: request.activeContext.id,
               prompt: request.message,
-              model: modelSelection.modelId
+              model: writerModel.modelId, // Use writer model, not orchestrator model
+              provider: writerModel.provider
             },
             status: 'pending'
           })
-          console.log('✅ [generateActions] Created write_content action for section:', request.activeContext.id)
+          console.log('✅ [generateActions] Created write_content action:', {
+            section: request.activeContext.id,
+            model: writerModel.modelId,
+            provider: writerModel.provider
+          })
         } else {
           console.warn('⚠️ [generateActions] No activeContext for write_content!')
         }
