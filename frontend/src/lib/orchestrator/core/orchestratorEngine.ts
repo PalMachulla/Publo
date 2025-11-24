@@ -14,11 +14,20 @@
 
 import { Blackboard } from './blackboard'
 import { buildCanvasContext, resolveNode, formatCanvasContextForLLM, type CanvasContext } from './contextProvider'
-import { selectModel, assessTaskComplexity, type ModelPriority, type ModelSelection } from './modelRouter'
+import { 
+  selectModel, 
+  assessTaskComplexity, 
+  selectModelForTask,
+  isFrontierModel,
+  MODEL_TIERS,
+  type ModelPriority, 
+  type ModelSelection,
+  type TaskRequirements,
+  type TieredModel
+} from './modelRouter'
 import { analyzeIntent, type IntentAnalysis, type UserIntent } from '../intentRouter'
 import { enhanceContextWithRAG } from '../ragIntegration'
 import { Node, Edge } from 'reactflow'
-import { selectModelForTask, isFrontierModel, MODEL_TIERS, type TaskRequirements, type TieredModel } from './modelTiers'
 
 // ============================================================
 // TYPES
