@@ -104,7 +104,7 @@ interface ConfirmationRequest {
 
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
-  onCreateStory: (format: StoryFormat, template?: string, userPrompt?: string) => void
+  onCreateStory: (format: StoryFormat, template?: string, userPrompt?: string, plan?: any) => void
   onClose: () => void
   onUpdate?: (nodeId: string, data: Partial<CreateStoryNodeData>) => void
   onSendPrompt?: (prompt: string) => void // NEW: For chat-based prompting
@@ -876,6 +876,34 @@ export default function OrchestratorPanel({
           
           if (onAddChatMessage) {
             onAddChatMessage(action.payload.message, 'orchestrator', 'result')
+          }
+          break
+          
+        case 'generate_structure':
+          // Handle structure generation - create the story node on canvas
+          if (action.payload.plan && onCreateStory) {
+            const format = action.payload.format || 'novel'
+            const prompt = action.payload.prompt || ''
+            const plan = action.payload.plan
+            
+            console.log('📝 [generate_structure] Creating story node:', {
+              format,
+              planStructureCount: plan.structure?.length,
+              prompt,
+              planStructure: plan.structure
+            })
+            
+            // Call onCreateStory with the format, template, prompt, AND the plan
+            await onCreateStory(format, undefined, prompt, plan)
+            
+            if (onAddChatMessage) {
+              onAddChatMessage(`✅ Created ${format} structure with ${plan.structure?.length || 0} sections`, 'orchestrator', 'result')
+            }
+          } else {
+            console.error('❌ generate_structure action missing required data:', action.payload)
+            if (onAddChatMessage) {
+              onAddChatMessage('❌ Failed to create structure: Missing plan data', 'orchestrator', 'error')
+            }
           }
           break
           

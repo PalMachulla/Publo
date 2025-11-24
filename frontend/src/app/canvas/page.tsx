@@ -886,8 +886,8 @@ export default function CanvasPage() {
   }, [clusterCount, availableAgents]) // When cluster count or data changes
 
   // Handle Create Story node click - spawn new story structure node
-  const handleCreateStory = useCallback((format: StoryFormat, template?: string, userPromptDirect?: string) => {
-    console.log('handleCreateStory called with format:', format, 'template:', template, 'userPromptDirect:', userPromptDirect)
+  const handleCreateStory = useCallback((format: StoryFormat, template?: string, userPromptDirect?: string, plan?: any) => {
+    console.log('handleCreateStory called with format:', format, 'template:', template, 'userPromptDirect:', userPromptDirect, 'plan:', plan)
     
     // Generate unique ID for the story structure
     const structureId = `structure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -904,17 +904,29 @@ export default function CanvasPage() {
     }
     const title = formatLabels[format] || 'Story'
     
+    // If plan is provided, convert it to items array
+    const initialItems = plan?.structure?.map((item: any, index: number) => ({
+      id: item.id,
+      level: item.level,
+      name: item.name,
+      summary: item.summary || '',
+      wordCount: item.wordCount || 0,
+      parentId: item.parentId || null,
+      order: item.order !== undefined ? item.order : index // Use array index as fallback order
+    })) || []
+    
+    console.log('📝 Creating node with items:', initialItems.length, 'items from plan')
+    
     // Create new story structure node - positioned below the Ghostwriter node
-    // No default items - let user create structure from scratch
     const nodeData: StoryStructureNodeData = {
       label: title,
       comments: [],
       nodeType: 'story-structure' as const,
       format: format,
-      items: [], // Start empty - user will add items via panel
+      items: initialItems, // Use items from plan if available, otherwise start empty
       activeLevel: 1,
       template: template,
-      isLoading: true, // Start as loading
+      isLoading: !plan, // If plan provided, not loading. Otherwise, start as loading
       onItemClick: handleStructureItemClick,
       onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(structureId, items),
       availableAgents: availableAgents, // Inject available agents
@@ -973,6 +985,15 @@ export default function CanvasPage() {
             : node
         )
       )
+    }
+    
+    // If plan is already provided, skip orchestration and just save
+    if (plan) {
+      console.log('✅ Plan already provided by orchestrator, skipping re-generation')
+      saveAndFinalize().catch(err => {
+        console.warn('Background save failed:', err)
+      })
+      return // Exit early - no need to orchestrate again
     }
     
     // AUTO-GENERATE: Check if AI Prompt node is connected OR chat prompt exists
