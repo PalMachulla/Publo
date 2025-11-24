@@ -350,6 +350,12 @@ export class OrchestratorEngine {
       }
       
       case 'write_content': {
+        console.log('📝 [generateActions] write_content:', {
+          hasActiveContext: !!request.activeContext,
+          activeContextId: request.activeContext?.id,
+          message: request.message
+        })
+        
         if (request.activeContext) {
           actions.push({
             type: 'generate_content',
@@ -360,6 +366,9 @@ export class OrchestratorEngine {
             },
             status: 'pending'
           })
+          console.log('✅ [generateActions] Created write_content action for section:', request.activeContext.id)
+        } else {
+          console.warn('⚠️ [generateActions] No activeContext for write_content!')
         }
         break
       }
