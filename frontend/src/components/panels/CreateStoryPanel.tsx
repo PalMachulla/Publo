@@ -404,6 +404,7 @@ export default function CreateStoryPanel({
           if (onAddChatMessage) {
             onAddChatMessage(message, 'user')
           }
+          setChatMessage('') // Clear input immediately
           await handleTemplateSelection(template.id, template.name)
           return
         }
@@ -414,6 +415,7 @@ export default function CreateStoryPanel({
         onAddChatMessage(message, 'user')
         onAddChatMessage(`🤔 I didn't quite catch which template you want. Could you click one of the options below or be more specific?`, 'orchestrator', 'result')
       }
+      setChatMessage('') // Clear input immediately
       return
     }
     
@@ -421,6 +423,9 @@ export default function CreateStoryPanel({
     if (onAddChatMessage) {
       onAddChatMessage(message, 'user')  // Actual user input
     }
+    
+    // Clear input immediately after adding to chat (better UX)
+    setChatMessage('')
     
     // Prepare conversation history for context resolution (used by findReferencedNode)
     const conversationForContext = reasoningMessages
@@ -501,7 +506,6 @@ export default function CreateStoryPanel({
       if (onAddChatMessage) {
         onAddChatMessage(`❓ ${intentAnalysis.clarifyingQuestion}`)
       }
-      setChatMessage('')
       return
     }
     
@@ -515,7 +519,6 @@ export default function CreateStoryPanel({
           onAddChatMessage(`💡 ${validation.suggestion}`)
         }
       }
-      setChatMessage('')
       return
     }
     
@@ -1271,9 +1274,6 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
         onAddChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
     }
-    
-    // Clear input
-    setChatMessage('')
   }
 
   // Auto-open reasoning panel when messages appear or update
