@@ -25,7 +25,11 @@ export async function POST(request: Request) {
       temperature, 
       top_p,
       mode = 'legacy', // NEW: orchestrator | writer | legacy (default)
-      stream = false    // NEW: Enable streaming responses (SSE)
+      stream = false,   // NEW: Enable streaming responses (SSE)
+      response_format,  // NEW: Structured outputs (OpenAI, Groq)
+      tools,            // NEW: Tool use (Anthropic)
+      tool_choice,      // NEW: Force tool (Anthropic)
+      use_function_calling // NEW: Function calling (Google)
     } = body
     
     const supabase = await createClient()
@@ -186,6 +190,10 @@ export async function POST(request: Request) {
                 max_tokens,
                 temperature,
                 top_p,
+                response_format,
+                tools,
+                tool_choice,
+                use_function_calling
               })
               
               // Send as single chunk
@@ -207,6 +215,10 @@ export async function POST(request: Request) {
               max_tokens,
               temperature,
               top_p,
+              response_format,
+              tools,
+              tool_choice,
+              use_function_calling
             })) {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
             }
@@ -251,6 +263,10 @@ export async function POST(request: Request) {
         max_tokens,
         temperature,
         top_p,
+        response_format,
+        tools,
+        tool_choice,
+        use_function_calling
       })
     } catch (error: any) {
       console.error('❌ Generation failed:', {

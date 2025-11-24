@@ -179,10 +179,40 @@ export class OpenAIAdapter implements LLMProviderAdapter {
         }
       }
 
+      // Add structured output support (response_format)
+      if (params.response_format) {
+        requestParams.response_format = params.response_format
+      }
+
       const response = await client.chat.completions.create(requestParams)
 
+      // Handle structured output response
+      let content = response.choices[0]?.message?.content || ''
+      
+      // If response_format was used, the content is already structured JSON
+      if (params.response_format && params.response_format.type === 'json_schema') {
+        // Parse the JSON content and return as structured_output
+        try {
+          const parsedContent = JSON.parse(content)
+          return {
+            content: content, // Keep raw JSON string for backwards compatibility
+            structured_output: parsedContent, // Add parsed object
+            usage: {
+              prompt_tokens: response.usage?.prompt_tokens || 0,
+              completion_tokens: response.usage?.completion_tokens || 0,
+              total_tokens: response.usage?.total_tokens || 0,
+            },
+            model: response.model,
+            finish_reason: response.choices[0]?.finish_reason || undefined,
+          }
+        } catch (e) {
+          // If parsing fails, fallback to standard response
+          console.warn('Failed to parse structured output:', e)
+        }
+      }
+
       return {
-        content: response.choices[0]?.message?.content || '',
+        content,
         usage: {
           prompt_tokens: response.usage?.prompt_tokens || 0,
           completion_tokens: response.usage?.completion_tokens || 0,
@@ -242,6 +272,11 @@ export class OpenAIAdapter implements LLMProviderAdapter {
         if (params.top_p !== undefined) {
           requestParams.top_p = params.top_p
         }
+      }
+
+      // Add structured output support (response_format)
+      if (params.response_format) {
+        requestParams.response_format = params.response_format
       }
 
       const stream = await client.chat.completions.create(requestParams)
