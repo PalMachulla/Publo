@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { useDocumentSections } from '@/hooks/useDocumentSections'
+import { useDocumentSectionsAdapter as useDocumentSections } from '@/hooks/useDocumentSectionsAdapter'
 import { useDocumentEditor } from '@/hooks/useDocumentEditor'
 import MarkdownEditor from '../editor/MarkdownEditor'
 import SectionTreeView from '../document/SectionTreeView'

@@ -14,6 +14,8 @@
 
 import { Node, Edge } from 'reactflow'
 import { Blackboard } from './blackboard'
+import { DocumentManager } from '@/lib/document/DocumentManager'
+import type { DocumentData } from '@/types/document-hierarchy'
 
 // ============================================================
 // TYPES
@@ -48,12 +50,75 @@ export interface CanvasContext {
 
 /**
  * Extract context from a Story Structure node
+ * 
+ * Now uses hierarchical document_data if available (new system)
+ * Falls back to legacy items array (old system)
  */
 function extractStoryStructureContext(
   node: Node,
   externalContent?: Record<string, string>
 ): NodeContext {
   const data = node.data as any
+  
+  // NEW SYSTEM: Check for document_data (hierarchical)
+  if (data.document_data) {
+    try {
+      const documentData = data.document_data as DocumentData
+      const manager = new DocumentManager(documentData)
+      
+      const format = documentData.format || 'unknown'
+      const totalSections = documentData.structure.length
+      const wordsWritten = documentData.totalWordCount || 0
+      
+      // Get all summaries for top-level sections
+      const allSummaries = manager.getAllSummaries()
+      const topLevelSummaries = allSummaries
+        .filter(s => s.level === 1)
+        .slice(0, 3)
+        .map(s => `- ${s.name}: ${s.summary || 'No summary'}`)
+        .join('\n')
+      
+      let summary = `${format.toUpperCase()} document with ${totalSections} sections`
+      if (wordsWritten > 0) {
+        summary += ` (${wordsWritten} words written)`
+      }
+      
+      // Build contentMap from hierarchical data
+      const flatSections = manager.getFlatStructure()
+      const contentMap: Record<string, string> = {}
+      for (const section of flatSections) {
+        if (section.content && section.content.trim()) {
+          contentMap[section.id] = section.content
+        }
+      }
+      
+      return {
+        nodeId: node.id,
+        nodeType: 'story-structure',
+        label: data.label || 'Untitled Story',
+        summary: summary,
+        detailedContext: {
+          format,
+          totalSections,
+          wordsWritten,
+          structure: topLevelSummaries,
+          allSections: flatSections.map(s => ({
+            id: s.id,
+            level: s.level,
+            name: s.name,
+            summary: s.summary,
+            hasContent: !!s.content && s.content.trim().length > 0
+          })),
+          contentMap
+        }
+      }
+    } catch (error) {
+      console.error('[Context Provider] Error reading document_data, falling back to legacy:', error)
+      // Fall through to legacy system
+    }
+  }
+  
+  // LEGACY SYSTEM: Use items array (old system)
   const items = data.items || []
   const format = data.format || 'unknown'
   const contentMap = externalContent || data.contentMap || {}
