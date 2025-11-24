@@ -867,16 +867,25 @@ export default function CanvasPage() {
     
     console.log('Cluster data changed, updating structure nodes with', availableAgents.length, 'agents')
     
-    // Update structure nodes with current agents
+    // ✅ FIX: Only update availableAgents, NOT onAgentAssign (prevents infinite loop)
+    // onAgentAssign callback is set when node is created, doesn't need updating
     setNodes((currentNodes) => {
       return currentNodes.map((node) => {
         if (node.type === 'storyStructureNode') {
+          // Check if availableAgents actually changed to avoid unnecessary updates
+          const currentAgentsStr = JSON.stringify(node.data.availableAgents || [])
+          const newAgentsStr = JSON.stringify(availableAgents)
+          
+          if (currentAgentsStr === newAgentsStr) {
+            return node // No change, return as-is
+          }
+          
           return {
             ...node,
             data: {
               ...node.data,
               availableAgents: availableAgents,
-              onAgentAssign: handleAgentAssign
+              // ✅ FIX: Don't update onAgentAssign - it's already set and stable
             }
           }
         }
