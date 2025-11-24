@@ -1121,7 +1121,16 @@ export default function CanvasPage() {
             provider: configuredKey.provider
           })
         } else {
-          console.log('⚠️ No orchestrator configured in any API key')
+          // No explicit orchestrator configured (Auto-select mode)
+          // Use first available API key for authentication
+          const firstKey = prefsData.keys[0]
+          userKeyId = firstKey.id
+          writerModelIds = firstKey.writer_model_ids || []
+          console.log('⚡ Auto-select mode: Using first API key:', {
+            keyId: userKeyId,
+            provider: firstKey.provider,
+            writers: writerModelIds.length
+          })
         }
       } else {
         console.log('❌ No API keys found')
