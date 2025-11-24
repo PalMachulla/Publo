@@ -399,11 +399,10 @@ export default function AIDocumentPanel({
       const headerTag = '#'.repeat(headerLevel)
       const headerText = item.title ? `${item.title}` : item.name
       
-      // Add HTML anchor div with inline style to make it a scroll target
-      // This creates a div with the anchor ID that won't disrupt the markdown flow
-      const anchorDiv = `<div id="section-${itemId}" style="scroll-margin-top: 20px;"></div>`
-      aggregatedContent.push(anchorDiv)
-      aggregatedContent.push(`${headerTag} ${headerText}`)
+      // Use HTML heading with ID attribute for reliable anchor targeting
+      // This ensures the ID survives markdown rendering
+      const headingWithId = `<h${headerLevel} id="section-${itemId}" style="scroll-margin-top: 20px;">${headerText}</h${headerLevel}>`
+      aggregatedContent.push(headingWithId)
       aggregatedContent.push('') // Add blank line for proper markdown spacing
     }
     
@@ -417,8 +416,11 @@ export default function AIDocumentPanel({
       }
       
       const section = sections.find(s => s.structure_item_id === itemId)
-      if (section?.content) {
+      if (section?.content && section.content.trim()) {
         aggregatedContent.push(section.content)
+      } else {
+        // Add placeholder for empty sections
+        aggregatedContent.push('*[No content yet - Click here to start writing]*')
       }
       return aggregatedContent.join('\n\n')
     }

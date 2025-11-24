@@ -143,13 +143,20 @@ function SectionTreeView({
                 // Try to scroll immediately
                 const scrolled = scrollToSection()
                 
-                // If element not found, retry after short delay
+                // If element not found, retry multiple times as markdown renders
                 if (!scrolled) {
                   console.log('⏳ [SectionTreeView] Section anchor not found, retrying...')
-                  setTimeout(() => {
-                    const retried = scrollToSection()
-                    if (!retried) {
-                      console.warn('⚠️ [SectionTreeView] Section anchor still not found:', sectionId)
+                  let attempts = 0
+                  const maxAttempts = 5
+                  const retryInterval = setInterval(() => {
+                    attempts++
+                    if (scrollToSection() || attempts >= maxAttempts) {
+                      clearInterval(retryInterval)
+                      if (attempts >= maxAttempts) {
+                        console.warn('⚠️ [SectionTreeView] Section anchor still not found after', attempts, 'attempts:', sectionId)
+                      } else {
+                        console.log('✅ [SectionTreeView] Found anchor on attempt', attempts)
+                      }
                     }
                   }, 200)
                 }
