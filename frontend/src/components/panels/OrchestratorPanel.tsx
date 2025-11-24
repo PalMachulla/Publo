@@ -18,6 +18,7 @@ import {
   buildCanvasContext, 
   type OrchestratorRequest,
   type OrchestratorAction,
+  type UserIntent,
   analyzeIntent,
   validateIntent,
   explainIntent,
@@ -451,16 +452,61 @@ export default function OrchestratorPanel({
         onAddChatMessage(`🤖 Model: ${response.modelUsed}`, 'orchestrator', 'model')
       }
       
-      // Execute actions
-      for (const action of response.actions) {
-        await executeAction(action)
+      // HYBRID APPROACH: Use OLD handlers for action execution
+      // The new orchestrator is great at intent analysis but doesn't generate actions yet
+      // So we use the OLD implementation's switch statement for actual execution
+      
+      if (onAddChatMessage) {
+        onAddChatMessage(`🚀 Executing ${response.intent}...`, 'orchestrator', 'thinking')
       }
+      
+      // Call the OLD handler with the detected intent
+      await handleSendMessage_OLD_ExecuteOnly(message, response.intent)
       
     } catch (error) {
       console.error('❌ Orchestration error:', error)
       if (onAddChatMessage) {
         onAddChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
       }
+    }
+  }
+  
+  // Helper: Execute action based on intent (uses OLD implementation logic)
+  const handleSendMessage_OLD_ExecuteOnly = async (message: string, intent: UserIntent) => {
+    // This is a simplified version of the OLD handler that just executes the action
+    // without re-analyzing intent
+    
+    switch (intent) {
+      case 'answer_question':
+        // Just call the OLD answer_question handler directly
+        if (onAnswerQuestion) {
+          const answer = await onAnswerQuestion(message)
+          if (onAddChatMessage) {
+            onAddChatMessage(`📖 ${answer}`, 'orchestrator', 'result')
+          }
+        }
+        break
+        
+      case 'write_content':
+        if (activeContext && onWriteContent) {
+          await onWriteContent(activeContext.id, message)
+        }
+        break
+        
+      case 'create_structure':
+        // Simplified - just call onCreateStory
+        onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+        break
+        
+      case 'general_chat':
+      default:
+        if (onAnswerQuestion) {
+          const answer = await onAnswerQuestion(message)
+          if (onAddChatMessage) {
+            onAddChatMessage(`💬 ${answer}`, 'orchestrator', 'result')
+          }
+        }
+        break
     }
   }
   
