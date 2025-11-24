@@ -323,30 +323,32 @@ export async function POST(request: Request) {
 
     // Return response based on mode
     if (mode === 'orchestrator') {
-      // Orchestrator mode: expect JSON response from model
-      try {
-        const plan = JSON.parse(generationResult.content)
-        
-        return NextResponse.json({
-          success: true,
-          plan, // Parsed JSON plan
-          usage: generationResult.usage,
-          cost,
-          model: generationResult.model,
-          provider,
-          timestamp: new Date().toISOString(),
-        })
-      } catch (parseError: any) {
-        console.error('❌ Failed to parse orchestrator JSON response:', parseError)
-        return NextResponse.json(
-          { 
-            error: 'Orchestrator returned invalid JSON',
-            details: parseError.message,
-            rawContent: generationResult.content.substring(0, 500)
-          },
-          { status: 500 }
-        )
+      // Orchestrator mode: return structured output if available, otherwise parse JSON
+      const response: any = {
+        success: true,
+        content: generationResult.content, // Raw content (may be JSON string)
+        usage: generationResult.usage,
+        cost,
+        model: generationResult.model,
+        provider,
+        timestamp: new Date().toISOString(),
       }
+      
+      // If the provider adapter returned structured_output, include it
+      if ((generationResult as any).structured_output) {
+        response.structured_output = (generationResult as any).structured_output
+        console.log('✅ Including structured_output in API response')
+      } else {
+        // Try to parse content as JSON for backward compatibility
+        try {
+          response.plan = JSON.parse(generationResult.content)
+          console.log('✅ Parsed content as JSON plan')
+        } catch (parseError) {
+          console.warn('⚠️ Content is not valid JSON, returning as-is')
+        }
+      }
+      
+      return NextResponse.json(response)
     } else if (mode === 'writer') {
       // Writer mode: return plain text content
       return NextResponse.json({

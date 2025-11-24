@@ -1211,6 +1211,7 @@ Generate a complete structure plan with:
     // DEBUG: Log to console what we actually received
     console.log('🔍 [Structure Generation] API Response:', {
       keys: Object.keys(data),
+      fullData: data, // Show everything
       hasContent: !!data.content,
       hasStructuredOutput: !!data.structured_output,
       contentType: typeof data.content,
