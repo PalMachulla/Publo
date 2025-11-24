@@ -213,20 +213,25 @@ export async function resolveNode(
 ): Promise<NodeContext | null> {
   const conversationHistory = blackboard.getRecentMessages(5)
   
-  // TIER 1: LLM Reasoning (DISABLED for now - API endpoint needs fixing)
-  // const llmResult = await resolveNodeWithLLM(
-  //   userMessage,
-  //   canvasContext,
-  //   conversationHistory.map(m => ({ role: m.role, content: m.content }))
-  // )
-  // 
-  // if (llmResult) {
-  //   console.log(`✅ [Context Provider] LLM resolved to: "${llmResult.label}"`)
-  //   blackboard.addReferencedNode(llmResult.nodeId)
-  //   return llmResult
-  // }
+  // TIER 1: LLM Reasoning (RE-ENABLED - API endpoint fixed)
+  try {
+    const llmResult = await resolveNodeWithLLM(
+      userMessage,
+      canvasContext,
+      conversationHistory.map(m => ({ role: m.role, content: m.content }))
+    )
+    
+    if (llmResult) {
+      console.log(`✅ [Context Provider] LLM resolved to: "${llmResult.label}"`)
+      blackboard.addReferencedNode(llmResult.nodeId)
+      return llmResult
+    }
+  } catch (error) {
+    console.warn('[Context Provider] LLM resolution failed, falling back to keywords:', error)
+    // Fall through to keyword matching
+  }
   
-  // TIER 2: Keyword Matching (PRIMARY for now)
+  // TIER 2: Keyword Matching (Fallback)
   const keywordResult = resolveNodeWithKeywords(
     userMessage,
     canvasContext,

@@ -66,11 +66,13 @@ If no clear reference exists, return nodeId: null with low confidence.`
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: prompt,
-        context: {
-          canvasNodes: availableNodes,
-          conversationHistory: recentConversation
-        }
+        system_prompt: SYSTEM_PROMPT,
+        user_prompt: prompt,
+        conversation_history: recentConversation.map(m => ({
+          role: m.role === 'orchestrator' ? 'assistant' : m.role,
+          content: m.content
+        })),
+        temperature: 0.1 // Low temperature for more deterministic node resolution
       })
     })
 

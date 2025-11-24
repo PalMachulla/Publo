@@ -102,20 +102,76 @@ export async function POST(request: NextRequest) {
       generateOptions.temperature = temperature
     }
     
-    // Generate intent analysis using orchestrator
-    const result = await adapter.generate(apiKey, generateOptions)
+    // Generate intent analysis using orchestrator with intelligent fallback
+    let result
+    let attemptedModel = orchestratorModelId
     
-    console.log('[API /intent/analyze] Analysis complete, length:', result.content.length)
+    try {
+      result = await adapter.generate(apiKey, generateOptions)
+      console.log(`[API /intent/analyze] ✅ Success with ${attemptedModel}, length: ${result.content.length}`)
+    } catch (primaryError: any) {
+      console.warn(`[API /intent/analyze] ⚠️ Primary model (${attemptedModel}) failed:`, primaryError.message)
+      
+      // Check if it's a rate limit, quota, or credit error
+      const isRateLimitError = primaryError.message?.toLowerCase().includes('rate limit') ||
+                               primaryError.message?.toLowerCase().includes('quota') ||
+                               primaryError.message?.toLowerCase().includes('insufficient') ||
+                               primaryError.statusCode === 429
+      
+      if (isRateLimitError) {
+        console.log('[API /intent/analyze] 🔄 Attempting fallback to alternative model...')
+        
+        // Try to find an alternative model from a different provider
+        const { data: fallbackKeys } = await supabase
+          .from('user_api_keys')
+          .select('id, provider, encrypted_key, nickname')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .eq('validation_status', 'valid')
+          .neq('provider', provider) // Different provider
+          .limit(1)
+        
+        if (fallbackKeys && fallbackKeys.length > 0) {
+          const fallbackKey = fallbackKeys[0]
+          const fallbackProvider = fallbackKey.provider as LLMProvider
+          const fallbackAdapter = getProviderAdapter(fallbackProvider)
+          const fallbackApiKey = decryptAPIKey(fallbackKey.encrypted_key)
+          
+          // Use a sensible default model for the fallback provider
+          const fallbackModel = fallbackProvider === 'groq' ? 'llama-3.1-8b-instant' :
+                               fallbackProvider === 'openai' ? 'gpt-4-turbo' :
+                               fallbackProvider === 'anthropic' ? 'claude-3-haiku-20240307' :
+                               'default'
+          
+          const fallbackOptions = {
+            ...generateOptions,
+            model: fallbackModel
+          }
+          
+          attemptedModel = `${fallbackModel} (fallback)`
+          result = await fallbackAdapter.generate(fallbackApiKey, fallbackOptions)
+          console.log(`[API /intent/analyze] ✅ Fallback succeeded with ${fallbackModel}`)
+        } else {
+          throw primaryError // No fallback available
+        }
+      } else {
+        throw primaryError // Not a rate limit error, re-throw
+      }
+    }
     
     return NextResponse.json({
       success: true,
-      content: result.content
+      content: result.content,
+      modelUsed: attemptedModel
     })
     
   } catch (error) {
-    console.error('[API /intent/analyze] Error:', error)
+    console.error('[API /intent/analyze] ❌ All attempts failed:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to analyze intent' },
+      { 
+        error: error instanceof Error ? error.message : 'Failed to analyze intent',
+        suggestion: 'Please check your API credits or try again later'
+      },
       { status: 500 }
     )
   }
