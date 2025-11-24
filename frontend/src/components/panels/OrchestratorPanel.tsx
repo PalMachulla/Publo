@@ -32,6 +32,16 @@ import { Edge } from 'reactflow'
 // Helper: Get canonical model details for filtering and display
 const getCanonicalModel = (modelId: string) => {
   const id = modelId.toLowerCase()
+  
+  // ❌ FILTER OUT: Non-text-generation models
+  if (id.includes('embedding')) return null // text-embedding-*
+  if (id.includes('tts')) return null // tts-1, tts-1-hd
+  if (id.includes('whisper')) return null // whisper-1
+  if (id.includes('dall-e')) return null // dall-e-2, dall-e-3
+  if (id.includes('moderation')) return null // text-moderation-*
+  if (id.includes('babbage') || id.includes('davinci') || id.includes('curie')) return null // Legacy completion models
+  if (id.includes('gpt-3.5') && !id.includes('turbo')) return null // Old GPT-3.5 base models
+  if (id.includes('text-davinci') || id.includes('text-curie')) return null // Legacy text models
 
   // Frontier / Future Models (GPT-5, 4.1)
   if (id.includes('gpt-5.1')) return { name: 'GPT-5.1 (Frontier)', priority: 110, group: 'OpenAI (Frontier)', isReasoning: true }
@@ -46,6 +56,7 @@ const getCanonicalModel = (modelId: string) => {
   if (id.includes('gpt-4o') && id.includes('mini')) return { name: 'GPT-4o Mini', priority: 70, group: 'OpenAI', isReasoning: false }
   if (id.includes('gpt-4-turbo') || id.includes('gpt-4-1106') || id.includes('gpt-4-0125')) return { name: 'GPT-4 Turbo', priority: 85, group: 'OpenAI', isReasoning: true }
   if (id === 'gpt-4' || id.includes('gpt-4-0613') || id.includes('gpt-4-0314')) return { name: 'GPT-4 (Legacy)', priority: 60, group: 'OpenAI', isReasoning: true }
+  if (id.includes('gpt-3.5-turbo')) return { name: 'GPT-3.5 Turbo (Legacy)', priority: 40, group: 'OpenAI', isReasoning: false }
   
   // Anthropic Models
   if (id.includes('claude-sonnet-4.5') || id.includes('claude-4.5-sonnet')) return { name: 'Claude Sonnet 4.5', priority: 95, group: 'Anthropic', isReasoning: true }
@@ -57,13 +68,17 @@ const getCanonicalModel = (modelId: string) => {
   if (id.includes('gemini-1.5-pro')) return { name: 'Gemini 1.5 Pro', priority: 89, group: 'Google', isReasoning: true }
   if (id.includes('gemini-1.5-flash')) return { name: 'Gemini 1.5 Flash', priority: 75, group: 'Google', isReasoning: false }
   if (id.includes('gemini-2.0-flash')) return { name: 'Gemini 2.0 Flash', priority: 87, group: 'Google', isReasoning: true }
+  if (id.includes('gemini-pro')) return { name: 'Gemini Pro', priority: 65, group: 'Google', isReasoning: false }
   
   // Groq Models
   if (id.includes('llama-3.3-70b')) return { name: 'Llama 3.3 70B', priority: 85, group: 'Groq', isReasoning: true }
   if (id.includes('llama-3.1-70b')) return { name: 'Llama 3.1 70B', priority: 80, group: 'Groq', isReasoning: true }
   if (id.includes('llama-3.1-8b')) return { name: 'Llama 3.1 8B (Fast)', priority: 75, group: 'Groq', isReasoning: false }
+  if (id.includes('llama-3.2')) return { name: 'Llama 3.2', priority: 72, group: 'Groq', isReasoning: false }
   if (id.includes('mixtral-8x7b')) return { name: 'Mixtral 8x7B', priority: 70, group: 'Groq', isReasoning: false }
+  if (id.includes('gemma')) return { name: 'Gemma', priority: 50, group: 'Groq', isReasoning: false }
   
+  // If we don't recognize it, filter it out (safer than showing unknown models)
   return null
 }
 
@@ -307,9 +322,10 @@ export default function OrchestratorPanel({
     enhancedPrompt?: string
   } | null>(null)
   
-  // Pill expansion state
-  const [isModelPillExpanded, setIsModelPillExpanded] = useState(false)
-  const [isFormatPillExpanded, setIsFormatPillExpanded] = useState(false)
+  // Model selector state (Cursor-style dropdown at bottom)
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
+  const [modelMode, setModelMode] = useState<'automatic' | 'fixed'>('automatic') // Default to Auto
+  const [currentlyUsedModels, setCurrentlyUsedModels] = useState<{intent: string, writer: string}>({intent: '', writer: ''})
   
   // Chat state (local input only, history is canvas-level)
   const [chatMessage, setChatMessage] = useState('')
@@ -1879,239 +1895,11 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
         </div>
       )}
       
-      {/* Thin Stacked Accordion Tiles */}
-      <div className="border-b border-gray-200 bg-gray-50">
-        {/* Model Tile */}
-        <div className="border-b border-gray-200">
-          <button
-            onClick={() => setIsModelPillExpanded(!isModelPillExpanded)}
-            className="w-full flex items-center justify-between px-4 py-2 bg-white hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-              </svg>
-              <span className="text-xs font-medium text-gray-700">
-                {loadingConfig ? 'Loading...' : (configuredModel?.orchestrator || 'Auto-select model')}
-              </span>
-            </div>
-            <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isModelPillExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          
-          {/* Model Accordion Content */}
-          {isModelPillExpanded && (
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 animate-in slide-in-from-top-2 duration-200">
-              {availableOrchestrators.length > 0 ? (
-                <div className="space-y-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                       <label className="text-xs font-semibold text-gray-600">Select Model:</label>
-                       {updatingModel && <span className="text-[10px] text-purple-600 animate-pulse font-medium">Switching...</span>}
-                    </div>
-                    <select
-                      value={configuredModel.orchestrator || ''}
-                      onChange={async (e) => {
-                        const selectedId = e.target.value
-                        const selectedOption = availableOrchestrators.find(m => m.id === selectedId)
-                        
-                        if (selectedOption) {
-                          setUpdatingModel(true)
-                          // Optimistic UI update
-                          setConfiguredModel(prev => ({ ...prev, orchestrator: selectedId }))
-                          
-                          try {
-                             // 1. Get current key data
-                             const keysResponse = await fetch('/api/user/api-keys')
-                             const keysData = await keysResponse.json()
-                             const targetKey = keysData.keys.find((k: any) => k.id === selectedOption.keyId)
-                             
-                             if (targetKey) {
-                               // 2. Update preference on TARGET key
-                               await fetch(`/api/user/api-keys/${targetKey.id}/preferences`, {
-                                  method: 'PATCH',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    orchestratorModelId: selectedId,
-                                    writerModelIds: targetKey.writer_model_ids || [] 
-                                  })
-                               })
-
-                               // 3. Clear orchestrator on ALL OTHER keys (Ensure single active orchestrator)
-                               const otherKeys = keysData.keys.filter((k: any) => k.id !== targetKey.id && k.orchestrator_model_id)
-                               if (otherKeys.length > 0) {
-                                 await Promise.all(otherKeys.map((k: any) => 
-                                   fetch(`/api/user/api-keys/${k.id}/preferences`, {
-                                      method: 'PATCH',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        orchestratorModelId: null, // Clear
-                                        writerModelIds: k.writer_model_ids || [] // Preserve
-                                      })
-                                   })
-                                 ))
-                               }
-                               
-                               // 4. Dispatch event
-                               window.dispatchEvent(new CustomEvent('orchestratorConfigUpdated', {
-                                  detail: { orchestratorModelId: selectedId }
-                               }))
-                               
-                               // 5. Refresh
-                               await fetchConfiguredModels()
-                             }
-                          } catch (err) {
-                            console.error('Failed to switch model', err)
-                            fetchConfiguredModels() // Revert
-                          } finally {
-                            setUpdatingModel(false)
-                          }
-                        }
-                      }}
-                      disabled={updatingModel}
-                      className="w-full text-xs border-gray-300 rounded shadow-sm focus:border-purple-500 focus:ring-purple-500 py-1.5 bg-white text-gray-700"
-                    >
-                      <option value="" disabled>Select an orchestrator...</option>
-                      {/* Group models by Canonical Group */}
-                      {Object.entries(availableOrchestrators.reduce((acc, model) => {
-                        // Use the explicit group from canonical details
-                        const group = model.group || 'Other'
-                        if (!acc[group]) acc[group] = []
-                        acc[group].push(model)
-                        return acc
-                      }, {} as Record<string, typeof availableOrchestrators>)).map(([group, models]) => (
-                        <optgroup key={group} label={group}>
-                          {models.map((model) => (
-                            <option key={model.id} value={model.id}>
-                              {model.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    <span className="font-semibold">Writers:</span> {configuredModel.writerCount} models available
-                  </div>
-                </div>
-              ) : (
-                <div className="text-xs text-gray-500 italic mb-2">
-                  No compatible models found.
-                </div>
-              )}
-              
-              <button
-                onClick={() => router.push('/profile')}
-                className="text-xs font-medium text-blue-600 hover:text-blue-700 underline mt-2 block"
-              >
-                Manage Keys in Profile →
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Format Tile */}
-        <div>
-          <button
-            onClick={() => setIsFormatPillExpanded(!isFormatPillExpanded)}
-            className="w-full flex items-center justify-between px-4 py-2 bg-white hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-              <span className="text-xs font-medium text-gray-700">
-                {selectedFormat && selectedTemplate 
-                  ? `${storyFormats.find(f => f.type === selectedFormat)?.label} - ${templates[selectedFormat].find(t => t.id === selectedTemplate)?.name}`
-                  : selectedFormat 
-                  ? storyFormats.find(f => f.type === selectedFormat)?.label
-                  : 'Select format'}
-              </span>
-            </div>
-            <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isFormatPillExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        </div>
-      </div>
+      {/* Model & Format selection moved to bottom input area (Cursor-style) */}
 
       {/* Orchestrator Reasoning - Center Stage */}
       <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-gray-50 to-white">
         <div className="max-w-4xl mx-auto h-full flex flex-col">
-          {/* Format Selection Accordion (expands when tile clicked) */}
-          {isFormatPillExpanded && (
-            <div className="mb-4 bg-white rounded-md border border-gray-200 shadow-sm animate-in slide-in-from-top-2 duration-200">
-              <div className="p-4 max-h-96 overflow-y-auto">
-                <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">Choose Format & Template</h3>
-                <div className="space-y-3">
-                  {storyFormats.map((format) => {
-                    const formatTemplates = templates[format.type]
-                    const isSelected = selectedFormat === format.type
-                    
-                    return (
-                      <div key={format.type} className="border border-gray-200 rounded-md overflow-hidden hover:border-gray-300 transition-colors">
-                        <button
-                          onClick={() => {
-                            setSelectedFormat(format.type)
-                            setSelectedTemplate(null)
-                          }}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-                            isSelected ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className={`text-xl ${isSelected ? 'text-gray-700' : 'text-gray-400'}`}>
-                            {format.icon}
-                          </div>
-                          <div className="flex-1">
-                            <div className={`text-xs font-semibold ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
-                              {format.label}
-                            </div>
-                            <div className="text-xs text-gray-500">{format.description}</div>
-                          </div>
-                          <svg 
-                            className={`w-4 h-4 text-gray-400 transition-transform ${isSelected ? 'rotate-180' : ''}`} 
-                            fill="none" 
-                            stroke="currentColor" 
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-                        
-                        {isSelected && (
-                          <div className="bg-gray-50 border-t border-gray-200 p-3 space-y-1.5">
-                            <p className="text-xs font-medium text-gray-600 mb-2">Templates:</p>
-                            {formatTemplates.map((template) => (
-                              <button
-                                key={template.id}
-                                onClick={() => {
-                                  setSelectedTemplate(template.id)
-                                  setIsFormatPillExpanded(false)
-                                  // Auto-create when template selected
-                                  if (!isCreating) {
-                                    handleCreateStory()
-                                  }
-                                }}
-                                className={`w-full text-left px-3 py-2 rounded text-xs transition-colors ${
-                                  selectedTemplate === template.id
-                                    ? 'bg-gray-700 text-white font-medium'
-                                    : 'bg-white text-gray-700 hover:bg-gray-200 border border-gray-200'
-                                }`}
-                              >
-                                {template.name}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-          
           <div className="flex-1 overflow-y-auto space-y-3">
             {reasoningMessages.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
@@ -2366,26 +2154,188 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
           </div>
         )}
         
-        <textarea
-          ref={chatInputRef}
-          value={chatMessage}
-          onChange={(e) => setChatMessage(e.target.value)}
-          onKeyDown={async (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              if (chatMessage.trim()) {
-                await handleSendMessage_NEW(chatMessage) // Using new orchestrator architecture
+        {/* Input area with model selector (Cursor-style) */}
+        <div className="flex items-end gap-2">
+          {/* Model Selector Button */}
+          <div className="relative">
+            <button
+              onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors border border-gray-300"
+            >
+              {modelMode === 'automatic' ? (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <span>Auto</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                  </svg>
+                  <span className="max-w-[100px] truncate">{configuredModel.orchestrator || 'Fixed'}</span>
+                </>
+              )}
+              <svg className={`w-3 h-3 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {/* Dropdown Menu */}
+            {isModelDropdownOpen && (
+              <div className="absolute bottom-full left-0 mb-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
+                {/* Mode Toggle */}
+                <div className="p-3 border-b border-gray-200 bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setModelMode('automatic')}
+                      className={`flex-1 px-3 py-2 text-xs font-medium rounded transition-colors ${
+                        modelMode === 'automatic' 
+                          ? 'bg-purple-600 text-white' 
+                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                      }`}
+                    >
+                      ⚡ Automatic
+                    </button>
+                    <button
+                      onClick={() => setModelMode('fixed')}
+                      className={`flex-1 px-3 py-2 text-xs font-medium rounded transition-colors ${
+                        modelMode === 'fixed' 
+                          ? 'bg-purple-600 text-white' 
+                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                      }`}
+                    >
+                      📌 Fixed
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-2">
+                    {modelMode === 'automatic' 
+                      ? 'Best model selected per task (intent, writing, etc.)'
+                      : 'Use one model for all tasks'}
+                  </p>
+                </div>
+                
+                {/* Currently Using (if Auto mode) */}
+                {modelMode === 'automatic' && currentlyUsedModels.intent && (
+                  <div className="p-3 bg-blue-50 border-b border-blue-200">
+                    <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Currently Using:</p>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">🧠 Intent:</span>
+                        <span className="font-medium text-gray-900">{currentlyUsedModels.intent}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">✍️ Writer:</span>
+                        <span className="font-medium text-gray-900">{currentlyUsedModels.writer}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Model List (only show if Fixed mode) */}
+                {modelMode === 'fixed' && (
+                  <div className="p-2">
+                    <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide px-2 py-1.5">Select Model:</p>
+                    {availableOrchestrators.length > 0 ? (
+                      Object.entries(availableOrchestrators.reduce((acc, model) => {
+                        const group = model.group || 'Other'
+                        if (!acc[group]) acc[group] = []
+                        acc[group].push(model)
+                        return acc
+                      }, {} as Record<string, typeof availableOrchestrators>)).map(([group, models]) => (
+                        <div key={group} className="mb-2">
+                          <p className="text-[10px] font-medium text-gray-500 px-2 py-1">{group}</p>
+                          {models.map((model) => (
+                            <button
+                              key={model.id}
+                              onClick={async () => {
+                                // Same logic as before for updating model
+                                setUpdatingModel(true)
+                                setConfiguredModel(prev => ({ ...prev, orchestrator: model.id }))
+                                
+                                try {
+                                  const keysResponse = await fetch('/api/user/api-keys')
+                                  const keysData = await keysResponse.json()
+                                  const targetKey = keysData.keys.find((k: any) => k.id === model.keyId)
+                                  
+                                  if (targetKey) {
+                                    await fetch(`/api/user/api-keys/${targetKey.id}/preferences`, {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        orchestratorModelId: model.id,
+                                        writerModelIds: targetKey.writer_model_ids || [] 
+                                      })
+                                    })
+
+                                    const otherKeys = keysData.keys.filter((k: any) => k.id !== targetKey.id && k.orchestrator_model_id)
+                                    if (otherKeys.length > 0) {
+                                      await Promise.all(otherKeys.map((k: any) => 
+                                        fetch(`/api/user/api-keys/${k.id}/preferences`, {
+                                          method: 'PATCH',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({
+                                            orchestratorModelId: null,
+                                            writerModelIds: k.writer_model_ids || []
+                                          })
+                                        })
+                                      ))
+                                    }
+                                    
+                                    await fetchConfiguredModels()
+                                    setIsModelDropdownOpen(false)
+                                  }
+                                } catch (err) {
+                                  console.error('Failed to switch model', err)
+                                  fetchConfiguredModels()
+                                } finally {
+                                  setUpdatingModel(false)
+                                }
+                              }}
+                              className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-gray-100 transition-colors ${
+                                configuredModel.orchestrator === model.id 
+                                  ? 'bg-purple-50 text-purple-700 font-medium' 
+                                  : 'text-gray-700'
+                              }`}
+                            >
+                              {model.name}
+                            </button>
+                          ))}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-gray-500 px-2 py-2">No models available</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {/* Text Input */}
+          <textarea
+            ref={chatInputRef}
+            value={chatMessage}
+            onChange={(e) => setChatMessage(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                if (chatMessage.trim()) {
+                  await handleSendMessage_NEW(chatMessage)
+                }
               }
-            }
-          }}
-          placeholder={activeContext 
-            ? `Write about "${activeContext.name}"...` 
-            : `Chat with the orchestrator (${selectedFormat.charAt(0).toUpperCase() + selectedFormat.slice(1).replace('-', ' ')})...`}
-          rows={2}
-          className="w-full resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent placeholder-gray-400"
-        />
+            }}
+            placeholder={activeContext 
+              ? `Write about "${activeContext.name}"...` 
+              : "Chat with the orchestrator..."}
+            rows={2}
+            className="flex-1 resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent placeholder-gray-400"
+          />
+        </div>
+        
         <p className="text-xs text-gray-500 mt-2">
-          Press Enter to send • Shift+Enter for new line • Format: <span className="font-semibold text-gray-700">{selectedFormat.charAt(0).toUpperCase() + selectedFormat.slice(1).replace('-', ' ')}</span>
+          Press Enter to send • Shift+Enter for new line
         </p>
       </div>
     </div>
