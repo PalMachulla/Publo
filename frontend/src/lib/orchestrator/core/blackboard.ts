@@ -28,7 +28,7 @@ export interface ConversationMessage {
   role: 'user' | 'orchestrator' | 'system'
   content: string
   timestamp: string
-  type?: 'user' | 'thinking' | 'decision' | 'task' | 'result' | 'error'
+  type?: 'user' | 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'progress'
   metadata?: {
     intent?: string
     confidence?: number

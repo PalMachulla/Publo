@@ -85,7 +85,7 @@ export default function CanvasPage() {
     id: string
     timestamp: string
     content: string
-    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'progress'
     role?: 'user' | 'orchestrator'
   }>>([])
 

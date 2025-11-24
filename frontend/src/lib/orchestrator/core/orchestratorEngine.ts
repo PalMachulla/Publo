@@ -1087,6 +1087,7 @@ export class OrchestratorEngine {
 
   /**
    * Generate structure plan for create_structure intent
+   * Uses native structured outputs when available
    */
   private async createStructurePlan(
     userPrompt: string,
@@ -1094,11 +1095,25 @@ export class OrchestratorEngine {
     modelId: string,
     userKeyId: string
   ): Promise<StructurePlan> {
+    // Progress tracking
     this.blackboard.addMessage({
       role: 'orchestrator',
-      content: '💭 Generating structure plan...',
-      type: 'thinking'
+      content: '🔄 Step 1/4: Initializing structure generation...',
+      type: 'progress'
     })
+    
+    // Check if model supports structured outputs
+    const model = MODEL_TIERS.find(m => m.id === modelId)
+    const useStructuredOutput = model?.structuredOutput === 'full'
+    
+    this.blackboard.addMessage({
+      role: 'orchestrator',
+      content: `🔄 Step 2/4: Preparing ${useStructuredOutput ? '✅ structured output' : '⚠️ JSON parsing'} format...`,
+      type: 'progress'
+    })
+    
+    // Import schema utilities
+    const { getOpenAIResponseFormat, getAnthropicToolDefinition, validateStructurePlan } = await import('../schemas/structurePlan')
     
     // Build format-specific instructions
     const formatInstructions = this.getFormatInstructions(format)
@@ -1107,58 +1122,72 @@ export class OrchestratorEngine {
 
 ${formatInstructions}
 
-CRITICAL: You must respond with ONLY valid JSON. No markdown, no code blocks, no comments.
-
-Response format (valid JSON only):
-{
-  "reasoning": "Brief analysis (max 200 words)",
-  "structure": [
-    {
-      "id": "act1",
-      "level": 1,
-      "name": "Act I - Setup",
-      "parentId": null,
-      "wordCount": 25000,
-      "summary": "Introduce world and protagonist"
-    }
-  ],
-  "tasks": [
-    {
-      "id": "task_act1",
-      "type": "write_section",
-      "sectionId": "act1",
-      "description": "Write Act I establishing world and characters"
-    }
-  ],
-  "metadata": {
-    "totalWordCount": 90000,
-    "estimatedTime": "30 hours",
-    "recommendedModels": ["claude-3-5-sonnet-latest", "gpt-4"]
-  }
-}
-
-IMPORTANT:
-- Keep reasoning concise (max 200 words)
-- Generate 8-15 structure items (not 100+)
-- Use valid JSON only (no comments, no markdown)
-- Structure must be hierarchical (use level and parentId correctly)`
+Generate a structure plan with:
+- Concise reasoning (max 1000 characters)
+- 3-20 hierarchical structure items
+- Clear parent-child relationships
+- Realistic word count estimates
+- Specific writing tasks`
 
     const formatLabel = format.charAt(0).toUpperCase() + format.slice(1).replace(/-/g, ' ')
-    const userMessage = `The user wants to create a ${formatLabel}.\n\nUser's creative prompt:\n${userPrompt}\n\nPlease analyze this prompt carefully and create a detailed structure plan optimized for the ${formatLabel} format, with specific writing tasks.`
+    const userMessage = `The user wants to create a ${formatLabel}.\n\nUser's creative prompt:\n${userPrompt}\n\nAnalyze this prompt and create a detailed structure plan optimized for the ${formatLabel} format.`
     
-    // Call generation API
+    this.blackboard.addMessage({
+      role: 'orchestrator',
+      content: `🔄 Step 3/4: Calling ${model?.displayName || modelId}...`,
+      type: 'progress'
+    })
+    
+    // Call generation API with structured output if supported
+    const requestBody: any = {
+      mode: 'orchestrator',
+      model: modelId,
+      system_prompt: systemPrompt,
+      user_prompt: userMessage,
+      max_completion_tokens: 4000,
+      user_key_id: userKeyId,
+      stream: false
+    }
+    
+    // Add structured output format based on provider
+    if (useStructuredOutput && model) {
+      if (model.provider === 'openai') {
+        requestBody.response_format = getOpenAIResponseFormat()
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: '✅ Using OpenAI native JSON schema validation',
+          type: 'thinking'
+        })
+      } else if (model.provider === 'anthropic') {
+        requestBody.tools = [getAnthropicToolDefinition()]
+        requestBody.tool_choice = { type: 'tool', name: 'create_structure_plan' }
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: '✅ Using Anthropic tool use (forced)',
+          type: 'thinking'
+        })
+      } else if (model.provider === 'google') {
+        // Google function calling will be handled in the API route
+        requestBody.use_function_calling = true
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: '✅ Using Google function calling',
+          type: 'thinking'
+        })
+      }
+    } else if (model?.structuredOutput === 'json-mode') {
+      requestBody.response_format = { type: 'json_object' }
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: '⚠️ Using JSON mode (no schema validation)',
+        type: 'thinking'
+      })
+    }
+    
     const response = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode: 'orchestrator',
-        model: modelId,
-        system_prompt: systemPrompt,
-        user_prompt: userMessage,
-        max_completion_tokens: 4000, // Reduced from 16000 - structure plans should be concise
-        user_key_id: userKeyId,
-        stream: false
-      })
+      body: JSON.stringify(requestBody)
     })
     
     if (!response.ok) {
@@ -1171,67 +1200,111 @@ IMPORTANT:
       throw new Error(errorData.error || 'Structure generation API call failed')
     }
     
+    this.blackboard.addMessage({
+      role: 'orchestrator',
+      content: '🔄 Step 4/4: Validating structure plan...',
+      type: 'progress'
+    })
+    
     const data = await response.json()
-    let rawContent = data.content || data.text || ''
+    let planData: any
+    
+    // Handle different response formats
+    if (useStructuredOutput) {
+      // Structured output - response is already parsed JSON object
+      if (model?.provider === 'anthropic' && data.tool_calls) {
+        // Anthropic tool use format
+        planData = data.tool_calls[0]?.input
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: '✅ Extracted from Anthropic tool use',
+          type: 'thinking'
+        })
+      } else if (data.structured_output) {
+        // Unified structured output format
+        planData = data.structured_output
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: '✅ Received validated structured output',
+          type: 'thinking'
+        })
+      } else {
+        // Fallback: might be in content field
+        planData = typeof data.content === 'object' ? data.content : JSON.parse(data.content || '{}')
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: '✅ Parsed from content field',
+          type: 'thinking'
+        })
+      }
+    } else {
+      // String-based JSON - need to parse manually
+      let rawContent = data.content || data.text || ''
+      
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `📊 Received ${rawContent.length} characters, parsing...`,
+        type: 'thinking'
+      })
+      
+      // Extract JSON from markdown code blocks if present
+      let jsonContent = rawContent.trim()
+      
+      const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/)
+      if (jsonMatch) {
+        jsonContent = jsonMatch[1].trim()
+      }
+      
+      // Remove any leading/trailing non-JSON content
+      const jsonStart = jsonContent.indexOf('{')
+      const jsonEnd = jsonContent.lastIndexOf('}')
+      if (jsonStart >= 0 && jsonEnd > jsonStart) {
+        jsonContent = jsonContent.substring(jsonStart, jsonEnd + 1)
+      }
+      
+      try {
+        planData = JSON.parse(jsonContent)
+      } catch (parseError: any) {
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `❌ JSON parse error: ${parseError.message}`,
+          type: 'error'
+        })
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `First 500 chars: ${rawContent.substring(0, 500)}`,
+          type: 'thinking'
+        })
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `Last 500 chars: ${rawContent.substring(Math.max(0, rawContent.length - 500))}`,
+          type: 'thinking'
+        })
+        throw new Error(`Failed to parse JSON: ${parseError.message}`)
+      }
+    }
+    
+    // Validate with Zod schema
+    const validation = validateStructurePlan(planData)
+    
+    if (!validation.success) {
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `❌ Validation failed: ${validation.error}`,
+        type: 'error'
+      })
+      throw new Error(`Invalid structure plan: ${validation.error}`)
+    }
+    
+    const plan = validation.data
     
     this.blackboard.addMessage({
       role: 'orchestrator',
-      content: `📊 Received response: ${rawContent.length} characters`,
-      type: 'thinking'
+      content: `✅ Structure plan validated: ${plan.structure.length} sections, ${plan.tasks.length} tasks`,
+      type: 'result'
     })
     
-    // Extract JSON from markdown code blocks if present
-    let jsonContent = rawContent.trim()
-    
-    // Remove markdown code blocks
-    const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/)
-    if (jsonMatch) {
-      jsonContent = jsonMatch[1].trim()
-    }
-    
-    // Remove any leading/trailing non-JSON content
-    const jsonStart = jsonContent.indexOf('{')
-    const jsonEnd = jsonContent.lastIndexOf('}')
-    if (jsonStart >= 0 && jsonEnd > jsonStart) {
-      jsonContent = jsonContent.substring(jsonStart, jsonEnd + 1)
-    }
-    
-    try {
-      const plan = JSON.parse(jsonContent) as StructurePlan
-      
-      // Validate plan structure
-      if (!plan.structure || !Array.isArray(plan.structure)) {
-        throw new Error('Plan missing structure array')
-      }
-      if (!plan.tasks || !Array.isArray(plan.tasks)) {
-        throw new Error('Plan missing tasks array')
-      }
-      
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `✅ Structure plan created: ${plan.structure.length} sections, ${plan.tasks.length} tasks`,
-        type: 'result'
-      })
-      
-      return plan
-    } catch (parseError: any) {
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `❌ Failed to parse structure plan JSON: ${parseError.message}`,
-        type: 'error'
-      })
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `Raw content (first 500 chars): ${rawContent.substring(0, 500)}`,
-        type: 'thinking'
-      })
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `Raw content (last 500 chars): ${rawContent.substring(Math.max(0, rawContent.length - 500))}`,
-        type: 'thinking'
-      })
-      throw new Error(`Failed to parse orchestrator plan: ${parseError.message}`)
-    }
+    return plan
   }
 
   /**
