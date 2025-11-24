@@ -193,6 +193,30 @@ export class OrchestratorEngine {
     // Use user's available providers (from API keys) or fallback to common ones
     const availableProviders = request.availableProviders || ['openai', 'groq', 'anthropic', 'google']
     
+    // VALIDATE fixedModelId against MODEL_TIERS
+    let validatedFixedModelId: string | null = null
+    if (request.modelMode === 'fixed' && request.fixedModelId) {
+      // Check if the configured model exists in MODEL_TIERS
+      const availableModels = MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
+      const isValidModel = availableModels.some(m => m.id === request.fixedModelId)
+      
+      if (isValidModel) {
+        validatedFixedModelId = request.fixedModelId
+        console.log('✅ [Orchestrator] Fixed model is valid:', validatedFixedModelId)
+      } else {
+        console.warn(`⚠️ [Orchestrator] Configured model "${request.fixedModelId}" not found in MODEL_TIERS. Auto-selecting...`)
+        
+        // Add message to blackboard to inform user
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `⚠️ Configured model "${request.fixedModelId}" is no longer available. Auto-selecting the best model for this task instead.`,
+          type: 'decision'
+        })
+        
+        validatedFixedModelId = null
+      }
+    }
+    
     const modelSelection = selectModel(
       taskComplexity,
       this.config.modelPriority,
@@ -223,7 +247,8 @@ export class OrchestratorEngine {
       request,
       canvasContext,
       ragContext,
-      modelSelection
+      modelSelection,
+      validatedFixedModelId
     )
     
     // Step 11: Build response
@@ -313,7 +338,8 @@ export class OrchestratorEngine {
     request: OrchestratorRequest,
     canvasContext: CanvasContext,
     ragContext: any,
-    modelSelection: any
+    modelSelection: any,
+    validatedFixedModelId: string | null = null
   ): Promise<OrchestratorAction[]> {
     const actions: OrchestratorAction[] = []
     
@@ -444,14 +470,16 @@ export class OrchestratorEngine {
           // Determine which model to use based on mode and strategy
           let writerModel: any
           
-          if (request.modelMode === 'fixed' && request.fixedModeStrategy === 'consistent') {
+          if (request.modelMode === 'fixed' && request.fixedModeStrategy === 'consistent' && validatedFixedModelId) {
             // CONSISTENT: Use the fixed model for writing too (expensive but uniform)
+            // ONLY if it's a valid model from MODEL_TIERS
+            const fixedModel = MODEL_TIERS.find(m => m.id === validatedFixedModelId)
             writerModel = {
-              modelId: request.fixedModelId || modelSelection.modelId,
-              provider: modelSelection.provider,
-              reasoning: 'Fixed mode (Consistent): Using selected model for all tasks'
+              modelId: validatedFixedModelId,
+              provider: fixedModel?.provider || modelSelection.provider,
+              reasoning: `Fixed mode (Consistent): Using ${fixedModel?.displayName || validatedFixedModelId} for all tasks`
             }
-            console.log('🎯 [Consistent Strategy] Using fixed model for writing:', writerModel.modelId)
+            console.log('🎯 [Consistent Strategy] Using validated fixed model for writing:', writerModel.modelId)
           } else {
             // AUTOMATIC or LOOSE: Intelligently select writer based on scene complexity
             const activeStructureItem = request.structureItems?.find(item => item.id === targetSectionId)
