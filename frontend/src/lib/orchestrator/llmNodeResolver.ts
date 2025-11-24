@@ -93,12 +93,20 @@ Which node (if any) is the user referring to?`
     // Parse the LLM's response
     let resolution: NodeResolutionResult
     try {
+      // The API returns content, not analysis
+      const llmResponse = result.content || result.analysis
+      
+      if (!llmResponse) {
+        console.error('[LLM Node Resolver] No content in response:', result)
+        return null
+      }
+      
       // The LLM might return the JSON directly or wrapped in markdown
-      const jsonMatch = result.analysis?.match(/\{[\s\S]*\}/)
+      const jsonMatch = llmResponse.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         resolution = JSON.parse(jsonMatch[0])
       } else {
-        resolution = JSON.parse(result.analysis)
+        resolution = JSON.parse(llmResponse)
       }
     } catch (parseError) {
       console.error('[LLM Node Resolver] Failed to parse LLM response:', result)
