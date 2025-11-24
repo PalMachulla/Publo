@@ -488,6 +488,11 @@ export default function OrchestratorPanel({
         onAddChatMessage(`🧠 Analyzing your request...`, 'orchestrator', 'thinking')
       }
       
+      // Get available providers from user's API keys
+      const availableProviders = Array.from(new Set(availableOrchestrators.map(m => m.provider)))
+      
+      console.log('🔑 [OrchestratorPanel] Available providers:', availableProviders)
+      
       // Call the new orchestrator
       const response = await getOrchestrator(user.id).orchestrate({
         message,
@@ -502,7 +507,9 @@ export default function OrchestratorPanel({
         // Model selection preferences
         modelMode,
         fixedModeStrategy: modelMode === 'fixed' ? fixedModeStrategy : undefined,
-        fixedModelId: modelMode === 'fixed' ? configuredModel.orchestrator : undefined
+        fixedModelId: modelMode === 'fixed' ? configuredModel.orchestrator : undefined,
+        // Available providers (from user's API keys)
+        availableProviders: availableProviders.length > 0 ? availableProviders : undefined
       })
       
       // Display reasoning

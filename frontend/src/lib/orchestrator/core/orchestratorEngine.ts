@@ -49,6 +49,8 @@ export interface OrchestratorRequest {
   modelMode?: 'automatic' | 'fixed'
   fixedModeStrategy?: 'consistent' | 'loose'
   fixedModelId?: string | null
+  // Available providers (from user's API keys)
+  availableProviders?: string[]
 }
 
 export interface OrchestratorResponse {
@@ -179,10 +181,13 @@ export class OrchestratorEngine {
       intentAnalysis.intent === 'rewrite_with_coherence'
     )
     
+    // Use user's available providers (from API keys) or fallback to common ones
+    const availableProviders = request.availableProviders || ['openai', 'groq', 'anthropic', 'google']
+    
     const modelSelection = selectModel(
       taskComplexity,
       this.config.modelPriority,
-      ['openai', 'groq', 'anthropic', 'google']
+      availableProviders
     )
     
     // Step 9: Log reasoning to blackboard
@@ -477,7 +482,11 @@ export class OrchestratorEngine {
               taskType = 'action'
             }
             
-            // Select best model for this task
+            // Filter MODEL_TIERS by user's available providers
+            const availableProviders = request.availableProviders || ['openai', 'groq', 'anthropic', 'google']
+            const availableModels = MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
+            
+            // Select best model for this task from AVAILABLE models only
             const selectedModel = selectModelForTask(
               {
                 type: taskType,
@@ -485,7 +494,7 @@ export class OrchestratorEngine {
                 contextNeeded: 8000, // Typical scene context
                 priority: 'balanced' // Balance quality, speed, and cost
               },
-              MODEL_TIERS
+              availableModels // Only models user has API keys for!
             )
             
             writerModel = {
