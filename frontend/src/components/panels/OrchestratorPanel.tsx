@@ -1124,6 +1124,10 @@ export default function OrchestratorPanel({
         case 'create_structure':
           // Create new story structure (Allowed even if document panel is open)
           
+          // 🎯 DETECT FORMAT FIRST (before building prompts)
+          const detectedFormat = detectFormatFromMessage(message)
+          const formatToUse = detectedFormat || selectedFormat
+          
           // CANVAS INTELLIGENCE: Check if user is referencing connected nodes
           let enhancedPrompt = message
           const referencePhrases = [
@@ -1236,15 +1240,15 @@ ${allContent.substring(0, 8000)}
 
 ${allContent.length > 8000 ? '... (content truncated for length)' : ''}
 
-INSTRUCTION: Use the above ${referencedNode.detailedContext.format} content as inspiration for creating the new ${selectedFormat} structure. 
+INSTRUCTION: Use the above ${referencedNode.detailedContext.format} content as inspiration for creating the new ${formatToUse} structure. 
 
 ${message.toLowerCase().includes('interview') || message.toLowerCase().includes('character') ? 
-`FOCUS ON CHARACTERS: The user wants to feature the characters from this content. Carefully read through the content above and identify all named characters, their roles, personalities, and key characteristics. Build the ${selectedFormat} structure around interviewing or featuring these specific characters.` : 
-`Extract characters, themes, plot points, and narrative elements to adapt them for the ${selectedFormat} format.`}`
+`FOCUS ON CHARACTERS: The user wants to feature the characters from this content. Carefully read through the content above and identify all named characters, their roles, personalities, and key characteristics. Build the ${formatToUse} structure around interviewing or featuring these specific characters.` : 
+`Extract characters, themes, plot points, and narrative elements to adapt them for the ${formatToUse} format.`}`
 
                   if (onAddChatMessage) {
                     onAddChatMessage(`✅ Extracted ${Object.keys(contentMap).length} sections (${referencedNode.detailedContext.wordsWritten} words) from "${referencedNode.label}"`)
-                    onAddChatMessage(`🎯 Creating new ${selectedFormat} inspired by this content...`)
+                    onAddChatMessage(`🎯 Creating new ${formatToUse} inspired by this content...`)
                   }
                 } else {
                   // Use structure summaries if no written content yet
@@ -1258,7 +1262,7 @@ REFERENCE STRUCTURE FROM "${referencedNode.label}" (${referencedNode.detailedCon
 
 ${structureDetails}
 
-INSTRUCTION: Use the above ${referencedNode.detailedContext.format} structure and summaries as inspiration for creating the new ${selectedFormat} structure.`
+INSTRUCTION: Use the above ${referencedNode.detailedContext.format} structure and summaries as inspiration for creating the new ${formatToUse} structure.`
 
                   if (onAddChatMessage) {
                     onAddChatMessage(`✅ Using structure from "${referencedNode.label}" (${allSections.length} sections)`)
@@ -1275,7 +1279,7 @@ ${markdown.substring(0, 8000)}
 
 ${markdown.length > 8000 ? '... (content truncated for length)' : ''}
 
-Use the above content as inspiration for creating the new ${selectedFormat} structure.`
+Use the above content as inspiration for creating the new ${formatToUse} structure.`
 
                 if (onAddChatMessage) {
                   onAddChatMessage(`✅ Extracted ${referencedNode.detailedContext.wordCount} words from "${referencedNode.label}"`)
@@ -1287,11 +1291,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
             } // Close the else block for single-node extraction
           }
           
-          // Detect format from user message
-          const detectedFormat = detectFormatFromMessage(message)
-          const formatToUse = detectedFormat || selectedFormat
-          
-          // Store pending creation and ask for template choice
+          // Store pending creation and ask for template choice (formatToUse already detected at top)
           setPendingCreation({
             format: formatToUse,
             userMessage: message,
