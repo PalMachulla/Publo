@@ -13,7 +13,7 @@ import {
   RadioItem,
   Button
 } from '@/components/ui'
-import { getOrchestrator, type OrchestratorRequest } from '@/lib/orchestrator'
+import { getOrchestrator, buildCanvasContext, type OrchestratorRequest } from '@/lib/orchestrator'
 import { Edge } from 'reactflow'
 
 // Helper: Get canonical model details for filtering and display
