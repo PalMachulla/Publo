@@ -60,6 +60,8 @@ export interface OrchestratorRequest {
   fixedModelId?: string | null
   // Available providers (from user's API keys)
   availableProviders?: string[]
+  // Structure generation (for create_structure intent)
+  userKeyId?: string // API key ID for structure generation
 }
 
 export interface OrchestratorResponse {
@@ -75,10 +77,34 @@ export interface OrchestratorResponse {
 }
 
 export interface OrchestratorAction {
-  type: 'message' | 'open_document' | 'select_section' | 'generate_content' | 'modify_structure' | 'delete_node' | 'request_clarification'
+  type: 'message' | 'open_document' | 'select_section' | 'generate_content' | 'modify_structure' | 'delete_node' | 'request_clarification' | 'generate_structure'
   payload: any
   status: 'pending' | 'executing' | 'completed' | 'failed'
   error?: string
+}
+
+// Structure generation types (for create_structure intent)
+export interface StructurePlan {
+  reasoning: string
+  structure: Array<{
+    id: string
+    level: number
+    name: string
+    parentId: string | null
+    wordCount: number
+    summary: string
+  }>
+  tasks: Array<{
+    id: string
+    type: string
+    sectionId: string
+    description: string
+  }>
+  metadata?: {
+    totalWordCount: number
+    estimatedTime: string
+    recommendedModels: string[]
+  }
 }
 
 // ============================================================
@@ -589,14 +615,53 @@ export class OrchestratorEngine {
       }
       
       case 'create_structure': {
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: '🏗️ Generating story structure plan...',
+          type: 'thinking'
+        })
+        
+        // Validate required fields
+        if (!request.documentFormat) {
+          throw new Error('documentFormat is required for create_structure intent')
+        }
+        if (!request.userKeyId) {
+          throw new Error('userKeyId is required for create_structure intent')
+        }
+        
+        // Select model for structure generation (use frontier tier for best quality)
+        const availableModels = MODEL_TIERS.filter(m => 
+          request.availableProviders?.includes(m.provider) && m.tier === 'frontier'
+        )
+        
+        if (availableModels.length === 0) {
+          throw new Error('No frontier models available for structure generation')
+        }
+        
+        const selectedModel = availableModels[0]
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `🎯 Using ${selectedModel.id} for structure generation`,
+          type: 'decision'
+        })
+        
+        // Generate structure plan
+        const plan = await this.createStructurePlan(
+          request.message,
+          request.documentFormat,
+          selectedModel.id,
+          request.userKeyId
+        )
+        
+        // Return as action
         actions.push({
-          type: 'modify_structure',
+          type: 'generate_structure',
           payload: {
-            action: 'create',
-            format: request.documentFormat || 'novel',
+            plan,
+            format: request.documentFormat,
             prompt: request.message
           },
-          status: 'pending'
+          status: 'completed'
         })
         break
       }
@@ -978,6 +1043,172 @@ export class OrchestratorEngine {
     }
     
     return prompt
+  }
+
+  /**
+   * Generate structure plan for create_structure intent
+   */
+  private async createStructurePlan(
+    userPrompt: string,
+    format: string,
+    modelId: string,
+    userKeyId: string
+  ): Promise<StructurePlan> {
+    this.blackboard.addMessage({
+      role: 'orchestrator',
+      content: '💭 Generating structure plan...',
+      type: 'thinking'
+    })
+    
+    // Build format-specific instructions
+    const formatInstructions = this.getFormatInstructions(format)
+    
+    const systemPrompt = `You are an expert story structure planner. Your role is to analyze creative prompts and create detailed, hierarchical structures optimized for the requested format.
+
+${formatInstructions}
+
+Respond with a JSON object containing:
+{
+  "reasoning": "Your analysis of the prompt and structural decisions",
+  "structure": [
+    {
+      "id": "unique_id",
+      "level": 1, // 1=top level, 2=sub-section, etc.
+      "name": "Section Name",
+      "parentId": null or "parent_id",
+      "wordCount": estimated_words,
+      "summary": "Brief description of this section's purpose"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task_id",
+      "type": "write_section",
+      "sectionId": "section_id",
+      "description": "What needs to be written"
+    }
+  ],
+  "metadata": {
+    "totalWordCount": total,
+    "estimatedTime": "X hours",
+    "recommendedModels": ["model1", "model2"]
+  }
+}`
+
+    const formatLabel = format.charAt(0).toUpperCase() + format.slice(1).replace(/-/g, ' ')
+    const userMessage = `The user wants to create a ${formatLabel}.\n\nUser's creative prompt:\n${userPrompt}\n\nPlease analyze this prompt carefully and create a detailed structure plan optimized for the ${formatLabel} format, with specific writing tasks.`
+    
+    // Call generation API
+    const response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'orchestrator',
+        model: modelId,
+        system_prompt: systemPrompt,
+        user_prompt: userMessage,
+        max_completion_tokens: 16000,
+        user_key_id: userKeyId,
+        stream: false
+      })
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `❌ Structure generation failed: ${errorData.error}`,
+        type: 'error'
+      })
+      throw new Error(errorData.error || 'Structure generation API call failed')
+    }
+    
+    const data = await response.json()
+    let rawContent = data.content || data.text || ''
+    
+    // Extract JSON from markdown code blocks if present
+    let jsonContent = rawContent.trim()
+    const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/)
+    if (jsonMatch) {
+      jsonContent = jsonMatch[1].trim()
+    }
+    
+    try {
+      const plan = JSON.parse(jsonContent) as StructurePlan
+      
+      // Validate plan structure
+      if (!plan.structure || !Array.isArray(plan.structure)) {
+        throw new Error('Plan missing structure array')
+      }
+      if (!plan.tasks || !Array.isArray(plan.tasks)) {
+        throw new Error('Plan missing tasks array')
+      }
+      
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `✅ Structure plan created: ${plan.structure.length} sections, ${plan.tasks.length} tasks`,
+        type: 'result'
+      })
+      
+      return plan
+    } catch (parseError: any) {
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `❌ Failed to parse structure plan JSON: ${parseError.message}`,
+        type: 'error'
+      })
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `Raw content (first 500 chars): ${rawContent.substring(0, 500)}`,
+        type: 'thinking'
+      })
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `Raw content (last 500 chars): ${rawContent.substring(Math.max(0, rawContent.length - 500))}`,
+        type: 'thinking'
+      })
+      throw new Error(`Failed to parse orchestrator plan: ${parseError.message}`)
+    }
+  }
+
+  /**
+   * Get format-specific instructions for structure generation
+   */
+  private getFormatInstructions(format: string): string {
+    const instructions: Record<string, string> = {
+      novel: `For NOVEL format:
+- Use a hierarchical structure: Parts > Chapters > Scenes
+- Level 1: Parts (major story arcs)
+- Level 2: Chapters (narrative beats)
+- Level 3: Scenes (specific events)
+- Aim for 60,000-100,000 words total
+- Each chapter should be 2,000-4,000 words`,
+      
+      screenplay: `For SCREENPLAY format:
+- Use standard screenplay structure: Acts > Sequences > Scenes > Beats
+- Level 1: Acts (3-act structure preferred)
+- Level 2: Sequences (8-sequence method)
+- Level 3: Scenes (individual locations/moments)
+- Level 4: Beats (specific dramatic moments)
+- Aim for 90-120 pages (90,000-120,000 characters)
+- Each scene should be 1-3 pages`,
+      
+      report: `For REPORT format:
+- Use professional document structure: Sections > Subsections > Topics
+- Level 1: Major sections (Executive Summary, Analysis, etc.)
+- Level 2: Subsections (specific topics)
+- Level 3: Points (individual arguments/findings)
+- Aim for clarity and scanability`,
+      
+      podcast: `For PODCAST format:
+- Use episode structure: Segments > Topics > Talking Points
+- Level 1: Main segments (Intro, Main Discussion, Outro)
+- Level 2: Topics (specific themes)
+- Level 3: Talking points (individual beats)
+- Aim for conversational, engaging flow`
+    }
+    
+    return instructions[format] || instructions.novel
   }
 }
 

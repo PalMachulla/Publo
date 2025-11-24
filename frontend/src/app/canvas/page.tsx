@@ -33,6 +33,7 @@ import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/l
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
 import { NodeType, StoryFormat, StoryStructureNodeData } from '@/types/nodes'
 import { MODEL_TIERS } from '@/lib/orchestrator/core/modelRouter'
+import { getOrchestrator } from '@/lib/orchestrator'
 
 // Node types for React Flow
 const nodeTypes = {
@@ -1077,9 +1078,7 @@ export default function CanvasPage() {
       // Set inference flag
       isInferencingRef.current = true
       
-      // Import orchestrator engine for structure generation
-      const { OrchestratorEngine } = await import('@/lib/orchestrator/orchestratorEngine')
-      const { MODEL_CATALOG } = await import('@/lib/models/modelCapabilities')
+      // Use unified orchestrator for structure generation
       
       // Get orchestrator node
       const orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
@@ -1281,13 +1280,12 @@ export default function CanvasPage() {
         }
       }
       
-      // Create structure generation orchestrator with streaming support
-      const orchestrator = new OrchestratorEngine(
-        MODEL_CATALOG,
-        onReasoning,
-        user.id,
-        onModelStream // Stream model reasoning tokens
-      )
+      // Get unified orchestrator instance
+      const orchestrator = getOrchestrator(user.id, {
+        modelPriority: 'balanced',
+        enableRAG: false, // Canvas doesn't need RAG for structure generation
+        enablePatternLearning: true
+      })
       
       // Determine available models
       let availableModels: string[] = []
@@ -1400,16 +1398,39 @@ export default function CanvasPage() {
       
       onReasoning(`📝 Analyzing prompt: "${effectivePrompt.substring(0, 100)}..."`, 'thinking')
       
-      // Call orchestrator to create plan
-      const plan = await orchestrator.orchestrate(
-        effectivePrompt,
-        format,
-        {
-          orchestratorModel: finalOrchestratorModel,
-          availableModels,
-          userKeyId: userKeyId ?? undefined
-        }
-      )
+      // Get available providers from API keys
+      const availableProviders = prefsData.keys
+        ?.map((k: any) => k.provider)
+        .filter(Boolean) || []
+      
+      onReasoning(`🔑 Available providers: ${availableProviders.join(', ')}`, 'thinking')
+      
+      // Call unified orchestrator to create structure
+      const response = await orchestrator.orchestrate({
+        message: effectivePrompt,
+        canvasNodes: nodes,
+        canvasEdges: edges,
+        documentFormat: format,
+        userKeyId: userKeyId || undefined,
+        fixedModelId: finalOrchestratorModel || undefined,
+        availableProviders,
+        modelMode: finalOrchestratorModel ? 'fixed' : 'automatic'
+      })
+      
+      // Extract plan from generate_structure action
+      const structureAction = response.actions.find(a => a.type === 'generate_structure')
+      if (!structureAction || !structureAction.payload?.plan) {
+        throw new Error('Orchestrator did not return a structure plan')
+      }
+      
+      const plan = structureAction.payload.plan
+      
+      // Display orchestrator's thinking steps
+      if (response.thinkingSteps && response.thinkingSteps.length > 0) {
+        response.thinkingSteps.forEach(step => {
+          onReasoning(step.content, step.type as any)
+        })
+      }
       
       onReasoning(`✅ Plan created: ${plan.structure.length} sections, ${plan.tasks.length} tasks`, 'result')
       

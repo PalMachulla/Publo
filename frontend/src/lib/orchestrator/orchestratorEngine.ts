@@ -1,5 +1,22 @@
 /**
- * Orchestrator Engine
+ * @deprecated This file is deprecated and maintained only for backward compatibility.
+ * 
+ * Use the unified orchestrator instead:
+ * - Import: import { getOrchestrator } from '@/lib/orchestrator'
+ * - Usage: getOrchestrator(userId).orchestrate({ ... })
+ * 
+ * The unified orchestrator (core/orchestratorEngine.ts) provides:
+ * ✅ Unified architecture (Blackboard pattern)
+ * ✅ Intelligent model delegation (MODEL_TIERS)
+ * ✅ Pattern learning
+ * ✅ Structure generation (via generate_structure action)
+ * ✅ Better error handling and reasoning transparency
+ * 
+ * Migration guide: See ORCHESTRATOR_ARCHITECTURE.md
+ * 
+ * ---
+ * 
+ * OLD Orchestrator Engine (LEGACY)
  * 
  * Core agentic system that:
  * 1. Analyzes user prompts
