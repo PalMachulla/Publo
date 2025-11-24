@@ -80,6 +80,22 @@ export const MODEL_CATALOG: ModelCapabilities[] = [
     notes: 'Excellent all-rounder for orchestration and writing'
   },
   {
+    id: 'llama-3.3-70b-specdec',
+    provider: 'groq',
+    name: 'Llama 3.3 70B SpecDec',
+    displayName: 'Llama 3.3 70B SpecDec',
+    roles: ['orchestrator', 'writer'],
+    strengths: ['Ultra-fast', 'Speculative decoding', 'Same quality as versatile'],
+    speed: 'instant',
+    cost: 'cheap',
+    contextWindow: 8192,
+    maxOutputTokens: 8192,
+    supportsSystemPrompt: true,
+    supportsJSONMode: true,
+    specializations: ['speed', 'planning', 'short-context'],
+    notes: 'Faster variant using speculative decoding - best for short tasks'
+  },
+  {
     id: 'llama-3.1-70b-versatile',
     provider: 'groq',
     name: 'Llama 3.1 70B Versatile',
@@ -150,7 +166,57 @@ export const MODEL_CATALOG: ModelCapabilities[] = [
   // OPENAI MODELS
   // ============================================================
   
-  // OpenAI Orchestrators
+  // OpenAI Reasoning Models (o1 series)
+  {
+    id: 'o1',
+    provider: 'openai',
+    name: 'OpenAI o1',
+    displayName: 'OpenAI o1',
+    roles: ['orchestrator'],
+    strengths: ['Advanced reasoning', 'Chain-of-thought', 'Complex problems', 'Math & logic'],
+    speed: 'slow',
+    cost: 'expensive',
+    contextWindow: 200000,
+    maxOutputTokens: 100000,
+    supportsSystemPrompt: false, // o1 doesn't support system prompts
+    supportsJSONMode: false,
+    specializations: ['complex-reasoning', 'planning', 'logic', 'structure'],
+    notes: 'Most advanced reasoning model - shows thinking process, very expensive'
+  },
+  {
+    id: 'o1-mini',
+    provider: 'openai',
+    name: 'OpenAI o1 Mini',
+    displayName: 'OpenAI o1 Mini',
+    roles: ['orchestrator'],
+    strengths: ['Fast reasoning', 'STEM tasks', 'Affordable reasoning'],
+    speed: 'medium',
+    cost: 'moderate',
+    contextWindow: 128000,
+    maxOutputTokens: 65536,
+    supportsSystemPrompt: false,
+    supportsJSONMode: false,
+    specializations: ['reasoning', 'planning', 'math', 'logic'],
+    notes: 'Faster, cheaper o1 variant - still shows reasoning'
+  },
+  {
+    id: 'o1-preview',
+    provider: 'openai',
+    name: 'OpenAI o1 Preview',
+    displayName: 'OpenAI o1 Preview',
+    roles: ['orchestrator'],
+    strengths: ['Preview reasoning', 'Complex tasks', 'Experimental'],
+    speed: 'slow',
+    cost: 'expensive',
+    contextWindow: 128000,
+    maxOutputTokens: 32768,
+    supportsSystemPrompt: false,
+    supportsJSONMode: false,
+    specializations: ['reasoning', 'planning', 'complex-problems'],
+    notes: 'Preview version of o1 - experimental'
+  },
+  
+  // OpenAI Standard Orchestrators
   {
     id: 'gpt-4o',
     provider: 'openai',
@@ -311,6 +377,38 @@ export const MODEL_CATALOG: ModelCapabilities[] = [
   // ============================================================
   
   {
+    id: 'gemini-exp-1206',
+    provider: 'google',
+    name: 'Gemini Experimental 1206',
+    displayName: 'Gemini Exp 1206',
+    roles: ['orchestrator', 'writer'],
+    strengths: ['Cutting-edge', 'Experimental features', 'High quality'],
+    speed: 'medium',
+    cost: 'expensive',
+    contextWindow: 2000000,
+    maxOutputTokens: 8192,
+    supportsSystemPrompt: true,
+    supportsJSONMode: true,
+    specializations: ['complex-reasoning', 'long-context', 'experimental'],
+    notes: 'Latest experimental Gemini - may have newest features'
+  },
+  {
+    id: 'gemini-2.0-flash-exp',
+    provider: 'google',
+    name: 'Gemini 2.0 Flash Experimental',
+    displayName: 'Gemini 2.0 Flash Exp',
+    roles: ['orchestrator', 'writer'],
+    strengths: ['Very fast', 'Experimental', 'Good quality'],
+    speed: 'fast',
+    cost: 'cheap',
+    contextWindow: 1000000,
+    maxOutputTokens: 8192,
+    supportsSystemPrompt: true,
+    supportsJSONMode: true,
+    specializations: ['speed', 'general-purpose', 'long-context'],
+    notes: 'Faster experimental variant of Gemini 2.0'
+  },
+  {
     id: 'gemini-2.0-flash-thinking-exp',
     provider: 'google',
     name: 'Gemini 2.0 Flash Thinking',
@@ -378,6 +476,38 @@ export const MODEL_CATALOG: ModelCapabilities[] = [
     supportsJSONMode: true,
     specializations: ['reasoning', 'planning', 'logic', 'structure'],
     notes: 'Built for reasoning - shows explicit thinking process'
+  },
+  {
+    id: 'deepseek-r1-distill-qwen-32b',
+    provider: 'deepseek',
+    name: 'DeepSeek R1 Distill Qwen 32B',
+    displayName: 'DeepSeek R1 Distill (Qwen)',
+    roles: ['orchestrator', 'writer'],
+    strengths: ['Fast reasoning', 'Distilled quality', 'Affordable'],
+    speed: 'fast',
+    cost: 'cheap',
+    contextWindow: 64000,
+    maxOutputTokens: 8192,
+    supportsSystemPrompt: true,
+    supportsJSONMode: true,
+    specializations: ['reasoning', 'planning', 'speed'],
+    notes: 'Distilled R1 - faster and cheaper with good reasoning'
+  },
+  {
+    id: 'deepseek-r1-distill-llama-70b',
+    provider: 'deepseek',
+    name: 'DeepSeek R1 Distill Llama 70B',
+    displayName: 'DeepSeek R1 Distill (Llama)',
+    roles: ['orchestrator', 'writer'],
+    strengths: ['Strong reasoning', 'Distilled from R1', 'Llama-based'],
+    speed: 'fast',
+    cost: 'cheap',
+    contextWindow: 128000,
+    maxOutputTokens: 8192,
+    supportsSystemPrompt: true,
+    supportsJSONMode: true,
+    specializations: ['reasoning', 'planning', 'long-context'],
+    notes: 'Llama-based distillation of R1 - excellent balance'
   },
   {
     id: 'deepseek-chat',
