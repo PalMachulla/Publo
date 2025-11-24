@@ -514,7 +514,14 @@ export class OrchestratorEngine {
       
       // Parse the accumulated JSON content
       try {
-        const plan = JSON.parse(fullContent)
+        // Extract JSON from markdown code blocks if present
+        let jsonContent = fullContent.trim()
+        const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/)
+        if (jsonMatch) {
+          jsonContent = jsonMatch[1].trim()
+        }
+        
+        const plan = JSON.parse(jsonContent)
         
         // Validate plan structure
         if (!plan.structure || !Array.isArray(plan.structure)) {
@@ -532,7 +539,11 @@ export class OrchestratorEngine {
         
         return plan as OrchestratorPlan
       } catch (error) {
-        throw new Error(`Failed to parse orchestrator plan: ${error}`)
+        console.error('[Orchestrator] JSON Parse Error:', error)
+        console.error('[Orchestrator] Raw content (first 500 chars):', fullContent.substring(0, 500))
+        console.error('[Orchestrator] Raw content (last 500 chars):', fullContent.substring(Math.max(0, fullContent.length - 500)))
+        this.log(`❌ Model returned invalid JSON. Content length: ${fullContent.length} chars`, 'error')
+        throw new Error(`Failed to parse orchestrator plan: ${error}\n\nResponse preview: ${fullContent.substring(0, 200)}...`)
       }
     }
     
@@ -542,15 +553,19 @@ export class OrchestratorEngine {
     const data = await response.json()
     
     if (!data.success || !data.plan) {
+      console.error('[Orchestrator] Invalid response:', data)
+      this.log(`❌ API returned invalid format. Success: ${data.success}, Has plan: ${!!data.plan}`, 'error')
       throw new Error('Invalid orchestrator response format')
     }
     
     // Validate plan structure
     if (!data.plan.structure || !Array.isArray(data.plan.structure)) {
+      console.error('[Orchestrator] Plan structure invalid:', data.plan)
       throw new Error('Plan missing structure array')
     }
     
     if (!data.plan.tasks || !Array.isArray(data.plan.tasks)) {
+      console.error('[Orchestrator] Plan tasks invalid:', data.plan)
       throw new Error('Plan missing tasks array')
     }
     
