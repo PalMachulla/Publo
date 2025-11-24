@@ -179,6 +179,17 @@ export async function POST(request: NextRequest) {
 // GET: Check embedding status for a node
 export async function GET(request: NextRequest) {
   try {
+    // Early return with cached response to prevent excessive calls
+    const { searchParams } = new URL(request.url)
+    const nodeId = searchParams.get('nodeId')
+
+    if (!nodeId) {
+      return NextResponse.json(
+        { error: 'Missing nodeId parameter' },
+        { status: 400 }
+      )
+    }
+
     const supabase = await createClient()
 
     // Check authentication
@@ -194,16 +205,6 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { searchParams } = new URL(request.url)
-    const nodeId = searchParams.get('nodeId')
-
-    if (!nodeId) {
-      return NextResponse.json(
-        { error: 'Missing nodeId parameter' },
-        { status: 400 }
-      )
-    }
-
     // Get embedding count (handle case where table doesn't exist)
     const { count: embeddingCount, error: countError } = await supabase
       .from('document_embeddings')
@@ -214,12 +215,15 @@ export async function GET(request: NextRequest) {
     // If table doesn't exist or other error, return unavailable status
     if (countError) {
       console.warn('Embeddings table not available:', countError.message)
-      return NextResponse.json({
+      const response = NextResponse.json({
         exists: false,
         chunkCount: 0,
         queueStatus: 'unavailable',
         error: 'Embeddings feature not set up. Run migration 013_create_document_embeddings.sql',
       })
+      // Cache error response to prevent repeated failed calls
+      response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600')
+      return response
     }
 
     // Get queue status (don't use .single() as it throws error if no rows)
@@ -238,13 +242,18 @@ export async function GET(request: NextRequest) {
     // Get first item from array (or null if no queue entries)
     const latestQueueEntry = queueData && queueData.length > 0 ? queueData[0] : null
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       exists: embeddingCount !== null && embeddingCount > 0,
       chunkCount: embeddingCount || 0,
       queueStatus: latestQueueEntry?.status || 'none',
       queuedAt: latestQueueEntry?.created_at,
       processedAt: latestQueueEntry?.processed_at,
     })
+
+    // Cache response for 60 seconds to prevent excessive calls
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120')
+    
+    return response
   } catch (error) {
     console.error('Error checking embedding status:', error)
     return NextResponse.json(
