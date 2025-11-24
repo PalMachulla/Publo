@@ -473,19 +473,50 @@ export default function OrchestratorPanel({
   
   // Helper: Execute action based on intent (uses OLD implementation logic)
   const handleSendMessage_OLD_ExecuteOnly = async (message: string, intent: UserIntent) => {
-    // This is a simplified version of the OLD handler that just executes the action
-    // without re-analyzing intent
+    // Execute the action using the OLD handler's proven logic
+    // But with context awareness from the NEW orchestrator
     
     switch (intent) {
-      case 'answer_question':
-        // Just call the OLD answer_question handler directly
+      case 'answer_question': {
+        // Build a context-aware prompt that includes ALL canvas nodes
+        let enhancedPrompt = `User Question: ${message}\n\n`
+        
+        // Add canvas context (structure and summaries from ALL connected nodes)
+        if (canvasContext.connectedNodes.length > 0) {
+          enhancedPrompt += `Available Context from Canvas:\n`
+          canvasContext.connectedNodes.forEach(node => {
+            enhancedPrompt += `\n--- ${node.label} (${node.nodeType}) ---\n`
+            enhancedPrompt += `Summary: ${node.summary}\n`
+            
+            if (node.detailedContext?.structure) {
+              enhancedPrompt += `Structure:\n${node.detailedContext.structure}\n`
+            }
+            
+            // If there's actual content, include it
+            if (node.detailedContext?.contentMap && currentStoryStructureNodeId === node.nodeId) {
+              const contentEntries = Object.entries(node.detailedContext.contentMap)
+              if (contentEntries.length > 0) {
+                enhancedPrompt += `\nContent (${contentEntries.length} sections):\n`
+                contentEntries.slice(0, 5).forEach(([sectionId, content]: [string, any]) => {
+                  if (content && content.trim()) {
+                    const truncated = content.length > 500 ? content.substring(0, 500) + '...' : content
+                    enhancedPrompt += `\n${truncated}\n`
+                  }
+                })
+              }
+            }
+          })
+        }
+        
+        // Call the answer handler with enhanced prompt
         if (onAnswerQuestion) {
-          const answer = await onAnswerQuestion(message)
+          const answer = await onAnswerQuestion(enhancedPrompt)
           if (onAddChatMessage) {
             onAddChatMessage(`📖 ${answer}`, 'orchestrator', 'result')
           }
         }
         break
+      }
         
       case 'write_content':
         if (activeContext && onWriteContent) {
@@ -494,12 +525,12 @@ export default function OrchestratorPanel({
         break
         
       case 'create_structure':
-        // Simplified - just call onCreateStory
         onCreateStory(selectedFormat, selectedTemplate || undefined, message)
         break
         
       case 'general_chat':
       default:
+        // For general chat, also use enhanced context
         if (onAnswerQuestion) {
           const answer = await onAnswerQuestion(message)
           if (onAddChatMessage) {
