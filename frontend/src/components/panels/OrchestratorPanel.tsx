@@ -13,9 +13,7 @@ import {
   RadioItem,
   Button
 } from '@/components/ui'
-import { analyzeIntent, validateIntent, explainIntent, type IntentAnalysis } from '@/lib/orchestrator/intentRouter'
-import { buildCanvasContext, formatCanvasContextForLLM, findReferencedNode } from '@/lib/orchestrator/canvasContextProvider'
-import { enhanceContextWithRAG, buildRAGEnhancedPrompt } from '@/lib/orchestrator/ragIntegration'
+import { getOrchestrator, type OrchestratorRequest } from '@/lib/orchestrator'
 import { Edge } from 'reactflow'
 
 // Helper: Get canonical model details for filtering and display
@@ -242,7 +240,7 @@ function detectFormatFromMessage(message: string): StoryFormat | null {
   return null
 }
 
-export default function CreateStoryPanel({ 
+export default function OrchestratorPanel({ 
   node, 
   onCreateStory, 
   onClose, 

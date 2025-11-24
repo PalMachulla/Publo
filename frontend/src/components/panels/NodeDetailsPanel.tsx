@@ -9,7 +9,7 @@ import StoryBookPanel from './StoryBookPanel'
 import CharacterPanel from './CharacterPanel'
 import ResearchPanel from './ResearchPanel'
 import ClusterPanel from './ClusterPanel'
-import CreateStoryPanel from './CreateStoryPanel'
+import OrchestratorPanel from './OrchestratorPanel'
 import StoryStructurePanel from './StoryStructurePanel'
 import { PASTEL_COLORS } from '@/components/nodes/narrationline/NarrationSegment'
 import { parseMarkdownStructure } from '@/lib/markdownParser'
@@ -606,7 +606,7 @@ export default function NodeDetailsPanel({
               </div>
             </div>
           ) : nodeType === 'create-story' ? (
-            <CreateStoryPanel 
+              <OrchestratorPanel
               node={node as any} 
               onCreateStory={onCreateStory || (() => console.warn('onCreateStory not provided'))} 
               onClose={onClose}
