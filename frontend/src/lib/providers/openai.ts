@@ -102,25 +102,29 @@ export class OpenAIAdapter implements LLMProviderAdapter {
       const client = this.createClient(apiKey)
       const response = await client.models.list()
 
-      // Filter for chat/text generation models only
-      const chatModels = response.data.filter(model => {
-        const id = model.id.toLowerCase()
-        
-        // Exclude non-text models
-        if (id.includes('whisper')) return false // Speech-to-text
-        if (id.includes('tts')) return false // Text-to-speech
-        if (id.includes('dall-e')) return false // Image generation
-        if (id.includes('davinci-002')) return false // Legacy completion
-        if (id.includes('babbage-002')) return false // Legacy completion
-        if (id.includes('embedding')) return false // Embeddings
-        if (id.includes('moderation')) return false // Moderation
-        if (id.includes('audio')) return false // Audio models
-        
-        // Only include GPT chat models and reasoning models
-        return id.startsWith('gpt-') || id.startsWith('chatgpt') || id.startsWith('o1')
-      })
+      // Filter and normalize models
+      const chatModels = response.data
+        .filter(model => {
+          const id = model.id.toLowerCase()
+          
+          // Exclude non-text models
+          if (id.includes('whisper')) return false // Speech-to-text
+          if (id.includes('tts')) return false // Text-to-speech
+          if (id.includes('dall-e')) return false // Image generation
+          if (id.includes('davinci-002')) return false // Legacy completion
+          if (id.includes('babbage-002')) return false // Legacy completion
+          if (id.includes('embedding')) return false // Embeddings
+          if (id.includes('moderation')) return false // Moderation
+          if (id.includes('audio')) return false // Audio models
+          
+          // Only include GPT chat models and reasoning models
+          return id.startsWith('gpt-') || id.startsWith('chatgpt') || id.startsWith('o1')
+        })
+        .map(model => this.normalizeModel(model))
 
-      return chatModels.map(model => this.normalizeModel(model))
+      // Apply curation (imported from modelCuration module)
+      const { curateModels } = await import('../models/modelCuration')
+      return curateModels(chatModels)
     } catch (error: any) {
       if (error?.status === 401) {
         throw new InvalidAPIKeyError('openai', error)

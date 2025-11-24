@@ -18,6 +18,7 @@ import { selectModel, assessTaskComplexity, type ModelPriority, type ModelSelect
 import { analyzeIntent, type IntentAnalysis, type UserIntent } from '../intentRouter'
 import { enhanceContextWithRAG } from '../ragIntegration'
 import { Node, Edge } from 'reactflow'
+import { selectModelForTask, isFrontierModel, MODEL_TIERS, type TaskRequirements, type TieredModel } from './modelTiers'
 
 // ============================================================
 // TYPES
@@ -438,9 +439,68 @@ export class OrchestratorEngine {
             }
             console.log('🎯 [Consistent Strategy] Using fixed model for writing:', writerModel.modelId)
           } else {
-            // AUTOMATIC or LOOSE: Use fast/cheap model for writing
-            writerModel = selectModel('moderate', 'speed', ['groq', 'openai'])
-            console.log('💡 [Loose/Auto Strategy] Using optimized writer model:', writerModel.modelId)
+            // AUTOMATIC or LOOSE: Intelligently select writer based on scene complexity
+            const activeStructureItem = request.structureItems?.find(item => item.id === targetSectionId)
+            const sectionLevel = activeStructureItem?.level || 3
+            const sectionName = activeStructureItem?.name?.toLowerCase() || ''
+            const sectionWordCount = activeStructureItem?.wordCount || 0
+            
+            // Determine task complexity based on section characteristics
+            let taskType: TaskRequirements['type'] = 'simple-scene'
+            
+            // Level 1 (Acts) or Level 2 (Sequences) = Complex scenes
+            if (sectionLevel <= 2) {
+              taskType = 'complex-scene'
+            }
+            // Keywords indicating complexity
+            else if (sectionName.includes('climax') || 
+                     sectionName.includes('confrontation') ||
+                     sectionName.includes('revelation') ||
+                     sectionName.includes('finale')) {
+              taskType = 'complex-scene'
+            }
+            // High word count target
+            else if (sectionWordCount > 1000) {
+              taskType = 'complex-scene'
+            }
+            // Dialogue-heavy scenes
+            else if (sectionName.includes('dialogue') || 
+                     sectionName.includes('conversation') ||
+                     sectionName.includes('talk')) {
+              taskType = 'dialogue'
+            }
+            // Action scenes
+            else if (sectionName.includes('action') || 
+                     sectionName.includes('fight') ||
+                     sectionName.includes('chase') ||
+                     sectionName.includes('battle')) {
+              taskType = 'action'
+            }
+            
+            // Select best model for this task
+            const selectedModel = selectModelForTask(
+              {
+                type: taskType,
+                wordCount: sectionWordCount,
+                contextNeeded: 8000, // Typical scene context
+                priority: 'balanced' // Balance quality, speed, and cost
+              },
+              MODEL_TIERS
+            )
+            
+            writerModel = {
+              modelId: selectedModel?.id || 'llama-3.3-70b-versatile', // Fallback
+              provider: selectedModel?.provider || 'groq',
+              reasoning: `Intelligent delegation: ${taskType} task → ${selectedModel?.displayName || 'Llama 3.3 70B'}`
+            }
+            
+            console.log('💡 [Intelligent Delegation]', {
+              section: activeStructureItem?.name,
+              level: sectionLevel,
+              taskType,
+              selectedModel: writerModel.modelId,
+              reasoning: writerModel.reasoning
+            })
           }
           
           actions.push({
