@@ -32,6 +32,7 @@ import { CanvasProvider } from '@/contexts/CanvasContext'
 import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/lib/stories'
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
 import { NodeType, StoryFormat, StoryStructureNodeData } from '@/types/nodes'
+import { MODEL_TIERS } from '@/lib/orchestrator/core/modelRouter'
 
 // Node types for React Flow
 const nodeTypes = {
@@ -1308,21 +1309,52 @@ export default function CanvasPage() {
             const firstGroup = groups[0]
             
             if (firstGroup.models && Array.isArray(firstGroup.models) && firstGroup.models.length > 0) {
-              const orchestratorModels = firstGroup.models.filter((m: any) => 
-                m.id && (m.id.includes('70b') || m.id.includes('gpt-4') || m.id.includes('claude'))
+              // VALIDATE: Only use models that exist in MODEL_TIERS
+              const validModelIds = MODEL_TIERS.map(m => m.id)
+              const validModels = firstGroup.models.filter((m: any) => 
+                m.id && validModelIds.includes(m.id)
               )
               
-              if (orchestratorModels.length > 0) {
-                finalOrchestratorModel = orchestratorModels[0].id
-                availableModels = [orchestratorModels[0].id]
-                onReasoning(`✓ Auto-selected: ${orchestratorModels[0].name || orchestratorModels[0].id}`, 'decision')
-                console.log('[Canvas] Auto-selected orchestrator:', finalOrchestratorModel)
+              console.log('[Canvas] Model validation:', {
+                total: firstGroup.models.length,
+                valid: validModels.length,
+                validModelIds,
+                firstGroupModels: firstGroup.models.map((m: any) => m.id)
+              })
+              
+              if (validModels.length === 0) {
+                onReasoning(`⚠️ No valid models found in your preferences. Using default...`, 'decision')
+                // Use the first frontier or premium model from MODEL_TIERS that user has access to
+                const defaultModel = MODEL_TIERS.find(m => 
+                  (m.tier === 'frontier' || m.tier === 'premium') && 
+                  firstGroup.provider === m.provider
+                )
+                if (defaultModel) {
+                  finalOrchestratorModel = defaultModel.id
+                  availableModels = [defaultModel.id]
+                  onReasoning(`✓ Using default: ${defaultModel.displayName}`, 'decision')
+                } else {
+                  throw new Error(`No valid models available for ${firstGroup.provider}. Please update your model preferences.`)
+                }
               } else {
-                // Fallback to any available model
-                finalOrchestratorModel = firstGroup.models[0].id
-                availableModels = [firstGroup.models[0].id]
-                onReasoning(`✓ Using: ${firstGroup.models[0].name || firstGroup.models[0].id}`, 'decision')
-                console.log('[Canvas] Fallback orchestrator:', finalOrchestratorModel)
+                // Prefer frontier/premium models from validated list
+                const orchestratorModels = validModels.filter((m: any) => {
+                  const tierModel = MODEL_TIERS.find(tm => tm.id === m.id)
+                  return tierModel && (tierModel.tier === 'frontier' || tierModel.tier === 'premium')
+                })
+                
+                if (orchestratorModels.length > 0) {
+                  finalOrchestratorModel = orchestratorModels[0].id
+                  availableModels = [orchestratorModels[0].id]
+                  onReasoning(`✓ Auto-selected: ${orchestratorModels[0].name || orchestratorModels[0].id}`, 'decision')
+                  console.log('[Canvas] Auto-selected orchestrator:', finalOrchestratorModel)
+                } else {
+                  // Fallback to any valid model
+                  finalOrchestratorModel = validModels[0].id
+                  availableModels = [validModels[0].id]
+                  onReasoning(`✓ Using: ${validModels[0].name || validModels[0].id}`, 'decision')
+                  console.log('[Canvas] Fallback orchestrator:', finalOrchestratorModel)
+                }
               }
             }
           } else {
