@@ -851,6 +851,11 @@ export default function CanvasPage() {
   const prevAvailableAgentsRef = useRef(availableAgents)
   
   // Update structure nodes with latest agents when cluster nodes change
+  // ❌ TEMPORARILY DISABLED: This useEffect was causing infinite loops
+  // TODO: Re-enable and fix properly after debugging
+  // The issue is that updating structure nodes with availableAgents triggers
+  // ReactFlow/Zustand state changes that cascade into an infinite loop
+  /*
   useEffect(() => {
     if (isLoadingRef.current) return // Don't run during initial load
     
@@ -897,6 +902,7 @@ export default function CanvasPage() {
       })
     })
   }, [clusterCount]) // ✅ FIX: ONLY depend on clusterCount, not nodes or availableAgents
+  */
 
   // Handle Create Story node click - spawn new story structure node
   const handleCreateStory = useCallback((format: StoryFormat, template?: string, userPromptDirect?: string, plan?: any) => {
