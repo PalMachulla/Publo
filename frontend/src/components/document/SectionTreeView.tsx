@@ -43,6 +43,28 @@ function SectionTreeView({
       })
       .sort((a, b) => a.order - b.order)
   }
+  
+  // Remove section prefix from title (e.g., "Sequence 1 - " or "Act I - ")
+  const getCleanTitle = (item: typeof structureItems[0]) => {
+    const fullTitle = item.title || item.name
+    
+    // Remove common prefixes like "Act I - ", "Sequence 1 - ", "Scene 1 - ", "Beat 1 - "
+    const prefixPatterns = [
+      /^Act\s+[IVX0-9]+\s*[-–—:]\s*/i,
+      /^Sequence\s+\d+\s*[-–—:]\s*/i,
+      /^Scene\s+\d+\s*[-–—:]\s*/i,
+      /^Beat\s+\d+\s*[-–—:]\s*/i,
+    ]
+    
+    for (const pattern of prefixPatterns) {
+      const cleaned = fullTitle.replace(pattern, '')
+      if (cleaned !== fullTitle) {
+        return cleaned
+      }
+    }
+    
+    return fullTitle
+  }
 
   const renderTreeLevel = (items: typeof structureItems, level: number = 0) => {
     return items.map((item) => {
@@ -92,7 +114,7 @@ function SectionTreeView({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
 
-            {/* Section Name & Title */}
+            {/* Section Title (cleaned) */}
             <button
               onClick={() => {
                 console.log('👆 [SectionTreeView] Setting active section:', item.id, item.name)
@@ -134,20 +156,12 @@ function SectionTreeView({
               }}
               className="flex-1 text-left text-sm truncate min-w-0 px-1"
             >
-              <span className="font-normal">{item.name}</span>
-              {item.title && (
-                <span className="text-xs text-gray-400 ml-1">• {item.title}</span>
-              )}
+              <span className="font-normal">{getCleanTitle(item)}</span>
             </button>
-
-            {/* Word Count */}
-            <div className="flex-shrink-0 text-xs text-gray-400 font-mono pr-1">
-              {section?.word_count || 0}w
-            </div>
 
             {/* Status Indicator */}
             <div
-              className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${
+              className={`flex-shrink-0 w-1.5 h-1.5 rounded-full mr-1 ${
                 section?.status === 'completed'
                   ? 'bg-green-500'
                   : section?.status === 'in_progress'

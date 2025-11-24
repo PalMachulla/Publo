@@ -399,10 +399,12 @@ export default function AIDocumentPanel({
       const headerTag = '#'.repeat(headerLevel)
       const headerText = item.title ? `${item.title}` : item.name
       
-      // Add HTML anchor for scroll-to functionality (separate from header for proper parsing)
-      const anchorDiv = `<div id="section-${itemId}"></div>`
+      // Add HTML anchor div with inline style to make it a scroll target
+      // This creates a div with the anchor ID that won't disrupt the markdown flow
+      const anchorDiv = `<div id="section-${itemId}" style="scroll-margin-top: 20px;"></div>`
       aggregatedContent.push(anchorDiv)
       aggregatedContent.push(`${headerTag} ${headerText}`)
+      aggregatedContent.push('') // Add blank line for proper markdown spacing
     }
     
     // If no children, return the section's own content
@@ -425,6 +427,12 @@ export default function AIDocumentPanel({
     const parentContent = contentMap[itemId]
     if (parentContent) {
       aggregatedContent.push(parentContent)
+    } else {
+      // Check if parent has section content
+      const parentSection = sections.find(s => s.structure_item_id === itemId)
+      if (parentSection?.content) {
+        aggregatedContent.push(parentSection.content)
+      }
     }
     
     // Recursively aggregate children (inherit includeHeaders setting)
@@ -715,33 +723,41 @@ export default function AIDocumentPanel({
     )
   }
 
-  // Load full document when panel opens or when sections/content changes
+  // Load full document when in Tree view (not Cards view)
   useEffect(() => {
-    if (isOpen && structureItems.length > 0 && sections.length > 0) {
-      console.log('📄 [AIDocumentPanel] Loading full document:', {
+    // Only load full document in Tree view
+    if (isOpen && sidebarView === 'tree' && structureItems.length > 0) {
+      console.log('📄 [AIDocumentPanel] Loading full document for Tree view:', {
         structureItemsCount: structureItems.length,
         sectionsCount: sections.length,
-        contentMapSize: Object.keys(contentMap).length
+        contentMapSize: Object.keys(contentMap).length,
+        sections: sections.map(s => ({ id: s.id, structure_item_id: s.structure_item_id, hasContent: !!s.content }))
       })
       
       // Build the complete document from all root-level structure items
       const rootItems = structureItems.filter(item => !item.parentId)
       const fullDocument = rootItems
         .sort((a, b) => a.order - b.order)
-        .map(item => aggregateHierarchicalContent(item.id, true))
+        .map(item => {
+          const content = aggregateHierarchicalContent(item.id, true)
+          console.log(`📝 Content for ${item.name}:`, content.substring(0, 100))
+          return content
+        })
         .filter(Boolean)
-        .join('\n\n')
+        .join('\n\n---\n\n') // Add visual separators between major sections
       
-      if (fullDocument) {
+      if (fullDocument && fullDocument.length > 10) {
         console.log('✅ [AIDocumentPanel] Full document loaded:', fullDocument.length, 'chars')
         setContent(fullDocument)
         setHasLoadedFullDocument(true)
       } else {
-        console.warn('⚠️ [AIDocumentPanel] No full document content generated')
+        console.warn('⚠️ [AIDocumentPanel] No full document content generated or content is empty')
+        // Set placeholder if no content
+        setContent('# Document\n\nNo content yet. Click a section to start writing.')
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, structureItems, sections, contentMap])
+  }, [isOpen, sidebarView, structureItems, sections, contentMap])
 
   // Reset loaded flag when panel closes
   useEffect(() => {
