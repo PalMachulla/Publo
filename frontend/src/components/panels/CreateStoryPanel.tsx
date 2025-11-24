@@ -1826,21 +1826,50 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                 <p className="text-xs mt-1">Watch the orchestrator think through your story structure</p>
               </div>
             ) : (
-              reasoningMessages.map((msg, i) => {
-                //  ATOMIC DESIGN: Two message types
-                // 1. CHAT MESSAGES: Simple conversational (user ↔ orchestrator)
-                // 2. STATUS MESSAGES: Collapsible system feedback (thinking, result, etc.)
+              // GROUP consecutive messages from same sender/type/time
+              (() => {
+                const groupedMessages: Array<{
+                  role: string | undefined
+                  type: string
+                  timestamp: string
+                  messages: typeof reasoningMessages
+                  isLast: boolean
+                }> = []
                 
-                const isUserMessage = msg.role === 'user'
-                const isOrchestratorMessage = msg.role === 'orchestrator' && msg.type === 'user'
-                const isStatusMessage = ['thinking', 'decision', 'task', 'result', 'error'].includes(msg.type)
-                const isModelMessage = msg.content.startsWith('🤖 Model reasoning:')
-                const isLastMessage = i === reasoningMessages.length - 1
+                reasoningMessages.forEach((msg, i) => {
+                  const prevGroup = groupedMessages[groupedMessages.length - 1]
+                  const isSameGroup = prevGroup &&
+                    prevGroup.role === msg.role &&
+                    prevGroup.type === msg.type &&
+                    Math.abs(new Date(prevGroup.timestamp).getTime() - new Date(msg.timestamp).getTime()) < 5000 // Within 5 seconds
+                  
+                  if (isSameGroup) {
+                    prevGroup.messages.push(msg)
+                    prevGroup.isLast = i === reasoningMessages.length - 1
+                  } else {
+                    groupedMessages.push({
+                      role: msg.role,
+                      type: msg.type,
+                      timestamp: msg.timestamp,
+                      messages: [msg],
+                      isLast: i === reasoningMessages.length - 1
+                    })
+                  }
+                })
+                
+                return groupedMessages.map((group, groupIndex) => {
+                  const firstMsg = group.messages[0]
+                  
+                  const isUserMessage = group.role === 'user'
+                  const isOrchestratorMessage = group.role === 'orchestrator' && group.type === 'user'
+                  const isStatusMessage = ['thinking', 'decision', 'task', 'result', 'error'].includes(group.type)
+                  const isModelMessage = firstMsg.content.startsWith('🤖 Model reasoning:')
+                  const isLastMessage = group.isLast
                 
                 // CHAT MESSAGE: Simple, clean conversation
                 if (isUserMessage || (isOrchestratorMessage && !isStatusMessage)) {
                   return (
-                    <div key={i} className={`p-3 rounded ${isUserMessage ? 'bg-gray-100' : 'bg-white border border-gray-200'}`}>
+                    <div key={groupIndex} className={`p-3 rounded ${isUserMessage ? 'bg-gray-100' : 'bg-white border border-gray-200'}`}>
                       <div className="flex items-start gap-2">
                         <div className="flex-shrink-0 mt-0.5">
                           {isUserMessage ? (
@@ -1859,15 +1888,26 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                               {isUserMessage ? 'PUBLO' : 'ORCHESTRATOR'}
                             </span>
                             <span className="text-[10px] text-gray-400">
-                              {new Date(msg.timestamp).toLocaleTimeString('en-US', { 
+                              {new Date(group.timestamp).toLocaleTimeString('en-US', { 
                                 hour: '2-digit', 
                                 minute: '2-digit'
                               })}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
-                            {msg.content}
-                          </p>
+                          {/* Render all messages in group as a list */}
+                          {group.messages.length === 1 ? (
+                            <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+                              {group.messages[0].content}
+                            </p>
+                          ) : (
+                            <div className="text-sm text-gray-800 space-y-0.5">
+                              {group.messages.map((msg, msgIdx) => (
+                                <p key={msgIdx} className="whitespace-pre-wrap break-words">
+                                  {msg.content}
+                                </p>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1875,7 +1915,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                 }
                 
                 // STATUS MESSAGE: Collapsible accordion with colored tint
-                const messageId = msg.id
+                const messageId = firstMsg.id
                 const isCollapsed = collapsedMessages.has(messageId) && !isLastMessage
                 
                 const toggleCollapse = () => {
@@ -1892,10 +1932,10 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                 
                 const bgColor = 
                   isModelMessage ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-l-4 border-indigo-500' :
-                  msg.type === 'thinking' ? 'bg-purple-50 border-l-4 border-purple-400' :
-                  msg.type === 'decision' ? 'bg-blue-50 border-l-4 border-blue-400' :
-                  msg.type === 'task' ? 'bg-yellow-50 border-l-4 border-yellow-400' :
-                  msg.type === 'result' ? 'bg-green-50 border-l-4 border-green-400' :
+                  group.type === 'thinking' ? 'bg-purple-50 border-l-4 border-purple-400' :
+                  group.type === 'decision' ? 'bg-blue-50 border-l-4 border-blue-400' :
+                  group.type === 'task' ? 'bg-yellow-50 border-l-4 border-yellow-400' :
+                  group.type === 'result' ? 'bg-green-50 border-l-4 border-green-400' :
                   'bg-red-50 border-l-4 border-red-400'
                 
                 const icon = isModelMessage ? (
@@ -1903,22 +1943,22 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
                     </svg>
                   ) :
-                  msg.type === 'thinking' ? (
+                  group.type === 'thinking' ? (
                     <svg className="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
                   ) :
-                  msg.type === 'decision' ? (
+                  group.type === 'decision' ? (
                     <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                     </svg>
                   ) :
-                  msg.type === 'task' ? (
+                  group.type === 'task' ? (
                     <svg className="w-3.5 h-3.5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                   ) :
-                  msg.type === 'result' ? (
+                  group.type === 'result' ? (
                     <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
@@ -1929,10 +1969,10 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                     </svg>
                   )
                 
-                const label = isModelMessage ? 'MODEL' : msg.type.toUpperCase()
+                const label = isModelMessage ? 'MODEL' : group.type.toUpperCase()
                 
                 return (
-                  <div key={i} className={`rounded ${bgColor} overflow-hidden ${isLastMessage && isStreaming ? 'animate-pulse' : ''}`}>
+                  <div key={groupIndex} className={`rounded ${bgColor} overflow-hidden ${isLastMessage && isStreaming ? 'animate-pulse' : ''}`}>
                     {/* Collapsible header */}
                     <button
                       onClick={toggleCollapse}
@@ -1946,7 +1986,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                           {label}
                         </span>
                         <span className="text-[10px] text-gray-400">
-                          {new Date(msg.timestamp).toLocaleTimeString('en-US', { 
+                          {new Date(group.timestamp).toLocaleTimeString('en-US', { 
                             hour: '2-digit', 
                             minute: '2-digit'
                           })}
@@ -1967,17 +2007,32 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
                     {/* Collapsible content */}
                     {!isCollapsed && (
                       <div className="px-3 pb-3">
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
-                          {msg.content}
-                          {isLastMessage && isStreaming && (
-                            <span className="inline-block ml-1 w-1.5 h-4 bg-indigo-600 animate-pulse" />
-                          )}
-                        </p>
+                        {/* Render all messages in group */}
+                        {group.messages.length === 1 ? (
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+                            {group.messages[0].content}
+                            {isLastMessage && isStreaming && (
+                              <span className="inline-block ml-1 w-1.5 h-4 bg-indigo-600 animate-pulse" />
+                            )}
+                          </p>
+                        ) : (
+                          <div className="text-sm text-gray-800 space-y-0.5">
+                            {group.messages.map((msg, msgIdx) => (
+                              <p key={msgIdx} className="whitespace-pre-wrap break-words">
+                                {msg.content}
+                                {msgIdx === group.messages.length - 1 && isLastMessage && isStreaming && (
+                                  <span className="inline-block ml-1 w-1.5 h-4 bg-indigo-600 animate-pulse" />
+                                )}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 )
-              })
+                })
+              })()
             )}
           {/* Scroll target */}
           <div ref={reasoningEndRef} />
