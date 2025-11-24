@@ -1962,8 +1962,9 @@ export default function CanvasPage() {
         throw new Error(`Failed to answer question: ${response.statusText}`)
       }
       
-      const data = await response.json()
-      return data.answer
+      // The API now returns a streaming text response, not JSON
+      const answer = await response.text()
+      return answer
       
     } catch (error) {
       console.error('Failed to answer question:', error)
