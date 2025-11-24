@@ -28,6 +28,7 @@ import {
 import { analyzeIntent, type IntentAnalysis, type UserIntent } from '../intentRouter'
 import { enhanceContextWithRAG } from '../ragIntegration'
 import { Node, Edge } from 'reactflow'
+import { getDocumentHierarchy, DOCUMENT_HIERARCHY } from '@/lib/documentHierarchy'
 
 // ============================================================
 // TYPES
@@ -1354,40 +1355,50 @@ Generate a complete structure plan with:
    * Get format-specific instructions for structure generation
    */
   private getFormatInstructions(format: string): string {
-    const instructions: Record<string, string> = {
-      novel: `For NOVEL format:
-- Use a hierarchical structure: Parts > Chapters > Scenes
-- Level 1: Parts (major story arcs)
-- Level 2: Chapters (narrative beats)
-- Level 3: Scenes (specific events)
-- Aim for 60,000-100,000 words total
-- Each chapter should be 2,000-4,000 words`,
-      
-      screenplay: `For SCREENPLAY format:
-- Use standard screenplay structure: Acts > Sequences > Scenes > Beats
-- Level 1: Acts (3-act structure preferred)
-- Level 2: Sequences (8-sequence method)
-- Level 3: Scenes (individual locations/moments)
-- Level 4: Beats (specific dramatic moments)
-- Aim for 90-120 pages (90,000-120,000 characters)
-- Each scene should be 1-3 pages`,
-      
-      report: `For REPORT format:
-- Use professional document structure: Sections > Subsections > Topics
-- Level 1: Major sections (Executive Summary, Analysis, etc.)
-- Level 2: Subsections (specific topics)
-- Level 3: Points (individual arguments/findings)
-- Aim for clarity and scanability`,
-      
-      podcast: `For PODCAST format:
-- Use episode structure: Segments > Topics > Talking Points
-- Level 1: Main segments (Intro, Main Discussion, Outro)
-- Level 2: Topics (specific themes)
-- Level 3: Talking points (individual beats)
-- Aim for conversational, engaging flow`
+    // Normalize format (e.g., 'short-story' -> 'short_story')
+    const normalizedFormat = format.toLowerCase().replace(/-/g, '_')
+    const hierarchy = getDocumentHierarchy(normalizedFormat)
+    const docType = DOCUMENT_HIERARCHY.document_types[normalizedFormat]
+    
+    if (!hierarchy || !docType) {
+      // Fallback for unknown formats
+      return `For ${format.toUpperCase()} format:
+- Create a logical hierarchical structure appropriate for this type of document
+- Use clear parent-child relationships between sections
+- Provide realistic word count estimates`
     }
     
-    return instructions[format] || instructions.novel
+    // Build format-specific instructions from documentHierarchy.ts
+    const formatLabel = format.toUpperCase().replace(/-/g, ' ')
+    let instructions = `For ${formatLabel} format:\n`
+    instructions += `Description: ${docType.description}\n\n`
+    instructions += `REQUIRED HIERARCHY (follow this structure exactly):\n`
+    
+    hierarchy.forEach((level, index) => {
+      const optionalLabel = level.optional ? ' (optional)' : ' (REQUIRED)'
+      instructions += `- Level ${level.level}: ${level.name}${optionalLabel}`
+      if (level.description) {
+        instructions += ` - ${level.description}`
+      }
+      instructions += '\n'
+    })
+    
+    // Add format-specific guidance
+    const wordCountGuidance: Record<string, string> = {
+      'novel': '\nTarget: 60,000-100,000 words total. Chapters: 2,000-4,000 words each.',
+      'short_story': '\nTarget: 1,000-7,500 words total.',
+      'screenplay': '\nTarget: 90-120 pages (90-120 scenes). Each scene: 1-3 pages.',
+      'report': '\nFocus on clarity, scanability, and logical flow.',
+      'article': '\nTarget: 800-2,000 words total. Clear introduction and conclusion.',
+      'essay': '\nTarget: 1,000-5,000 words. Strong thesis and supporting arguments.',
+      'podcast': '\nTarget: 20-60 minutes (3,000-9,000 words). Conversational and engaging.'
+    }
+    
+    instructions += wordCountGuidance[normalizedFormat] || ''
+    
+    instructions += '\n\nIMPORTANT: Only generate structure items for the FIRST 3-4 hierarchy levels. Do not include individual paragraphs, sentences, or lines in your structure plan.'
+    
+    return instructions
   }
 }
 
