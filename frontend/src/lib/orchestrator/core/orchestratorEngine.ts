@@ -44,6 +44,10 @@ export interface OrchestratorRequest {
   structureItems?: any[]
   contentMap?: Record<string, string>
   currentStoryStructureNodeId?: string | null
+  // Model selection preferences
+  modelMode?: 'automatic' | 'fixed'
+  fixedModeStrategy?: 'consistent' | 'loose'
+  fixedModelId?: string | null
 }
 
 export interface OrchestratorResponse {
@@ -354,20 +358,35 @@ export class OrchestratorEngine {
           hasActiveContext: !!request.activeContext,
           activeContextId: request.activeContext?.id,
           message: request.message,
-          selectedModel: modelSelection.modelId
+          selectedModel: modelSelection.modelId,
+          modelMode: request.modelMode,
+          fixedModeStrategy: request.fixedModeStrategy
         })
         
         if (request.activeContext) {
-          // For write_content, we want a WRITER model, not the orchestrator model
-          // Use the fastest available model for content generation
-          const writerModel = selectModel('moderate', 'speed', ['groq', 'openai'])
+          // Determine which model to use based on mode and strategy
+          let writerModel: any
+          
+          if (request.modelMode === 'fixed' && request.fixedModeStrategy === 'consistent') {
+            // CONSISTENT: Use the fixed model for writing too (expensive but uniform)
+            writerModel = {
+              modelId: request.fixedModelId || modelSelection.modelId,
+              provider: modelSelection.provider,
+              reasoning: 'Fixed mode (Consistent): Using selected model for all tasks'
+            }
+            console.log('🎯 [Consistent Strategy] Using fixed model for writing:', writerModel.modelId)
+          } else {
+            // AUTOMATIC or LOOSE: Use fast/cheap model for writing
+            writerModel = selectModel('moderate', 'speed', ['groq', 'openai'])
+            console.log('💡 [Loose/Auto Strategy] Using optimized writer model:', writerModel.modelId)
+          }
           
           actions.push({
             type: 'generate_content',
             payload: {
               sectionId: request.activeContext.id,
               prompt: request.message,
-              model: writerModel.modelId, // Use writer model, not orchestrator model
+              model: writerModel.modelId,
               provider: writerModel.provider
             },
             status: 'pending'
@@ -375,7 +394,8 @@ export class OrchestratorEngine {
           console.log('✅ [generateActions] Created write_content action:', {
             section: request.activeContext.id,
             model: writerModel.modelId,
-            provider: writerModel.provider
+            provider: writerModel.provider,
+            strategy: request.modelMode === 'fixed' ? request.fixedModeStrategy : 'automatic'
           })
         } else {
           console.warn('⚠️ [generateActions] No activeContext for write_content!')

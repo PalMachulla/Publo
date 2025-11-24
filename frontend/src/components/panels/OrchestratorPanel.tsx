@@ -325,6 +325,7 @@ export default function OrchestratorPanel({
   // Model selector state (Cursor-style dropdown at bottom)
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
   const [modelMode, setModelMode] = useState<'automatic' | 'fixed'>('automatic') // Default to Auto
+  const [fixedModeStrategy, setFixedModeStrategy] = useState<'consistent' | 'loose'>('loose') // Default to Loose (cost-effective)
   const [currentlyUsedModels, setCurrentlyUsedModels] = useState<{intent: string, writer: string}>({intent: '', writer: ''})
   
   // Chat state (local input only, history is canvas-level)
@@ -458,7 +459,11 @@ export default function OrchestratorPanel({
         documentFormat: selectedFormat,
         structureItems,
         contentMap,
-        currentStoryStructureNodeId
+        currentStoryStructureNodeId,
+        // Model selection preferences
+        modelMode,
+        fixedModeStrategy: modelMode === 'fixed' ? fixedModeStrategy : undefined,
+        fixedModelId: modelMode === 'fixed' ? configuredModel.orchestrator : undefined
       })
       
       // Display reasoning
@@ -2229,6 +2234,50 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
                         <span className="text-gray-600">✍️ Writer:</span>
                         <span className="font-medium text-gray-900">{currentlyUsedModels.writer}</span>
                       </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Strategy Toggle (only show if Fixed mode) */}
+                {modelMode === 'fixed' && (
+                  <div className="p-3 border-b border-gray-200 bg-gray-50">
+                    <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide mb-2">Strategy:</p>
+                    <div className="space-y-2">
+                      <label className="flex items-start gap-2 cursor-pointer group">
+                        <input
+                          type="radio"
+                          name="strategy"
+                          checked={fixedModeStrategy === 'consistent'}
+                          onChange={() => setFixedModeStrategy('consistent')}
+                          className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                        />
+                        <div className="flex-1">
+                          <div className="text-xs font-medium text-gray-900 group-hover:text-purple-700">
+                            🎯 Consistent
+                          </div>
+                          <div className="text-[10px] text-gray-500">
+                            Use selected model for ALL tasks (expensive)
+                          </div>
+                        </div>
+                      </label>
+                      
+                      <label className="flex items-start gap-2 cursor-pointer group">
+                        <input
+                          type="radio"
+                          name="strategy"
+                          checked={fixedModeStrategy === 'loose'}
+                          onChange={() => setFixedModeStrategy('loose')}
+                          className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                        />
+                        <div className="flex-1">
+                          <div className="text-xs font-medium text-gray-900 group-hover:text-purple-700">
+                            💡 Loose (Strategic)
+                          </div>
+                          <div className="text-[10px] text-gray-500">
+                            Strategic tasks only, cheaper models for writing
+                          </div>
+                        </div>
+                      </label>
                     </div>
                   </div>
                 )}
