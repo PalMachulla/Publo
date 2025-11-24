@@ -1077,11 +1077,11 @@ export default function CanvasPage() {
       // Set inference flag
       isInferencingRef.current = true
       
-      // Import orchestrator engine
+      // Import orchestrator engine for structure generation
       const { OrchestratorEngine } = await import('@/lib/orchestrator/orchestratorEngine')
       const { MODEL_CATALOG } = await import('@/lib/models/modelCapabilities')
       
-      // Get orchestrator node (no longer stores selectedModel/selectedKeyId)
+      // Get orchestrator node
       const orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
       
       console.log('🔍 Fetching user preferences...')
@@ -1281,12 +1281,12 @@ export default function CanvasPage() {
         }
       }
       
-      // Create orchestrator engine with streaming support
+      // Create structure generation orchestrator with streaming support
       const orchestrator = new OrchestratorEngine(
         MODEL_CATALOG,
         onReasoning,
         user.id,
-        onModelStream // NEW: Stream model reasoning tokens
+        onModelStream // Stream model reasoning tokens
       )
       
       // Determine available models
