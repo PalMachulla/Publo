@@ -198,13 +198,22 @@ export class OrchestratorEngine {
       type: 'decision'
     })
     
-    // Step 10: Build response
+    // Step 10: Generate actions based on intent
+    const actions = await this.generateActions(
+      intentAnalysis,
+      request,
+      canvasContext,
+      ragContext,
+      modelSelection
+    )
+    
+    // Step 11: Build response
     const response: OrchestratorResponse = {
       intent: intentAnalysis.intent,
       confidence: intentAnalysis.confidence,
       reasoning: intentAnalysis.reasoning,
       modelUsed: modelSelection.modelId,
-      actions: [],
+      actions,
       canvasChanged,
       requiresUserInput: intentAnalysis.needsClarification || false,
       estimatedCost: modelSelection.estimatedCost
@@ -276,6 +285,132 @@ export class OrchestratorEngine {
   // ============================================================
   // PRIVATE HELPERS
   // ============================================================
+  
+  /**
+   * Generate actions based on intent
+   */
+  private async generateActions(
+    intent: IntentAnalysis,
+    request: OrchestratorRequest,
+    canvasContext: CanvasContext,
+    ragContext: any,
+    modelSelection: any
+  ): Promise<OrchestratorAction[]> {
+    const actions: OrchestratorAction[] = []
+    
+    switch (intent.intent) {
+      case 'answer_question': {
+        // Build context-aware prompt with ALL canvas nodes
+        let enhancedPrompt = `User Question: ${request.message}\n\n`
+        
+        if (canvasContext.connectedNodes.length > 0) {
+          enhancedPrompt += `Available Context from Canvas:\n`
+          
+          canvasContext.connectedNodes.forEach(node => {
+            enhancedPrompt += `\n--- ${node.label} (${node.nodeType}) ---\n`
+            enhancedPrompt += `Summary: ${node.summary}\n`
+            
+            if (node.detailedContext?.structure) {
+              enhancedPrompt += `Structure:\n${node.detailedContext.structure}\n`
+            }
+            
+            // Include content if available
+            if (node.detailedContext?.contentMap) {
+              const contentEntries = Object.entries(node.detailedContext.contentMap)
+              if (contentEntries.length > 0) {
+                enhancedPrompt += `\nContent (${contentEntries.length} sections):\n`
+                contentEntries.slice(0, 5).forEach(([sectionId, content]: [string, any]) => {
+                  if (content && typeof content === 'string' && content.trim()) {
+                    const truncated = content.length > 500 
+                      ? content.substring(0, 500) + '...' 
+                      : content
+                    enhancedPrompt += `\n${truncated}\n`
+                  }
+                })
+              }
+            }
+          })
+        }
+        
+        // Add RAG content if available
+        if (ragContext?.hasRAG && ragContext.ragContent) {
+          enhancedPrompt += `\n\nAdditional Relevant Content (from semantic search):\n${ragContext.ragContent}`
+        }
+        
+        actions.push({
+          type: 'generate_content',
+          payload: {
+            prompt: enhancedPrompt,
+            model: modelSelection.modelId,
+            isAnswer: true
+          },
+          status: 'pending'
+        })
+        break
+      }
+      
+      case 'write_content': {
+        if (request.activeContext) {
+          actions.push({
+            type: 'generate_content',
+            payload: {
+              sectionId: request.activeContext.id,
+              prompt: request.message,
+              model: modelSelection.modelId
+            },
+            status: 'pending'
+          })
+        }
+        break
+      }
+      
+      case 'create_structure': {
+        actions.push({
+          type: 'modify_structure',
+          payload: {
+            action: 'create',
+            format: request.documentFormat || 'novel',
+            prompt: request.message
+          },
+          status: 'pending'
+        })
+        break
+      }
+      
+      case 'open_and_write': {
+        // Resolve which node to open
+        const targetNode = await resolveNode(request.message, canvasContext, this.blackboard)
+        
+        if (targetNode) {
+          actions.push({
+            type: 'open_document',
+            payload: {
+              nodeId: targetNode.nodeId,
+              sectionId: null
+            },
+            status: 'pending'
+          })
+        }
+        break
+      }
+      
+      case 'general_chat':
+      default: {
+        // Similar to answer_question but more conversational
+        actions.push({
+          type: 'message',
+          payload: {
+            content: `Let me help you with that...`,
+            type: 'thinking'
+          },
+          status: 'pending'
+        })
+        break
+      }
+    }
+    
+    return actions
+  }
   
   private extractPattern(
     message: string,
