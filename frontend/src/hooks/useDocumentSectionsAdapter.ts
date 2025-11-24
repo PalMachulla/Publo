@@ -64,6 +64,9 @@ export function useDocumentSectionsAdapter({
 
   // Convert flat sections to DocumentSection format
   const sections = useMemo<DocumentSection[]>(() => {
+    // ✅ FIX: Use section timestamps if available, otherwise use current time
+    // This prevents unnecessary re-renders from changing timestamps
+    const now = new Date().toISOString()
     return flatSections.map(section => ({
       id: section.id,
       story_structure_node_id: storyStructureNodeId || '',
@@ -72,8 +75,8 @@ export function useDocumentSectionsAdapter({
       word_count: section.wordCount,
       status: section.status,
       order_index: section.order,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: section.createdAt || now,
+      updated_at: section.updatedAt || now,
     }))
   }, [flatSections, storyStructureNodeId])
 

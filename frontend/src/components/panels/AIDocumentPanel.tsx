@@ -123,20 +123,26 @@ export default function AIDocumentPanel({
 
   // Notify parent when sections are loaded (so orchestrator can access content)
   useEffect(() => {
-    console.log('🔍 AIDocumentPanel sections changed:', {
+    // ✅ CRITICAL FIX: Only call onSectionsLoaded if sections have meaningfully changed
+    // Compare a hash of section IDs and content lengths to detect real changes
+    const sectionsHash = sections
+      .map(s => `${s.id}:${s.content?.length || 0}`)
+      .join('|')
+    
+    console.log('🔍 AIDocumentPanel sections check:', {
       sectionsLength: sections.length,
       hasCallback: !!onSectionsLoaded,
-      sampleSection: sections[0] ? {
-        id: sections[0].id,
-        structure_item_id: sections[0].structure_item_id,
-        contentLength: sections[0].content?.length || 0,
-        contentPreview: sections[0].content?.substring(0, 100)
-      } : null
+      currentHash: sectionsHash.substring(0, 100),
+      prevHash: prevSectionsRef.current.substring(0, 100),
+      hasChanged: sectionsHash !== prevSectionsRef.current
     })
     
-    if (sections.length > 0 && onSectionsLoaded) {
-      console.log('📞 Calling onSectionsLoaded with', sections.length, 'sections')
+    if (sections.length > 0 && onSectionsLoaded && sectionsHash !== prevSectionsRef.current) {
+      console.log('📞 Calling onSectionsLoaded with', sections.length, 'sections (content changed)')
+      prevSectionsRef.current = sectionsHash
       onSectionsLoaded(sections)
+    } else if (sectionsHash === prevSectionsRef.current) {
+      console.log('⏭️ Skipping onSectionsLoaded - sections unchanged')
     } else {
       console.log('⚠️ Not calling onSectionsLoaded:', {
         reason: sections.length === 0 ? 'sections empty' : 'no callback'
@@ -183,11 +189,15 @@ export default function AIDocumentPanel({
   // Track which nodes have been initialized to prevent duplicates
   const initializedNodesRef = useRef<Set<string>>(new Set())
   
+  // ✅ CRITICAL FIX: Track previous sections to prevent infinite loop
+  const prevSectionsRef = useRef<string>('')
+  
   // Clear initialization tracking when document closes
   useEffect(() => {
     if (!isOpen) {
       console.log('🧹 Document panel closed - clearing initialization tracking')
       initializedNodesRef.current.clear()
+      prevSectionsRef.current = ''
     }
   }, [isOpen])
 
