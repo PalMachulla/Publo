@@ -1,6 +1,9 @@
 /**
  * Model Router - Intelligent Model Selection
  * 
+ * Orchestrator-focused model selection for planning and intent analysis
+ * Uses unified MODEL_TIERS from modelTiers.ts
+ * 
  * Inspired by Agentic Flow's Model Router:
  * - Auto-select best model based on task complexity and priority
  * - Cost optimization (cheapest model that can handle the task)
@@ -9,6 +12,8 @@
  * 
  * @see https://github.com/ruvnet/agentic-flow
  */
+
+import { MODEL_TIERS, type TieredModel } from './modelTiers'
 
 export type ModelPriority = 'cost' | 'speed' | 'quality' | 'balanced'
 export type TaskComplexity = 'simple' | 'moderate' | 'complex' | 'reasoning'
@@ -37,136 +42,66 @@ export interface ModelSelection {
   estimatedTime: number
 }
 
-// Model database (inspired by Agentic Flow's model registry)
-const MODEL_REGISTRY: ModelCapability[] = [
-  // OpenAI - Frontier Models
-  {
-    modelId: 'gpt-5.1',
-    provider: 'openai',
-    displayName: 'GPT-5.1',
-    costPer1kTokens: 0.10, // Estimated
-    speedTokensPerSec: 30,
-    contextWindow: 128000,
-    capabilities: {
-      reasoning: true,
-      streaming: true,
-      functionCalling: true,
-      vision: false
-    },
-    bestFor: ['reasoning', 'complex']
-  },
-  {
-    modelId: 'gpt-4o',
-    provider: 'openai',
-    displayName: 'GPT-4o',
-    costPer1kTokens: 0.005,
-    speedTokensPerSec: 50,
-    contextWindow: 128000,
-    capabilities: {
-      reasoning: false,
-      streaming: true,
-      functionCalling: true,
-      vision: true
-    },
-    bestFor: ['complex', 'moderate']
-  },
-  {
-    modelId: 'gpt-4o-mini',
-    provider: 'openai',
-    displayName: 'GPT-4o Mini',
-    costPer1kTokens: 0.00015,
-    speedTokensPerSec: 80,
-    contextWindow: 128000,
-    capabilities: {
-      reasoning: false,
-      streaming: true,
-      functionCalling: true,
-      vision: true
-    },
-    bestFor: ['moderate', 'simple']
-  },
+/**
+ * Convert TieredModel to ModelCapability for backwards compatibility
+ */
+function convertToModelCapability(tiered: TieredModel): ModelCapability {
+  // Map tier-based "bestFor" to complexity-based "bestFor"
+  const bestFor: TaskComplexity[] = []
   
-  // Groq - Speed Champions
-  {
-    modelId: 'llama-3.3-70b-versatile',
-    provider: 'groq',
-    displayName: 'Llama 3.3 70B',
-    costPer1kTokens: 0.00059,
-    speedTokensPerSec: 300,
-    contextWindow: 32768,
-    capabilities: {
-      reasoning: false,
-      streaming: true,
-      functionCalling: true,
-      vision: false
-    },
-    bestFor: ['moderate', 'simple']
-  },
-  {
-    modelId: 'llama-3.1-8b-instant',
-    provider: 'groq',
-    displayName: 'Llama 3.1 8B',
-    costPer1kTokens: 0.00005,
-    speedTokensPerSec: 500,
-    contextWindow: 8192,
-    capabilities: {
-      reasoning: false,
-      streaming: true,
-      functionCalling: false,
-      vision: false
-    },
-    bestFor: ['simple']
-  },
-  
-  // Anthropic - Quality Leaders
-  {
-    modelId: 'claude-3-5-sonnet-20241022',
-    provider: 'anthropic',
-    displayName: 'Claude 3.5 Sonnet',
-    costPer1kTokens: 0.003,
-    speedTokensPerSec: 40,
-    contextWindow: 200000,
-    capabilities: {
-      reasoning: false,
-      streaming: true,
-      functionCalling: true,
-      vision: true
-    },
-    bestFor: ['complex', 'moderate']
-  },
-  {
-    modelId: 'claude-3-haiku-20240307',
-    provider: 'anthropic',
-    displayName: 'Claude 3 Haiku',
-    costPer1kTokens: 0.00025,
-    speedTokensPerSec: 100,
-    contextWindow: 200000,
-    capabilities: {
-      reasoning: false,
-      streaming: true,
-      functionCalling: true,
-      vision: false
-    },
-    bestFor: ['simple', 'moderate']
-  },
-  
-  // Google - Balanced Options
-  {
-    modelId: 'gemini-2.0-flash-exp',
-    provider: 'google',
-    displayName: 'Gemini 2.0 Flash',
-    costPer1kTokens: 0.0001,
-    speedTokensPerSec: 150,
-    contextWindow: 1000000,
-    capabilities: {
-      reasoning: false,
-      streaming: true,
-      functionCalling: true,
-      vision: true
-    },
-    bestFor: ['moderate', 'simple']
+  if (tiered.bestFor.includes('orchestration') || tiered.tier === 'frontier') {
+    bestFor.push('reasoning', 'complex')
   }
-]
+  
+  if (tiered.bestFor.includes('complex-writing')) {
+    bestFor.push('complex')
+  }
+  
+  if (tiered.bestFor.includes('general-writing')) {
+    bestFor.push('moderate')
+  }
+  
+  if (tiered.bestFor.includes('editing') || tiered.bestFor.includes('speed-writing')) {
+    bestFor.push('simple')
+  }
+  
+  // Estimate speed in tokens/sec based on speed category
+  const speedTokensPerSec = 
+    tiered.speed === 'instant' ? 500 :
+    tiered.speed === 'fast' ? 150 :
+    tiered.speed === 'medium' ? 50 :
+    30 // slow
+  
+  // Estimate cost per 1k tokens based on cost category
+  const costPer1kTokens =
+    tiered.cost === 'cheap' ? 0.0005 :
+    tiered.cost === 'moderate' ? 0.005 :
+    0.05 // expensive
+  
+  return {
+    modelId: tiered.id,
+    provider: tiered.provider as any,
+    displayName: tiered.displayName,
+    costPer1kTokens,
+    speedTokensPerSec,
+    contextWindow: tiered.contextWindow,
+    capabilities: {
+      reasoning: tiered.reasoning,
+      streaming: true, // Assume all models support streaming
+      functionCalling: true, // Assume all models support function calling
+      vision: tiered.multimodal
+    },
+    bestFor: bestFor.length > 0 ? bestFor : ['moderate']
+  }
+}
+
+/**
+ * Get MODEL_REGISTRY from unified MODEL_TIERS
+ * This ensures we only have ONE source of truth for model definitions
+ */
+function getModelRegistry(): ModelCapability[] {
+  return MODEL_TIERS.map(convertToModelCapability)
+}
 
 /**
  * Determine task complexity from intent and context
@@ -206,6 +141,9 @@ export function selectModel(
   priority: ModelPriority = 'balanced',
   availableProviders: string[] = ['openai', 'groq', 'anthropic', 'google']
 ): ModelSelection {
+  // Get fresh model registry from unified source
+  const MODEL_REGISTRY = getModelRegistry()
+  
   // Filter models by availability and capability
   const candidates = MODEL_REGISTRY.filter(model => 
     availableProviders.includes(model.provider) &&
@@ -292,6 +230,7 @@ export function selectModel(
  * Get model info by ID
  */
 export function getModelInfo(modelId: string): ModelCapability | undefined {
+  const MODEL_REGISTRY = getModelRegistry()
   return MODEL_REGISTRY.find(m => m.modelId === modelId)
 }
 
