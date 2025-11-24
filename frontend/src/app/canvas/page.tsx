@@ -1384,6 +1384,10 @@ export default function CanvasPage() {
       console.log('🎯 Available models:', availableModels)
       console.log('🎯 Final orchestrator:', finalOrchestratorModel)
       
+      // Log to UI for visibility
+      onReasoning(`🎯 Selected model: ${finalOrchestratorModel}`, 'decision')
+      onReasoning(`🎯 Available models: ${availableModels.join(', ')}`, 'thinking')
+      
       // Validate we have at least one model
       if (availableModels.length === 0 || !finalOrchestratorModel) {
         const errorMsg = 'No models available. Please:\n\n1. Go to Profile page\n2. Add an API key (Groq, OpenAI, or Anthropic)\n3. Click "Model Configuration"\n4. Select an orchestrator model\n5. Save your preferences\n6. Try generating again'

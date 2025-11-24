@@ -610,7 +610,9 @@ export default function OrchestratorPanel({
         break
         
       case 'create_structure':
-        onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+        // Extract format from user message (screenplay, novel, report, etc.)
+        const detectedFormat = detectFormatFromMessage(message)
+        onCreateStory(detectedFormat || selectedFormat, selectedTemplate || undefined, message)
         break
         
       case 'general_chat':
