@@ -13,7 +13,19 @@ import {
   RadioItem,
   Button
 } from '@/components/ui'
-import { getOrchestrator, buildCanvasContext, type OrchestratorRequest } from '@/lib/orchestrator'
+import { 
+  getOrchestrator, 
+  buildCanvasContext, 
+  type OrchestratorRequest,
+  type OrchestratorAction,
+  analyzeIntent,
+  validateIntent,
+  explainIntent,
+  enhanceContextWithRAG,
+  buildRAGEnhancedPrompt,
+  formatCanvasContextForLLM
+} from '@/lib/orchestrator'
+import { findReferencedNode } from '@/lib/orchestrator/canvasContextProvider'
 import { Edge } from 'reactflow'
 
 // Helper: Get canonical model details for filtering and display
@@ -73,10 +85,10 @@ interface CreateStoryPanelProps {
     id: string
     timestamp: string
     content: string
-    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model'
     role?: 'user' | 'orchestrator'
   }>
-  onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user') => void
+  onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model') => void
   onClearChat?: () => void
   onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
   isDocumentViewOpen?: boolean // NEW: Document panel visibility state
@@ -222,7 +234,7 @@ interface ReasoningMessage {
   id: string
   timestamp: string
   content: string
-  type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+  type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model'
   role?: 'user' | 'orchestrator'
 }
 
@@ -387,7 +399,125 @@ export default function OrchestratorPanel({
     onCreateStory(creation.format, templateId, creation.enhancedPrompt)
   }
 
-  const handleSendMessage = async (message: string) => {
+  // ============================================================
+  // NEW ORCHESTRATOR ARCHITECTURE
+  // ============================================================
+  
+  const handleSendMessage_NEW = async (message: string) => {
+    // Add user message to chat
+    if (onAddChatMessage) {
+      onAddChatMessage(message, 'user')
+    }
+    setChatMessage('')
+    
+    // Show canvas context if changed
+    const currentCanvasState = JSON.stringify(canvasNodes.map(n => ({ id: n.id, type: n.type })))
+    if (onAddChatMessage && canvasContext.connectedNodes.length > 0 && currentCanvasState !== lastCanvasState) {
+      onAddChatMessage(`👁️ Canvas visibility: ${canvasContext.connectedNodes.length} node(s) connected`, 'orchestrator', 'thinking')
+      canvasContext.connectedNodes.forEach(ctx => {
+        onAddChatMessage(`   • ${ctx.label}: ${ctx.summary}`, 'orchestrator', 'thinking')
+      })
+      setLastCanvasState(currentCanvasState)
+    }
+    
+    try {
+      // Get user ID from Supabase
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        throw new Error('User not authenticated')
+      }
+      
+      if (onAddChatMessage) {
+        onAddChatMessage(`🧠 Analyzing your request...`, 'orchestrator', 'thinking')
+      }
+      
+      // Call the new orchestrator
+      const response = await getOrchestrator(user.id).orchestrate({
+        message,
+        canvasNodes,
+        canvasEdges,
+        activeContext: activeContext || undefined, // Convert null to undefined
+        isDocumentViewOpen,
+        documentFormat: selectedFormat,
+        structureItems,
+        contentMap,
+        currentStoryStructureNodeId
+      })
+      
+      // Display reasoning
+      if (onAddChatMessage) {
+        onAddChatMessage(`⚡ Intent: ${response.intent} (${Math.round(response.confidence * 100)}%)`, 'orchestrator', 'decision')
+        onAddChatMessage(`💭 ${response.reasoning}`, 'orchestrator', 'thinking')
+        onAddChatMessage(`🤖 Model: ${response.modelUsed}`, 'orchestrator', 'model')
+      }
+      
+      // Execute actions
+      for (const action of response.actions) {
+        await executeAction(action)
+      }
+      
+    } catch (error) {
+      console.error('❌ Orchestration error:', error)
+      if (onAddChatMessage) {
+        onAddChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
+      }
+    }
+  }
+  
+  // Action executor
+  const executeAction = async (action: OrchestratorAction) => {
+    try {
+      switch (action.type) {
+        case 'message':
+          if (onAddChatMessage) {
+            onAddChatMessage(action.payload.content, 'orchestrator', action.payload.type || 'result')
+          }
+          break
+          
+        case 'open_document':
+          if (onSelectNode) {
+            onSelectNode(action.payload.nodeId, action.payload.sectionId)
+          }
+          if (!isDocumentViewOpen && onToggleDocumentView) {
+            onToggleDocumentView()
+          }
+          break
+          
+        case 'select_section':
+          if (onSelectNode && currentStoryStructureNodeId) {
+            onSelectNode(currentStoryStructureNodeId, action.payload.sectionId)
+          }
+          break
+          
+        case 'generate_content':
+          if (onWriteContent) {
+            await onWriteContent(action.payload.sectionId, action.payload.prompt)
+          }
+          break
+          
+        case 'modify_structure':
+          // TODO: Implement structure modification
+          if (onAddChatMessage) {
+            onAddChatMessage(`⚠️ Structure modification not yet implemented in new architecture`, 'orchestrator', 'error')
+          }
+          break
+          
+        default:
+          console.warn('Unknown action type:', action.type)
+      }
+    } catch (error) {
+      console.error('Action execution error:', error)
+      if (onAddChatMessage) {
+        onAddChatMessage(`❌ Action failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
+      }
+    }
+  }
+  
+  // ============================================================
+  // OLD ORCHESTRATOR (BACKUP - TO BE REMOVED)
+  // ============================================================
+  
+  const handleSendMessage_OLD = async (message: string) => {
     // Check if user is responding to template selection
     if (pendingCreation) {
       // Parse conversational template selection
@@ -2142,7 +2272,7 @@ Use the above content as inspiration for creating the new ${selectedFormat} stru
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               if (chatMessage.trim()) {
-                await handleSendMessage(chatMessage)
+                await handleSendMessage_NEW(chatMessage) // Using new orchestrator architecture
               }
             }
           }}
