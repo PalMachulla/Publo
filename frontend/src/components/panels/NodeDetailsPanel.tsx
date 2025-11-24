@@ -73,7 +73,7 @@ interface NodeDetailsPanelProps {
     id: string
     timestamp: string
     content: string
-    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
     role?: 'user' | 'orchestrator'
   }>
   onAddChatMessage?: (message: string) => void

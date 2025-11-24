@@ -85,7 +85,7 @@ export default function CanvasPage() {
     id: string
     timestamp: string
     content: string
-    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'progress'
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
     role?: 'user' | 'orchestrator'
   }>>([])
 
@@ -3042,10 +3042,10 @@ export default function CanvasPage() {
             })
           }}
           canvasChatHistory={canvasChatHistory}
-          onAddChatMessage={(message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user') => {
+          onAddChatMessage={(message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => {
             // Auto-detect type from message content if not provided
             const actualRole = role || 'orchestrator'
-            let messageType: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' = type || 'user'
+            let messageType: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress' = type || 'user'
             
             if (!type && actualRole === 'orchestrator') {
               // Auto-detect based on message prefix emojis
