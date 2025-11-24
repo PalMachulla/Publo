@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Node, Edge } from 'reactflow'
 import { AnyNodeData, Comment, StoryStructureItem, StoryStructureNodeData, TestNodeData, AIPromptNodeData, StoryFormat } from '@/types/nodes'
 import { useAuth } from '@/contexts/AuthContext'
@@ -139,15 +139,30 @@ export default function NodeDetailsPanel({
     generating: false
   })
   
+  // Track if component is mounted to prevent state updates after unmount
+  const isMountedRef = useRef(false)
+  
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
   // Check embedding status for current node
-  const checkEmbeddingStatus = async (nodeId: string) => {
-    // Skip during SSR
-    if (typeof window === 'undefined') return
+  const checkEmbeddingStatus = useCallback(async (nodeId: string) => {
+    // Skip during SSR or if component unmounted
+    if (typeof window === 'undefined' || !isMountedRef.current) return
     
+    if (!isMountedRef.current) return
     setEmbeddingStatus(prev => ({ ...prev, loading: true }))
+    
     try {
       const response = await fetch(`/api/embeddings/generate?nodeId=${nodeId}`)
       const data = await response.json()
+      
+      // Only update state if still mounted
+      if (!isMountedRef.current) return
       
       // Handle both success and error responses
       setEmbeddingStatus({
@@ -165,15 +180,17 @@ export default function NodeDetailsPanel({
     } catch (error) {
       console.error('Failed to check embedding status:', error)
       // Set unavailable status on error
-      setEmbeddingStatus({
-        exists: false,
-        chunkCount: 0,
-        queueStatus: 'unavailable',
-        loading: false,
-        generating: false
-      })
+      if (isMountedRef.current) {
+        setEmbeddingStatus({
+          exists: false,
+          chunkCount: 0,
+          queueStatus: 'unavailable',
+          loading: false,
+          generating: false
+        })
+      }
     }
-  }
+  }, []) // Empty dependency array - function doesn't depend on any props/state
   
   // Generate embeddings for current node
   const generateEmbeddings = async (nodeId: string, structureItems: any[]) => {
