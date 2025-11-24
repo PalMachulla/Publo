@@ -491,7 +491,11 @@ export default function OrchestratorPanel({
       // Get available providers from user's API keys
       const availableProviders = Array.from(new Set(availableOrchestrators.map(m => m.provider)))
       
+      // Get first available API key ID for structure generation
+      const userKeyId = availableOrchestrators.length > 0 ? availableOrchestrators[0].keyId : undefined
+      
       console.log('🔑 [OrchestratorPanel] Available providers:', availableProviders)
+      console.log('🔑 [OrchestratorPanel] User key ID:', userKeyId)
       
       // Call the new orchestrator
       const response = await getOrchestrator(user.id).orchestrate({
@@ -509,7 +513,9 @@ export default function OrchestratorPanel({
         fixedModeStrategy: modelMode === 'fixed' ? fixedModeStrategy : undefined,
         fixedModelId: modelMode === 'fixed' ? configuredModel.orchestrator : undefined,
         // Available providers (from user's API keys)
-        availableProviders: availableProviders.length > 0 ? availableProviders : undefined
+        availableProviders: availableProviders.length > 0 ? availableProviders : undefined,
+        // User key ID for structure generation
+        userKeyId
       })
       
       // Display detailed thinking steps from blackboard
