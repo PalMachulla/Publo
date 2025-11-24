@@ -1067,33 +1067,41 @@ export class OrchestratorEngine {
 
 ${formatInstructions}
 
-Respond with a JSON object containing:
+CRITICAL: You must respond with ONLY valid JSON. No markdown, no code blocks, no comments.
+
+Response format (valid JSON only):
 {
-  "reasoning": "Your analysis of the prompt and structural decisions",
+  "reasoning": "Brief analysis (max 200 words)",
   "structure": [
     {
-      "id": "unique_id",
-      "level": 1, // 1=top level, 2=sub-section, etc.
-      "name": "Section Name",
-      "parentId": null or "parent_id",
-      "wordCount": estimated_words,
-      "summary": "Brief description of this section's purpose"
+      "id": "act1",
+      "level": 1,
+      "name": "Act I - Setup",
+      "parentId": null,
+      "wordCount": 25000,
+      "summary": "Introduce world and protagonist"
     }
   ],
   "tasks": [
     {
-      "id": "task_id",
+      "id": "task_act1",
       "type": "write_section",
-      "sectionId": "section_id",
-      "description": "What needs to be written"
+      "sectionId": "act1",
+      "description": "Write Act I establishing world and characters"
     }
   ],
   "metadata": {
-    "totalWordCount": total,
-    "estimatedTime": "X hours",
-    "recommendedModels": ["model1", "model2"]
+    "totalWordCount": 90000,
+    "estimatedTime": "30 hours",
+    "recommendedModels": ["claude-3-5-sonnet-latest", "gpt-4"]
   }
-}`
+}
+
+IMPORTANT:
+- Keep reasoning concise (max 200 words)
+- Generate 8-15 structure items (not 100+)
+- Use valid JSON only (no comments, no markdown)
+- Structure must be hierarchical (use level and parentId correctly)`
 
     const formatLabel = format.charAt(0).toUpperCase() + format.slice(1).replace(/-/g, ' ')
     const userMessage = `The user wants to create a ${formatLabel}.\n\nUser's creative prompt:\n${userPrompt}\n\nPlease analyze this prompt carefully and create a detailed structure plan optimized for the ${formatLabel} format, with specific writing tasks.`
@@ -1107,7 +1115,7 @@ Respond with a JSON object containing:
         model: modelId,
         system_prompt: systemPrompt,
         user_prompt: userMessage,
-        max_completion_tokens: 16000,
+        max_completion_tokens: 4000, // Reduced from 16000 - structure plans should be concise
         user_key_id: userKeyId,
         stream: false
       })
@@ -1126,11 +1134,26 @@ Respond with a JSON object containing:
     const data = await response.json()
     let rawContent = data.content || data.text || ''
     
+    this.blackboard.addMessage({
+      role: 'orchestrator',
+      content: `📊 Received response: ${rawContent.length} characters`,
+      type: 'thinking'
+    })
+    
     // Extract JSON from markdown code blocks if present
     let jsonContent = rawContent.trim()
+    
+    // Remove markdown code blocks
     const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/)
     if (jsonMatch) {
       jsonContent = jsonMatch[1].trim()
+    }
+    
+    // Remove any leading/trailing non-JSON content
+    const jsonStart = jsonContent.indexOf('{')
+    const jsonEnd = jsonContent.lastIndexOf('}')
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+      jsonContent = jsonContent.substring(jsonStart, jsonEnd + 1)
     }
     
     try {
