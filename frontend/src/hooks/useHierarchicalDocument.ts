@@ -53,6 +53,17 @@ export function useHierarchicalDocument({
   const [error, setError] = useState<string | null>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const supabaseRef = useRef(createClient()) // ✅ FIX: Use ref to prevent recreation
+  
+  // ✅ CRITICAL FIX: Store structureItems/format in ref to prevent infinite loop
+  // These are only needed for initialization fallback, not for reactive updates
+  const structureItemsRef = useRef(structureItems)
+  const formatRef = useRef(format)
+  
+  // Update refs when values change (but don't trigger re-fetch)
+  useEffect(() => {
+    structureItemsRef.current = structureItems
+    formatRef.current = format
+  }, [structureItems, format])
 
   // Fetch document from database
   const fetchDocument = useCallback(async () => {
@@ -89,8 +100,8 @@ export function useHierarchicalDocument({
       } else {
         console.log('🆕 [useHierarchicalDocument] No document_data found, initializing from structure items')
         
-        // Create new document from structure items
-        const docManager = DocumentManager.fromStructureItems(structureItems, format)
+        // ✅ Use refs instead of props to avoid dependency loop
+        const docManager = DocumentManager.fromStructureItems(structureItemsRef.current, formatRef.current)
         setManager(docManager)
         
         // Save the new document
@@ -101,10 +112,10 @@ export function useHierarchicalDocument({
       setError(err instanceof Error ? err.message : 'Failed to fetch document')
       
       // Fallback: Create from structure items if structureItems are available
-      if (structureItems && structureItems.length > 0) {
+      if (structureItemsRef.current && structureItemsRef.current.length > 0) {
         try {
           console.log('🔄 [useHierarchicalDocument] Fallback: Creating from structure items')
-          const docManager = DocumentManager.fromStructureItems(structureItems, format)
+          const docManager = DocumentManager.fromStructureItems(structureItemsRef.current, formatRef.current)
           setManager(docManager)
         } catch (fallbackErr) {
           console.error('❌ [useHierarchicalDocument] Fallback failed:', fallbackErr)
@@ -113,7 +124,7 @@ export function useHierarchicalDocument({
     } finally {
       setLoading(false)
     }
-  }, [nodeId, enabled, structureItems, format]) // ✅ FIX: Removed supabase from deps
+  }, [nodeId, enabled]) // ✅ CRITICAL FIX: Only depend on nodeId and enabled, NOT structureItems/format
 
   // Save document to database
   const saveDocument = async (docManager: DocumentManager, targetNodeId: string): Promise<boolean> => {
