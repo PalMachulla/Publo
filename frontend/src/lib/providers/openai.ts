@@ -49,7 +49,7 @@ const OPENAI_MODEL_PRICING: Record<string, ModelPricing> = {
     input_price_per_1m: 10.00,
     output_price_per_1m: 30.00,
   },
-  'gpt-4-turbo-2024-04-09': {
+  'gpt-4-turbo-preview': {
     input_price_per_1m: 10.00,
     output_price_per_1m: 30.00,
   },
@@ -78,7 +78,7 @@ const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   'gpt-4o-mini': 128000,
   'gpt-4o-mini-2024-07-18': 128000,
   'gpt-4-turbo': 128000,
-  'gpt-4-turbo-2024-04-09': 128000,
+  'gpt-4-turbo-preview': 128000,
   'gpt-4': 8192,
   'gpt-3.5-turbo': 16385,
   'gpt-3.5-turbo-0125': 16385,
