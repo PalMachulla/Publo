@@ -250,10 +250,10 @@ Please answer this question based on the available context. Be helpful and speci
     
     // Generate answer using provider adapter with streaming
     // ✅ FIX: Wrap in try-catch to handle stream creation errors
-    let stream: ReadableStream
+    let asyncGenerator: AsyncGenerator<any>
     try {
-      stream = await adapter.generateStream(apiKey, generateOptions)
-      console.log('[API /content/answer] Stream created successfully')
+      asyncGenerator = adapter.generateStream(apiKey, generateOptions)
+      console.log('[API /content/answer] Async generator created successfully')
     } catch (streamError) {
       console.error('[API /content/answer] Stream creation failed:', streamError)
       return NextResponse.json(
@@ -265,10 +265,40 @@ Please answer this question based on the available context. Be helpful and speci
       )
     }
     
-    console.log('[API /content/answer] Step 9: Returning streaming response')
+    console.log('[API /content/answer] Step 9: Converting async generator to ReadableStream')
+    
+    // ✅ FIX: Convert async generator (yields objects) to ReadableStream (emits text)
+    const textStream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of asyncGenerator) {
+            // Extract text from the object based on chunk type
+            if (chunk.type === 'content' && chunk.content) {
+              // Emit plain text (not object)
+              controller.enqueue(new TextEncoder().encode(chunk.content))
+            } else if (chunk.type === 'done') {
+              // Stream complete
+              controller.close()
+              return
+            } else if (chunk.type === 'error') {
+              // Handle error
+              controller.error(new Error(chunk.error || 'Stream error'))
+              return
+            }
+          }
+          // Generator exhausted
+          controller.close()
+        } catch (error) {
+          console.error('[API /content/answer] Stream error:', error)
+          controller.error(error)
+        }
+      }
+    })
+    
+    console.log('[API /content/answer] Returning streaming response')
     
     // Return streaming response as plain text stream (not SSE)
-    return new Response(stream, {
+    return new Response(textStream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache',
