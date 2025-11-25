@@ -706,7 +706,12 @@ export class OrchestratorEngine {
           )
           .map((node: any) => {
             // ✅ FIX: Check BOTH legacy contentMap AND new document_data for content
-            const hasLegacyContent = Object.keys(node.data.contentMap || {}).length > 0
+            const contentMapKeys = Object.keys(node.data.contentMap || {})
+            const hasLegacyContent = contentMapKeys.length > 0 && 
+              contentMapKeys.some(key => {
+                const content = node.data.contentMap[key]
+                return content && typeof content === 'string' && content.trim().length > 0
+              })
             
             // ✅ FIX: Ensure boolean result (not undefined)
             let hasHierarchicalContent = false
@@ -727,7 +732,12 @@ export class OrchestratorEngine {
               hasDocData: !!node.data.document_data,
               hasStructure: !!node.data.document_data?.structure,
               structureLength: node.data.document_data?.structure?.length || 0,
-              contentMapKeys: Object.keys(node.data.contentMap || {}).length
+              contentMapKeys: contentMapKeys.length,
+              contentMapSample: contentMapKeys.length > 0 ? {
+                key: contentMapKeys[0],
+                hasValue: !!node.data.contentMap[contentMapKeys[0]],
+                valueLength: node.data.contentMap[contentMapKeys[0]]?.length || 0
+              } : null
             })
             
             return {

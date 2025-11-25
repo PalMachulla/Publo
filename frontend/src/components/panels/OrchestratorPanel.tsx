@@ -408,7 +408,14 @@ export default function OrchestratorPanel({
     canvasEdgesCount: canvasEdges.length,
     connectedNodesFound: canvasContext.connectedNodes.length,
     externalContentMapKeys: Object.keys(externalContentMap),
-    canvasNodes: canvasNodes.map(n => ({ id: n.id, type: n.type, label: n.data?.label, hasContentMap: !!n.data?.contentMap })),
+    canvasNodes: canvasNodes.map(n => ({ 
+      id: n.id, 
+      type: n.type, 
+      label: n.data?.label, 
+      hasContentMap: !!n.data?.contentMap,
+      hasDocumentData: !!n.data?.document_data,  // ✅ DEBUG
+      documentDataKeys: n.data?.document_data ? Object.keys(n.data.document_data) : []  // ✅ DEBUG
+    })),
     canvasEdges: canvasEdges.map(e => ({ source: e.source, target: e.target })),
     orchestratorId: 'context'
   })
