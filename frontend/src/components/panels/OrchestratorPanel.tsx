@@ -475,6 +475,13 @@ export default function OrchestratorPanel({
       return
     }
     
+    // ✅ NEW: Check if there's a pending clarification
+    if (pendingClarification) {
+      // User is responding to a clarification request (e.g., "#1", "1", "option 1")
+      await handleClarificationResponse(message)
+      return
+    }
+    
     // Add user message to chat
     if (onAddChatMessage) {
       onAddChatMessage(message, 'user')
@@ -682,6 +689,88 @@ export default function OrchestratorPanel({
   // Helper: Check if confirmation has expired
   const isConfirmationExpired = (confirmation: ConfirmationRequest): boolean => {
     return Date.now() > confirmation.expiresAt
+  }
+  
+  // ✅ NEW: Handle clarification response (for request_clarification actions)
+  const handleClarificationResponse = async (response: string) => {
+    if (!pendingClarification) {
+      console.warn('No pending clarification')
+      return
+    }
+    
+    console.log('📥 [Clarification] Received response:', response)
+    console.log('📥 [Clarification] Pending:', pendingClarification)
+    
+    // Add user response to chat
+    if (onAddChatMessage) {
+      onAddChatMessage(response, 'user')
+    }
+    setChatMessage('')
+    
+    // Parse user response to find selected option
+    // Support: "#1", "1", "option 1", or the actual label text
+    const lowerResponse = response.toLowerCase().trim()
+    let selectedOption: typeof pendingClarification.options[0] | undefined
+    
+    // Try matching by number (#1, 1, option 1)
+    const numberMatch = lowerResponse.match(/^#?(\d+)|option\s*(\d+)/)
+    if (numberMatch) {
+      const optionIndex = parseInt(numberMatch[1] || numberMatch[2]) - 1 // Convert to 0-based
+      if (optionIndex >= 0 && optionIndex < pendingClarification.options.length) {
+        selectedOption = pendingClarification.options[optionIndex]
+      }
+    }
+    
+    // Try matching by label or description
+    if (!selectedOption) {
+      selectedOption = pendingClarification.options.find(opt => 
+        lowerResponse.includes(opt.label.toLowerCase()) ||
+        lowerResponse.includes(opt.description.toLowerCase()) ||
+        lowerResponse.includes(opt.id.toLowerCase())
+      )
+    }
+    
+    if (!selectedOption) {
+      if (onAddChatMessage) {
+        onAddChatMessage(`❌ I didn't understand "${response}". Please choose by number (e.g., "1", "#2") or by name.`, 'orchestrator', 'error')
+      }
+      return
+    }
+    
+    console.log('✅ [Clarification] Selected option:', selectedOption)
+    
+    // Handle based on the original action
+    if (pendingClarification.action === 'create_structure') {
+      const { documentFormat, userMessage, existingDocs } = pendingClarification.payload
+      
+      if (selectedOption.id === 'create_new') {
+        // User wants to create something new (ignore existing docs)
+        if (onAddChatMessage) {
+          onAddChatMessage(`✅ Creating new ${documentFormat} from scratch...`, 'orchestrator', 'result')
+        }
+        
+        // ✅ FIX: Add "from scratch" to bypass clarification check in orchestrator
+        const enhancedPrompt = `${userMessage} from scratch`
+        onCreateStory(documentFormat, undefined, enhancedPrompt)
+      } else {
+        // User wants to base it on an existing doc
+        const selectedDocId = selectedOption.id.replace('use_', '')
+        const selectedDoc = existingDocs.find((d: any) => d.id === selectedDocId)
+        
+        if (selectedDoc) {
+          if (onAddChatMessage) {
+            onAddChatMessage(`✅ Creating ${documentFormat} based on "${selectedDoc.name}" (${selectedDoc.format})...`, 'orchestrator', 'result')
+          }
+          
+          // ✅ FIX: Add "based on X" to bypass clarification check in orchestrator
+          const enhancedPrompt = `${userMessage} based on ${selectedDoc.name}`
+          onCreateStory(documentFormat, undefined, enhancedPrompt)
+        }
+      }
+    }
+    
+    // Clear pending clarification
+    setPendingClarification(null)
   }
   
   // Helper: Handle confirmation response
