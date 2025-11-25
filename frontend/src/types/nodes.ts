@@ -118,7 +118,17 @@ export interface CreateStoryNodeData extends BaseNodeData {
 
 export type StoryDraftStatus = 'draft' | 'active' | 'published'
 
-export type StoryFormat = 'novel' | 'report' | 'short-story' | 'article' | 'screenplay' | 'essay' | 'podcast'
+export type StoryFormat = 
+  | 'novel' 
+  | 'report' 
+  | 'report_script_coverage' 
+  | 'report_business' 
+  | 'report_content_analysis'
+  | 'short-story' 
+  | 'article' 
+  | 'screenplay' 
+  | 'essay' 
+  | 'podcast'
 
 export interface StoryDraftNodeData extends BaseNodeData {
   nodeType: 'story-draft'

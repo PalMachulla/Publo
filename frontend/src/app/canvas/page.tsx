@@ -911,17 +911,20 @@ export default function CanvasPage() {
     // Generate unique ID for the story structure
     const structureId = `structure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     
-    // Get formatted title based on format
-    const formatLabels: Record<StoryFormat, string> = {
+    // Get formatted title based on format (including report subtypes)
+    const formatLabels: Record<string, string> = {
       'novel': 'Novel',
       'report': 'Report',
+      'report_script_coverage': 'Script Coverage Report',
+      'report_business': 'Business Report',
+      'report_content_analysis': 'Content Analysis Report',
       'short-story': 'Short Story',
       'article': 'Article',
       'screenplay': 'Screenplay',
       'essay': 'Essay',
       'podcast': 'Podcast'
     }
-    const title = formatLabels[format] || 'Story'
+    const title = formatLabels[format] || 'Document'
     
     // If plan is provided, convert it to items array
     const initialItems = plan?.structure?.map((item: any, index: number) => ({
