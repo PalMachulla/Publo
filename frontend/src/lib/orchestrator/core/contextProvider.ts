@@ -33,6 +33,7 @@ export interface NodeContext {
     structure?: string
     allSections?: any[]
     contentMap?: Record<string, string>
+    documentData?: DocumentData // ✅ Add hierarchical document data
   }
 }
 
@@ -109,7 +110,8 @@ function extractStoryStructureContext(
             summary: s.summary,
             hasContent: !!s.content && s.content.trim().length > 0
           })),
-          contentMap
+          contentMap,
+          documentData // ✅ Include full hierarchical document data
         }
       }
     } catch (error) {

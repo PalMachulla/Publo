@@ -1468,12 +1468,31 @@ export default function CanvasPage() {
       })
       
       // Extract plan from generate_structure action
+      console.log('🔍 [triggerOrchestratedGeneration] Response actions:', response.actions.map(a => ({ type: a.type, status: a.status })))
+      
       const structureAction = response.actions.find(a => a.type === 'generate_structure')
-      if (!structureAction || !structureAction.payload?.plan) {
-        throw new Error('Orchestrator did not return a structure plan')
+      
+      if (!structureAction) {
+        console.error('❌ [triggerOrchestratedGeneration] No generate_structure action found')
+        console.log('Available actions:', response.actions)
+        
+        // Check if there's an error message action instead
+        const errorAction = response.actions.find(a => a.type === 'message' && a.status === 'failed')
+        if (errorAction) {
+          onReasoning(`❌ ${errorAction.payload.content}`, 'error')
+          throw new Error(errorAction.payload.content)
+        }
+        
+        throw new Error(`Orchestrator did not return a structure plan. Intent was: ${response.intent}. Actions: ${response.actions.map(a => a.type).join(', ')}`)
+      }
+      
+      if (!structureAction.payload?.plan) {
+        console.error('❌ [triggerOrchestratedGeneration] Structure action found but no plan in payload:', structureAction)
+        throw new Error('Structure action found but plan is missing from payload')
       }
       
       const plan = structureAction.payload.plan
+      console.log('✅ [triggerOrchestratedGeneration] Plan extracted successfully')
       
       // Display orchestrator's thinking steps
       if (response.thinkingSteps && response.thinkingSteps.length > 0) {
@@ -1987,6 +2006,16 @@ export default function CanvasPage() {
               console.error('❌ Failed to save document_data:', updateError)
             } else {
               console.log('✅ Content saved to hierarchical document')
+              
+              // ✅ Update canvas node with new document_data (includes updated word count)
+              const updatedDocumentData = docManager.getData()
+              setNodes((nds) => nds.map((n) => 
+                n.id === currentStoryStructureNodeId
+                  ? { ...n, data: { ...n.data, document_data: updatedDocumentData } }
+                  : n
+              ))
+              
+              console.log('🔄 Canvas node updated with new word count:', updatedDocumentData.totalWordCount)
               
               // Refresh document panel to show new content
               if (refreshSectionsRef.current) {

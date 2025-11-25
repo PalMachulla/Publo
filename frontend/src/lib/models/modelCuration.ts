@@ -39,7 +39,7 @@ export function isCreativeWritingModel(modelId: string, modelName?: string): boo
   
   // ✅ INCLUDE: Modern chat models
   if (id.startsWith('gpt-')) return true
-  if (id.startsWith('o1-') || id.startsWith('o1')) return true
+  if (id.match(/^o\d/)) return true  // Matches o1, o3, o4, etc.
   if (id.startsWith('claude-')) return true
   if (id.startsWith('gemini-')) return true
   if (id.startsWith('llama-')) return true
@@ -65,6 +65,9 @@ export function getModelQualityTier(modelId: string): 'frontier' | 'premium' | '
   
   // Frontier models
   if (id.includes('gpt-5')) return 'frontier'
+  if (id.includes('gpt-4.1') && !id.includes('mini') && !id.includes('nano')) return 'frontier'
+  if (id.startsWith('o4')) return 'frontier'
+  if (id.startsWith('o3')) return 'frontier'
   if (id.includes('claude-4')) return 'frontier'
   if (id.includes('claude-sonnet-4')) return 'frontier'
   if (id.includes('o1-preview')) return 'frontier'
@@ -72,8 +75,11 @@ export function getModelQualityTier(modelId: string): 'frontier' | 'premium' | '
   if (id.includes('gemini-ultra')) return 'frontier'
   
   // Premium models
+  if (id.includes('gpt-5-mini')) return 'premium'
+  if (id.includes('gpt-4.1-mini')) return 'premium'
   if (id.includes('gpt-4o') && !id.includes('mini')) return 'premium'
   if (id.includes('gpt-4-turbo')) return 'premium'
+  if (id.startsWith('o4-mini')) return 'premium'
   if (id.includes('claude-3-5-sonnet')) return 'premium'
   if (id.includes('claude-3-opus')) return 'premium'
   if (id.includes('claude-opus')) return 'premium'
@@ -82,6 +88,8 @@ export function getModelQualityTier(modelId: string): 'frontier' | 'premium' | '
   if (id.includes('o1-mini')) return 'premium'
   
   // Standard models
+  if (id.includes('gpt-5-nano')) return 'standard'
+  if (id.includes('gpt-4.1-nano')) return 'standard'
   if (id.includes('gpt-4o-mini')) return 'standard'
   if (id.includes('gpt-3.5-turbo')) return 'standard'
   if (id.includes('claude-3-sonnet')) return 'standard'
@@ -121,7 +129,7 @@ export function getModelDisplayPriority(modelId: string): number {
   }
   
   // Boost for reasoning models
-  if (id.includes('o1-') || id.includes('reasoning') || id.includes('gpt-5')) {
+  if (id.match(/^o\d/) || id.includes('reasoning') || id.includes('gpt-5') || id.includes('gpt-4.1')) {
     priority += 100
   }
   

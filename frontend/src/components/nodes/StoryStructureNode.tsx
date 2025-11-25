@@ -31,8 +31,9 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
     format
   })
   
-  // Calculate total word count
-  const totalWordCount = items.reduce((sum, item) => sum + (item.wordCount || 0), 0)
+  // Calculate total word count from actual content (document_data) or fallback to structure items
+  const totalWordCount = data.document_data?.totalWordCount || 
+                         items.reduce((sum, item) => sum + (item.wordCount || 0), 0)
   
   // Format last updated date (placeholder for now)
   const lastUpdated = new Date().toLocaleDateString('en-US', { 

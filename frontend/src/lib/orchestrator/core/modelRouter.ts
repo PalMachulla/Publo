@@ -128,6 +128,45 @@ export const MODEL_TIERS: TieredModel[] = [
     bestFor: ['orchestration', 'complex-writing']
   },
   {
+    id: 'gpt-4.1',
+    provider: 'openai',
+    displayName: 'GPT-4.1',
+    tier: 'frontier',
+    contextWindow: 128000,
+    reasoning: true,
+    multimodal: true,
+    structuredOutput: 'full',
+    speed: 'medium',
+    cost: 'expensive',
+    bestFor: ['orchestration', 'complex-writing']
+  },
+  {
+    id: 'o4',
+    provider: 'openai',
+    displayName: 'OpenAI o4',
+    tier: 'frontier',
+    contextWindow: 128000,
+    reasoning: true,
+    multimodal: false,
+    structuredOutput: 'full',
+    speed: 'slow',
+    cost: 'expensive',
+    bestFor: ['orchestration']
+  },
+  {
+    id: 'o3',
+    provider: 'openai',
+    displayName: 'OpenAI o3',
+    tier: 'frontier',
+    contextWindow: 128000,
+    reasoning: true,
+    multimodal: false,
+    structuredOutput: 'full',
+    speed: 'slow',
+    cost: 'expensive',
+    bestFor: ['orchestration']
+  },
+  {
     id: 'claude-sonnet-4.5',
     provider: 'anthropic',
     displayName: 'Claude Sonnet 4.5',
@@ -157,6 +196,45 @@ export const MODEL_TIERS: TieredModel[] = [
   // ============================================================
   // PREMIUM TIER - High Quality Writers
   // ============================================================
+  {
+    id: 'gpt-5-mini',
+    provider: 'openai',
+    displayName: 'GPT-5 Mini',
+    tier: 'premium',
+    contextWindow: 128000,
+    reasoning: true,
+    multimodal: true,
+    structuredOutput: 'full',
+    speed: 'fast',
+    cost: 'moderate',
+    bestFor: ['complex-writing', 'general-writing']
+  },
+  {
+    id: 'gpt-4.1-mini',
+    provider: 'openai',
+    displayName: 'GPT-4.1 Mini',
+    tier: 'premium',
+    contextWindow: 128000,
+    reasoning: true,
+    multimodal: true,
+    structuredOutput: 'full',
+    speed: 'fast',
+    cost: 'moderate',
+    bestFor: ['complex-writing', 'general-writing']
+  },
+  {
+    id: 'o4-mini',
+    provider: 'openai',
+    displayName: 'OpenAI o4 Mini',
+    tier: 'premium',
+    contextWindow: 128000,
+    reasoning: true,
+    multimodal: false,
+    structuredOutput: 'full',
+    speed: 'medium',
+    cost: 'moderate',
+    bestFor: ['complex-writing']
+  },
   {
     id: 'claude-3-5-sonnet-20241022',
     provider: 'anthropic',
@@ -213,6 +291,32 @@ export const MODEL_TIERS: TieredModel[] = [
   // ============================================================
   // STANDARD TIER - Balanced Writers
   // ============================================================
+  {
+    id: 'gpt-5-nano',
+    provider: 'openai',
+    displayName: 'GPT-5 Nano',
+    tier: 'standard',
+    contextWindow: 128000,
+    reasoning: false,
+    multimodal: true,
+    structuredOutput: 'full',
+    speed: 'instant',
+    cost: 'cheap',
+    bestFor: ['general-writing', 'editing', 'speed-writing']
+  },
+  {
+    id: 'gpt-4.1-nano',
+    provider: 'openai',
+    displayName: 'GPT-4.1 Nano',
+    tier: 'standard',
+    contextWindow: 128000,
+    reasoning: false,
+    multimodal: true,
+    structuredOutput: 'full',
+    speed: 'instant',
+    cost: 'cheap',
+    bestFor: ['general-writing', 'editing', 'speed-writing']
+  },
   {
     id: 'llama-3.3-70b-versatile',
     provider: 'groq',
@@ -633,11 +737,15 @@ export function selectModel(
     availableModels.map(convertTieredToCapability) :
     getModelRegistry()
   
+  console.log(`🔍 [selectModel] Selecting from ${MODEL_REGISTRY.length} models (${availableModels ? 'dynamic' : 'static'}) for ${taskComplexity} task (reasoning=${requireReasoning})`)
+  
   // PHASE 2: Filter by reasoning capability if required
   let candidates = MODEL_REGISTRY.filter(model => 
     availableProviders.includes(model.provider) &&
     model.bestFor.includes(taskComplexity)
   )
+  
+  console.log(`🔍 [selectModel] After complexity filter: ${candidates.length} candidates`)
   
   if (requireReasoning) {
     const reasoningCandidates = candidates.filter(m => m.capabilities.reasoning)
@@ -651,15 +759,19 @@ export function selectModel(
   }
   
   if (candidates.length === 0) {
+    // ✅ FIX: Search ONLY in MODEL_REGISTRY (which is already filtered to availableModels if provided)
+    // Don't search the global MODEL_TIERS - only search what the user has access to
     const fallback = MODEL_REGISTRY.find(m => availableProviders.includes(m.provider))
     if (!fallback) {
-      throw new Error('No available models found')
+      throw new Error(`No available models found for providers: ${availableProviders.join(', ')}. Please check your API keys.`)
     }
+    
+    console.warn(`⚠️ [Model Router] No models matched ${taskComplexity} + reasoning=${requireReasoning}. Falling back to ${fallback.displayName}`)
     
     return {
       modelId: fallback.modelId,
       provider: fallback.provider,
-      reasoning: 'Fallback: No models matched criteria',
+      reasoning: `Using ${fallback.displayName} (best available model for your API keys)`,
       estimatedCost: fallback.costPer1kTokens * 2,
       estimatedTime: 2000 / fallback.speedTokensPerSec
     }
@@ -707,6 +819,8 @@ export function selectModel(
   } else if (priority === 'quality') {
     reasoning += ` - Best quality with ${selected.contextWindow.toLocaleString()} token context`
   }
+  
+  console.log(`✅ [selectModel] ${reasoning}`)
   
   return {
     modelId: selected.modelId,

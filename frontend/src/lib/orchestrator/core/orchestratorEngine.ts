@@ -191,20 +191,10 @@ export class OrchestratorEngine {
     // Step 4: Check for canvas changes
     const canvasChanged = this.blackboard.hasCanvasChanged(startTime - 5000)
     
-    // Step 5: Enhance with RAG if enabled
-    let ragContext: any = null
-    if (this.config.enableRAG && canvasContext.connectedNodes.length > 0) {
-      const conversationHistory = this.blackboard.getRecentMessages(5)
-      ragContext = await enhanceContextWithRAG(
-        request.message,
-        canvasContext,
-        undefined,
-        conversationHistory.map(m => ({ role: m.role, content: m.content }))
-      )
-    }
-    
-    // Step 6: Analyze intent
+    // Step 5: Analyze intent (MOVED UP - need to know intent before RAG)
     const conversationHistory = this.blackboard.getRecentMessages(10)
+    
+    // First pass: Quick intent analysis without RAG
     const intentAnalysis = await analyzeIntent({
       message: request.message,
       hasActiveSegment: !!request.activeContext,
@@ -219,10 +209,24 @@ export class OrchestratorEngine {
       isDocumentViewOpen: request.isDocumentViewOpen,
       documentFormat: request.documentFormat,
       useLLM: true,
-      canvasContext: ragContext?.hasRAG
-        ? this.buildRAGEnhancedPrompt(ragContext, canvasContext)
-        : formatCanvasContextForLLM(canvasContext)
+      canvasContext: formatCanvasContextForLLM(canvasContext)
     })
+    
+    // Step 6: Enhance with RAG if enabled (AFTER intent analysis)
+    // SKIP RAG for structure generation - we'll handle it separately with summaries fallback
+    let ragContext: any = null
+    if (this.config.enableRAG && 
+        canvasContext.connectedNodes.length > 0 &&
+        intentAnalysis.intent !== 'create_structure' &&
+        intentAnalysis.intent !== 'clarify_intent') {
+      
+      ragContext = await enhanceContextWithRAG(
+        request.message,
+        canvasContext,
+        undefined,
+        conversationHistory.map(m => ({ role: m.role, content: m.content }))
+      )
+    }
     
     // Step 7: Record intent in blackboard
     this.blackboard.setIntent(intentAnalysis.intent, intentAnalysis.confidence)
@@ -238,12 +242,23 @@ export class OrchestratorEngine {
     const availableProviders = request.availableProviders || ['openai', 'groq', 'anthropic', 'google']
     
     // PHASE 1.2: Determine which models to use
-    // If availableModels is provided (from /api/models/available), use those
-    // Otherwise fall back to filtering MODEL_TIERS by providers
-    const modelsToUse: TieredModel[] = request.availableModels || 
-      MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
+    // Prefer availableModels from /api/models/available (actual models user has access to)
+    // Fallback to MODEL_TIERS filtered by provider ONLY if we have no models at all
+    const modelsToUse: TieredModel[] = request.availableModels && request.availableModels.length > 0
+      ? request.availableModels
+      : MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
     
-    console.log(`🎯 [Orchestrator] Using ${request.availableModels ? 'dynamic' : 'static'} model list: ${modelsToUse.length} models available`)
+    console.log(`🎯 [Orchestrator] Using ${request.availableModels && request.availableModels.length > 0 ? 'dynamic' : 'static'} model list: ${modelsToUse.length} models available`)
+    
+    // ✅ CRITICAL: If using static fallback, warn user
+    if (!request.availableModels || request.availableModels.length === 0) {
+      console.warn('⚠️ [Orchestrator] Using static MODEL_TIERS fallback - models may not be available to user!')
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `⚠️ Unable to fetch your available models. Using default list (some models may fail).`,
+        type: 'warning'
+      })
+    }
     
     // VALIDATE fixedModelId against available models
     let validatedFixedModelId: string | null = null
@@ -796,8 +811,12 @@ export class OrchestratorEngine {
             }
           })
         
-        // If creating a new document while others exist, offer to base it on existing content
-        if (existingDocs.length > 0 && !request.message.toLowerCase().includes('based on') && !request.message.toLowerCase().includes('from scratch')) {
+        // ✅ LLM-BASED: Use intent analysis to detect if user explicitly referenced a source document
+        // Instead of brittle pattern matching, trust the LLM's reasoning
+        const hasExplicitSource = intent.extractedEntities?.isExplicitSourceReference === true
+        const sourceDocName = intent.extractedEntities?.sourceDocument
+        
+        if (existingDocs.length > 0 && !hasExplicitSource && !request.message.toLowerCase().includes('from scratch')) {
           this.blackboard.addMessage({
             role: 'orchestrator',
             content: `📋 I notice you have ${existingDocs.length} other document(s) on the canvas: ${existingDocs.map(d => `"${d.name}" (${d.format})`).join(', ')}`,
@@ -887,7 +906,7 @@ export class OrchestratorEngine {
           )
         }
         
-        // Final fallback: Any frontier model
+        // Third fallback: Any frontier model
         if (availableModels.length === 0) {
           this.blackboard.addMessage({
             role: 'orchestrator',
@@ -901,8 +920,28 @@ export class OrchestratorEngine {
           )
         }
         
+        // ✅ FINAL FALLBACK: Accept premium/standard models with reasoning + structured output
+        // This handles cases where user only has premium models (e.g., gpt-4o)
         if (availableModels.length === 0) {
-          throw new Error('No frontier models available for structure generation')
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: '⚠️ No frontier models - using best available premium/standard model',
+            type: 'thinking'
+          })
+          
+          availableModels = MODEL_TIERS.filter(m => 
+            request.availableProviders?.includes(m.provider) && 
+            m.reasoning && 
+            m.structuredOutput !== 'none'
+          ).sort((a, b) => {
+            // Sort by tier: frontier > premium > standard > fast
+            const tierOrder: Record<string, number> = { frontier: 4, premium: 3, standard: 2, fast: 1 }
+            return (tierOrder[b.tier] || 0) - (tierOrder[a.tier] || 0)
+          })
+        }
+        
+        if (availableModels.length === 0) {
+          throw new Error('No reasoning models with structured output available for structure generation')
         }
         
         const selectedModel = availableModels[0]
@@ -918,20 +957,216 @@ export class OrchestratorEngine {
           type: 'decision'
         })
         
-        // PHASE 3: Generate structure plan with automatic fallback
-        // Pass ALL available models (from parameter), not just filtered frontier models
-        const allAvailableModels = availableModels || MODEL_TIERS.filter(m => 
-          request.availableProviders?.includes(m.provider)
+        // PHASE 3: Extract content from referenced document (if "based on X")
+        // ✅ LLM-BASED: Use intent analysis to determine if user wants to base new content on existing
+        let enhancedPrompt = request.message
+        
+        if (hasExplicitSource && sourceDocName) {
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `📚 LLM detected explicit source reference: "${sourceDocName}"`,
+            type: 'thinking'
+          })
+          
+          // Find the referenced document using LLM's extracted entity
+          // The LLM should have identified which document the user is referring to
+          const referencedDoc = canvasContext.allNodes.find(n => {
+            const labelMatch = n.label.toLowerCase().includes(sourceDocName.toLowerCase()) ||
+                              sourceDocName.toLowerCase().includes(n.label.toLowerCase())
+            const isStoryNode = n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode'
+            return labelMatch && isStoryNode
+          })
+          
+          if (referencedDoc) {
+            console.log('🔍 [Structure Generation] Found referenced document:', referencedDoc.label)
+            
+            // ✅ NEW: For REPORTS, ask what KIND of report before proceeding
+            if (request.documentFormat === 'report' || request.documentFormat?.startsWith('report_')) {
+              const sourceFormat = referencedDoc.detailedContext?.format
+              
+              // Only ask if we haven't already selected a specific report subtype
+              if (request.documentFormat === 'report' && sourceFormat) {
+                console.log('📋 [Structure Generation] Recommending report types for source:', sourceFormat)
+                
+                // Import helper
+                const { recommendReportType } = await import('@/lib/documentHierarchy')
+                const recommendations = recommendReportType(sourceFormat)
+                
+                this.blackboard.addMessage({
+                  role: 'orchestrator',
+                  content: `📊 I found "${referencedDoc.label}" (${sourceFormat}). I can create several types of reports based on this content.`,
+                  type: 'thinking'
+                })
+                
+                this.blackboard.addMessage({
+                  role: 'orchestrator',
+                  content: `🎯 Recommending: ${recommendations[0].label}`,
+                  type: 'decision'
+                })
+                
+                // Return clarification to ask user which report type
+                return [{
+                  type: 'request_clarification',
+                  payload: {
+                    message: `I can create several types of reports based on the ${sourceFormat}.\n\nWhich would you prefer?`,
+                    options: recommendations.map(rec => ({
+                      id: rec.id,
+                      label: rec.label,
+                      description: rec.description
+                    })),
+                    originalAction: 'create_structure',
+                    documentFormat: request.documentFormat, // Store original format
+                    sourceDocumentId: referencedDoc.nodeId,
+                    sourceDocumentLabel: referencedDoc.label,
+                    sourceDocumentFormat: sourceFormat,
+                    reportTypeRecommendations: recommendations // Store for later use
+                  },
+                  status: 'pending'
+                }]
+              }
+            }
+            
+            // Strategy 1: Try RAG if embeddings exist
+            try {
+              const statusResponse = await fetch(`/api/embeddings/generate?nodeId=${referencedDoc.nodeId}`)
+              if (statusResponse.ok) {
+                const embeddingStatus = await statusResponse.json()
+                
+                if (embeddingStatus.exists && embeddingStatus.queueStatus === 'completed') {
+                  console.log('✅ [Structure Generation] Embeddings found, using RAG')
+                  this.blackboard.addMessage({
+                    role: 'orchestrator',
+                    content: '🔍 Using semantic search to extract relevant content...',
+                    type: 'progress'
+                  })
+                  
+                  // Perform semantic search
+                  const searchResponse = await fetch('/api/embeddings/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      query: request.message,
+                      matchThreshold: 0.3,
+                      matchCount: 15,
+                      nodeId: referencedDoc.nodeId,
+                      includeMetadata: true,
+                    })
+                  })
+                  
+                  if (searchResponse.ok) {
+                    const searchResult = await searchResponse.json()
+                    const { buildContextFromResults } = await import('@/lib/embeddings/retrievalService')
+                    const ragContent = buildContextFromResults(searchResult.results, {
+                      includeMetadata: true,
+                      includeSimilarity: false,
+                      maxTotalTokens: 6000
+                    })
+                    
+                    enhancedPrompt = `${request.message}
+
+**Source Material (from "${referencedDoc.label}"):**
+
+${ragContent}
+
+Use this content to inform the ${request.documentFormat} structure and analysis.`
+                    
+                    this.blackboard.addMessage({
+                      role: 'orchestrator',
+                      content: `✅ Retrieved ${searchResult.results.length} relevant sections via semantic search`,
+                      type: 'result'
+                    })
+                  }
+                } else {
+                  console.log('⚠️ [Structure Generation] No embeddings, falling back to summaries')
+                  throw new Error('No embeddings - use summaries')
+                }
+              } else {
+                throw new Error('Embedding status check failed')
+              }
+            } catch (ragError) {
+              // Strategy 2: Fall back to summaries from document_data
+              console.log('📝 [Structure Generation] Using summaries as fallback')
+              this.blackboard.addMessage({
+                role: 'orchestrator',
+                content: '📝 Using document summaries (no embeddings yet)...',
+                type: 'progress'
+              })
+              
+              if (referencedDoc.detailedContext?.documentData?.structure) {
+                const summaries = this.extractAllSummaries(referencedDoc.detailedContext.documentData)
+                
+                if (summaries.length > 0) {
+                  const summaryText = summaries.map(s => `**${s.name}**: ${s.summary}`).join('\n\n')
+                  
+                  enhancedPrompt = `${request.message}
+
+**Source Material Overview (from "${referencedDoc.label}"):**
+
+${summaryText}
+
+Use this content overview to inform the ${request.documentFormat} structure and analysis.`
+                  
+                  this.blackboard.addMessage({
+                    role: 'orchestrator',
+                    content: `✅ Extracted ${summaries.length} section summaries`,
+                    type: 'result'
+                  })
+                } else {
+                  this.blackboard.addMessage({
+                    role: 'orchestrator',
+                    content: '⚠️ Source document has no summaries or content yet',
+                    type: 'warning'
+                  })
+                }
+              }
+            }
+          }
+        }
+        
+        // PHASE 4: Generate structure plan with automatic fallback
+        // ✅ FIX: Use the full availableModels list from request (models user actually has)
+        // Filter to reasoning models with structured output for fallback attempts
+        const allAvailableModels = (request.availableModels || MODEL_TIERS).filter(m => 
+          request.availableProviders?.includes(m.provider) &&
+          m.reasoning &&
+          m.structuredOutput !== 'none'
         )
         
-        const plan = await this.createStructurePlanWithFallback(
-          request.message,
-          request.documentFormat,
-          selectedModel.id,
-          request.userKeyId,
-          allAvailableModels, // Pass ALL models for fallback (not just frontier)
-          3 // Max retries
-        )
+        let plan
+        try {
+          plan = await this.createStructurePlanWithFallback(
+            enhancedPrompt, // Use enhanced prompt with content!
+            request.documentFormat,
+            selectedModel.id,
+            request.userKeyId,
+            allAvailableModels, // Pass ALL models for fallback (not just frontier)
+            3 // Max retries
+          )
+          
+          console.log('✅ [create_structure] Plan generated successfully:', {
+            structureCount: plan.structure.length,
+            tasksCount: plan.tasks.length,
+            totalWordCount: plan.metadata?.totalWordCount
+          })
+        } catch (planError) {
+          console.error('❌ [create_structure] Failed to generate plan:', planError)
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `❌ Failed to generate structure: ${planError instanceof Error ? planError.message : 'Unknown error'}`,
+            type: 'error'
+          })
+          
+          // Return error action instead of throwing
+          actions.push({
+            type: 'message',
+            payload: {
+              content: `I encountered an error while generating the structure: ${planError instanceof Error ? planError.message : 'Unknown error'}. Please try again.`,
+              type: 'error'
+            },
+            status: 'failed'
+          })
+          break
+        }
         
         // Return as action
         actions.push({
@@ -943,6 +1178,8 @@ export class OrchestratorEngine {
           },
           status: 'completed'
         })
+        
+        console.log('✅ [create_structure] Action pushed to actions array')
         break
       }
       
@@ -1315,6 +1552,37 @@ export class OrchestratorEngine {
     return null
   }
   
+  /**
+   * Extract all summaries from a hierarchical document structure
+   */
+  private extractAllSummaries(documentData: any): Array<{name: string; summary: string}> {
+    const summaries: Array<{name: string; summary: string}> = []
+    
+    function traverse(segments: any[], depth: number = 0) {
+      for (const seg of segments) {
+        if (seg.summary && seg.summary.trim().length > 0) {
+          // Include the segment's name and summary
+          const name = seg.title || seg.name || `Section ${seg.order || ''}`
+          summaries.push({ 
+            name: name,
+            summary: seg.summary 
+          })
+        }
+        
+        // Recursively traverse children
+        if (seg.children && Array.isArray(seg.children) && seg.children.length > 0) {
+          traverse(seg.children, depth + 1)
+        }
+      }
+    }
+    
+    if (documentData?.structure && Array.isArray(documentData.structure)) {
+      traverse(documentData.structure)
+    }
+    
+    return summaries
+  }
+  
   private buildRAGEnhancedPrompt(ragContext: any, canvasContext: CanvasContext): string {
     let prompt = formatCanvasContextForLLM(canvasContext)
     
@@ -1349,35 +1617,40 @@ export class OrchestratorEngine {
         return (tierOrder[b.tier] || 0) - (tierOrder[a.tier] || 0)
       })
     
-    // Start with primary model
-    const modelsToTry = [primaryModelId, ...reasoningModels.map(m => m.id).filter(id => id !== primaryModelId)]
+    // ✅ FIX: Only use primaryModelId if it's actually available to the user!
+    const isPrimaryAvailable = reasoningModels.some(m => m.id === primaryModelId)
     
-    console.log(`🔄 [Fallback] Available reasoning models for retry: ${modelsToTry.join(', ')}`)
+    const modelsToTry = isPrimaryAvailable 
+      ? [primaryModelId, ...reasoningModels.map(m => m.id).filter(id => id !== primaryModelId)]
+      : reasoningModels.map(m => m.id) // Skip primaryModelId if user doesn't have access
+    
+    console.log(`🔄 [Fallback] Primary model: ${primaryModelId} (available: ${isPrimaryAvailable})`)
+    console.log(`🔄 [Fallback] Models to try: ${modelsToTry.join(', ')}`)
     
     for (let i = 0; i < Math.min(modelsToTry.length, maxRetries); i++) {
       const modelId = modelsToTry[i]
       attemptedModels.push(modelId)
       
       try {
-        if (i > 0) {
-          // This is a retry
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `🔄 Retrying with ${modelId}...`,
-            type: 'progress'
-          })
-        }
+        // Log which model we're attempting
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: i === 0 
+            ? `🎯 Attempting structure generation with ${modelId}...`
+            : `🔄 Retrying with ${modelId} (attempt ${i + 1}/${maxRetries})...`,
+          type: 'progress'
+        })
         
         const result = await this.createStructurePlan(userPrompt, format, modelId, userKeyId)
         
-        if (i > 0) {
-          // Success after retry
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `✅ Structure generation succeeded with ${modelId}`,
-            type: 'result'
-          })
-        }
+        // Success!
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: i === 0
+            ? `✅ Structure generated successfully with ${modelId}`
+            : `✅ Structure generation succeeded with ${modelId} after ${i} ${i === 1 ? 'retry' : 'retries'}`,
+          type: 'result'
+        })
         
         return result
       } catch (error: any) {
@@ -1386,7 +1659,7 @@ export class OrchestratorEngine {
         
         this.blackboard.addMessage({
           role: 'orchestrator',
-          content: `⚠️ ${modelId}: ${errorReason}`,
+          content: `❌ Attempt ${i + 1} failed (${modelId}): ${errorReason}`,
           type: 'warning'
         })
         
@@ -1469,9 +1742,23 @@ export class OrchestratorEngine {
     // Build format-specific instructions
     const formatInstructions = this.getFormatInstructions(format)
     
+    // Add critical instructions for reports to avoid screenplay structure
+    const reportWarning = format.startsWith('report') ? `
+
+🚨 CRITICAL FOR REPORTS:
+- DO NOT use Act/Sequence/Scene structure (that's for screenplays!)
+- DO NOT create "2.0 Global Story Structure" or "3.0 Act I Analysis" sections
+- DO extract and ANALYZE actual content from the source material
+- DO use proper report structure: Executive Summary → Main Sections (1.0, 2.0) → Subsections (1.1, 1.2)
+- DO focus on insights, themes, findings, and recommendations - NOT meta-analysis of structure
+- If analyzing a screenplay: Extract plot, characters, dialogue quality, marketability
+- If analyzing a podcast: Extract themes, insights, key takeaways
+- If analyzing a novel: Extract literary elements, character development, themes
+` : ''
+    
     const systemPrompt = `You are an expert story structure planner. Your role is to analyze creative prompts and create detailed, hierarchical structures optimized for the requested format.
 
-${formatInstructions}
+${formatInstructions}${reportWarning}
 
 Generate a complete structure plan with:
 - Concise reasoning (max 1000 characters)
@@ -1739,6 +2026,9 @@ Generate a complete structure plan with:
       'short_story': '\nTarget: 1,000-7,500 words total.',
       'screenplay': '\nTarget: 90-120 pages (90-120 scenes). Each scene: 1-3 pages.',
       'report': '\nFocus on clarity, scanability, and logical flow.',
+      'report_script_coverage': '\n✅ Industry standard screenplay coverage format.\nCRITICAL: Extract content from the screenplay - DO NOT just analyze its structure!\nExecutive Summary must include Pass/Consider/Recommend rating.\nLogline should be compelling one-sentence premise.\nSynopsis: 2-3 paragraph plot summary capturing key story beats.\nAnalyze actual characters, dialogue, pacing, and marketability from the screenplay content.',
+      'report_business': '\nProfessional business/strategic analysis format.\nFocus on data-driven insights and actionable recommendations.\nExecutive Summary should highlight key findings up front.\nUse clear section numbering (1.0, 2.0, etc.).',
+      'report_content_analysis': '\nThematic and content-focused analysis.\nExtract key themes, insights, and takeaways from the source material.\nProvide actionable recommendations for the audience.\nFocus on quality, clarity, and engagement factors.',
       'article': '\nTarget: 800-2,000 words total. Clear introduction and conclusion.',
       'essay': '\nTarget: 1,000-5,000 words. Strong thesis and supporting arguments.',
       'podcast': '\nTarget: 20-60 minutes (3,000-9,000 words). Conversational and engaging.'
@@ -1899,7 +2189,44 @@ Which option did the user select? Return ONLY the option ID.`
   ): Promise<OrchestratorResponse> {
     
     if (originalAction === 'create_structure') {
-      const { documentFormat, userMessage, existingDocs } = payload
+      const { documentFormat, userMessage, existingDocs, reportTypeRecommendations, sourceDocumentLabel, sourceDocumentFormat } = payload
+      
+      // ✅ NEW: Handle report type selection
+      if (reportTypeRecommendations && sourceDocumentLabel) {
+        const selectedReportType = reportTypeRecommendations.find((r: any) => r.id === selectedOption.id)
+        
+        if (selectedReportType) {
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `✅ Creating ${selectedReportType.label} based on "${sourceDocumentLabel}"...`,
+            type: 'result'
+          })
+          
+          // Construct enhanced prompt with report type context and explicit "based on" reference
+          const enhancedPrompt = `Create a ${selectedReportType.label.toLowerCase()} based on "${sourceDocumentLabel}"`
+          
+          // Return create_structure intent with the specific report format
+          return {
+            intent: 'create_structure',
+            confidence: 0.95,
+            reasoning: `User selected ${selectedReportType.label} for analyzing ${sourceDocumentFormat}`,
+            modelUsed: 'none',
+            actions: [{
+              type: 'message',
+              payload: {
+                content: `✅ Generating ${selectedReportType.label} structure...`,
+                intent: 'create_structure',
+                format: selectedReportType.formatKey, // Use the specific report format (e.g., 'report_script_coverage')
+                prompt: enhancedPrompt
+              },
+              status: 'pending'
+            }],
+            canvasChanged: false,
+            requiresUserInput: false,
+            estimatedCost: 0
+          }
+        }
+      }
       
       if (selectedOption.id === 'create_new') {
         // User wants to create something new (ignore existing docs)

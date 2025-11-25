@@ -78,11 +78,26 @@ export async function getStory(storyId: string) {
         })
       }
       
+      // ✅ FIX: Include document_data from database column into node.data
+      const nodeDataWithDocumentData = {
+        ...validatedNode.data,
+        document_data: (node as any).document_data || null // Add document_data from DB
+      }
+      
+      // Debug log for document_data
+      if ((node as any).document_data) {
+        console.log('📥 Loaded document_data for node:', {
+          nodeId: validatedNode.id,
+          totalWordCount: (node as any).document_data.totalWordCount,
+          structureLength: (node as any).document_data.structure?.length
+        })
+      }
+      
       return {
         id: validatedNode.id,
         type: validatedNode.type,
         position: { x: validatedNode.position_x, y: validatedNode.position_y },
-        data: validatedNode.data
+        data: nodeDataWithDocumentData
       }
     } catch (validationError) {
       console.error('Node validation failed for node:', node.id, validationError)
@@ -91,7 +106,10 @@ export async function getStory(storyId: string) {
         id: node.id,
         type: node.type,
         position: { x: node.position_x, y: node.position_y },
-        data: node.data
+        data: {
+          ...node.data,
+          document_data: (node as any).document_data || null
+        }
       }
     }
   })

@@ -33,6 +33,12 @@ export interface IntentAnalysis {
   needsClarification?: boolean // True if orchestrator should ask a question
   clarifyingQuestion?: string // Question to ask the user
   usedLLM?: boolean // True if LLM reasoning was used
+  extractedEntities?: {
+    targetSegment?: string
+    referenceContent?: string
+    sourceDocument?: string // Name or ID of source document (e.g., "Screenplay", "Podcast")
+    isExplicitSourceReference?: boolean // True if user explicitly said "based on X", "using X"
+  }
 }
 
 export interface IntentContext {
@@ -84,7 +90,8 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
         usedLLM: true
       }
     } catch (error) {
-      console.error('LLM intent analysis failed, falling back to patterns:', error)
+      console.error('🔄 [Intent] LLM analysis failed, falling back to patterns:', error)
+      console.log('📍 [Intent] Will use pattern-based detection as fallback')
       // Fall through to pattern matching
     }
   }

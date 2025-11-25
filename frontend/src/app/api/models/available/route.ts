@@ -201,11 +201,57 @@ export async function GET(request: Request) {
       }
     }
 
-    // Separate by capability
+    // ✅ NEW APPROACH: For models in MODEL_TIERS but not in provider's list,
+    // assume they're available if user has the provider key (fail gracefully at runtime)
+    // This handles new models like GPT-5.1 that aren't in /v1/models yet
+    const availableProviders = new Set(userKeys.map(k => k.provider))
+    const unavailable: AvailableModelsResponse['unavailable'] = []
+    
+    console.log('🔍 [Optimistic Loading] Starting check...')
+    console.log(`   Available providers: ${Array.from(availableProviders).join(', ')}`)
+    console.log(`   Models already found: ${Array.from(modelIdSet).join(', ')}`)
+    console.log(`   Total MODEL_TIERS: ${MODEL_TIERS.length}`)
+    
+    for (const tierModel of MODEL_TIERS) {
+      if (!modelIdSet.has(tierModel.id)) {
+        if (availableProviders.has(tierModel.provider as LLMProvider)) {
+          // User has API key for this provider - assume model is available!
+          // If it's not, the actual generation will fail gracefully
+          console.log(`➕ [Optimistic] Adding ${tierModel.id} (${tierModel.displayName}) - user has ${tierModel.provider} key`)
+          
+          const userKey = userKeys.find(k => k.provider === tierModel.provider)
+          if (userKey) {
+            modelIdSet.add(tierModel.id)
+            availableModels.push({
+              ...tierModel,
+              available: true,
+              apiKeyId: userKey.id,
+              apiKeyNickname: userKey.nickname || undefined,
+              // Use estimated pricing from MODEL_TIERS
+              input_price_per_1m: null,
+              output_price_per_1m: null,
+              max_output_tokens: null,
+            })
+          } else {
+            console.warn(`⚠️ [Optimistic] Could not find API key for ${tierModel.provider}`)
+          }
+        } else {
+          // User doesn't have API key for this provider
+          unavailable.push({
+            id: tierModel.id,
+            displayName: tierModel.displayName,
+            reason: 'no_api_key'
+          })
+        }
+      }
+    }
+    
+    console.log(`✅ [Optimistic Loading] Complete. Total available models: ${availableModels.length}`)
+
+    // ✅ FIX: Calculate statistics AFTER optimistic loading
     const reasoningModels = availableModels.filter(m => m.reasoning === true)
     const writingModels = availableModels.filter(m => m.reasoning === false)
 
-    // Calculate statistics
     const stats = {
       total: availableModels.length,
       byProvider: availableModels.reduce((acc, m) => {
@@ -218,24 +264,6 @@ export async function GET(request: Request) {
       }, {} as Record<string, number>),
       reasoningCount: reasoningModels.length,
       writingCount: writingModels.length,
-    }
-
-    // Find unavailable models (in MODEL_TIERS but not accessible)
-    const unavailable: AvailableModelsResponse['unavailable'] = []
-    const availableProviders = new Set(userKeys.map(k => k.provider))
-    
-    for (const tierModel of MODEL_TIERS) {
-      if (!modelIdSet.has(tierModel.id)) {
-        const reason = !availableProviders.has(tierModel.provider as LLMProvider)
-          ? 'no_api_key'
-          : 'disabled'
-        
-        unavailable.push({
-          id: tierModel.id,
-          displayName: tierModel.displayName,
-          reason
-        })
-      }
     }
 
     console.log('✅ Available models:', {

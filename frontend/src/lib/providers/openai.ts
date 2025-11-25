@@ -32,6 +32,40 @@ const OPENAI_MODEL_PRICING: Record<string, ModelPricing> = {
     input_price_per_1m: 15.00,
     output_price_per_1m: 60.00,
   },
+  'gpt-5-mini': {
+    input_price_per_1m: 3.00, // Estimated - similar to GPT-4o premium tier
+    output_price_per_1m: 12.00,
+  },
+  'gpt-5-nano': {
+    input_price_per_1m: 0.30, // Estimated - similar to GPT-4o-mini
+    output_price_per_1m: 1.20,
+  },
+  // GPT-4.1 Series (Reasoning Models)
+  'gpt-4.1': {
+    input_price_per_1m: 12.00, // Estimated - between GPT-4 Turbo and GPT-5
+    output_price_per_1m: 48.00,
+  },
+  'gpt-4.1-mini': {
+    input_price_per_1m: 2.50, // Estimated - similar to GPT-4o
+    output_price_per_1m: 10.00,
+  },
+  'gpt-4.1-nano': {
+    input_price_per_1m: 0.25, // Estimated - cheaper than GPT-4o-mini
+    output_price_per_1m: 1.00,
+  },
+  // o-Series (Reasoning Models)
+  'o4': {
+    input_price_per_1m: 20.00, // Estimated - higher than GPT-5
+    output_price_per_1m: 80.00,
+  },
+  'o4-mini': {
+    input_price_per_1m: 4.00, // Estimated - premium reasoning
+    output_price_per_1m: 16.00,
+  },
+  'o3': {
+    input_price_per_1m: 18.00, // Estimated - similar to o4
+    output_price_per_1m: 72.00,
+  },
   // GPT-4o Series
   'gpt-4o': {
     input_price_per_1m: 2.50,
@@ -77,6 +111,16 @@ const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   'gpt-5.1-2025-11-13': 200000, // 200K context (snapshot)
   'gpt-5.1': 200000, // 200K context (alias)
   'gpt-5': 200000,
+  'gpt-5-mini': 128000,
+  'gpt-5-nano': 128000,
+  // GPT-4.1 Series (Reasoning Models)
+  'gpt-4.1': 128000,
+  'gpt-4.1-mini': 128000,
+  'gpt-4.1-nano': 128000,
+  // o-Series (Reasoning Models)
+  'o4': 128000,
+  'o4-mini': 128000,
+  'o3': 128000,
   // GPT-4o Series
   'gpt-4o': 128000,
   'gpt-4o-2024-11-20': 128000,
@@ -107,6 +151,8 @@ export class OpenAIAdapter implements LLMProviderAdapter {
       const client = this.createClient(apiKey)
       const response = await client.models.list()
 
+      console.log('[OpenAI] Raw models from API:', response.data.map(m => m.id).join(', '))
+
       // Filter and normalize models
       const chatModels = response.data
         .filter(model => {
@@ -122,14 +168,22 @@ export class OpenAIAdapter implements LLMProviderAdapter {
           if (id.includes('moderation')) return false // Moderation
           if (id.includes('audio')) return false // Audio models
           
-          // Only include GPT chat models and reasoning models
-          return id.startsWith('gpt-') || id.startsWith('chatgpt') || id.startsWith('o1')
+          // Include all GPT chat models and reasoning models (o1, o3, o4, etc.)
+          return id.startsWith('gpt-') || 
+                 id.startsWith('chatgpt') || 
+                 id.match(/^o\d/)  // Matches o1, o3, o4, etc.
         })
         .map(model => this.normalizeModel(model))
 
+      console.log('[OpenAI] After filtering:', chatModels.map(m => m.id).join(', '))
+
       // Apply curation (imported from modelCuration module)
       const { curateModels } = await import('../models/modelCuration')
-      return curateModels(chatModels)
+      const curated = curateModels(chatModels)
+      
+      console.log('[OpenAI] After curation:', curated.map(m => m.id).join(', '))
+      
+      return curated
     } catch (error: any) {
       if (error?.status === 401) {
         throw new InvalidAPIKeyError('openai', error)
