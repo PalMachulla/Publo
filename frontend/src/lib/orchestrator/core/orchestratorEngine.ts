@@ -781,15 +781,29 @@ export class OrchestratorEngine {
             
             console.log('✅ [Canvas Awareness] Requesting clarification - different formats exist!')
             
+            // Build options: one for each existing format + "create new"
+            const options = [
+              ...differentFormats.map((doc, idx) => ({
+                id: `use_${doc.id}`,
+                label: `Base it on ${doc.format}`,
+                description: `Use "${doc.name}" as inspiration`
+              })),
+              { 
+                id: 'create_new', 
+                label: 'Create something new', 
+                description: 'Start from scratch' 
+              }
+            ]
+            
+            // Build message with numbered list
+            const optionsList = options.map((opt, idx) => `${idx + 1}. ${opt.label} - ${opt.description}`).join('\n')
+            
             actions.push({
               type: 'request_clarification',
               payload: {
                 originalAction: 'create_structure',
-                message: `I see you already have ${differentFormats.length === 1 ? 'a' : ''} ${differentFormats.map(d => d.format).join(' and ')} on the canvas (${docNames}).\n\nWould you like me to:\n\n1. Base the ${request.documentFormat} on the existing ${differentFormats[0].format}\n2. Create something completely new\n\nWhat's your preference?`,
-                options: [
-                  { id: 'use_existing', label: `Base it on ${differentFormats[0].format}`, description: `Use existing story as inspiration` },
-                  { id: 'create_new', label: 'Create something new', description: 'Start from scratch' }
-                ],
+                message: `I see you already have ${differentFormats.map(d => d.format).join(' and ')} on the canvas (${docNames}).\n\nWould you like me to:\n\n${optionsList}\n\nWhat's your preference?`,
+                options,
                 documentFormat: request.documentFormat,
                 userMessage: request.message,
                 existingDocs: differentFormats

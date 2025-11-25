@@ -344,6 +344,13 @@ export default function OrchestratorPanel({
   // Confirmation state - for 2-step execution flow
   const [pendingConfirmation, setPendingConfirmation] = useState<ConfirmationRequest | null>(null)
   
+  // ✅ NEW: Clarification state - for inline chat options (not modal)
+  const [pendingClarification, setPendingClarification] = useState<{
+    action: string
+    payload: any
+    options: Array<{id: string, label: string, description: string}>
+  } | null>(null)
+  
   // Chat state (local input only, history is canvas-level)
   const [chatMessage, setChatMessage] = useState('')
   const [collapsedMessages, setCollapsedMessages] = useState<Set<string>>(new Set())
@@ -879,19 +886,15 @@ export default function OrchestratorPanel({
           break
           
         case 'request_clarification':
-          // Handle clarification request - create a confirmation with options
-          const clarificationConfirmation = createConfirmationRequest(
-            {
-              type: action.payload.originalAction,
-              payload: {},
-              status: 'pending'
-            },
-            'clarification',
-            action.payload.message,
-            action.payload.options
-          )
-          setPendingConfirmation(clarificationConfirmation)
+          // ✅ NEW: Display in chat stream with clickable options (not pop-up modal)
+          // Store pending clarification for when user responds
+          setPendingClarification({
+            action: action.payload.originalAction,
+            payload: action.payload,
+            options: action.payload.options
+          })
           
+          // Add message to chat
           if (onAddChatMessage) {
             onAddChatMessage(action.payload.message, 'orchestrator', 'result')
           }
