@@ -905,7 +905,7 @@ export default function CanvasPage() {
   */
 
   // Handle Create Story node click - spawn new story structure node
-  const handleCreateStory = useCallback((format: StoryFormat, template?: string, userPromptDirect?: string, plan?: any) => {
+  const handleCreateStory = useCallback(async (format: StoryFormat, template?: string, userPromptDirect?: string, plan?: any) => {
     console.log('handleCreateStory called with format:', format, 'template:', template, 'userPromptDirect:', userPromptDirect, 'plan:', plan)
     
     // Generate unique ID for the story structure
@@ -989,13 +989,20 @@ export default function CanvasPage() {
     // Save immediately to database so node exists for when items are clicked
     const saveAndFinalize = async () => {
       try {
+        console.log('💾 [saveAndFinalize] Starting save for node:', structureId, {
+          storyId,
+          hasNodes: nodes.length > 0,
+          saving
+        })
         await handleSave()
+        console.log('✅ [saveAndFinalize] Save completed for node:', structureId)
       } catch (error: any) {
         // Ignore duplicate key errors (node already exists)
         if (error?.code !== '23505') {
-          console.error('❌ Save error:', error)
+          console.error('❌ [saveAndFinalize] Save error:', error)
+          throw error // Re-throw non-duplicate errors
         } else {
-          console.log('⚠️ Node already exists in database, continuing...')
+          console.log('⚠️ [saveAndFinalize] Node already exists in database, continuing...')
         }
       }
       
@@ -1010,11 +1017,15 @@ export default function CanvasPage() {
     }
     
     // If plan is already provided, skip orchestration and just save
+    // ✅ FIX: Await the save to prevent race condition when opening document immediately after creation
     if (plan) {
-      console.log('✅ Plan already provided by orchestrator, skipping re-generation')
-      saveAndFinalize().catch(err => {
-        console.warn('Background save failed:', err)
-      })
+      console.log('✅ Plan already provided by orchestrator, saving synchronously to prevent race condition')
+      try {
+        await saveAndFinalize()
+        console.log('✅ Node saved to database successfully')
+      } catch (err) {
+        console.error('❌ Failed to save new structure node:', err)
+      }
       return // Exit early - no need to orchestrate again
     }
     

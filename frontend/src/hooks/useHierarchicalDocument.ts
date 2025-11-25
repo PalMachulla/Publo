@@ -78,17 +78,38 @@ export function useHierarchicalDocument({
       setLoading(true)
       setError(null)
 
-      // ✅ FIX: Select entire node row, not just document_data
-      // This prevents 406 error when document_data is NULL
-      const { data, error: fetchError } = await supabaseRef.current
-        .from('nodes')
-        .select('id, document_data')
-        .eq('id', nodeId)
-        .single()
+      // ✅ FIX: Retry fetch with exponential backoff to handle race conditions
+      // When a node is created, there can be a delay before it's committed to DB
+      let data = null
+      let fetchError = null
+      const maxRetries = 3
+      const retryDelays = [500, 1000, 2000] // ms
+      
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const result = await supabaseRef.current
+          .from('nodes')
+          .select('id, document_data')
+          .eq('id', nodeId)
+          .single()
+        
+        data = result.data
+        fetchError = result.error
+        
+        if (!fetchError || fetchError.code !== 'PGRST116') {
+          // Success or non-retryable error
+          break
+        }
+        
+        if (attempt < maxRetries) {
+          const delay = retryDelays[attempt]
+          console.log(`⏳ [useHierarchicalDocument] Node not found (PGRST116), retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+      }
 
       if (fetchError) {
-        // If node doesn't exist at all, throw
-        console.error('❌ [useHierarchicalDocument] Fetch error:', fetchError)
+        // If node doesn't exist after all retries, throw
+        console.error('❌ [useHierarchicalDocument] Fetch error after retries:', fetchError)
         throw fetchError
       }
 
