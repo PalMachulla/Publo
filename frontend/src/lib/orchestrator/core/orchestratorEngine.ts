@@ -29,6 +29,8 @@ import { analyzeIntent, type IntentAnalysis, type UserIntent } from '../intentRo
 import { enhanceContextWithRAG } from '../ragIntegration'
 import { Node, Edge } from 'reactflow'
 import { getDocumentHierarchy, DOCUMENT_HIERARCHY } from '@/lib/documentHierarchy'
+// PHASE 1: WorldState - Unified state management
+import type { WorldStateManager } from './worldState'
 
 // ============================================================
 // TYPES
@@ -126,9 +128,11 @@ export interface StructurePlan {
 export class OrchestratorEngine {
   private blackboard: Blackboard
   private config: Required<OrchestratorConfig>
+  private worldState?: WorldStateManager // PHASE 1: Optional for gradual migration
   
-  constructor(config: OrchestratorConfig) {
+  constructor(config: OrchestratorConfig, worldState?: WorldStateManager) {
     this.blackboard = new Blackboard(config.userId)
+    this.worldState = worldState // PHASE 1: Store WorldState if provided
     this.config = {
       userId: config.userId,
       modelPriority: config.modelPriority || 'balanced',
@@ -141,7 +145,8 @@ export class OrchestratorEngine {
       userId: config.userId,
       priority: this.config.modelPriority,
       rag: this.config.enableRAG,
-      learning: this.config.enablePatternLearning
+      learning: this.config.enablePatternLearning,
+      hasWorldState: !!worldState // PHASE 1: Log if using WorldState
     })
   }
   
@@ -156,15 +161,28 @@ export class OrchestratorEngine {
       return await this.handleClarificationResponse(request)
     }
     
-    // Step 1: Update blackboard with current state
-    this.blackboard.updateCanvas(request.canvasNodes, request.canvasEdges)
+    // PHASE 1: Use helper methods to read from WorldState or Request
+    // Extract state early for backward compatibility
+    const _canvasNodes = this.getCanvasNodes(request)
+    const _canvasEdges = this.getCanvasEdges(request)
+    const _activeContext = this.getActiveContext(request)
+    const _isDocViewOpen = this.isDocumentViewOpen(request)
+    const _documentFormat = this.getDocumentFormat(request)
+    const _structureItems = this.getStructureItems(request)
+    const _contentMap = this.getContentMap(request)
+    const _availableProviders = this.getAvailableProviders(request)
+    const _availableModels = this.getAvailableModels(request)
+    const _modelPrefs = this.getModelPreferences(request)
     
-    if (request.currentStoryStructureNodeId && request.contentMap) {
+    // Step 1: Update blackboard with current state
+    this.blackboard.updateCanvas(_canvasNodes, _canvasEdges)
+    
+    if (request.currentStoryStructureNodeId && _contentMap) {
       this.blackboard.updateDocument(request.currentStoryStructureNodeId, {
-        format: request.documentFormat || 'unknown',
-        structureItems: request.structureItems || [],
-        contentMap: request.contentMap,
-        wordsWritten: Object.values(request.contentMap).reduce(
+        format: _documentFormat || 'unknown',
+        structureItems: _structureItems || [],
+        contentMap: _contentMap,
+        wordsWritten: Object.values(_contentMap).reduce(
           (sum, content) => sum + content.split(/\s+/).length,
           0
         )
@@ -181,8 +199,8 @@ export class OrchestratorEngine {
     // Step 3: Build canvas context
     const canvasContext = buildCanvasContext(
       'context',
-      request.canvasNodes,
-      request.canvasEdges,
+      _canvasNodes,
+      _canvasEdges,
       request.currentStoryStructureNodeId && request.contentMap
         ? { [request.currentStoryStructureNodeId]: { contentMap: request.contentMap } }
         : undefined
@@ -408,6 +426,113 @@ export class OrchestratorEngine {
   reset(): void {
     this.blackboard.reset()
     console.log('🔄 [Orchestrator] Reset')
+  }
+  
+  // ============================================================
+  // PHASE 1: WORLDSTATE HELPERS
+  // ============================================================
+  // These methods provide backward-compatible state access
+  // Priority: WorldState > Request Props
+  
+  private getCanvasNodes(request: OrchestratorRequest): Node[] {
+    if (this.worldState) {
+      return this.worldState.getAllNodes().map(n => ({
+        id: n.id,
+        type: n.type,
+        position: n.position,
+        data: n.data
+      }))
+    }
+    return request.canvasNodes
+  }
+  
+  private getCanvasEdges(request: OrchestratorRequest): Edge[] {
+    if (this.worldState) {
+      return this.worldState.getAllEdges().map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        type: e.type,
+        data: e.data
+      }))
+    }
+    return request.canvasEdges
+  }
+  
+  private getActiveContext(request: OrchestratorRequest): {id: string, name: string} | undefined {
+    if (this.worldState) {
+      const sectionId = this.worldState.getActiveSectionId()
+      const doc = this.worldState.getActiveDocument()
+      if (sectionId && doc.structure) {
+        const section = doc.structure.items.find(item => item.id === sectionId)
+        if (section) {
+          return { id: section.id, name: section.name }
+        }
+      }
+      return undefined
+    }
+    return request.activeContext
+  }
+  
+  private isDocumentViewOpen(request: OrchestratorRequest): boolean {
+    if (this.worldState) {
+      return this.worldState.isDocumentPanelOpen()
+    }
+    return request.isDocumentViewOpen || false
+  }
+  
+  private getDocumentFormat(request: OrchestratorRequest): string | undefined {
+    if (this.worldState) {
+      return this.worldState.getActiveDocument().format || undefined
+    }
+    return request.documentFormat
+  }
+  
+  private getStructureItems(request: OrchestratorRequest): any[] | undefined {
+    if (this.worldState) {
+      return this.worldState.getActiveDocument().structure?.items
+    }
+    return request.structureItems
+  }
+  
+  private getContentMap(request: OrchestratorRequest): Record<string, string> | undefined {
+    if (this.worldState) {
+      const contentMap: Record<string, string> = {}
+      this.worldState.getActiveDocument().content.forEach((content, id) => {
+        contentMap[id] = content
+      })
+      return contentMap
+    }
+    return request.contentMap
+  }
+  
+  private getAvailableProviders(request: OrchestratorRequest): string[] | undefined {
+    if (this.worldState) {
+      return this.worldState.getState().user.availableProviders
+    }
+    return request.availableProviders
+  }
+  
+  private getAvailableModels(request: OrchestratorRequest): TieredModel[] | undefined {
+    if (this.worldState) {
+      return this.worldState.getState().user.availableModels
+    }
+    return request.availableModels
+  }
+  
+  private getModelPreferences(request: OrchestratorRequest): {
+    modelMode?: 'automatic' | 'fixed'
+    fixedModelId?: string | null
+    fixedModeStrategy?: 'consistent' | 'loose'
+  } {
+    if (this.worldState) {
+      return this.worldState.getUserPreferences()
+    }
+    return {
+      modelMode: request.modelMode,
+      fixedModelId: request.fixedModelId,
+      fixedModeStrategy: request.fixedModeStrategy
+    }
   }
   
   // ============================================================
