@@ -270,15 +270,35 @@ interface ReasoningMessage {
 }
 
 // Helper function to detect format from user message
+// Prioritizes "create X" patterns over references in "based on Y" contexts
 function detectFormatFromMessage(message: string): StoryFormat | null {
   const lowerMessage = message.toLowerCase()
   
+  // PRIORITY 1: Explicit "create X" patterns (primary intent)
+  const createPatterns = [
+    { pattern: /create.*?report/i, format: 'report' as StoryFormat },
+    { pattern: /create.*?podcast/i, format: 'podcast' as StoryFormat },
+    { pattern: /create.*?screenplay/i, format: 'screenplay' as StoryFormat },
+    { pattern: /create.*?novel/i, format: 'novel' as StoryFormat },
+    { pattern: /create.*?short story/i, format: 'short-story' as StoryFormat },
+    { pattern: /create.*?article/i, format: 'article' as StoryFormat }
+  ]
+  
+  for (const { pattern, format } of createPatterns) {
+    if (pattern.test(message)) {
+      console.log('🎯 [Format Detection] Explicit create pattern:', format)
+      return format
+    }
+  }
+  
+  // PRIORITY 2: Standalone mentions (no "create" keyword)
+  // Check for report BEFORE screenplay to avoid "report on screenplay" confusion
+  if (lowerMessage.includes('report')) return 'report'
   if (lowerMessage.includes('podcast')) return 'podcast'
   if (lowerMessage.includes('screenplay') || lowerMessage.includes('script')) return 'screenplay'
   if (lowerMessage.includes('novel') || lowerMessage.includes('book')) return 'novel'
   if (lowerMessage.includes('short story')) return 'short-story'
   if (lowerMessage.includes('article') || lowerMessage.includes('blog')) return 'article'
-  if (lowerMessage.includes('report')) return 'report'
   
   return null
 }
