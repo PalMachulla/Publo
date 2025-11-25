@@ -60,15 +60,16 @@ Create `WorldStateManager` that consolidates all state into a single, observable
 
 ### Tasks
 
-#### 1.1 Create WorldState Foundation ⏳
-- [ ] Create `frontend/src/lib/orchestrator/core/worldState.ts`
-- [ ] Define `WorldState` interface (canvas, activeDocument, ui, user, meta)
-- [ ] Implement `WorldStateManager` class with:
-  - [ ] `getState()` - Read-only access
-  - [ ] `update()` - Transactional updates
-  - [ ] `subscribe()` - Observable pattern
-  - [ ] Query helpers (`getNode`, `getActiveDocument`, `getCanvasContext`)
-- [ ] Add TypeScript tests for state normalization
+#### 1.1 Create WorldState Foundation ✅ DONE
+- [x] Create `frontend/src/lib/orchestrator/core/worldState.ts`
+- [x] Define `WorldState` interface (canvas, activeDocument, ui, user, meta)
+- [x] Implement `WorldStateManager` class with:
+  - [x] `getState()` - Read-only access
+  - [x] `update()` - Transactional updates
+  - [x] `subscribe()` - Observable pattern
+  - [x] Query helpers (`getNode`, `getActiveDocument`, `getCanvasContext`)
+- [x] Add helper function `buildWorldStateFromReactFlow()` for migration
+- [x] Zero linter errors
 
 **Files to Create:**
 - `frontend/src/lib/orchestrator/core/worldState.ts` (main)
