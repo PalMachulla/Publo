@@ -1331,12 +1331,22 @@ export default function CanvasPage() {
       let availableModels: string[] = []
       let finalOrchestratorModel: string | null = null
       
-      // Priority 1: Use configured orchestrator model from Profile
+      // Priority 1: Use configured orchestrator model from Profile (with validation)
       if (orchestratorModelId) {
-        finalOrchestratorModel = orchestratorModelId
-        availableModels = [orchestratorModelId]
-        onReasoning(`✓ Using configured orchestrator: ${orchestratorModelId}`, 'decision')
-        console.log('[Canvas] Using Profile orchestrator:', orchestratorModelId)
+        // ✅ FIX: Validate configured model exists in MODEL_TIERS
+        const isValidModel = MODEL_TIERS.some(m => m.id === orchestratorModelId)
+        
+        if (isValidModel) {
+          finalOrchestratorModel = orchestratorModelId
+          availableModels = [orchestratorModelId]
+          onReasoning(`✓ Using configured orchestrator: ${orchestratorModelId}`, 'decision')
+          console.log('[Canvas] Using Profile orchestrator:', orchestratorModelId)
+        } else {
+          // Invalid model in database - fall back to auto-select
+          onReasoning(`⚠️ Configured model "${orchestratorModelId}" is no longer available. Auto-selecting...`, 'decision')
+          console.warn('[Canvas] Invalid orchestrator model in database:', orchestratorModelId)
+          orchestratorModelId = null // Trigger auto-select below
+        }
       } 
       // Priority 2: Fetch from API as fallback
       else {
