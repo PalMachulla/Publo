@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
@@ -26,6 +26,8 @@ import {
   buildRAGEnhancedPrompt,
   formatCanvasContextForLLM
 } from '@/lib/orchestrator'
+// PHASE 1: WorldState - Unified state management
+import { buildWorldStateFromReactFlow, type WorldStateManager } from '@/lib/orchestrator/core/worldState'
 // Deprecated: findReferencedNode moved to core/contextProvider (now using resolveNode)
 // import { findReferencedNode } from '@/lib/orchestrator/canvasContextProvider.deprecated'
 import { Edge } from 'reactflow'
@@ -402,6 +404,57 @@ export default function OrchestratorPanel({
   
   // Build canvas context - orchestrator's "eyes" on the canvas
   const canvasContext = buildCanvasContext('context', canvasNodes, canvasEdges, externalContentMap)
+  
+  // ============================================================
+  // PHASE 1: BUILD WORLDSTATE (Unified State Management)
+  // ============================================================
+  // TODO: This will eventually replace individual props passed to orchestrator
+  // For now, we build it in parallel for gradual migration
+  const worldState = useMemo(() => {
+    // We don't have user.id yet (fetched async), so we'll pass empty string
+    // and update it in the orchestrate call
+    return buildWorldStateFromReactFlow(
+      canvasNodes,
+      canvasEdges,
+      '', // userId will be set when orchestrate is called
+      {
+        activeDocumentNodeId: currentStoryStructureNodeId,
+        selectedSectionId: activeContext?.id || null,
+        isDocumentPanelOpen: isDocumentViewOpen,
+        availableProviders: [], // Will be populated from API keys
+        availableModels: [], // Will be populated from /api/models/available
+        modelPreferences: {
+          modelMode,
+          fixedModelId: configuredModel.orchestrator,
+          fixedModeStrategy
+        },
+        orchestratorKeyId: undefined // Will be set from activeKeyId
+      }
+    )
+  }, [
+    canvasNodes,
+    canvasEdges,
+    currentStoryStructureNodeId,
+    activeContext?.id,
+    isDocumentViewOpen,
+    modelMode,
+    fixedModeStrategy,
+    configuredModel.orchestrator
+  ])
+  
+  // Debug: Log WorldState on changes
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🗺️ [WorldState] Built:', {
+        version: worldState.getState().meta.version,
+        canvasNodes: worldState.getAllNodes().length,
+        canvasEdges: worldState.getAllEdges().length,
+        activeDocId: worldState.getActiveDocument().nodeId,
+        selectedSectionId: worldState.getActiveSectionId(),
+        documentPanelOpen: worldState.isDocumentPanelOpen()
+      })
+    }
+  }, [worldState])
   
   // Track canvas state to detect changes
   const [lastCanvasState, setLastCanvasState] = useState<string>('')
