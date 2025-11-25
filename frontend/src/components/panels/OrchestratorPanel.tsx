@@ -28,6 +28,8 @@ import {
 } from '@/lib/orchestrator'
 // PHASE 1: WorldState - Unified state management
 import { buildWorldStateFromReactFlow, type WorldStateManager } from '@/lib/orchestrator/core/worldState'
+// PHASE 2: Tool System - Executable tools
+import { createDefaultToolRegistry } from '@/lib/orchestrator/tools'
 // Deprecated: findReferencedNode moved to core/contextProvider (now using resolveNode)
 // import { findReferencedNode } from '@/lib/orchestrator/canvasContextProvider.deprecated'
 import { Edge } from 'reactflow'
@@ -470,6 +472,15 @@ export default function OrchestratorPanel({
     )
   }, [canvasStateKey]) // FIX: Only depend on stable key, not raw arrays
   
+  // ============================================================
+  // PHASE 2: BUILD TOOL REGISTRY
+  // ============================================================
+  // Create tool registry once on mount for executing actions
+  const toolRegistry = useMemo(() => {
+    console.log('🔧 [ToolRegistry] Creating default tool registry')
+    return createDefaultToolRegistry()
+  }, []) // Only create once on mount
+  
   // Debug: Log WorldState on changes (reduced logging to prevent spam)
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -482,11 +493,12 @@ export default function OrchestratorPanel({
           canvasEdges: worldState.getAllEdges().length,
           activeDocId: worldState.getActiveDocument().nodeId,
           selectedSectionId: worldState.getActiveSectionId(),
-          documentPanelOpen: worldState.isDocumentPanelOpen()
+          documentPanelOpen: worldState.isDocumentPanelOpen(),
+          toolsAvailable: toolRegistry.getAll().length // PHASE 2: Log tool count
         })
       }
     }
-  }, [worldState])
+  }, [worldState, toolRegistry])
   
   // Track canvas state to detect changes
   const [lastCanvasState, setLastCanvasState] = useState<string>('')
@@ -643,7 +655,7 @@ export default function OrchestratorPanel({
         draft.user.apiKeys.orchestratorKeyId = userKeyId
       })
       
-      const response = await getOrchestrator(user.id, undefined, worldState).orchestrate({
+      const response = await getOrchestrator(user.id, { toolRegistry }, worldState).orchestrate({
         message,
         canvasNodes,
         canvasEdges,
@@ -842,7 +854,7 @@ export default function OrchestratorPanel({
         draft.user.apiKeys.orchestratorKeyId = userKeyId
       })
       
-      const orchestratorResponse = await getOrchestrator(user.id, undefined, worldState).orchestrate({
+      const orchestratorResponse = await getOrchestrator(user.id, { toolRegistry }, worldState).orchestrate({
         message: response,
         canvasNodes,
         canvasEdges,
