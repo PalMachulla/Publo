@@ -707,13 +707,34 @@ export class OrchestratorEngine {
           .map((node: any) => {
             // ✅ FIX: Check BOTH legacy contentMap AND new document_data for content
             const hasLegacyContent = Object.keys(node.data.contentMap || {}).length > 0
-            const hasHierarchicalContent = node.data.document_data?.structure?.some((seg: any) => seg.content && seg.content.length > 0)
+            
+            // ✅ FIX: Ensure boolean result (not undefined)
+            let hasHierarchicalContent = false
+            if (node.data.document_data?.structure && Array.isArray(node.data.document_data.structure)) {
+              hasHierarchicalContent = node.data.document_data.structure.some((seg: any) => {
+                // Check if segment has content (recursively check children too)
+                const hasDirectContent = seg.content && seg.content.length > 0
+                const hasChildContent = seg.children && Array.isArray(seg.children) && 
+                  seg.children.some((child: any) => child.content && child.content.length > 0)
+                return hasDirectContent || hasChildContent
+              })
+            }
+            
+            // Debug: Log what we found for this node
+            console.log(`🔍 [Canvas Awareness] Content check for "${node.data.label}":`, {
+              hasLegacy: hasLegacyContent,
+              hasHierarchical: hasHierarchicalContent,
+              hasDocData: !!node.data.document_data,
+              hasStructure: !!node.data.document_data?.structure,
+              structureLength: node.data.document_data?.structure?.length || 0,
+              contentMapKeys: Object.keys(node.data.contentMap || {}).length
+            })
             
             return {
               id: node.id,
               name: node.data.label || node.data.name || 'Untitled',
               format: node.data.format,
-              hasContent: hasLegacyContent || hasHierarchicalContent
+              hasContent: hasLegacyContent || hasHierarchicalContent // ✅ Now always boolean
             }
           })
         
