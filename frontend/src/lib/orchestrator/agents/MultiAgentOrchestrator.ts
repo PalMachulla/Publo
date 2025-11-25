@@ -21,6 +21,7 @@ import { WriterAgent } from './WriterAgent'
 import { CriticAgent } from './CriticAgent'
 import { WriterCriticCluster } from './clusters/WriterCriticCluster'
 import type { AgentTask, ExecutionStrategy, DAGNode } from './types'
+import { saveAgentContent, batchSaveAgentContent } from './utils/contentPersistence'
 
 export class MultiAgentOrchestrator extends OrchestratorEngine {
   private agentRegistry: AgentRegistry
@@ -384,8 +385,44 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
         type: 'result'
       })
       
-      // TODO: Save result to document via UI callback or tool
-      console.log(`📝 [MultiAgentOrchestrator] Content ready (${wordCount} words)`)
+      // Save result to database
+      const worldState = (this as any).worldState // Access protected worldState from base class
+      const storyStructureNodeId = worldState?.getState().canvas.activeDocumentNodeId
+      const sectionId = task.payload.context?.section?.id
+      
+      if (storyStructureNodeId && sectionId) {
+        console.log(`💾 [MultiAgentOrchestrator] Saving content to database...`)
+        
+        const saveResult = await saveAgentContent({
+          storyStructureNodeId,
+          sectionId,
+          content: result.content,
+          userId: this.getConfig().userId
+        })
+        
+        if (saveResult.success) {
+          console.log(`✅ [MultiAgentOrchestrator] Content saved (total: ${saveResult.wordCount} words)`)
+          
+          this.getBlackboard().addMessage({
+            role: 'orchestrator',
+            content: `💾 Content saved to database`,
+            type: 'result'
+          })
+        } else {
+          console.error(`❌ [MultiAgentOrchestrator] Failed to save:`, saveResult.error)
+          
+          this.getBlackboard().addMessage({
+            role: 'orchestrator',
+            content: `⚠️ Content generated but save failed: ${saveResult.error}`,
+            type: 'error'
+          })
+        }
+      } else {
+        console.warn(`⚠️ [MultiAgentOrchestrator] Missing save parameters:`, {
+          hasNodeId: !!storyStructureNodeId,
+          hasSectionId: !!sectionId
+        })
+      }
       
     } catch (error) {
       console.error(`❌ [MultiAgentOrchestrator] Cluster execution error:`, error)
