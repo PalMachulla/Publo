@@ -684,6 +684,50 @@ export class OrchestratorEngine {
           throw new Error('userKeyId is required for create_structure intent')
         }
         
+        // ✅ PROACTIVE CANVAS AWARENESS: Check for existing documents
+        const existingDocs = (request.canvasNodes || [])
+          .filter((node: any) => 
+            node.type === 'storyStructureNode' && 
+            node.data?.format &&
+            node.data?.items?.length > 0
+          )
+          .map((node: any) => ({
+            id: node.id,
+            name: node.data.label || node.data.name || 'Untitled',
+            format: node.data.format,
+            hasContent: Object.keys(node.data.contentMap || {}).length > 0
+          }))
+        
+        // If creating a new document while others exist, offer to base it on existing content
+        if (existingDocs.length > 0 && !request.message.toLowerCase().includes('based on') && !request.message.toLowerCase().includes('from scratch')) {
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `📋 I notice you have ${existingDocs.length} other document(s) on the canvas: ${existingDocs.map(d => `"${d.name}" (${d.format})`).join(', ')}`,
+            type: 'thinking'
+          })
+          
+          // If there's content in those documents, suggest using them as inspiration
+          const docsWithContent = existingDocs.filter(d => d.hasContent)
+          if (docsWithContent.length > 0) {
+            const docNames = docsWithContent.map(d => d.name).join(', ')
+            
+            actions.push({
+              type: 'request_clarification',
+              payload: {
+                question: `I see you already have ${docsWithContent.length === 1 ? 'a' : ''} ${docsWithContent.map(d => d.format).join(' and ')} (${docNames}) with content. Would you like me to:\n\n1. Base the ${request.documentFormat} on the existing content\n2. Create something completely new\n\nPlease let me know which you prefer!`,
+                options: [
+                  { id: 'use_existing', label: 'Base it on existing content', description: `Use ${docNames} as inspiration` },
+                  { id: 'create_new', label: 'Create something new', description: 'Start from scratch with a fresh story' }
+                ]
+              },
+              status: 'pending'
+            })
+            
+            // Don't generate structure yet - wait for user's response
+            break
+          }
+        }
+        
         // Import structured output helper
         const { getModelsWithStructuredOutput, supportsStructuredOutput } = await import('./modelRouter')
         
