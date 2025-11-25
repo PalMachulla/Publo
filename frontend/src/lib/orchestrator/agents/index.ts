@@ -32,10 +32,16 @@ export { AgentExecutionError, DAGExecutionError } from './types'
 // Agent Registry
 export { AgentRegistry } from './AgentRegistry'
 
-// TODO: Export these when implemented
-// export { DAGExecutor } from './DAGExecutor'
-// export { WriterAgent } from './WriterAgent'
-// export { CriticAgent } from './CriticAgent'
-// export { WriterCriticCluster } from './clusters/WriterCriticCluster'
+// DAG Executor
+export { DAGExecutor } from './DAGExecutor'
+
+// Core Agents
+export { WriterAgent } from './WriterAgent'
+export { CriticAgent } from './CriticAgent'
+
+// Agent Clusters
+export { WriterCriticCluster } from './clusters/WriterCriticCluster'
+
+// TODO: Export when implemented
 // export { MultiAgentOrchestrator } from './MultiAgentOrchestrator'
 
