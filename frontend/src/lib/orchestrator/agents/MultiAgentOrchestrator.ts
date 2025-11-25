@@ -43,6 +43,49 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
   }
   
   // ============================================================
+  // OVERRIDE: ORCHESTRATE WITH AGENT EXECUTION
+  // ============================================================
+  
+  /**
+   * Override orchestrate to execute actions with agents automatically
+   */
+  async orchestrate(request: any): Promise<any> {
+    // Step 1: Call parent to analyze and generate actions
+    const response = await super.orchestrate(request)
+    
+    // Step 2: Execute actions with agents (if any)
+    if (response.actions && response.actions.length > 0) {
+      const sessionId = `session-${Date.now()}`
+      
+      this.getBlackboard().addMessage({
+        role: 'orchestrator',
+        content: `🚀 Starting agent execution for ${response.actions.length} action(s)`,
+        type: 'progress'
+      })
+      
+      try {
+        await this.executeActionsWithAgents(response.actions, sessionId)
+        
+        this.getBlackboard().addMessage({
+          role: 'orchestrator',
+          content: `✅ Agent execution complete`,
+          type: 'result'
+        })
+      } catch (error) {
+        console.error('[MultiAgentOrchestrator] Agent execution failed:', error)
+        
+        this.getBlackboard().addMessage({
+          role: 'orchestrator',
+          content: `❌ Agent execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          type: 'error'
+        })
+      }
+    }
+    
+    return response
+  }
+  
+  // ============================================================
   // AGENT INITIALIZATION
   // ============================================================
   
@@ -174,10 +217,22 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
   private async executeSequential(actions: OrchestratorAction[]): Promise<void> {
     console.log(`⏭️ [MultiAgentOrchestrator] Executing ${actions.length} action(s) sequentially`)
     
+    this.getBlackboard().addMessage({
+      role: 'orchestrator',
+      content: `⏭️ Sequential execution: ${actions.length} action(s)`,
+      type: 'progress'
+    })
+    
     // Use base class implementation (existing UI callbacks)
     // TODO: Eventually replace with agent execution for all action types
     for (const action of actions) {
       console.log(`▶️ [MultiAgentOrchestrator] Executing: ${action.type}`)
+      
+      this.getBlackboard().addMessage({
+        role: 'orchestrator',
+        content: `▶️ ${action.type}: ${action.payload?.sectionName || 'processing...'}`,
+        type: 'progress'
+      })
       
       // For now, just log that we would execute
       // In full implementation, this would call UI callbacks or use tools
@@ -208,11 +263,18 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     const batches = this.dagExecutor.getExecutionOrder(dag)
     batches.forEach((batch, idx) => {
       console.log(`   Batch ${idx + 1}: ${batch.length} task(s) in parallel`)
+      
+      // Add to UI
+      this.getBlackboard().addMessage({
+        role: 'orchestrator',
+        content: `📦 Batch ${idx + 1}: ${batch.map(t => t.payload.context?.section?.name || t.id).join(', ')}`,
+        type: 'progress'
+      })
     })
     
     this.getBlackboard().addMessage({
       role: 'orchestrator',
-      content: `🔀 Starting parallel execution: ${tasks.length} tasks across ${batches.length} batch(es)`,
+      content: `🔀 Parallel execution: ${tasks.length} tasks across ${batches.length} batch(es)`,
       type: 'progress'
     })
     
@@ -221,6 +283,7 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       const result = await this.dagExecutor.execute(dag, sessionId)
       
       if (result.success) {
+        const speedup = result.metadata.totalTasks > 1 ? `~${result.metadata.totalTasks}x faster` : ''
         console.log(`✅ [MultiAgentOrchestrator] Parallel execution complete`)
         console.log(`   Completed: ${result.completedTasks.size}/${result.metadata.totalTasks}`)
         console.log(`   Time: ${result.executionTime}ms`)
@@ -228,7 +291,7 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
         
         this.getBlackboard().addMessage({
           role: 'orchestrator',
-          content: `✅ Parallel execution complete: ${result.completedTasks.size} tasks in ${result.executionTime}ms`,
+          content: `✅ Completed ${result.completedTasks.size} tasks in ${(result.executionTime / 1000).toFixed(1)}s ${speedup}`,
           type: 'result'
         })
       } else {
@@ -237,7 +300,7 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
         
         this.getBlackboard().addMessage({
           role: 'orchestrator',
-          content: `❌ Parallel execution failed: ${result.failedTasks.size} task(s) encountered errors`,
+          content: `❌ ${result.failedTasks.size} task(s) failed`,
           type: 'error'
         })
       }
@@ -312,14 +375,17 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       console.log(`   Total tokens: ${result.metadata.totalTokens}`)
       console.log(`   Total time: ${result.metadata.totalTime}ms`)
       
+      const wordCount = this.countWords(result.content)
+      const qualityEmoji = result.finalScore >= 8 ? '🌟' : result.finalScore >= 7 ? '✨' : '✅'
+      
       this.getBlackboard().addMessage({
         role: 'orchestrator',
-        content: `✅ Quality-assured content generated: ${result.iterations} iteration(s), score ${result.finalScore}/10`,
+        content: `${qualityEmoji} Quality-assured: ${wordCount} words, score ${result.finalScore}/10 (${result.iterations} iteration${result.iterations > 1 ? 's' : ''})`,
         type: 'result'
       })
       
       // TODO: Save result to document via UI callback or tool
-      console.log(`📝 [MultiAgentOrchestrator] Content ready (${this.countWords(result.content)} words)`)
+      console.log(`📝 [MultiAgentOrchestrator] Content ready (${wordCount} words)`)
       
     } catch (error) {
       console.error(`❌ [MultiAgentOrchestrator] Cluster execution error:`, error)
