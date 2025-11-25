@@ -20,8 +20,12 @@ import { NormalizedModel } from '@/types/api-keys'
 // Reference: https://openai.com/api/pricing/
 const OPENAI_MODEL_PRICING: Record<string, ModelPricing> = {
   // GPT-5 Series (Reasoning Models)
-  'gpt-5.1': {
+  'gpt-5.1-2025-11-13': { // Snapshot ID (official)
     input_price_per_1m: 15.00, // Estimated - check official pricing
+    output_price_per_1m: 60.00,
+  },
+  'gpt-5.1': { // Alias
+    input_price_per_1m: 15.00,
     output_price_per_1m: 60.00,
   },
   'gpt-5': {
@@ -70,7 +74,8 @@ const OPENAI_MODEL_PRICING: Record<string, ModelPricing> = {
 // Known context windows for OpenAI models
 const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   // GPT-5 Series (Reasoning Models)
-  'gpt-5.1': 200000, // 200K context
+  'gpt-5.1-2025-11-13': 200000, // 200K context (snapshot)
+  'gpt-5.1': 200000, // 200K context (alias)
   'gpt-5': 200000,
   // GPT-4o Series
   'gpt-4o': 128000,

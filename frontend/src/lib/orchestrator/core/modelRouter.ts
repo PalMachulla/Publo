@@ -102,9 +102,22 @@ export const MODEL_TIERS: TieredModel[] = [
   // FRONTIER TIER - For Orchestration & Complex Planning
   // ============================================================
   {
-    id: 'gpt-5.1',
+    id: 'gpt-5.1-2025-11-13', // Snapshot ID (required by API)
     provider: 'openai',
     displayName: 'GPT-5.1',
+    tier: 'frontier',
+    contextWindow: 200000,
+    reasoning: true,
+    multimodal: false,
+    structuredOutput: 'full', // OpenAI native JSON schema support
+    speed: 'medium',
+    cost: 'expensive',
+    bestFor: ['orchestration', 'complex-writing']
+  },
+  {
+    id: 'gpt-5.1', // Alias (fallback if snapshot fails)
+    provider: 'openai',
+    displayName: 'GPT-5.1 (alias)',
     tier: 'frontier',
     contextWindow: 200000,
     reasoning: true,

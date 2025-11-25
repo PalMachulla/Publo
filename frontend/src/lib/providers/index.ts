@@ -43,8 +43,9 @@ export function getProviderAdapter(provider: LLMProvider): LLMProviderAdapter {
  */
 export function detectProviderFromModel(modelId: string): LLMProvider | null {
   // OpenAI models (native OpenAI API)
-  // GPT models: gpt-4, gpt-4o, gpt-5, etc.
+  // GPT models: gpt-4, gpt-4o, gpt-5, gpt-5.1, gpt-5.1-2025-11-13, etc.
   // o1 models: o1-preview, o1-mini (OpenAI reasoning models)
+  // Snapshots: Any model starting with gpt- or o1- (includes dated snapshots)
   if ((modelId.startsWith('gpt-') || modelId.startsWith('o1-') || modelId.startsWith('o1')) && !modelId.includes('/')) {
     return 'openai'
   }
