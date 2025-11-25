@@ -301,7 +301,7 @@ export class OpenAIAdapter implements LLMProviderAdapter {
         requestParams.response_format = params.response_format
       }
 
-      const stream = await client.chat.completions.create(requestParams)
+      const stream = await client.chat.completions.create(requestParams) as any
 
       // Stream the response
       for await (const chunk of stream) {
