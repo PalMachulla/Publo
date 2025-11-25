@@ -31,6 +31,8 @@ import { Node, Edge } from 'reactflow'
 import { getDocumentHierarchy, DOCUMENT_HIERARCHY } from '@/lib/documentHierarchy'
 // PHASE 1: WorldState - Unified state management
 import type { WorldStateManager } from './worldState'
+// PHASE 2: Tool System - Executable tools
+import type { ToolRegistry } from '../tools'
 
 // ============================================================
 // TYPES
@@ -42,6 +44,8 @@ export interface OrchestratorConfig {
   enableRAG?: boolean
   enablePatternLearning?: boolean
   maxConversationDepth?: number
+  // PHASE 2: Tool system
+  toolRegistry?: ToolRegistry
 }
 
 export interface OrchestratorRequest {
@@ -127,18 +131,21 @@ export interface StructurePlan {
 
 export class OrchestratorEngine {
   private blackboard: Blackboard
-  private config: Required<OrchestratorConfig>
+  private config: Omit<Required<OrchestratorConfig>, 'toolRegistry'> & { toolRegistry?: ToolRegistry }
   private worldState?: WorldStateManager // PHASE 1: Optional for gradual migration
+  private toolRegistry?: ToolRegistry // PHASE 2: Optional tool system
   
   constructor(config: OrchestratorConfig, worldState?: WorldStateManager) {
     this.blackboard = new Blackboard(config.userId)
     this.worldState = worldState // PHASE 1: Store WorldState if provided
+    this.toolRegistry = config.toolRegistry // PHASE 2: Store ToolRegistry if provided
     this.config = {
       userId: config.userId,
       modelPriority: config.modelPriority || 'balanced',
       enableRAG: config.enableRAG !== false,
       enablePatternLearning: config.enablePatternLearning !== false,
-      maxConversationDepth: config.maxConversationDepth || 50
+      maxConversationDepth: config.maxConversationDepth || 50,
+      toolRegistry: config.toolRegistry // PHASE 2: Include in config (optional)
     }
     
     console.log('🎯 [Orchestrator] Initialized', {
@@ -146,7 +153,9 @@ export class OrchestratorEngine {
       priority: this.config.modelPriority,
       rag: this.config.enableRAG,
       learning: this.config.enablePatternLearning,
-      hasWorldState: !!worldState // PHASE 1: Log if using WorldState
+      hasWorldState: !!worldState, // PHASE 1: Log if using WorldState
+      hasToolRegistry: !!config.toolRegistry, // PHASE 2: Log if using tools
+      toolCount: config.toolRegistry?.getAll().length || 0
     })
   }
   
@@ -429,6 +438,92 @@ export class OrchestratorEngine {
   }
   
   // ============================================================
+  // PHASE 2: TOOL EXECUTION
+  // ============================================================
+  
+  /**
+   * Execute tools in parallel with traditional action plan
+   * Tools execute immediately and update WorldState
+   * Actions are still returned for UI backward compatibility
+   */
+  private async executeToolsIfAvailable(
+    actions: OrchestratorAction[],
+    request: OrchestratorRequest
+  ): Promise<{
+    actions: OrchestratorAction[]
+    toolResults: Array<{ action: OrchestratorAction, result: any }>
+  }> {
+    // If no tool registry, return actions as-is
+    if (!this.toolRegistry || !this.worldState) {
+      return { actions, toolResults: [] }
+    }
+
+    const toolResults: Array<{ action: OrchestratorAction, result: any }> = []
+    const updatedActions: OrchestratorAction[] = []
+
+    for (const action of actions) {
+      // Try to execute action as tool
+      const toolName = this.mapActionTypeToToolName(action.type)
+      
+      if (toolName && this.toolRegistry.has(toolName)) {
+        console.log(`[Orchestrator] Executing tool: ${toolName}`)
+        
+        try {
+          const result = await this.toolRegistry.execute(
+            toolName,
+            action.payload,
+            {
+              worldState: this.worldState,
+              userId: this.config.userId,
+              userKeyId: request.userKeyId
+            }
+          )
+          
+          toolResults.push({ action, result })
+          
+          // Update action status based on tool result
+          updatedActions.push({
+            ...action,
+            status: result.success ? 'completed' : 'failed',
+            error: result.error
+          })
+          
+          console.log(`[Orchestrator] Tool ${toolName} ${result.success ? 'succeeded' : 'failed'}`)
+        } catch (error) {
+          console.error(`[Orchestrator] Tool ${toolName} threw error:`, error)
+          updatedActions.push({
+            ...action,
+            status: 'failed',
+            error: error instanceof Error ? error.message : 'Unknown error'
+          })
+        }
+      } else {
+        // No tool available, keep action as-is
+        updatedActions.push(action)
+      }
+    }
+
+    return { actions: updatedActions, toolResults }
+  }
+
+  /**
+   * Map action types to tool names
+   */
+  private mapActionTypeToToolName(actionType: OrchestratorAction['type']): string | null {
+    const mapping: Record<string, string> = {
+      'generate_content': 'write_content',
+      'generate_structure': 'create_structure',
+      'open_document': 'open_document',
+      'select_section': 'select_section',
+      'delete_node': 'delete_node',
+      'message': 'send_message',
+      // Note: 'request_clarification' and 'modify_structure' don't map to tools yet
+      // They require special handling in the orchestrator
+    }
+    return mapping[actionType] || null
+  }
+  
+  // ============================================================
   // PHASE 1: WORLDSTATE HELPERS
   // ============================================================
   // These methods provide backward-compatible state access
@@ -621,12 +716,34 @@ export class OrchestratorEngine {
         if (!targetSectionId && request.structureItems && request.structureItems.length > 0) {
           const lowerMessage = request.message.toLowerCase()
           
-          // Helper to find section by name (case-insensitive, partial match)
+          // Helper to find section by name (case-insensitive, fuzzy match)
           const findSectionByName = (items: any[], searchTerm: string): any => {
+            // Normalize search term: remove numbers, punctuation, convert & to "and"
+            const normalizeText = (text: string) => 
+              text
+                .toLowerCase()
+                .replace(/^\d+\.?\d*\s*/, '') // Remove leading numbers like "1.0 ", "2. "
+                .replace(/&/g, 'and')          // Convert & to "and"
+                .replace(/[^\w\s]/g, ' ')      // Remove punctuation
+                .replace(/\s+/g, ' ')          // Collapse whitespace
+                .trim()
+            
+            const normalizedSearch = normalizeText(searchTerm)
+            
             for (const item of items) {
-              if (item.name?.toLowerCase().includes(searchTerm)) {
+              const normalizedName = normalizeText(item.name || '')
+              
+              // Try exact match first
+              if (normalizedName === normalizedSearch) {
                 return item
               }
+              
+              // Try partial match (allows "intro" to match "introduction")
+              if (normalizedName.includes(normalizedSearch) || normalizedSearch.includes(normalizedName)) {
+                return item
+              }
+              
+              // Check children recursively
               if (item.children) {
                 const found = findSectionByName(item.children, searchTerm)
                 if (found) return found
@@ -713,9 +830,22 @@ export class OrchestratorEngine {
               const match = request.message.match(pattern)
               if (match && match[1]) {
                 sectionName = match[1].trim().toLowerCase()
+                console.log('📝 [Pattern Match] Extracted section name:', {
+                  pattern: pattern.source,
+                  fullMatch: match[0],
+                  captured: match[1],
+                  normalized: sectionName
+                })
                 break
               }
             }
+            
+            console.log('🔍 [Section Search] Looking for section:', {
+              sectionName,
+              hasStructureItems: !!request.structureItems,
+              structureItemsCount: request.structureItems?.length || 0,
+              structureItemNames: request.structureItems?.map(s => s.name).slice(0, 5)
+            })
             
             if (sectionName) {
               const foundSection = findSectionByName(request.structureItems, sectionName)
@@ -726,7 +856,11 @@ export class OrchestratorEngine {
                   foundSection: foundSection.name,
                   sectionId: targetSectionId
                 })
+              } else {
+                console.warn('⚠️ [Smart Section Detection] No match found for:', sectionName)
               }
+            } else {
+              console.warn('⚠️ [Pattern Match] No section name extracted from message:', request.message)
             }
           }
         }
@@ -1305,6 +1439,51 @@ Use this content overview to inform the ${request.documentFormat} structure and 
         })
         
         console.log('✅ [create_structure] Action pushed to actions array')
+        
+        // 🚀 MULTI-STEP TASK DETECTION: Check if user also wants content written
+        // Phrases like "fill the first chapter", "write content in", "and write", etc.
+        const lowerPrompt = request.message.toLowerCase()
+        const multiStepIndicators = [
+          /fill\s+(?:the\s+)?(first|chapter\s*\d*)/i,
+          /write\s+(?:content\s+in\s+)?(?:the\s+)?(first|chapter\s*\d*)/i,
+          /and\s+write/i,
+          /with\s+text/i,
+          /with\s+content/i
+        ]
+        
+        const isMultiStep = multiStepIndicators.some(pattern => pattern.test(lowerPrompt))
+        
+        if (isMultiStep && plan.structure.length > 0) {
+          // Find the first content-bearing section (skip title pages, working titles, etc.)
+          const firstSection = plan.structure.find(item => 
+            !item.name.toLowerCase().includes('working title') &&
+            !item.name.toLowerCase().includes('title page') &&
+            !item.name.toLowerCase().includes('cover')
+          )
+          
+          if (firstSection) {
+            this.blackboard.addMessage({
+              role: 'orchestrator',
+              content: `🎯 Multi-step task detected: Will also write content for "${firstSection.name}"`,
+              type: 'decision'
+            })
+            
+            console.log('✅ [create_structure] Adding follow-up generate_content action for:', firstSection.name)
+            
+            // Add a generate_content action for the first section
+            actions.push({
+              type: 'generate_content',
+              payload: {
+                sectionId: firstSection.id,
+                sectionName: firstSection.name,
+                prompt: `Write engaging content for "${firstSection.name}" based on the user's request: ${request.message}`,
+                autoStart: true // Flag to indicate this should execute automatically
+              },
+              status: 'pending'
+            })
+          }
+        }
+        
         break
       }
       
@@ -1567,9 +1746,25 @@ Use this content overview to inform the ${request.documentFormat} structure and 
             if (nameMatch && nameMatch[2]) {
               const searchTerm = nameMatch[2].trim().toLowerCase()
               
+              // Use same fuzzy matching as write_content
+              const normalizeText = (text: string) => 
+                text
+                  .toLowerCase()
+                  .replace(/^\d+\.?\d*\s*/, '')
+                  .replace(/&/g, 'and')
+                  .replace(/[^\w\s]/g, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim()
+              
+              const normalizedSearch = normalizeText(searchTerm)
+              
               const findByName = (items: any[], term: string): any => {
                 for (const item of items) {
-                  if (item.name?.toLowerCase().includes(term)) {
+                  const normalizedName = normalizeText(item.name || '')
+                  
+                  if (normalizedName === normalizedSearch || 
+                      normalizedName.includes(normalizedSearch) || 
+                      normalizedSearch.includes(normalizedName)) {
                     return item
                   }
                   if (item.children) {

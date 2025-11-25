@@ -777,6 +777,26 @@ export default function AIDocumentPanel({
       setHasLoadedFullDocument(false)
     }
   }, [isOpen])
+  
+  // 🔧 FIX: Refresh sections when panel opens OR when switching documents (to load saved content)
+  // Use a ref to prevent infinite loops
+  const lastRefreshKey = useRef<string>('')
+  
+  useEffect(() => {
+    const refreshKey = `${isOpen}-${storyStructureNodeId}`
+    
+    // Only refresh if the key actually changed (prevent duplicate refreshes)
+    if (isOpen && storyStructureNodeId && lastRefreshKey.current !== refreshKey) {
+      lastRefreshKey.current = refreshKey
+      
+      console.log('🔄 [AIDocumentPanel] Panel opened/switched, refreshing sections from Supabase...')
+      refreshSections().then(() => {
+        console.log('✅ [AIDocumentPanel] Sections refreshed')
+      }).catch((err) => {
+        console.error('❌ [AIDocumentPanel] Failed to refresh sections:', err)
+      })
+    }
+  }, [isOpen, storyStructureNodeId]) // Remove refreshSections from deps to prevent loops
 
   // Save status indicator
 
