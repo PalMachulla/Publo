@@ -477,22 +477,29 @@ export class OrchestratorEngine {
             
             const targetIndex = ordinalMap[position] ?? 0
             
-            // Find all sections of the specified type
-            const findSectionsByType = (items: any[], searchType: string): any[] => {
-              const results: any[] = []
-              for (const item of items) {
-                const itemName = item.name?.toLowerCase() || ''
-                if (itemName.includes(searchType)) {
-                  results.push(item)
-                }
-                if (item.children) {
-                  results.push(...findSectionsByType(item.children, searchType))
-                }
+            // ✅ FIX: StoryStructureItems are a FLAT array (no children field)
+            // Search by name pattern - scenes have "SCENE:" prefix, acts have "Act", etc.
+            const matchingSections = request.structureItems.filter((item: any) => {
+              const itemName = item.name?.toLowerCase() || ''
+              
+              // Match by type keyword in the name
+              if (type === 'scene') {
+                // Scenes typically start with "SCENE:" or contain "scene" at word boundary
+                return itemName.startsWith('scene:') || /\bscene\b/i.test(item.name || '')
+              } else if (type === 'act') {
+                // Acts typically start with "Act " or "ACT "
+                return /^act\s+/i.test(item.name || '')
+              } else if (type === 'sequence') {
+                // Sequences typically start with "Sequence " or contain "sequence"
+                return /^sequence\s+/i.test(item.name || '') || itemName.includes('sequence')
+              } else if (type === 'beat') {
+                // Beats contain the word "beat"
+                return itemName.includes('beat')
+              } else {
+                // Generic fallback: just check if name includes the type
+                return itemName.includes(type)
               }
-              return results
-            }
-            
-            const matchingSections = findSectionsByType(request.structureItems, type)
+            }).sort((a: any, b: any) => a.order - b.order) // Sort by order to ensure first=first
             if (matchingSections[targetIndex]) {
               targetSectionId = matchingSections[targetIndex].id
               console.log('🎯 [Ordinal Detection] Found section:', {
