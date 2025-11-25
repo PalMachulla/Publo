@@ -698,6 +698,8 @@ export class OrchestratorEngine {
         }
         
         // ✅ PROACTIVE CANVAS AWARENESS: Check for existing documents
+        console.log('🔍 [Canvas Awareness] Raw canvasNodes:', request.canvasNodes?.length || 0)
+        
         const existingDocs = (request.canvasNodes || [])
           .filter((node: any) => 
             node.type === 'storyStructureNode' && 
@@ -705,8 +707,17 @@ export class OrchestratorEngine {
             node.data?.items?.length > 0
           )
           .map((node: any) => {
+            console.log(`🔍 [Canvas Awareness] Checking node "${node.data?.label}":`, {
+              type: node.type,
+              dataKeys: Object.keys(node.data || {}),
+              itemsCount: node.data?.items?.length || 0,
+              format: node.data?.format
+            })
+            
             // ✅ FIX: Check BOTH legacy contentMap AND new document_data for content
-            const contentMapKeys = Object.keys(node.data.contentMap || {})
+            const contentMapKeys = Object.keys(node.data?.contentMap || {})
+            console.log(`  - contentMapKeys:`, contentMapKeys.length, contentMapKeys.slice(0, 3))
+            
             const hasLegacyContent = contentMapKeys.length > 0 && 
               contentMapKeys.some(key => {
                 const content = node.data.contentMap[key]
