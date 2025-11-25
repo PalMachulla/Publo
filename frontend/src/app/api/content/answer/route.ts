@@ -194,10 +194,30 @@ Please answer this question based on the available context. Be helpful and speci
       generateOptions.temperature = 0.7
     }
     
-    // Generate answer using provider adapter with streaming
-    const stream = await adapter.generateStream(apiKey, generateOptions)
+    console.log('[API /content/answer] Calling generateStream with options:', {
+      model: orchestratorModelId,
+      hasApiKey: !!apiKey,
+      optionsKeys: Object.keys(generateOptions)
+    })
     
-    console.log('[API /content/answer] Streaming response started')
+    // Generate answer using provider adapter with streaming
+    // ✅ FIX: Wrap in try-catch to handle stream creation errors
+    let stream: ReadableStream
+    try {
+      stream = await adapter.generateStream(apiKey, generateOptions)
+      console.log('[API /content/answer] Stream created successfully')
+    } catch (streamError) {
+      console.error('[API /content/answer] Stream creation failed:', streamError)
+      return NextResponse.json(
+        { 
+          error: streamError instanceof Error ? streamError.message : 'Failed to create response stream',
+          details: 'The model may not support streaming or the configuration is invalid.'
+        },
+        { status: 500 }
+      )
+    }
+    
+    console.log('[API /content/answer] Returning streaming response')
     
     // Return streaming response as plain text stream (not SSE)
     return new Response(stream, {
