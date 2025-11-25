@@ -14,8 +14,10 @@
  */
 
 import { buildContextFromResults, type RetrievalResult } from '@/lib/embeddings/retrievalService'
-import { CanvasContext, NodeContext, findReferencedNode } from './canvasContextProvider'
-import { resolveNodeWithLLM } from './llmNodeResolver'
+import { CanvasContext, NodeContext, resolveNode } from './core/contextProvider'
+// Deprecated imports (functionality moved to core/contextProvider):
+// import { findReferencedNode } from './canvasContextProvider.deprecated'
+// import { resolveNodeWithLLM } from './llmNodeResolver.deprecated'
 
 export interface RAGEnhancedContext {
   hasRAG: boolean
@@ -61,14 +63,17 @@ export async function enhanceContextWithRAG(
     let referencedNode: NodeContext | undefined
 
     if (!targetNodeId) {
-      // STRATEGY 1: Use LLM to reason about which node is referenced (intelligent!)
+      // STRATEGY 1: Simple node search
+      // TODO: Refactor to use resolveNode from core/contextProvider (requires blackboard)
       if (conversationHistory && conversationHistory.length > 0) {
-        console.log('🧠 [RAG] Using LLM to resolve node reference...')
-        referencedNode = await resolveNodeWithLLM(userMessage, canvasContext, conversationHistory) || undefined
+        console.log('🧠 [RAG] Searching for story structure node...')
+        referencedNode = canvasContext.connectedNodes.find(
+          n => n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode'
+        )
         
         if (referencedNode) {
           targetNodeId = referencedNode.nodeId
-          console.log('✅ [RAG] LLM resolved to:', {
+          console.log('✅ [RAG] Found node:', {
             nodeId: targetNodeId,
             label: referencedNode.label
           })
@@ -76,13 +81,17 @@ export async function enhanceContextWithRAG(
       }
       
       // STRATEGY 2: Fall back to keyword matching if LLM fails
+      // TODO: Refactor to use resolveNode from core/contextProvider (requires blackboard)
       if (!referencedNode) {
-        console.log('🔍 [RAG] Falling back to keyword matching...')
-        referencedNode = findReferencedNode(userMessage, canvasContext, conversationHistory) || undefined
+        console.log('🔍 [RAG] Falling back to simple node search...')
+        // Simple fallback: find first story-structure node
+        referencedNode = canvasContext.connectedNodes.find(
+          n => n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode'
+        )
         
-        if (referencedNode && referencedNode.nodeType === 'story-structure') {
+        if (referencedNode) {
           targetNodeId = referencedNode.nodeId
-          console.log('🎯 [RAG] Keyword matching detected story structure node:', {
+          console.log('🎯 [RAG] Using first story structure node:', {
             nodeId: targetNodeId,
             label: referencedNode.label
           })

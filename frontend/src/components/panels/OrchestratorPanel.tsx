@@ -26,7 +26,8 @@ import {
   buildRAGEnhancedPrompt,
   formatCanvasContextForLLM
 } from '@/lib/orchestrator'
-import { findReferencedNode } from '@/lib/orchestrator/canvasContextProvider'
+// Deprecated: findReferencedNode moved to core/contextProvider (now using resolveNode)
+// import { findReferencedNode } from '@/lib/orchestrator/canvasContextProvider.deprecated'
 import { Edge } from 'reactflow'
 
 // Helper: Get canonical model details for filtering and display
@@ -1609,8 +1610,9 @@ INSTRUCTION: Use the above stories as inspiration for creating the new podcast s
                 }
               }
             } else {
-              // Find a single referenced node (with conversation history for context)
-              const referencedNode = findReferencedNode(message, canvasContext, conversationForContext)
+              // TODO: Refactor to use orchestrator's resolveNode from core/contextProvider
+              // For now, use simple fallback
+              const referencedNode = canvasContext.connectedNodes.find(n => n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode')
             
             if (referencedNode && referencedNode.detailedContext) {
               if (onAddChatMessage) {
@@ -1702,7 +1704,8 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
           setPendingCreation({
             format: formatToUse,
             userMessage: message,
-            referenceNode: hasReference ? findReferencedNode(message, canvasContext, conversationForContext) : undefined,
+            // TODO: Refactor to use orchestrator's resolveNode
+            referenceNode: hasReference ? canvasContext.connectedNodes.find(n => n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode') : undefined,
             enhancedPrompt: enhancedPrompt
           })
           
@@ -1779,8 +1782,9 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
             onAddChatMessage(`📂 Finding the document to open...`, 'orchestrator', 'thinking')
           }
           
-          // Identify which node to open (with conversation history for context)
-          const nodeToOpen = findReferencedNode(message, canvasContext, conversationForContext)
+          // TODO: Refactor to use orchestrator's resolveNode
+          // For now, use simple fallback
+          const nodeToOpen = canvasContext.connectedNodes.find(n => n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode')
           
           if (!nodeToOpen) {
             // No clear node reference - ask for clarification
