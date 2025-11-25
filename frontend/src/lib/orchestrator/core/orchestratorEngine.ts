@@ -500,6 +500,17 @@ export class OrchestratorEngine {
                 return itemName.includes(type)
               }
             }).sort((a: any, b: any) => a.order - b.order) // Sort by order to ensure first=first
+            
+            console.log('🔍 [Ordinal Detection] Debug:', {
+              searchType: type,
+              position,
+              targetIndex,
+              totalStructureItems: request.structureItems.length,
+              matchingSectionsCount: matchingSections.length,
+              matchedNames: matchingSections.map((s: any) => s.name).slice(0, 5), // Show first 5
+              allItemNames: request.structureItems.map((s: any) => s.name).slice(0, 10) // Show first 10 items
+            })
+            
             if (matchingSections[targetIndex]) {
               targetSectionId = matchingSections[targetIndex].id
               console.log('🎯 [Ordinal Detection] Found section:', {
@@ -509,6 +520,8 @@ export class OrchestratorEngine {
                 foundSection: matchingSections[targetIndex].name,
                 sectionId: targetSectionId
               })
+            } else {
+              console.warn('⚠️ [Ordinal Detection] No match found at index', targetIndex, 'for type', type)
             }
           }
           
@@ -714,17 +727,28 @@ export class OrchestratorEngine {
             actions.push({
               type: 'request_clarification',
               payload: {
-                question: `I see you already have ${docsWithContent.length === 1 ? 'a' : ''} ${docsWithContent.map(d => d.format).join(' and ')} (${docNames}) with content. Would you like me to:\n\n1. Base the ${request.documentFormat} on the existing content\n2. Create something completely new\n\nPlease let me know which you prefer!`,
+                originalAction: 'create_structure', // ✅ FIX: Required by handler
+                message: `I see you already have ${docsWithContent.length === 1 ? 'a' : ''} ${docsWithContent.map(d => d.format).join(' and ')} (${docNames}) with content. Would you like me to:\n\n1. Base the ${request.documentFormat} on the existing content\n2. Create something completely new\n\nPlease let me know which you prefer!`, // ✅ FIX: Changed from 'question' to 'message'
                 options: [
                   { id: 'use_existing', label: 'Base it on existing content', description: `Use ${docNames} as inspiration` },
                   { id: 'create_new', label: 'Create something new', description: 'Start from scratch with a fresh story' }
-                ]
+                ],
+                // Store context for when user responds
+                documentFormat: request.documentFormat,
+                userMessage: request.message,
+                existingDocs: docsWithContent
               },
               status: 'pending'
             })
             
-            // Don't generate structure yet - wait for user's response
-            break
+            this.blackboard.addMessage({
+              role: 'orchestrator',
+              content: '❓ Requesting user clarification before proceeding...',
+              type: 'decision'
+            })
+            
+            // ✅ CRITICAL: Return early to prevent further action generation
+            return actions
           }
         }
         
