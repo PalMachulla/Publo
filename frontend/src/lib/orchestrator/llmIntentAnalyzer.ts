@@ -43,6 +43,8 @@ export interface LLMIntentResult extends IntentAnalysis {
   extractedEntities?: {
     targetSegment?: string
     referenceContent?: string
+    sourceDocument?: string // Name or ID of source document (e.g., "Screenplay", "Podcast")
+    isExplicitSourceReference?: boolean // True if user explicitly said "based on X", "using X"
   }
 }
 
@@ -65,6 +67,17 @@ CANVAS AWARENESS (CRITICAL!):
 - Canvas context shows ALL nodes connected to the orchestrator - these are resources you can reference
 - If canvas shows a screenplay/story node AND user says "make interview" or "interview the characters", this is create_structure (NOT general_chat!)
 - Pattern: "Make an interview with characters in [screenplay]" → create_structure intent using screenplay as reference
+
+SOURCE DOCUMENT EXTRACTION (CRITICAL!):
+- When user says "Create a report based on the screenplay" or "based upon X" or "using the podcast":
+  * Set isExplicitSourceReference: true
+  * Extract sourceDocument: the name/label of the document from canvas context (e.g., "Screenplay", "Podcast")
+  * The system will use this to extract content from that specific document
+- Natural language variations to detect:
+  * "based on [X]", "based upon [X]", "using [X]", "from [X]"
+  * "about [X]", "analyzing [X]", "covering [X]"
+  * "for [X]", "regarding [X]"
+- Match against canvas nodes to identify which document the user is referring to
 
 EXISTING vs NEW DOCUMENT (CRITICAL!):
 - If user says "MY podcast", "THE podcast", "MY screenplay" → Check canvas context!
@@ -154,7 +167,9 @@ Return your analysis as JSON with this structure:
   "clarifyingQuestion": "Question to ask user if needsClarification is true",
   "extractedEntities": {
     "targetSegment": "Which section to act on",
-    "referenceContent": "Content being referenced from conversation"
+    "referenceContent": "Content being referenced from conversation",
+    "sourceDocument": "When user says 'based on X' or 'using X', extract the name/ID of the source document from canvas context",
+    "isExplicitSourceReference": "Boolean - true if user explicitly mentioned a specific document to base new content on (e.g., 'based on the screenplay', 'using the podcast')"
   }
 }
 
@@ -179,21 +194,34 @@ Analyze this message and determine the user's intent. Consider the conversation 
 Return ONLY valid JSON with your analysis. Do not include markdown formatting. Just the raw JSON object.`
 
   try {
+    const requestBody = {
+      system_prompt: INTENT_ANALYSIS_SYSTEM_PROMPT,
+      user_prompt: analysisPrompt,
+      conversation_history: context.conversationHistory.slice(-5), // Last 5 messages
+      temperature: 0.1 // Lower temp for consistent JSON
+    }
+    
+    console.log('[LLM Intent] Sending request to /api/intent/analyze:', {
+      systemPromptLength: requestBody.system_prompt.length,
+      userPromptLength: requestBody.user_prompt.length,
+      conversationHistoryLength: requestBody.conversation_history.length
+    })
+    
     // Call the orchestrator via our API
     const response = await fetch('/api/intent/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_prompt: INTENT_ANALYSIS_SYSTEM_PROMPT,
-        user_prompt: analysisPrompt,
-        conversation_history: context.conversationHistory.slice(-5), // Last 5 messages
-        temperature: 0.1 // Lower temp for consistent JSON
-      })
+      body: JSON.stringify(requestBody)
     })
 
     if (!response.ok) {
-      console.error('[LLM Intent] API error:', response.statusText)
-      throw new Error(`Intent analysis failed: ${response.statusText}`)
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      console.error('[LLM Intent] API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData
+      })
+      throw new Error(`Intent analysis failed (${response.status}): ${errorData.error || response.statusText}`)
     }
 
     const data = await response.json()

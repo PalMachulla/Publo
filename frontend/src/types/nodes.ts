@@ -118,7 +118,17 @@ export interface CreateStoryNodeData extends BaseNodeData {
 
 export type StoryDraftStatus = 'draft' | 'active' | 'published'
 
-export type StoryFormat = 'novel' | 'report' | 'short-story' | 'article' | 'screenplay' | 'essay' | 'podcast'
+export type StoryFormat = 
+  | 'novel' 
+  | 'report' 
+  | 'report_script_coverage' 
+  | 'report_business' 
+  | 'report_content_analysis'
+  | 'short-story' 
+  | 'article' 
+  | 'screenplay' 
+  | 'essay' 
+  | 'podcast'
 
 export interface StoryDraftNodeData extends BaseNodeData {
   nodeType: 'story-draft'
@@ -260,6 +270,7 @@ export interface StoryStructureNodeData extends BaseNodeData {
   availableAgents?: AgentOption[] // List of available agent nodes
   onAgentAssign?: (itemId: string, agentId: string | null) => void // Callback when agent is assigned/unassigned
   contentMap?: Record<string, string> // Map of structure item ID to markdown content (from test node)
+  document_data?: any // Hierarchical document data from database (includes totalWordCount, structure, etc.)
 }
 
 export interface TestNodeData extends BaseNodeData {

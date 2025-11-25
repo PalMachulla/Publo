@@ -73,7 +73,7 @@ interface NodeDetailsPanelProps {
     id: string
     timestamp: string
     content: string
-    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
     role?: 'user' | 'orchestrator'
   }>
   onAddChatMessage?: (message: string) => void
@@ -196,41 +196,98 @@ export default function NodeDetailsPanel({
   const generateEmbeddings = async (nodeId: string, structureItems: any[]) => {
     setEmbeddingStatus(prev => ({ ...prev, generating: true }))
     try {
-      // Fetch document sections from database with content
-      const { data: documentSections, error: sectionsError } = await supabase
-        .from('document_sections')
-        .select('id, content, structure_item_id, story_structure_node_id')
-        .eq('story_structure_node_id', nodeId)
+      let sections: Array<{
+        documentSectionId: string
+        content: string
+        structureItem: any
+      }> = []
       
-      if (sectionsError) {
-        console.error('Failed to fetch document sections:', sectionsError)
-        alert(`❌ Failed to fetch document sections:\n\n${sectionsError.message}`)
-        setEmbeddingStatus(prev => ({ ...prev, generating: false }))
-        return
+      // STRATEGY 1: Try new hierarchical system first (document_data)
+      const { data: nodeData, error: nodeError } = await supabase
+        .from('nodes')
+        .select('document_data')
+        .eq('id', nodeId)
+        .single()
+      
+      if (nodeData?.document_data?.structure) {
+        console.log('✅ [Embeddings] Using hierarchical document_data')
+        
+        // Extract all segments with content from hierarchical structure
+        const extractSegments = (segments: any[], parentPath: string = ''): any[] => {
+          const result: any[] = []
+          for (const seg of segments) {
+            if (seg.content && seg.content.trim().length > 0) {
+              result.push({
+                documentSectionId: seg.id,
+                content: seg.content,
+                structureItem: {
+                  id: seg.id,
+                  level: seg.level,
+                  name: seg.name,
+                  title: seg.title,
+                  order: seg.order,
+                  type: 'section'
+                }
+              })
+            }
+            // Recursively extract from children
+            if (seg.children && seg.children.length > 0) {
+              result.push(...extractSegments(seg.children, `${parentPath}/${seg.name}`))
+            }
+          }
+          return result
+        }
+        
+        sections = extractSegments(nodeData.document_data.structure)
+        console.log(`📝 [Embeddings] Extracted ${sections.length} sections from document_data`)
       }
       
-      if (!documentSections || documentSections.length === 0) {
+      // STRATEGY 2: Fall back to legacy document_sections table
+      if (sections.length === 0) {
+        console.log('⚠️ [Embeddings] No document_data found, falling back to legacy document_sections')
+        
+        const { data: documentSections, error: sectionsError } = await supabase
+          .from('document_sections')
+          .select('id, content, structure_item_id, story_structure_node_id')
+          .eq('story_structure_node_id', nodeId)
+        
+        if (sectionsError) {
+          console.error('Failed to fetch document sections:', sectionsError)
+          alert(`❌ Failed to fetch document sections:\n\n${sectionsError.message}`)
+          setEmbeddingStatus(prev => ({ ...prev, generating: false }))
+          return
+        }
+        
+        if (!documentSections || documentSections.length === 0) {
+          alert('⚠️ No content found to vectorize.\n\nThis document appears to be empty.')
+          setEmbeddingStatus(prev => ({ ...prev, generating: false }))
+          return
+        }
+        
+        // Map to the format expected by the API
+        sections = documentSections.map((docSection) => {
+          const structureItem = structureItems.find((item: any) => item.id === docSection.structure_item_id)
+          return {
+            documentSectionId: docSection.id,
+            content: docSection.content || '',
+            structureItem: structureItem || {
+              id: docSection.structure_item_id,
+              level: 0,
+              type: 'section',
+              content: docSection.content
+            }
+          }
+        })
+      }
+      
+      // Verify we have content
+      if (sections.length === 0) {
         alert('⚠️ No content found to vectorize.\n\nThis document appears to be empty.')
         setEmbeddingStatus(prev => ({ ...prev, generating: false }))
         return
       }
       
-      // Map to the format expected by the API
-      const sections = documentSections.map((docSection) => {
-        // Find matching structure item
-        const structureItem = structureItems.find((item: any) => item.id === docSection.structure_item_id)
-        
-        return {
-          documentSectionId: docSection.id,
-          content: docSection.content || '',
-          structureItem: structureItem || {
-            id: docSection.structure_item_id,
-            level: 0,
-            type: 'section',
-            content: docSection.content
-          }
-        }
-      })
+      console.log(`🚀 [Embeddings] Generating embeddings for ${sections.length} sections...`)
       
       const response = await fetch('/api/embeddings/generate', {
         method: 'POST',
@@ -678,11 +735,11 @@ export default function NodeDetailsPanel({
                       </span>
                     </div>
 
-                    {/* Word Count (dummy) */}
+                    {/* Word Count (from document_data) */}
                     <div className="flex items-center justify-between py-2 border-b border-gray-100">
                       <span className="text-sm text-gray-600">Word Count</span>
                       <span className="text-sm font-medium text-gray-900">
-                        {(Math.floor(Math.random() * 5000) + 1000).toLocaleString()}
+                        {nodeData.document_data?.totalWordCount?.toLocaleString() || '0'}
                       </span>
                     </div>
 

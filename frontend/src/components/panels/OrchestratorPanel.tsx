@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
@@ -26,7 +26,10 @@ import {
   buildRAGEnhancedPrompt,
   formatCanvasContextForLLM
 } from '@/lib/orchestrator'
-import { findReferencedNode } from '@/lib/orchestrator/canvasContextProvider'
+// PHASE 1: WorldState - Unified state management
+import { buildWorldStateFromReactFlow, type WorldStateManager } from '@/lib/orchestrator/core/worldState'
+// Deprecated: findReferencedNode moved to core/contextProvider (now using resolveNode)
+// import { findReferencedNode } from '@/lib/orchestrator/canvasContextProvider.deprecated'
 import { Edge } from 'reactflow'
 
 // Helper: Get canonical model details for filtering and display
@@ -104,7 +107,7 @@ interface ConfirmationRequest {
 
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
-  onCreateStory: (format: StoryFormat, template?: string, userPrompt?: string) => void
+  onCreateStory: (format: StoryFormat, template?: string, userPrompt?: string, plan?: any) => void
   onClose: () => void
   onUpdate?: (nodeId: string, data: Partial<CreateStoryNodeData>) => void
   onSendPrompt?: (prompt: string) => void // NEW: For chat-based prompting
@@ -112,10 +115,10 @@ interface CreateStoryPanelProps {
     id: string
     timestamp: string
     content: string
-    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model'
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
     role?: 'user' | 'orchestrator'
   }>
-  onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model') => void
+  onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => void
   onClearChat?: () => void
   onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
   isDocumentViewOpen?: boolean // NEW: Document panel visibility state
@@ -262,20 +265,40 @@ interface ReasoningMessage {
   id: string
   timestamp: string
   content: string
-  type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model'
+  type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
   role?: 'user' | 'orchestrator'
 }
 
 // Helper function to detect format from user message
+// Prioritizes "create X" patterns over references in "based on Y" contexts
 function detectFormatFromMessage(message: string): StoryFormat | null {
   const lowerMessage = message.toLowerCase()
   
+  // PRIORITY 1: Explicit "create X" patterns (primary intent)
+  const createPatterns = [
+    { pattern: /create.*?report/i, format: 'report' as StoryFormat },
+    { pattern: /create.*?podcast/i, format: 'podcast' as StoryFormat },
+    { pattern: /create.*?screenplay/i, format: 'screenplay' as StoryFormat },
+    { pattern: /create.*?novel/i, format: 'novel' as StoryFormat },
+    { pattern: /create.*?short story/i, format: 'short-story' as StoryFormat },
+    { pattern: /create.*?article/i, format: 'article' as StoryFormat }
+  ]
+  
+  for (const { pattern, format } of createPatterns) {
+    if (pattern.test(message)) {
+      console.log('🎯 [Format Detection] Explicit create pattern:', format)
+      return format
+    }
+  }
+  
+  // PRIORITY 2: Standalone mentions (no "create" keyword)
+  // Check for report BEFORE screenplay to avoid "report on screenplay" confusion
+  if (lowerMessage.includes('report')) return 'report'
   if (lowerMessage.includes('podcast')) return 'podcast'
   if (lowerMessage.includes('screenplay') || lowerMessage.includes('script')) return 'screenplay'
   if (lowerMessage.includes('novel') || lowerMessage.includes('book')) return 'novel'
   if (lowerMessage.includes('short story')) return 'short-story'
   if (lowerMessage.includes('article') || lowerMessage.includes('blog')) return 'article'
-  if (lowerMessage.includes('report')) return 'report'
   
   return null
 }
@@ -344,6 +367,13 @@ export default function OrchestratorPanel({
   // Confirmation state - for 2-step execution flow
   const [pendingConfirmation, setPendingConfirmation] = useState<ConfirmationRequest | null>(null)
   
+  // ✅ NEW: Clarification state - for inline chat options (not modal)
+  const [pendingClarification, setPendingClarification] = useState<{
+    action: string
+    payload: any
+    options: Array<{id: string, label: string, description: string}>
+  } | null>(null)
+  
   // Chat state (local input only, history is canvas-level)
   const [chatMessage, setChatMessage] = useState('')
   const [collapsedMessages, setCollapsedMessages] = useState<Set<string>>(new Set())
@@ -395,6 +425,69 @@ export default function OrchestratorPanel({
   // Build canvas context - orchestrator's "eyes" on the canvas
   const canvasContext = buildCanvasContext('context', canvasNodes, canvasEdges, externalContentMap)
   
+  // ============================================================
+  // PHASE 1: BUILD WORLDSTATE (Unified State Management)
+  // ============================================================
+  // TODO: This will eventually replace individual props passed to orchestrator
+  // For now, we build it in parallel for gradual migration
+  
+  // FIX: Use stable dependency to prevent rebuild loop
+  // Only rebuild when node/edge structure actually changes, not on every render
+  const canvasStateKey = useMemo(() => 
+    JSON.stringify({
+      nodeIds: canvasNodes.map(n => n.id).sort(),
+      edgeIds: canvasEdges.map(e => e.id).sort(),
+      activeDocId: currentStoryStructureNodeId,
+      activeSectionId: activeContext?.id,
+      docPanelOpen: isDocumentViewOpen,
+      modelMode,
+      fixedModel: configuredModel.orchestrator
+    }),
+    [canvasNodes, canvasEdges, currentStoryStructureNodeId, activeContext?.id, isDocumentViewOpen, modelMode, configuredModel.orchestrator]
+  )
+  
+  const worldState = useMemo(() => {
+    console.log('🔧 [WorldState] Rebuilding (canvasStateKey changed)')
+    // We don't have user.id yet (fetched async), so we'll pass empty string
+    // and update it in the orchestrate call
+    return buildWorldStateFromReactFlow(
+      canvasNodes,
+      canvasEdges,
+      '', // userId will be set when orchestrate is called
+      {
+        activeDocumentNodeId: currentStoryStructureNodeId,
+        selectedSectionId: activeContext?.id || null,
+        isDocumentPanelOpen: isDocumentViewOpen,
+        availableProviders: [], // Will be populated from API keys
+        availableModels: [], // Will be populated from /api/models/available
+        modelPreferences: {
+          modelMode,
+          fixedModelId: configuredModel.orchestrator,
+          fixedModeStrategy
+        },
+        orchestratorKeyId: undefined // Will be set from activeKeyId
+      }
+    )
+  }, [canvasStateKey]) // FIX: Only depend on stable key, not raw arrays
+  
+  // Debug: Log WorldState on changes (reduced logging to prevent spam)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      // Only log on meaningful changes, not every rebuild
+      const state = worldState.getState()
+      if (state.meta.version === 1) { // Only log initial build
+        console.log('🗺️ [WorldState] Initial build:', {
+          version: state.meta.version,
+          canvasNodes: worldState.getAllNodes().length,
+          canvasEdges: worldState.getAllEdges().length,
+          activeDocId: worldState.getActiveDocument().nodeId,
+          selectedSectionId: worldState.getActiveSectionId(),
+          documentPanelOpen: worldState.isDocumentPanelOpen()
+        })
+      }
+    }
+  }, [worldState])
+  
   // Track canvas state to detect changes
   const [lastCanvasState, setLastCanvasState] = useState<string>('')
   const currentCanvasState = JSON.stringify({
@@ -408,7 +501,14 @@ export default function OrchestratorPanel({
     canvasEdgesCount: canvasEdges.length,
     connectedNodesFound: canvasContext.connectedNodes.length,
     externalContentMapKeys: Object.keys(externalContentMap),
-    canvasNodes: canvasNodes.map(n => ({ id: n.id, type: n.type, label: n.data?.label, hasContentMap: !!n.data?.contentMap })),
+    canvasNodes: canvasNodes.map(n => ({ 
+      id: n.id, 
+      type: n.type, 
+      label: n.data?.label, 
+      hasContentMap: !!n.data?.contentMap,
+      hasDocumentData: !!n.data?.document_data,  // ✅ DEBUG
+      documentDataKeys: n.data?.document_data ? Object.keys(n.data.document_data) : []  // ✅ DEBUG
+    })),
     canvasEdges: canvasEdges.map(e => ({ source: e.source, target: e.target })),
     orchestratorId: 'context'
   })
@@ -461,6 +561,13 @@ export default function OrchestratorPanel({
       return
     }
     
+    // ✅ NEW: Check if there's a pending clarification
+    if (pendingClarification) {
+      // User is responding to a clarification request (e.g., "#1", "1", "option 1")
+      await handleClarificationResponse(message)
+      return
+    }
+    
     // Add user message to chat
     if (onAddChatMessage) {
       onAddChatMessage(message, 'user')
@@ -485,28 +592,86 @@ export default function OrchestratorPanel({
       }
       
       if (onAddChatMessage) {
-        onAddChatMessage(`🧠 Analyzing your request...`, 'orchestrator', 'thinking')
+        onAddChatMessage(`⏳ Analyzing your request...`, 'orchestrator', 'thinking')
       }
       
-      // Call the new orchestrator
-      const response = await getOrchestrator(user.id).orchestrate({
+      // Get available providers from user's API keys
+      const availableProviders = Array.from(new Set(availableOrchestrators.map(m => m.provider)))
+      
+      // Get first available API key ID for structure generation
+      const userKeyId = availableOrchestrators.length > 0 ? availableOrchestrators[0].keyId : undefined
+      
+      console.log('🔑 [OrchestratorPanel] Available providers:', availableProviders)
+      console.log('🔑 [OrchestratorPanel] User key ID:', userKeyId)
+      
+      // ✅ FIX: Detect format from user's message BEFORE calling orchestrator
+      const detectedFormat = detectFormatFromMessage(message)
+      const formatToUse = detectedFormat || selectedFormat
+      
+      console.log('📋 [OrchestratorPanel] Format detection:', {
+        detected: detectedFormat,
+        selected: selectedFormat,
+        using: formatToUse,
+        message: message.substring(0, 100)
+      })
+      
+      // PHASE 1.2: Fetch available models with tier metadata
+      let availableModelsToPass: any[] | undefined = undefined
+      try {
+        console.log('🔍 [OrchestratorPanel] Fetching available models...')
+        const modelsResponse = await fetch('/api/models/available')
+        if (modelsResponse.ok) {
+          const modelsData = await modelsResponse.json()
+          if (modelsData.success && modelsData.models && modelsData.models.length > 0) {
+            availableModelsToPass = modelsData.models
+            console.log(`✅ [OrchestratorPanel] Loaded ${availableModelsToPass.length} available models (${modelsData.stats.reasoningCount} reasoning, ${modelsData.stats.writingCount} writing)`)
+          }
+        } else {
+          console.warn('⚠️ [OrchestratorPanel] Failed to fetch available models, using static MODEL_TIERS')
+        }
+      } catch (error) {
+        console.warn('⚠️ [OrchestratorPanel] Error fetching available models:', error)
+        // Continue with static MODEL_TIERS (backward compatible)
+      }
+      
+      // Call the new orchestrator with WorldState
+      // PHASE 1: Update WorldState with user.id before passing
+      worldState.update(draft => {
+        draft.user.id = user.id
+        draft.user.availableProviders = availableProviders
+        draft.user.availableModels = availableModelsToPass || []
+        draft.user.apiKeys.orchestratorKeyId = userKeyId
+      })
+      
+      const response = await getOrchestrator(user.id, undefined, worldState).orchestrate({
         message,
         canvasNodes,
         canvasEdges,
         activeContext: activeContext || undefined, // Convert null to undefined
         isDocumentViewOpen,
-        documentFormat: selectedFormat,
+        documentFormat: formatToUse, // ✅ FIX: Use detected format instead of selectedFormat
         structureItems,
         contentMap,
         currentStoryStructureNodeId,
         // Model selection preferences
         modelMode,
         fixedModeStrategy: modelMode === 'fixed' ? fixedModeStrategy : undefined,
-        fixedModelId: modelMode === 'fixed' ? configuredModel.orchestrator : undefined
+        fixedModelId: modelMode === 'fixed' ? configuredModel.orchestrator : undefined,
+        // Available providers (from user's API keys)
+        availableProviders: availableProviders.length > 0 ? availableProviders : undefined,
+        // PHASE 1.2: Pass available models with tier metadata (undefined = fallback to static MODEL_TIERS)
+        availableModels: availableModelsToPass as any, // Intentionally allow undefined for backward compatibility
+        // User key ID for structure generation
+        userKeyId
       })
       
-      // Display reasoning
-      if (onAddChatMessage) {
+      // Display detailed thinking steps from blackboard
+      if (onAddChatMessage && response.thinkingSteps && response.thinkingSteps.length > 0) {
+        response.thinkingSteps.forEach(step => {
+          onAddChatMessage(step.content, 'orchestrator', step.type as any)
+        })
+      } else if (onAddChatMessage) {
+        // Fallback to basic reasoning if no thinking steps
         onAddChatMessage(`⚡ Intent: ${response.intent} (${Math.round(response.confidence * 100)}%)`, 'orchestrator', 'decision')
         onAddChatMessage(`💭 ${response.reasoning}`, 'orchestrator', 'thinking')
         onAddChatMessage(`🤖 Model: ${response.modelUsed}`, 'orchestrator', 'model')
@@ -598,7 +763,9 @@ export default function OrchestratorPanel({
         break
         
       case 'create_structure':
-        onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+        // Extract format from user message (screenplay, novel, report, etc.)
+        const detectedFormat = detectFormatFromMessage(message)
+        onCreateStory(detectedFormat || selectedFormat, selectedTemplate || undefined, message)
         break
         
       case 'general_chat':
@@ -637,6 +804,105 @@ export default function OrchestratorPanel({
   // Helper: Check if confirmation has expired
   const isConfirmationExpired = (confirmation: ConfirmationRequest): boolean => {
     return Date.now() > confirmation.expiresAt
+  }
+  
+  // ✅ REFACTORED: Handle clarification response by sending back to orchestrator for LLM reasoning
+  const handleClarificationResponse = async (response: string) => {
+    if (!pendingClarification) {
+      console.warn('No pending clarification')
+      return
+    }
+    
+    console.log('📥 [Clarification] Received response:', response)
+    console.log('📥 [Clarification] Pending:', pendingClarification)
+    
+    // Add user response to chat
+    if (onAddChatMessage) {
+      onAddChatMessage(response, 'user')
+    }
+    setChatMessage('')
+    
+    // Get user ID for orchestration
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      console.error('User not authenticated')
+      return
+    }
+    
+    // Get available providers
+    const availableProviders = Array.from(new Set(availableOrchestrators.map(m => m.provider)))
+    const userKeyId = availableOrchestrators.length > 0 ? availableOrchestrators[0].keyId : undefined
+    
+    // Send back to orchestrator WITH clarification context
+    try {
+      // PHASE 1: Update WorldState before clarification response
+      worldState.update(draft => {
+        draft.user.id = user.id
+        draft.user.availableProviders = availableProviders
+        draft.user.apiKeys.orchestratorKeyId = userKeyId
+      })
+      
+      const orchestratorResponse = await getOrchestrator(user.id, undefined, worldState).orchestrate({
+        message: response,
+        canvasNodes,
+        canvasEdges,
+        activeContext: activeContext || undefined,
+        isDocumentViewOpen,
+        documentFormat: pendingClarification.payload.documentFormat || selectedFormat,
+        structureItems,
+        contentMap,
+        currentStoryStructureNodeId,
+        modelMode,
+        fixedModeStrategy: modelMode === 'fixed' ? fixedModeStrategy : undefined,
+        fixedModelId: modelMode === 'fixed' ? configuredModel.orchestrator : undefined,
+        availableProviders: availableProviders.length > 0 ? availableProviders : undefined,
+        userKeyId,
+        // NEW: Pass clarification context
+        clarificationContext: {
+          originalAction: pendingClarification.action,
+          question: pendingClarification.payload.message,
+          options: pendingClarification.options,
+          payload: pendingClarification.payload
+        }
+      })
+      
+      // Display thinking steps
+      if (onAddChatMessage && orchestratorResponse.thinkingSteps && orchestratorResponse.thinkingSteps.length > 0) {
+        orchestratorResponse.thinkingSteps.forEach(step => {
+          onAddChatMessage(step.content, 'orchestrator', step.type as any)
+        })
+      }
+      
+      // Execute actions returned by orchestrator
+      for (const action of orchestratorResponse.actions) {
+        console.log('▶️ [Clarification] Executing action:', action.type, action.payload)
+        
+        // Handle message actions specially for create_structure
+        if (action.type === 'message' && action.payload.intent === 'create_structure') {
+          const { format, prompt, referenceDoc } = action.payload
+          if (onAddChatMessage) {
+            onAddChatMessage(action.payload.content, 'orchestrator', 'result')
+          }
+          // Call onCreateStory with the enhanced prompt
+          onCreateStory(format, undefined, prompt)
+        } else {
+          await executeActionDirectly(action)
+        }
+      }
+      
+      if (onAddChatMessage) {
+        onAddChatMessage(`✅ Actions completed!`, 'orchestrator', 'result')
+      }
+      
+    } catch (error) {
+      console.error('❌ [Clarification] Error:', error)
+      if (onAddChatMessage) {
+        onAddChatMessage(`❌ Error processing clarification: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
+      }
+    }
+    
+    // Clear pending clarification
+    setPendingClarification(null)
   }
   
   // Helper: Handle confirmation response
@@ -841,21 +1107,45 @@ export default function OrchestratorPanel({
           break
           
         case 'request_clarification':
-          // Handle clarification request - create a confirmation with options
-          const clarificationConfirmation = createConfirmationRequest(
-            {
-              type: action.payload.originalAction,
-              payload: {},
-              status: 'pending'
-            },
-            'clarification',
-            action.payload.message,
-            action.payload.options
-          )
-          setPendingConfirmation(clarificationConfirmation)
+          // ✅ NEW: Display in chat stream with clickable options (not pop-up modal)
+          // Store pending clarification for when user responds
+          setPendingClarification({
+            action: action.payload.originalAction,
+            payload: action.payload,
+            options: action.payload.options
+          })
           
+          // Add message to chat
           if (onAddChatMessage) {
             onAddChatMessage(action.payload.message, 'orchestrator', 'result')
+          }
+          break
+          
+        case 'generate_structure':
+          // Handle structure generation - create the story node on canvas
+          if (action.payload.plan && onCreateStory) {
+            const format = action.payload.format || 'novel'
+            const prompt = action.payload.prompt || ''
+            const plan = action.payload.plan
+            
+            console.log('📝 [generate_structure] Creating story node:', {
+              format,
+              planStructureCount: plan.structure?.length,
+              prompt,
+              planStructure: plan.structure
+            })
+            
+            // Call onCreateStory with the format, template, prompt, AND the plan
+            await onCreateStory(format, undefined, prompt, plan)
+            
+            if (onAddChatMessage) {
+              onAddChatMessage(`✅ Created ${format} structure with ${plan.structure?.length || 0} sections`, 'orchestrator', 'result')
+            }
+          } else {
+            console.error('❌ generate_structure action missing required data:', action.payload)
+            if (onAddChatMessage) {
+              onAddChatMessage('❌ Failed to create structure: Missing plan data', 'orchestrator', 'error')
+            }
           }
           break
           
@@ -964,7 +1254,7 @@ export default function OrchestratorPanel({
     
     // STEP 1: Analyze user intent using Hybrid IntentRouter
     if (onAddChatMessage) {
-      onAddChatMessage(`🧠 Analyzing your request...`, 'orchestrator', 'thinking')
+      onAddChatMessage(`⏳ Analyzing your request...`, 'orchestrator', 'thinking')
     }
     
     const intentAnalysis = await analyzeIntent({
@@ -992,7 +1282,7 @@ export default function OrchestratorPanel({
     
     // Log intent analysis to reasoning chat
     if (onAddChatMessage) {
-      const method = intentAnalysis.usedLLM ? '🧠 LLM Reasoning' : '⚡ Pattern Matching'
+      const method = intentAnalysis.usedLLM ? '⚙️ LLM Reasoning' : '⚡ Pattern Matching'
       onAddChatMessage(`${method}: ${explainIntent(intentAnalysis)} (Confidence: ${Math.round(intentAnalysis.confidence * 100)}%)`, 'orchestrator', 'decision')
       onAddChatMessage(`💭 ${intentAnalysis.reasoning}`, 'orchestrator', 'thinking')
     }
@@ -1441,8 +1731,9 @@ INSTRUCTION: Use the above stories as inspiration for creating the new podcast s
                 }
               }
             } else {
-              // Find a single referenced node (with conversation history for context)
-              const referencedNode = findReferencedNode(message, canvasContext, conversationForContext)
+              // TODO: Refactor to use orchestrator's resolveNode from core/contextProvider
+              // For now, use simple fallback
+              const referencedNode = canvasContext.connectedNodes.find(n => n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode')
             
             if (referencedNode && referencedNode.detailedContext) {
               if (onAddChatMessage) {
@@ -1534,7 +1825,8 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
           setPendingCreation({
             format: formatToUse,
             userMessage: message,
-            referenceNode: hasReference ? findReferencedNode(message, canvasContext, conversationForContext) : undefined,
+            // TODO: Refactor to use orchestrator's resolveNode
+            referenceNode: hasReference ? canvasContext.connectedNodes.find(n => n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode') : undefined,
             enhancedPrompt: enhancedPrompt
           })
           
@@ -1611,8 +1903,9 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
             onAddChatMessage(`📂 Finding the document to open...`, 'orchestrator', 'thinking')
           }
           
-          // Identify which node to open (with conversation history for context)
-          const nodeToOpen = findReferencedNode(message, canvasContext, conversationForContext)
+          // TODO: Refactor to use orchestrator's resolveNode
+          // For now, use simple fallback
+          const nodeToOpen = canvasContext.connectedNodes.find(n => n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode')
           
           if (!nodeToOpen) {
             // No clear node reference - ask for clarification
@@ -2221,9 +2514,11 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
                 const bgColor = 
                   isModelMessage ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-l-4 border-indigo-500' :
                   group.type === 'thinking' ? 'bg-purple-50 border-l-4 border-purple-400' :
+                  group.type === 'progress' ? 'bg-indigo-50 border-l-4 border-indigo-400' :
                   group.type === 'decision' ? 'bg-blue-50 border-l-4 border-blue-400' :
                   group.type === 'task' ? 'bg-yellow-50 border-l-4 border-yellow-400' :
                   group.type === 'result' ? 'bg-green-50 border-l-4 border-green-400' :
+                  group.type === 'warning' ? 'bg-orange-50 border-l-4 border-orange-400' : // PHASE 3: Warning messages (retry/fallback)
                   'bg-red-50 border-l-4 border-red-400'
                 
                 const icon = isModelMessage ? (
@@ -2232,8 +2527,15 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
                     </svg>
                   ) :
                   group.type === 'thinking' ? (
-                    <svg className="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    <svg className="w-3.5 h-3.5 text-purple-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) :
+                  group.type === 'progress' ? (
+                    <svg className="w-3.5 h-3.5 text-indigo-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                   ) :
                   group.type === 'decision' ? (
@@ -2249,6 +2551,11 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
                   group.type === 'result' ? (
                     <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) :
+                  group.type === 'warning' ? (
+                    <svg className="w-3.5 h-3.5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                   ) :
                   (
@@ -2355,6 +2662,47 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
             <p className="text-xs text-gray-500 mt-3">
               💬 Or just tell me which one: &quot;The interview one looks good&quot; or &quot;Let&apos;s go with blank canvas&quot;
             </p>
+          </div>
+        )}
+        
+        {/* ✅ Clarification UI - shown when waiting for user to select an option */}
+        {pendingClarification && (
+          <div className="mb-4 p-4 border-2 rounded-lg bg-purple-50 border-purple-300">
+            {/* Clarification message (already displayed in chat, this is just the options) */}
+            <p className="text-sm font-medium text-gray-900 mb-3">
+              Please select an option:
+            </p>
+            
+            {/* Clarification options */}
+            <div className="space-y-2">
+              {pendingClarification.options.map((option, idx) => (
+                <button
+                  key={option.id}
+                  onClick={() => {
+                    // Send the option label as the user's response
+                    handleSendMessage_NEW(option.label)
+                  }}
+                  className="w-full flex items-start gap-3 p-3 bg-white border-2 border-gray-200 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-all text-left group"
+                >
+                  <span className="text-sm font-bold text-purple-600 min-w-[24px]">
+                    {idx + 1}.
+                  </span>
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-900 group-hover:text-purple-700">
+                      {option.label}
+                    </div>
+                    {option.description && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        {option.description}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+              <p className="text-xs text-gray-500 mt-2">
+                💬 Or describe your choice: &quot;{pendingClarification.options[0]?.label.toLowerCase()}&quot;
+              </p>
+            </div>
           </div>
         )}
         

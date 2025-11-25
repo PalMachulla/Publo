@@ -128,36 +128,24 @@ export function useDocumentSections({
 
       console.log('Creating sections:', newSections)
       
-      // Debug: Check if node exists and user owns story
-      const { data: nodeCheck, error: nodeError } = await supabase
-        .from('nodes')
-        .select('id, story_id, stories(user_id)')
-        .eq('id', storyStructureNodeId)
-        .single()
-      
-      console.log('Node ownership check:', { nodeCheck, nodeError })
-      
-      // Use ignoreDuplicates to handle race conditions (don't throw on conflict)
+      // Use upsert to handle existing sections gracefully (update instead of conflict)
       const { data, error: createError } = await supabase
         .from('document_sections')
-        .insert(newSections)
+        .upsert(newSections, {
+          onConflict: 'story_structure_node_id,structure_item_id',
+          ignoreDuplicates: false // Update existing sections
+        })
         .select()
       
-      // Handle conflicts gracefully
       if (createError) {
-        // 409 Conflict or 23505 duplicate key = sections already exist
-        if (createError.code === '23505' || createError.message?.includes('duplicate') || createError.message?.includes('409')) {
-          console.log('⚠️ Sections already exist (conflict), fetching existing sections...')
-          await fetchSections()
-        } else {
-          // Real error, log and throw
-          console.error('❌ Failed to create sections:', createError)
-          throw createError
-        }
-      } else if (data && data.length > 0) {
-        console.log('✅ Sections created successfully:', data.length, 'new sections')
-        // Merge with existing sections
-        setSections(prev => [...prev, ...data].sort((a, b) => a.order_index - b.order_index))
+        console.error('❌ Failed to upsert sections:', createError)
+        throw createError
+      }
+      
+      if (data && data.length > 0) {
+        console.log('✅ Sections upserted successfully:', data.length, 'sections')
+        // Replace sections array with fresh data from DB
+        await fetchSections()
       }
     } catch (err: any) {
       console.error('Failed to initialize sections:', err)

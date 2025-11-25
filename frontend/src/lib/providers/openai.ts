@@ -20,13 +20,51 @@ import { NormalizedModel } from '@/types/api-keys'
 // Reference: https://openai.com/api/pricing/
 const OPENAI_MODEL_PRICING: Record<string, ModelPricing> = {
   // GPT-5 Series (Reasoning Models)
-  'gpt-5.1': {
+  'gpt-5.1-2025-11-13': { // Snapshot ID (official)
     input_price_per_1m: 15.00, // Estimated - check official pricing
+    output_price_per_1m: 60.00,
+  },
+  'gpt-5.1': { // Alias
+    input_price_per_1m: 15.00,
     output_price_per_1m: 60.00,
   },
   'gpt-5': {
     input_price_per_1m: 15.00,
     output_price_per_1m: 60.00,
+  },
+  'gpt-5-mini': {
+    input_price_per_1m: 3.00, // Estimated - similar to GPT-4o premium tier
+    output_price_per_1m: 12.00,
+  },
+  'gpt-5-nano': {
+    input_price_per_1m: 0.30, // Estimated - similar to GPT-4o-mini
+    output_price_per_1m: 1.20,
+  },
+  // GPT-4.1 Series (Reasoning Models)
+  'gpt-4.1': {
+    input_price_per_1m: 12.00, // Estimated - between GPT-4 Turbo and GPT-5
+    output_price_per_1m: 48.00,
+  },
+  'gpt-4.1-mini': {
+    input_price_per_1m: 2.50, // Estimated - similar to GPT-4o
+    output_price_per_1m: 10.00,
+  },
+  'gpt-4.1-nano': {
+    input_price_per_1m: 0.25, // Estimated - cheaper than GPT-4o-mini
+    output_price_per_1m: 1.00,
+  },
+  // o-Series (Reasoning Models)
+  'o4': {
+    input_price_per_1m: 20.00, // Estimated - higher than GPT-5
+    output_price_per_1m: 80.00,
+  },
+  'o4-mini': {
+    input_price_per_1m: 4.00, // Estimated - premium reasoning
+    output_price_per_1m: 16.00,
+  },
+  'o3': {
+    input_price_per_1m: 18.00, // Estimated - similar to o4
+    output_price_per_1m: 72.00,
   },
   // GPT-4o Series
   'gpt-4o': {
@@ -49,7 +87,7 @@ const OPENAI_MODEL_PRICING: Record<string, ModelPricing> = {
     input_price_per_1m: 10.00,
     output_price_per_1m: 30.00,
   },
-  'gpt-4-turbo-2024-04-09': {
+  'gpt-4-turbo-preview': {
     input_price_per_1m: 10.00,
     output_price_per_1m: 30.00,
   },
@@ -70,15 +108,26 @@ const OPENAI_MODEL_PRICING: Record<string, ModelPricing> = {
 // Known context windows for OpenAI models
 const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   // GPT-5 Series (Reasoning Models)
-  'gpt-5.1': 200000, // 200K context
+  'gpt-5.1-2025-11-13': 200000, // 200K context (snapshot)
+  'gpt-5.1': 200000, // 200K context (alias)
   'gpt-5': 200000,
+  'gpt-5-mini': 128000,
+  'gpt-5-nano': 128000,
+  // GPT-4.1 Series (Reasoning Models)
+  'gpt-4.1': 128000,
+  'gpt-4.1-mini': 128000,
+  'gpt-4.1-nano': 128000,
+  // o-Series (Reasoning Models)
+  'o4': 128000,
+  'o4-mini': 128000,
+  'o3': 128000,
   // GPT-4o Series
   'gpt-4o': 128000,
   'gpt-4o-2024-11-20': 128000,
   'gpt-4o-mini': 128000,
   'gpt-4o-mini-2024-07-18': 128000,
   'gpt-4-turbo': 128000,
-  'gpt-4-turbo-2024-04-09': 128000,
+  'gpt-4-turbo-preview': 128000,
   'gpt-4': 8192,
   'gpt-3.5-turbo': 16385,
   'gpt-3.5-turbo-0125': 16385,
@@ -102,25 +151,39 @@ export class OpenAIAdapter implements LLMProviderAdapter {
       const client = this.createClient(apiKey)
       const response = await client.models.list()
 
-      // Filter for chat/text generation models only
-      const chatModels = response.data.filter(model => {
-        const id = model.id.toLowerCase()
-        
-        // Exclude non-text models
-        if (id.includes('whisper')) return false // Speech-to-text
-        if (id.includes('tts')) return false // Text-to-speech
-        if (id.includes('dall-e')) return false // Image generation
-        if (id.includes('davinci-002')) return false // Legacy completion
-        if (id.includes('babbage-002')) return false // Legacy completion
-        if (id.includes('embedding')) return false // Embeddings
-        if (id.includes('moderation')) return false // Moderation
-        if (id.includes('audio')) return false // Audio models
-        
-        // Only include GPT chat models and reasoning models
-        return id.startsWith('gpt-') || id.startsWith('chatgpt') || id.startsWith('o1')
-      })
+      console.log('[OpenAI] Raw models from API:', response.data.map(m => m.id).join(', '))
 
-      return chatModels.map(model => this.normalizeModel(model))
+      // Filter and normalize models
+      const chatModels = response.data
+        .filter(model => {
+          const id = model.id.toLowerCase()
+          
+          // Exclude non-text models
+          if (id.includes('whisper')) return false // Speech-to-text
+          if (id.includes('tts')) return false // Text-to-speech
+          if (id.includes('dall-e')) return false // Image generation
+          if (id.includes('davinci-002')) return false // Legacy completion
+          if (id.includes('babbage-002')) return false // Legacy completion
+          if (id.includes('embedding')) return false // Embeddings
+          if (id.includes('moderation')) return false // Moderation
+          if (id.includes('audio')) return false // Audio models
+          
+          // Include all GPT chat models and reasoning models (o1, o3, o4, etc.)
+          return id.startsWith('gpt-') || 
+                 id.startsWith('chatgpt') || 
+                 id.match(/^o\d/)  // Matches o1, o3, o4, etc.
+        })
+        .map(model => this.normalizeModel(model))
+
+      console.log('[OpenAI] After filtering:', chatModels.map(m => m.id).join(', '))
+
+      // Apply curation (imported from modelCuration module)
+      const { curateModels } = await import('../models/modelCuration')
+      const curated = curateModels(chatModels)
+      
+      console.log('[OpenAI] After curation:', curated.map(m => m.id).join(', '))
+      
+      return curated
     } catch (error: any) {
       if (error?.status === 401) {
         throw new InvalidAPIKeyError('openai', error)
@@ -175,10 +238,57 @@ export class OpenAIAdapter implements LLMProviderAdapter {
         }
       }
 
+      // Add structured output support (response_format)
+      if (params.response_format) {
+        requestParams.response_format = params.response_format
+      }
+
       const response = await client.chat.completions.create(requestParams)
 
+      // Handle structured output response
+      let content = response.choices[0]?.message?.content || ''
+      
+      console.log('🔍 [OpenAI Adapter] Response:', {
+        hasResponseFormat: !!params.response_format,
+        responseFormatType: params.response_format?.type,
+        contentLength: content.length,
+        contentPreview: content.substring(0, 200)
+      })
+      
+      // If response_format was used, the content is already structured JSON
+      if (params.response_format && params.response_format.type === 'json_schema') {
+        console.log('✅ [OpenAI Adapter] Using structured output path')
+        // Parse the JSON content and return as structured_output
+        try {
+          const parsedContent = JSON.parse(content)
+          console.log('✅ [OpenAI Adapter] Successfully parsed structured output:', {
+            keys: Object.keys(parsedContent),
+            hasReasoning: !!parsedContent.reasoning,
+            hasStructure: !!parsedContent.structure,
+            hasTasks: !!parsedContent.tasks,
+            hasMetadata: !!parsedContent.metadata
+          })
+          return {
+            content: content, // Keep raw JSON string for backwards compatibility
+            structured_output: parsedContent, // Add parsed object
+            usage: {
+              prompt_tokens: response.usage?.prompt_tokens || 0,
+              completion_tokens: response.usage?.completion_tokens || 0,
+              total_tokens: response.usage?.total_tokens || 0,
+            },
+            model: response.model,
+            finish_reason: response.choices[0]?.finish_reason || undefined,
+          }
+        } catch (e) {
+          // If parsing fails, fallback to standard response
+          console.warn('❌ [OpenAI Adapter] Failed to parse structured output:', e)
+        }
+      } else {
+        console.log('⚠️ [OpenAI Adapter] No response_format, using standard path')
+      }
+
       return {
-        content: response.choices[0]?.message?.content || '',
+        content,
         usage: {
           prompt_tokens: response.usage?.prompt_tokens || 0,
           completion_tokens: response.usage?.completion_tokens || 0,
@@ -240,7 +350,12 @@ export class OpenAIAdapter implements LLMProviderAdapter {
         }
       }
 
-      const stream = await client.chat.completions.create(requestParams)
+      // Add structured output support (response_format)
+      if (params.response_format) {
+        requestParams.response_format = params.response_format
+      }
+
+      const stream = await client.chat.completions.create(requestParams) as any
 
       // Stream the response
       for await (const chunk of stream) {

@@ -32,6 +32,8 @@ import { CanvasProvider } from '@/contexts/CanvasContext'
 import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/lib/stories'
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
 import { NodeType, StoryFormat, StoryStructureNodeData } from '@/types/nodes'
+import { MODEL_TIERS } from '@/lib/orchestrator/core/modelRouter'
+import { getOrchestrator } from '@/lib/orchestrator'
 
 // Node types for React Flow
 const nodeTypes = {
@@ -83,7 +85,7 @@ export default function CanvasPage() {
     id: string
     timestamp: string
     content: string
-    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user'
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
     role?: 'user' | 'orchestrator'
   }>>([])
 
@@ -849,70 +851,104 @@ export default function CanvasPage() {
   const prevAvailableAgentsRef = useRef(availableAgents)
   
   // Update structure nodes with latest agents when cluster nodes change
+  // ❌ TEMPORARILY DISABLED: This useEffect was causing infinite loops
+  // TODO: Re-enable and fix properly after debugging
+  // The issue is that updating structure nodes with availableAgents triggers
+  // ReactFlow/Zustand state changes that cascade into an infinite loop
+  /*
   useEffect(() => {
     if (isLoadingRef.current) return // Don't run during initial load
     
-    // Check if cluster count changed OR agent data changed (e.g., color, isActive)
+    // ✅ FIX: Only depend on clusterCount to avoid dependency loops
+    // Check if cluster count actually changed
     const countChanged = prevClusterCountRef.current !== clusterCount
-    const agentsChanged = JSON.stringify(prevAvailableAgentsRef.current) !== JSON.stringify(availableAgents)
     
-    if (!countChanged && !agentsChanged) return
+    if (!countChanged) return // Exit early if count hasn't changed
     
     prevClusterCountRef.current = clusterCount
-    prevAvailableAgentsRef.current = availableAgents
     
     if (clusterCount === 0) return
     
-    console.log('Cluster data changed, updating structure nodes with', availableAgents.length, 'agents')
+    console.log('Cluster count changed to', clusterCount, '- updating structure nodes')
     
-    // Update structure nodes with current agents
+    // Compute agents from current nodes state
     setNodes((currentNodes) => {
+      // Compute fresh agents from the current nodes
+      const currentAvailableAgents = currentNodes
+        .filter(n => n.type === 'clusterNode')
+        .map(n => ({
+          id: n.id,
+          agentNumber: n.data.agentNumber || 0,
+          color: n.data.color || '#9ca3af',
+          label: n.data.label || 'Agent',
+          isActive: n.data.isActive ?? true,
+          assignmentMode: n.data.assignmentMode || 'manual'
+        }))
+        .sort((a, b) => a.agentNumber - b.agentNumber)
+      
+      // Update structure nodes with fresh agent list
       return currentNodes.map((node) => {
         if (node.type === 'storyStructureNode') {
           return {
             ...node,
             data: {
               ...node.data,
-              availableAgents: availableAgents,
-              onAgentAssign: handleAgentAssign
+              availableAgents: currentAvailableAgents,
+              // ✅ onAgentAssign is already set when node is created, don't update it
             }
           }
         }
         return node
       })
     })
-  }, [clusterCount, availableAgents]) // When cluster count or data changes
+  }, [clusterCount]) // ✅ FIX: ONLY depend on clusterCount, not nodes or availableAgents
+  */
 
   // Handle Create Story node click - spawn new story structure node
-  const handleCreateStory = useCallback((format: StoryFormat, template?: string, userPromptDirect?: string) => {
-    console.log('handleCreateStory called with format:', format, 'template:', template, 'userPromptDirect:', userPromptDirect)
+  const handleCreateStory = useCallback(async (format: StoryFormat, template?: string, userPromptDirect?: string, plan?: any) => {
+    console.log('handleCreateStory called with format:', format, 'template:', template, 'userPromptDirect:', userPromptDirect, 'plan:', plan)
     
     // Generate unique ID for the story structure
     const structureId = `structure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     
-    // Get formatted title based on format
-    const formatLabels: Record<StoryFormat, string> = {
+    // Get formatted title based on format (including report subtypes)
+    const formatLabels: Record<string, string> = {
       'novel': 'Novel',
       'report': 'Report',
+      'report_script_coverage': 'Script Coverage Report',
+      'report_business': 'Business Report',
+      'report_content_analysis': 'Content Analysis Report',
       'short-story': 'Short Story',
       'article': 'Article',
       'screenplay': 'Screenplay',
       'essay': 'Essay',
       'podcast': 'Podcast'
     }
-    const title = formatLabels[format] || 'Story'
+    const title = formatLabels[format] || 'Document'
+    
+    // If plan is provided, convert it to items array
+    const initialItems = plan?.structure?.map((item: any, index: number) => ({
+      id: item.id,
+      level: item.level,
+      name: item.name,
+      summary: item.summary || '',
+      wordCount: item.wordCount || 0,
+      parentId: item.parentId || null,
+      order: item.order !== undefined ? item.order : index // Use array index as fallback order
+    })) || []
+    
+    console.log('📝 Creating node with items:', initialItems.length, 'items from plan')
     
     // Create new story structure node - positioned below the Ghostwriter node
-    // No default items - let user create structure from scratch
     const nodeData: StoryStructureNodeData = {
       label: title,
       comments: [],
       nodeType: 'story-structure' as const,
       format: format,
-      items: [], // Start empty - user will add items via panel
+      items: initialItems, // Use items from plan if available, otherwise start empty
       activeLevel: 1,
       template: template,
-      isLoading: true, // Start as loading
+      isLoading: !plan, // If plan provided, not loading. Otherwise, start as loading
       onItemClick: handleStructureItemClick,
       onItemsUpdate: (items: any[]) => handleStructureItemsUpdate(structureId, items),
       availableAgents: availableAgents, // Inject available agents
@@ -953,13 +989,20 @@ export default function CanvasPage() {
     // Save immediately to database so node exists for when items are clicked
     const saveAndFinalize = async () => {
       try {
+        console.log('💾 [saveAndFinalize] Starting save for node:', structureId, {
+          storyId,
+          hasNodes: nodes.length > 0,
+          saving
+        })
         await handleSave()
+        console.log('✅ [saveAndFinalize] Save completed for node:', structureId)
       } catch (error: any) {
         // Ignore duplicate key errors (node already exists)
         if (error?.code !== '23505') {
-          console.error('❌ Save error:', error)
+          console.error('❌ [saveAndFinalize] Save error:', error)
+          throw error // Re-throw non-duplicate errors
         } else {
-          console.log('⚠️ Node already exists in database, continuing...')
+          console.log('⚠️ [saveAndFinalize] Node already exists in database, continuing...')
         }
       }
       
@@ -971,6 +1014,19 @@ export default function CanvasPage() {
             : node
         )
       )
+    }
+    
+    // If plan is already provided, skip orchestration and just save
+    // ✅ FIX: Await the save to prevent race condition when opening document immediately after creation
+    if (plan) {
+      console.log('✅ Plan already provided by orchestrator, saving synchronously to prevent race condition')
+      try {
+        await saveAndFinalize()
+        console.log('✅ Node saved to database successfully')
+      } catch (err) {
+        console.error('❌ Failed to save new structure node:', err)
+      }
+      return // Exit early - no need to orchestrate again
     }
     
     // AUTO-GENERATE: Check if AI Prompt node is connected OR chat prompt exists
@@ -1076,11 +1132,9 @@ export default function CanvasPage() {
       // Set inference flag
       isInferencingRef.current = true
       
-      // Import orchestrator engine
-      const { OrchestratorEngine } = await import('@/lib/orchestrator/orchestratorEngine')
-      const { MODEL_CATALOG } = await import('@/lib/models/modelCapabilities')
+      // Use unified orchestrator for structure generation
       
-      // Get orchestrator node (no longer stores selectedModel/selectedKeyId)
+      // Get orchestrator node
       const orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
       
       console.log('🔍 Fetching user preferences...')
@@ -1120,7 +1174,16 @@ export default function CanvasPage() {
             provider: configuredKey.provider
           })
         } else {
-          console.log('⚠️ No orchestrator configured in any API key')
+          // No explicit orchestrator configured (Auto-select mode)
+          // Use first available API key for authentication
+          const firstKey = prefsData.keys[0]
+          userKeyId = firstKey.id
+          writerModelIds = firstKey.writer_model_ids || []
+          console.log('⚡ Auto-select mode: Using first API key:', {
+            keyId: userKeyId,
+            provider: firstKey.provider,
+            writers: writerModelIds.length
+          })
         }
       } else {
         console.log('❌ No API keys found')
@@ -1271,24 +1334,33 @@ export default function CanvasPage() {
         }
       }
       
-      // Create orchestrator engine with streaming support
-      const orchestrator = new OrchestratorEngine(
-        MODEL_CATALOG,
-        onReasoning,
-        user.id,
-        onModelStream // NEW: Stream model reasoning tokens
-      )
+      // Get unified orchestrator instance
+      const orchestrator = getOrchestrator(user.id, {
+        modelPriority: 'balanced',
+        enableRAG: false, // Canvas doesn't need RAG for structure generation
+        enablePatternLearning: true
+      })
       
       // Determine available models
       let availableModels: string[] = []
       let finalOrchestratorModel: string | null = null
       
-      // Priority 1: Use configured orchestrator model from Profile
+      // Priority 1: Use configured orchestrator model from Profile (with validation)
       if (orchestratorModelId) {
-        finalOrchestratorModel = orchestratorModelId
-        availableModels = [orchestratorModelId]
-        onReasoning(`✓ Using configured orchestrator: ${orchestratorModelId}`, 'decision')
-        console.log('[Canvas] Using Profile orchestrator:', orchestratorModelId)
+        // ✅ FIX: Validate configured model exists in MODEL_TIERS
+        const isValidModel = MODEL_TIERS.some(m => m.id === orchestratorModelId)
+        
+        if (isValidModel) {
+          finalOrchestratorModel = orchestratorModelId
+          availableModels = [orchestratorModelId]
+          onReasoning(`✓ Using configured orchestrator: ${orchestratorModelId}`, 'decision')
+          console.log('[Canvas] Using Profile orchestrator:', orchestratorModelId)
+        } else {
+          // Invalid model in database - fall back to auto-select
+          onReasoning(`⚠️ Configured model "${orchestratorModelId}" is no longer available. Auto-selecting...`, 'decision')
+          console.warn('[Canvas] Invalid orchestrator model in database:', orchestratorModelId)
+          orchestratorModelId = null // Trigger auto-select below
+        }
       } 
       // Priority 2: Fetch from API as fallback
       else {
@@ -1308,21 +1380,52 @@ export default function CanvasPage() {
             const firstGroup = groups[0]
             
             if (firstGroup.models && Array.isArray(firstGroup.models) && firstGroup.models.length > 0) {
-              const orchestratorModels = firstGroup.models.filter((m: any) => 
-                m.id && (m.id.includes('70b') || m.id.includes('gpt-4') || m.id.includes('claude'))
+              // VALIDATE: Only use models that exist in MODEL_TIERS
+              const validModelIds = MODEL_TIERS.map(m => m.id)
+              const validModels = firstGroup.models.filter((m: any) => 
+                m.id && validModelIds.includes(m.id)
               )
               
-              if (orchestratorModels.length > 0) {
-                finalOrchestratorModel = orchestratorModels[0].id
-                availableModels = [orchestratorModels[0].id]
-                onReasoning(`✓ Auto-selected: ${orchestratorModels[0].name || orchestratorModels[0].id}`, 'decision')
-                console.log('[Canvas] Auto-selected orchestrator:', finalOrchestratorModel)
+              console.log('[Canvas] Model validation:', {
+                total: firstGroup.models.length,
+                valid: validModels.length,
+                validModelIds,
+                firstGroupModels: firstGroup.models.map((m: any) => m.id)
+              })
+              
+              if (validModels.length === 0) {
+                onReasoning(`⚠️ No valid models found in your preferences. Using default...`, 'decision')
+                // Use the first frontier or premium model from MODEL_TIERS that user has access to
+                const defaultModel = MODEL_TIERS.find(m => 
+                  (m.tier === 'frontier' || m.tier === 'premium') && 
+                  firstGroup.provider === m.provider
+                )
+                if (defaultModel) {
+                  finalOrchestratorModel = defaultModel.id
+                  availableModels = [defaultModel.id]
+                  onReasoning(`✓ Using default: ${defaultModel.displayName}`, 'decision')
+                } else {
+                  throw new Error(`No valid models available for ${firstGroup.provider}. Please update your model preferences.`)
+                }
               } else {
-                // Fallback to any available model
-                finalOrchestratorModel = firstGroup.models[0].id
-                availableModels = [firstGroup.models[0].id]
-                onReasoning(`✓ Using: ${firstGroup.models[0].name || firstGroup.models[0].id}`, 'decision')
-                console.log('[Canvas] Fallback orchestrator:', finalOrchestratorModel)
+                // Prefer frontier/premium models from validated list
+                const orchestratorModels = validModels.filter((m: any) => {
+                  const tierModel = MODEL_TIERS.find(tm => tm.id === m.id)
+                  return tierModel && (tierModel.tier === 'frontier' || tierModel.tier === 'premium')
+                })
+                
+                if (orchestratorModels.length > 0) {
+                  finalOrchestratorModel = orchestratorModels[0].id
+                  availableModels = [orchestratorModels[0].id]
+                  onReasoning(`✓ Auto-selected: ${orchestratorModels[0].name || orchestratorModels[0].id}`, 'decision')
+                  console.log('[Canvas] Auto-selected orchestrator:', finalOrchestratorModel)
+                } else {
+                  // Fallback to any valid model
+                  finalOrchestratorModel = validModels[0].id
+                  availableModels = [validModels[0].id]
+                  onReasoning(`✓ Using: ${validModels[0].name || validModels[0].id}`, 'decision')
+                  console.log('[Canvas] Fallback orchestrator:', finalOrchestratorModel)
+                }
               }
             }
           } else {
@@ -1343,6 +1446,10 @@ export default function CanvasPage() {
       console.log('🎯 Available models:', availableModels)
       console.log('🎯 Final orchestrator:', finalOrchestratorModel)
       
+      // Log to UI for visibility
+      onReasoning(`🎯 Selected model: ${finalOrchestratorModel}`, 'decision')
+      onReasoning(`🎯 Available models: ${availableModels.join(', ')}`, 'thinking')
+      
       // Validate we have at least one model
       if (availableModels.length === 0 || !finalOrchestratorModel) {
         const errorMsg = 'No models available. Please:\n\n1. Go to Profile page\n2. Add an API key (Groq, OpenAI, or Anthropic)\n3. Click "Model Configuration"\n4. Select an orchestrator model\n5. Save your preferences\n6. Try generating again'
@@ -1355,16 +1462,58 @@ export default function CanvasPage() {
       
       onReasoning(`📝 Analyzing prompt: "${effectivePrompt.substring(0, 100)}..."`, 'thinking')
       
-      // Call orchestrator to create plan
-      const plan = await orchestrator.orchestrate(
-        effectivePrompt,
-        format,
-        {
-          orchestratorModel: finalOrchestratorModel,
-          availableModels,
-          userKeyId: userKeyId ?? undefined
+      // Get available providers from API keys
+      const availableProviders = prefsData.keys
+        ?.map((k: any) => k.provider)
+        .filter(Boolean) || []
+      
+      onReasoning(`🔑 Available providers: ${availableProviders.join(', ')}`, 'thinking')
+      
+      // Call unified orchestrator to create structure
+      const response = await orchestrator.orchestrate({
+        message: effectivePrompt,
+        canvasNodes: nodes,
+        canvasEdges: edges,
+        documentFormat: format,
+        userKeyId: userKeyId || undefined,
+        fixedModelId: finalOrchestratorModel || undefined,
+        availableProviders,
+        modelMode: finalOrchestratorModel ? 'fixed' : 'automatic'
+      })
+      
+      // Extract plan from generate_structure action
+      console.log('🔍 [triggerOrchestratedGeneration] Response actions:', response.actions.map(a => ({ type: a.type, status: a.status })))
+      
+      const structureAction = response.actions.find(a => a.type === 'generate_structure')
+      
+      if (!structureAction) {
+        console.error('❌ [triggerOrchestratedGeneration] No generate_structure action found')
+        console.log('Available actions:', response.actions)
+        
+        // Check if there's an error message action instead
+        const errorAction = response.actions.find(a => a.type === 'message' && a.status === 'failed')
+        if (errorAction) {
+          onReasoning(`❌ ${errorAction.payload.content}`, 'error')
+          throw new Error(errorAction.payload.content)
         }
-      )
+        
+        throw new Error(`Orchestrator did not return a structure plan. Intent was: ${response.intent}. Actions: ${response.actions.map(a => a.type).join(', ')}`)
+      }
+      
+      if (!structureAction.payload?.plan) {
+        console.error('❌ [triggerOrchestratedGeneration] Structure action found but no plan in payload:', structureAction)
+        throw new Error('Structure action found but plan is missing from payload')
+      }
+      
+      const plan = structureAction.payload.plan
+      console.log('✅ [triggerOrchestratedGeneration] Plan extracted successfully')
+      
+      // Display orchestrator's thinking steps
+      if (response.thinkingSteps && response.thinkingSteps.length > 0) {
+        response.thinkingSteps.forEach(step => {
+          onReasoning(step.content, step.type as any)
+        })
+      }
       
       onReasoning(`✅ Plan created: ${plan.structure.length} sections, ${plan.tasks.length} tasks`, 'result')
       
@@ -1398,6 +1547,46 @@ export default function CanvasPage() {
       )
       
       onReasoning(`📊 Structure initialized with ${structureItems.length} sections`, 'result')
+      
+      // ✅ CRITICAL: Initialize document_data in database for hierarchical system
+      try {
+        onReasoning('💾 Initializing hierarchical document system...', 'progress')
+        
+        const { DocumentManager } = await import('@/lib/document/DocumentManager')
+        const supabase = createClient()
+        
+        // Map StoryFormat to DocumentManager format (only supports subset)
+        let docManagerFormat: 'novel' | 'screenplay' | 'report'
+        if (format === 'short-story') {
+          docManagerFormat = 'novel'
+        } else if (format === 'novel' || format === 'screenplay' || format === 'report') {
+          docManagerFormat = format
+        } else {
+          // podcast, essay, article, custom → default to report
+          docManagerFormat = 'report'
+        }
+        
+        // Create document_data from structure items
+        const docManager = DocumentManager.fromStructureItems(structureItems, docManagerFormat)
+        const documentData = docManager.getData()
+        
+        // Save to database
+        const { error: saveError } = await supabase
+          .from('nodes')
+          .update({ document_data: documentData })
+          .eq('id', structureNodeId)
+        
+        if (saveError) {
+          console.error('❌ Failed to initialize document_data:', saveError)
+          onReasoning('⚠️ Warning: Document structure saved to canvas but not to database', 'error')
+        } else {
+          console.log('✅ document_data initialized successfully')
+          onReasoning('✅ Hierarchical document system initialized', 'result')
+        }
+      } catch (initError) {
+        console.error('❌ Error initializing document_data:', initError)
+        onReasoning('⚠️ Warning: Could not initialize hierarchical document', 'error')
+      }
       
       // Save canvas with structure
       hasUnsavedChangesRef.current = true
@@ -1791,9 +1980,8 @@ export default function CanvasPage() {
         [segmentId]: data.content
       }))
       
-      // CRITICAL: Save generated content to Supabase sections
-      // This ensures content persists and appears in document view
-      console.log('💾 Saving generated content to Supabase section:', {
+      // ✅ NEW HIERARCHICAL SYSTEM: Save content to document_data JSONB
+      console.log('💾 Saving generated content to hierarchical document:', {
         segmentId,
         contentLength: data.content.length,
         nodeId: currentStoryStructureNodeId
@@ -1802,39 +1990,62 @@ export default function CanvasPage() {
       try {
         const supabase = createClient()
         
-        // Update or insert the section content
-        const { data: sectionData, error: sectionError } = await supabase
-          .from('document_sections')
-          .upsert({
-            story_structure_node_id: currentStoryStructureNodeId,
-            structure_item_id: segmentId,
-            content: data.content,
-            word_count: data.content.split(/\s+/).filter((w: string) => w.length > 0).length,
-            status: 'completed',
-            order_index: currentStructureItems.findIndex((item: any) => item.id === segmentId)
-          }, {
-            onConflict: 'story_structure_node_id,structure_item_id',
-            ignoreDuplicates: false
-          })
-          .select()
+        // Fetch current document_data
+        const { data: nodeData, error: fetchError } = await supabase
+          .from('nodes')
+          .select('document_data')
+          .eq('id', currentStoryStructureNodeId)
+          .single()
         
-        if (sectionError) {
-          console.error('❌ Failed to save section to Supabase:', sectionError)
-          // Don't throw - content is still in local state
-        } else {
-          console.log('✅ Section saved to Supabase:', sectionData)
+        if (fetchError) {
+          console.error('❌ Failed to fetch document_data:', fetchError)
+        } else if (nodeData?.document_data) {
+          // Import DocumentManager dynamically
+          const { DocumentManager } = await import('@/lib/document/DocumentManager')
           
-          // Refresh sections in document panel to show new content
-          if (refreshSectionsRef.current) {
-            console.log('🔄 Refreshing sections in document panel...')
-            await refreshSectionsRef.current()
+          // Load existing document
+          const docManager = new DocumentManager(nodeData.document_data)
+          
+          // Update the segment content
+          const success = docManager.updateContent(segmentId, data.content)
+          
+          if (success) {
+            // Save back to database
+            const { error: updateError } = await supabase
+              .from('nodes')
+              .update({ document_data: docManager.getData() })
+              .eq('id', currentStoryStructureNodeId)
+            
+            if (updateError) {
+              console.error('❌ Failed to save document_data:', updateError)
+            } else {
+              console.log('✅ Content saved to hierarchical document')
+              
+              // ✅ Update canvas node with new document_data (includes updated word count)
+              const updatedDocumentData = docManager.getData()
+              setNodes((nds) => nds.map((n) => 
+                n.id === currentStoryStructureNodeId
+                  ? { ...n, data: { ...n.data, document_data: updatedDocumentData } }
+                  : n
+              ))
+              
+              console.log('🔄 Canvas node updated with new word count:', updatedDocumentData.totalWordCount)
+              
+              // Refresh document panel to show new content
+              if (refreshSectionsRef.current) {
+                console.log('🔄 Refreshing document view...')
+                await refreshSectionsRef.current()
+              }
+            }
           } else {
-            console.warn('⚠️ No refresh function available - sections may not update in UI')
+            console.error('❌ Failed to update segment in DocumentManager')
           }
+        } else {
+          console.warn('⚠️ No document_data found - content only in local state')
         }
       } catch (saveError) {
-        console.error('❌ Error saving section:', saveError)
-        // Don't throw - content is still in local state
+        console.error('❌ Error saving to hierarchical document:', saveError)
+        // Don't throw - content is still in local contentMap
       }
       
       // Add success message
@@ -2924,10 +3135,10 @@ export default function CanvasPage() {
             })
           }}
           canvasChatHistory={canvasChatHistory}
-          onAddChatMessage={(message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user') => {
+          onAddChatMessage={(message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => {
             // Auto-detect type from message content if not provided
             const actualRole = role || 'orchestrator'
-            let messageType: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' = type || 'user'
+            let messageType: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress' = type || 'user'
             
             if (!type && actualRole === 'orchestrator') {
               // Auto-detect based on message prefix emojis

@@ -14,6 +14,11 @@ export interface GenerateParams {
   max_tokens: number
   temperature?: number
   top_p?: number
+  // Structured output support (Phase 3)
+  response_format?: any // OpenAI/Groq: JSON schema or json_object
+  tools?: any[] // Anthropic: Tool definitions
+  tool_choice?: any // Anthropic: Force tool use
+  use_function_calling?: boolean // Google: Function calling
 }
 
 /**
@@ -33,6 +38,7 @@ export interface ProviderGenerateResponse {
   usage: ProviderUsage
   model: string
   finish_reason?: string
+  structured_output?: any // Phase 3: Parsed structured output (when response_format is used)
 }
 
 /**

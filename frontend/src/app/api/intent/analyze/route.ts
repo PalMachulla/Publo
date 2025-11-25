@@ -25,9 +25,33 @@ export async function POST(request: NextRequest) {
     }
     
     // Parse request body
-    const { system_prompt, user_prompt, conversation_history, temperature = 0.3 } = await request.json()
+    let body
+    try {
+      body = await request.json()
+    } catch (parseError) {
+      console.error('[API /intent/analyze] Failed to parse request body:', parseError)
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400 }
+      )
+    }
+    
+    const { system_prompt, user_prompt, conversation_history, temperature = 0.3 } = body
+    
+    console.log('[API /intent/analyze] Request params:', {
+      hasSystemPrompt: !!system_prompt,
+      systemPromptLength: system_prompt?.length || 0,
+      hasUserPrompt: !!user_prompt,
+      userPromptLength: user_prompt?.length || 0,
+      hasConversationHistory: !!conversation_history,
+      temperature
+    })
     
     if (!system_prompt || !user_prompt) {
+      console.error('[API /intent/analyze] Missing required fields:', {
+        system_prompt: system_prompt ? 'present' : 'MISSING',
+        user_prompt: user_prompt ? 'present' : 'MISSING'
+      })
       return NextResponse.json(
         { error: 'Missing required fields: system_prompt, user_prompt' },
         { status: 400 }

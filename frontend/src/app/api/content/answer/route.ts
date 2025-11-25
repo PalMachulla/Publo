@@ -12,27 +12,35 @@ import { decryptAPIKey } from '@/lib/security/encryption'
 import { LLMProvider } from '@/types/api-keys'
 
 export async function POST(request: NextRequest) {
+  console.log('[API /content/answer] ===== REQUEST START =====')
   try {
+    console.log('[API /content/answer] Step 1: Creating Supabase client')
     const supabase = await createClient()
     
+    console.log('[API /content/answer] Step 2: Verifying authentication')
     // Verify authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
+      console.error('[API /content/answer] Auth failed:', authError)
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
+    console.log('[API /content/answer] User authenticated:', user.id)
     
+    console.log('[API /content/answer] Step 3: Parsing request body')
     // Parse request body
     const { question, context } = await request.json()
     
     if (!question) {
+      console.error('[API /content/answer] Missing question')
       return NextResponse.json(
         { error: 'Missing required field: question' },
         { status: 400 }
       )
     }
+    console.log('[API /content/answer] Question received:', question.substring(0, 100))
     
     console.log('[API /content/answer] Request:', { 
       question, 
@@ -46,9 +54,10 @@ export async function POST(request: NextRequest) {
       })) : []
     })
     
+    console.log('[API /content/answer] Step 4: Fetching configured orchestrator model')
     // Get configured orchestrator directly from user_api_keys
     // This respects the selection made in the CreateStoryPanel dropdown
-    const { data: configuredKeys } = await supabase
+    const { data: configuredKeys, error: keysFetchError } = await supabase
       .from('user_api_keys')
       .select('id, provider, encrypted_key, orchestrator_model_id, nickname')
       .eq('user_id', user.id)
@@ -56,6 +65,14 @@ export async function POST(request: NextRequest) {
       .eq('validation_status', 'valid')
       .not('orchestrator_model_id', 'is', null)
       .limit(1)
+
+    if (keysFetchError) {
+      console.error('[API /content/answer] Failed to fetch keys:', keysFetchError)
+      return NextResponse.json(
+        { error: 'Failed to fetch API keys configuration', details: keysFetchError.message },
+        { status: 500 }
+      )
+    }
 
     let orchestratorModelId: string
     let userKey: any
@@ -74,7 +91,7 @@ export async function POST(request: NextRequest) {
     } else {
       // Fallback: Try to find a valid Groq key for default model
       console.log('[API /content/answer] No orchestrator configured, attempting fallback to Groq')
-      const { data: groqKey } = await supabase
+      const { data: groqKey, error: groqError } = await supabase
         .from('user_api_keys')
         .select('id, provider, encrypted_key, nickname')
         .eq('user_id', user.id)
@@ -84,13 +101,21 @@ export async function POST(request: NextRequest) {
         .limit(1)
         .maybeSingle()
       
+      if (groqError) {
+        console.error('[API /content/answer] Failed to fetch Groq key:', groqError)
+        return NextResponse.json(
+          { error: 'Failed to fetch fallback API key', details: groqError.message },
+          { status: 500 }
+        )
+      }
+      
       if (groqKey) {
         userKey = groqKey
         provider = 'groq'
         orchestratorModelId = 'llama-3.3-70b-versatile'
         console.log('[API /content/answer] Fallback successful: Using default Llama 3.3')
       } else {
-        // No keys at all?
+        console.error('[API /content/answer] No API keys found at all')
         return NextResponse.json(
           { error: 'No active API keys found. Please add an API key in Settings -> API Keys.' },
           { status: 400 }
@@ -98,13 +123,35 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    console.log('[API /content/answer] Step 5: Decrypting API key')
     // Decrypt the API key
-    const apiKey = decryptAPIKey(userKey.encrypted_key)
+    let apiKey: string
+    try {
+      apiKey = decryptAPIKey(userKey.encrypted_key)
+      console.log('[API /content/answer] API key decrypted successfully')
+    } catch (decryptError) {
+      console.error('[API /content/answer] Failed to decrypt API key:', decryptError)
+      return NextResponse.json(
+        { error: 'Failed to decrypt API key', details: decryptError instanceof Error ? decryptError.message : 'Unknown error' },
+        { status: 500 }
+      )
+    }
 
-    
+    console.log('[API /content/answer] Step 6: Getting provider adapter for:', provider)
     // Get provider adapter
-    const adapter = getProviderAdapter(provider)
+    let adapter: any
+    try {
+      adapter = getProviderAdapter(provider)
+      console.log('[API /content/answer] Provider adapter obtained successfully')
+    } catch (adapterError) {
+      console.error('[API /content/answer] Failed to get provider adapter:', adapterError)
+      return NextResponse.json(
+        { error: 'Failed to initialize provider adapter', details: adapterError instanceof Error ? adapterError.message : 'Unknown error' },
+        { status: 500 }
+      )
+    }
     
+    console.log('[API /content/answer] Step 7: Building context string')
     // Build context string
     let contextString = ''
     if (context) {
@@ -171,6 +218,7 @@ Be conversational, insightful, and provide actionable suggestions when appropria
 
 Please answer this question based on the available context. Be helpful and specific.`
     
+    console.log('[API /content/answer] Step 8: Configuring model parameters')
     // Detect if this is a reasoning model (o1, gpt-5, etc.) that restricts parameters
     const isReasoningModel = orchestratorModelId.toLowerCase().includes('o1') || 
                              orchestratorModelId.toLowerCase().includes('gpt-5')
@@ -194,13 +242,63 @@ Please answer this question based on the available context. Be helpful and speci
       generateOptions.temperature = 0.7
     }
     
-    // Generate answer using provider adapter with streaming
-    const stream = await adapter.generateStream(apiKey, generateOptions)
+    console.log('[API /content/answer] Calling generateStream with options:', {
+      model: orchestratorModelId,
+      hasApiKey: !!apiKey,
+      optionsKeys: Object.keys(generateOptions)
+    })
     
-    console.log('[API /content/answer] Streaming response started')
+    // Generate answer using provider adapter with streaming
+    // ✅ FIX: Wrap in try-catch to handle stream creation errors
+    let asyncGenerator: AsyncGenerator<any>
+    try {
+      asyncGenerator = adapter.generateStream(apiKey, generateOptions)
+      console.log('[API /content/answer] Async generator created successfully')
+    } catch (streamError) {
+      console.error('[API /content/answer] Stream creation failed:', streamError)
+      return NextResponse.json(
+        { 
+          error: streamError instanceof Error ? streamError.message : 'Failed to create response stream',
+          details: 'The model may not support streaming or the configuration is invalid.'
+        },
+        { status: 500 }
+      )
+    }
+    
+    console.log('[API /content/answer] Step 9: Converting async generator to ReadableStream')
+    
+    // ✅ FIX: Convert async generator (yields objects) to ReadableStream (emits text)
+    const textStream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of asyncGenerator) {
+            // Extract text from the object based on chunk type
+            if (chunk.type === 'content' && chunk.content) {
+              // Emit plain text (not object)
+              controller.enqueue(new TextEncoder().encode(chunk.content))
+            } else if (chunk.type === 'done') {
+              // Stream complete
+              controller.close()
+              return
+            } else if (chunk.type === 'error') {
+              // Handle error
+              controller.error(new Error(chunk.error || 'Stream error'))
+              return
+            }
+          }
+          // Generator exhausted
+          controller.close()
+        } catch (error) {
+          console.error('[API /content/answer] Stream error:', error)
+          controller.error(error)
+        }
+      }
+    })
+    
+    console.log('[API /content/answer] Returning streaming response')
     
     // Return streaming response as plain text stream (not SSE)
-    return new Response(stream, {
+    return new Response(textStream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache',
@@ -210,9 +308,17 @@ Please answer this question based on the available context. Be helpful and speci
     })
     
   } catch (error) {
-    console.error('[API /content/answer] Error:', error)
+    console.error('[API /content/answer] ===== CAUGHT ERROR =====')
+    console.error('[API /content/answer] Error type:', error?.constructor?.name)
+    console.error('[API /content/answer] Error message:', error instanceof Error ? error.message : String(error))
+    console.error('[API /content/answer] Error stack:', error instanceof Error ? error.stack : 'No stack trace')
+    console.error('[API /content/answer] ===========================')
+    
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to answer question' },
+      { 
+        error: error instanceof Error ? error.message : 'Failed to answer question',
+        type: error?.constructor?.name || 'UnknownError'
+      },
       { status: 500 }
     )
   }

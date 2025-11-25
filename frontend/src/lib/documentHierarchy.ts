@@ -116,6 +116,183 @@ export const DOCUMENT_HIERARCHY: DocumentHierarchy = {
         }
       ]
     },
+    report_script_coverage: {
+      description: "Industry-standard screenplay coverage report",
+      hierarchy: [
+        {
+          level: 1,
+          name: "Executive Summary",
+          optional: false,
+          description: "High-level overview with Pass/Consider/Recommend rating"
+        },
+        {
+          level: 1,
+          name: "Logline",
+          optional: false,
+          description: "One-sentence story premise"
+        },
+        {
+          level: 1,
+          name: "Synopsis",
+          optional: false,
+          description: "2-3 paragraph plot summary"
+        },
+        {
+          level: 1,
+          name: "Character Analysis",
+          optional: false,
+          description: "Main characters and their arcs"
+        },
+        {
+          level: 2,
+          name: "Character",
+          optional: false,
+          description: "Individual character breakdown"
+        },
+        {
+          level: 1,
+          name: "Dialogue & Pacing",
+          optional: false,
+          description: "Quality assessment of dialogue and story flow"
+        },
+        {
+          level: 1,
+          name: "Structure & Plot",
+          optional: false,
+          description: "Story structure effectiveness"
+        },
+        {
+          level: 1,
+          name: "Marketability",
+          optional: false,
+          description: "Commercial potential and target audience"
+        },
+        {
+          level: 2,
+          name: "Target Audience",
+          optional: false,
+          description: "Who this screenplay is for"
+        },
+        {
+          level: 2,
+          name: "Comparable Titles",
+          optional: true,
+          description: "Similar successful films/shows"
+        },
+        {
+          level: 1,
+          name: "Recommendation",
+          optional: false,
+          description: "Final verdict: Pass/Consider/Recommend"
+        }
+      ]
+    },
+    report_business: {
+      description: "Business analysis or strategic report",
+      hierarchy: [
+        {
+          level: 1,
+          name: "Executive Summary",
+          optional: false,
+          description: "Key findings and recommendations at a glance"
+        },
+        {
+          level: 1,
+          name: "Introduction & Background",
+          optional: false,
+          description: "Context and purpose of the report"
+        },
+        {
+          level: 1,
+          name: "Methodology",
+          optional: true,
+          description: "How data was gathered and analyzed"
+        },
+        {
+          level: 1,
+          name: "Findings & Analysis",
+          optional: false,
+          description: "Main body of research and insights"
+        },
+        {
+          level: 2,
+          name: "Section",
+          optional: false,
+          description: "Thematic findings sections"
+        },
+        {
+          level: 3,
+          name: "Subsection",
+          optional: true,
+          description: "Detailed breakdowns"
+        },
+        {
+          level: 1,
+          name: "Recommendations",
+          optional: false,
+          description: "Actionable next steps"
+        },
+        {
+          level: 1,
+          name: "Conclusion",
+          optional: false,
+          description: "Summary and final thoughts"
+        }
+      ]
+    },
+    report_content_analysis: {
+      description: "Analysis report for podcasts, articles, or media content",
+      hierarchy: [
+        {
+          level: 1,
+          name: "Executive Summary",
+          optional: false,
+          description: "Overview of content and key takeaways"
+        },
+        {
+          level: 1,
+          name: "Content Overview",
+          optional: false,
+          description: "What the content covers"
+        },
+        {
+          level: 1,
+          name: "Key Themes & Topics",
+          optional: false,
+          description: "Main subjects discussed"
+        },
+        {
+          level: 2,
+          name: "Theme",
+          optional: false,
+          description: "Individual theme breakdown"
+        },
+        {
+          level: 1,
+          name: "Notable Insights",
+          optional: false,
+          description: "Standout moments or revelations"
+        },
+        {
+          level: 1,
+          name: "Quality Assessment",
+          optional: false,
+          description: "Production value, clarity, engagement"
+        },
+        {
+          level: 1,
+          name: "Audience & Impact",
+          optional: false,
+          description: "Who this is for and its effectiveness"
+        },
+        {
+          level: 1,
+          name: "Key Takeaways",
+          optional: false,
+          description: "Actionable insights for the audience"
+        }
+      ]
+    },
     article: {
       description: "Editorial or blog post",
       hierarchy: [
@@ -288,5 +465,112 @@ export function getPrimaryStructuralLevel(documentType: string): string | null {
   // Find the first non-optional level, or return the first level
   const primaryLevel = hierarchy.find(level => !level.optional) || hierarchy[0]
   return primaryLevel.name
+}
+
+/**
+ * Recommend report type based on source document format
+ */
+export interface ReportTypeRecommendation {
+  id: string
+  label: string
+  description: string
+  formatKey: string // The key in DOCUMENT_HIERARCHY.document_types
+}
+
+export function recommendReportType(sourceFormat: string): ReportTypeRecommendation[] {
+  const normalizedSource = sourceFormat?.toLowerCase().replace(/-/g, '_')
+  
+  if (normalizedSource === 'screenplay') {
+    return [
+      {
+        id: 'script_coverage',
+        label: 'Script Coverage Report',
+        description: 'Industry-standard coverage with Pass/Consider/Recommend rating (Recommended)',
+        formatKey: 'report_script_coverage'
+      },
+      {
+        id: 'content_analysis',
+        label: 'Story Analysis',
+        description: 'Thematic breakdown and narrative insights',
+        formatKey: 'report_content_analysis'
+      },
+      {
+        id: 'business',
+        label: 'Development Report',
+        description: 'Production feasibility and market analysis',
+        formatKey: 'report_business'
+      },
+      {
+        id: 'general',
+        label: 'General Report',
+        description: 'Flexible report structure',
+        formatKey: 'report'
+      }
+    ]
+  } else if (normalizedSource === 'podcast' || normalizedSource === 'article') {
+    return [
+      {
+        id: 'content_analysis',
+        label: 'Content Analysis Report',
+        description: 'Key themes, insights, and takeaways (Recommended)',
+        formatKey: 'report_content_analysis'
+      },
+      {
+        id: 'business',
+        label: 'Performance Report',
+        description: 'Audience engagement and impact analysis',
+        formatKey: 'report_business'
+      },
+      {
+        id: 'general',
+        label: 'General Report',
+        description: 'Flexible report structure',
+        formatKey: 'report'
+      }
+    ]
+  } else if (normalizedSource === 'novel' || normalizedSource === 'short_story') {
+    return [
+      {
+        id: 'content_analysis',
+        label: 'Editorial Assessment',
+        description: 'Literary analysis with publishing considerations (Recommended)',
+        formatKey: 'report_content_analysis'
+      },
+      {
+        id: 'script_coverage',
+        label: 'Reader\'s Report',
+        description: 'Synopsis, strengths/weaknesses, recommendation',
+        formatKey: 'report_script_coverage'
+      },
+      {
+        id: 'general',
+        label: 'General Report',
+        description: 'Flexible report structure',
+        formatKey: 'report'
+      }
+    ]
+  }
+  
+  // Default for unknown sources
+  return [
+    {
+      id: 'general',
+      label: 'General Report',
+      description: 'Flexible report structure',
+      formatKey: 'report'
+    },
+    {
+      id: 'business',
+      label: 'Business Report',
+      description: 'Strategic analysis with recommendations',
+      formatKey: 'report_business'
+    },
+    {
+      id: 'content_analysis',
+      label: 'Content Analysis',
+      description: 'Thematic breakdown and insights',
+      formatKey: 'report_content_analysis'
+    }
+  ]
 }
 

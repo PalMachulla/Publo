@@ -25,7 +25,11 @@ export async function POST(request: Request) {
       temperature, 
       top_p,
       mode = 'legacy', // NEW: orchestrator | writer | legacy (default)
-      stream = false    // NEW: Enable streaming responses (SSE)
+      stream = false,   // NEW: Enable streaming responses (SSE)
+      response_format,  // NEW: Structured outputs (OpenAI, Groq)
+      tools,            // NEW: Tool use (Anthropic)
+      tool_choice,      // NEW: Force tool (Anthropic)
+      use_function_calling // NEW: Function calling (Google)
     } = body
     
     const supabase = await createClient()
@@ -110,19 +114,62 @@ export async function POST(request: Request) {
         )
       }
 
-      apiKey = decryptAPIKey(userKey.encrypted_key)
-      keyId = user_key_id
-      keyOwnerId = userKey.user_id
-      provider = userKey.provider as LLMProvider
+      // ✅ FIX: Detect provider from model and check for mismatch
+      const detectedProvider = detectProviderFromModel(model)
+      const isProviderMismatch = detectedProvider !== userKey.provider
       
-      console.log(`✅ Using API key:`, {
-        keyId: user_key_id,
-        provider,
-        model,
-        detectedProvider: detectProviderFromModel(model),
-        keyProviderFromDB: userKey.provider,
-        isProviderMismatch: detectProviderFromModel(model) !== userKey.provider
-      })
+      if (isProviderMismatch) {
+        console.warn(`⚠️ Provider mismatch detected!`, {
+          keyId: user_key_id,
+          keyProvider: userKey.provider,
+          model,
+          detectedProvider,
+        })
+        
+        // Find the correct provider's key
+        const { data: correctKey } = await supabase
+          .from('user_api_keys')
+          .select('id, encrypted_key, provider, is_active, validation_status, nickname')
+          .eq('user_id', user.id)
+          .eq('provider', detectedProvider)
+          .eq('is_active', true)
+          .eq('validation_status', 'valid')
+          .limit(1)
+          .single()
+        
+        if (correctKey) {
+          console.log(`✅ Switched to correct ${detectedProvider} key:`, {
+            from: userKey.provider,
+            to: detectedProvider,
+            model
+          })
+          apiKey = decryptAPIKey(correctKey.encrypted_key)
+          keyId = correctKey.id
+          keyOwnerId = user.id
+          provider = detectedProvider
+        } else {
+          return NextResponse.json(
+            { 
+              error: `Model ${model} requires ${detectedProvider.toUpperCase()} API key, but you only have ${userKey.provider.toUpperCase()} configured.`,
+              provider: detectedProvider,
+              details: 'Please add your API key for this provider at /settings/api-keys'
+            },
+            { status: 400 }
+          )
+        }
+      } else {
+        // No mismatch, use the provided key
+        apiKey = decryptAPIKey(userKey.encrypted_key)
+        keyId = user_key_id
+        keyOwnerId = userKey.user_id
+        provider = userKey.provider as LLMProvider
+        
+        console.log(`✅ Using API key:`, {
+          keyId: user_key_id,
+          provider,
+          model,
+        })
+      }
     } else if (user) {
       // Try to find user's key for this provider automatically
       const { data: userKeys } = await supabase
@@ -186,6 +233,10 @@ export async function POST(request: Request) {
                 max_tokens,
                 temperature,
                 top_p,
+                response_format,
+                tools,
+                tool_choice,
+                use_function_calling
               })
               
               // Send as single chunk
@@ -207,6 +258,10 @@ export async function POST(request: Request) {
               max_tokens,
               temperature,
               top_p,
+              response_format,
+              tools,
+              tool_choice,
+              use_function_calling
             })) {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
             }
@@ -251,6 +306,10 @@ export async function POST(request: Request) {
         max_tokens,
         temperature,
         top_p,
+        response_format,
+        tools,
+        tool_choice,
+        use_function_calling
       })
     } catch (error: any) {
       console.error('❌ Generation failed:', {
@@ -307,30 +366,32 @@ export async function POST(request: Request) {
 
     // Return response based on mode
     if (mode === 'orchestrator') {
-      // Orchestrator mode: expect JSON response from model
-      try {
-        const plan = JSON.parse(generationResult.content)
-        
-        return NextResponse.json({
-          success: true,
-          plan, // Parsed JSON plan
-          usage: generationResult.usage,
-          cost,
-          model: generationResult.model,
-          provider,
-          timestamp: new Date().toISOString(),
-        })
-      } catch (parseError: any) {
-        console.error('❌ Failed to parse orchestrator JSON response:', parseError)
-        return NextResponse.json(
-          { 
-            error: 'Orchestrator returned invalid JSON',
-            details: parseError.message,
-            rawContent: generationResult.content.substring(0, 500)
-          },
-          { status: 500 }
-        )
+      // Orchestrator mode: return structured output if available, otherwise parse JSON
+      const response: any = {
+        success: true,
+        content: generationResult.content, // Raw content (may be JSON string)
+        usage: generationResult.usage,
+        cost,
+        model: generationResult.model,
+        provider,
+        timestamp: new Date().toISOString(),
       }
+      
+      // If the provider adapter returned structured_output, include it
+      if ((generationResult as any).structured_output) {
+        response.structured_output = (generationResult as any).structured_output
+        console.log('✅ Including structured_output in API response')
+      } else {
+        // Try to parse content as JSON for backward compatibility
+        try {
+          response.plan = JSON.parse(generationResult.content)
+          console.log('✅ Parsed content as JSON plan')
+        } catch (parseError) {
+          console.warn('⚠️ Content is not valid JSON, returning as-is')
+        }
+      }
+      
+      return NextResponse.json(response)
     } else if (mode === 'writer') {
       // Writer mode: return plain text content
       return NextResponse.json({
