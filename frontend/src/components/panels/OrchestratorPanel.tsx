@@ -2665,6 +2665,47 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
           </div>
         )}
         
+        {/* ✅ Clarification UI - shown when waiting for user to select an option */}
+        {pendingClarification && (
+          <div className="mb-4 p-4 border-2 rounded-lg bg-purple-50 border-purple-300">
+            {/* Clarification message (already displayed in chat, this is just the options) */}
+            <p className="text-sm font-medium text-gray-900 mb-3">
+              Please select an option:
+            </p>
+            
+            {/* Clarification options */}
+            <div className="space-y-2">
+              {pendingClarification.options.map((option, idx) => (
+                <button
+                  key={option.id}
+                  onClick={() => {
+                    // Send the option label as the user's response
+                    handleSendMessage_NEW(option.label)
+                  }}
+                  className="w-full flex items-start gap-3 p-3 bg-white border-2 border-gray-200 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-all text-left group"
+                >
+                  <span className="text-sm font-bold text-purple-600 min-w-[24px]">
+                    {idx + 1}.
+                  </span>
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-900 group-hover:text-purple-700">
+                      {option.label}
+                    </div>
+                    {option.description && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        {option.description}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+              <p className="text-xs text-gray-500 mt-2">
+                💬 Or describe your choice: &quot;{pendingClarification.options[0]?.label.toLowerCase()}&quot;
+              </p>
+            </div>
+          </div>
+        )}
+        
         {/* Confirmation UI - shown when waiting for user confirmation */}
         {pendingConfirmation && (
           <div className={`mb-4 p-4 border-2 rounded-lg ${
