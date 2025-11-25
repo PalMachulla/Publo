@@ -54,7 +54,10 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     // Step 1: Call parent to analyze and generate actions
     const response = await super.orchestrate(request)
     
-    // Step 2: Execute actions with agents (if any)
+    // Step 2: Get the blackboard message count BEFORE agent execution
+    const messagesBefore = this.getBlackboard().getRecentMessages(1000).length
+    
+    // Step 3: Execute actions with agents (if any)
     if (response.actions && response.actions.length > 0) {
       const sessionId = `session-${Date.now()}`
       
@@ -65,7 +68,8 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       })
       
       try {
-        await this.executeActionsWithAgents(response.actions, sessionId)
+        // Pass the request so agents have access to currentStoryStructureNodeId
+        await this.executeActionsWithAgents(response.actions, sessionId, request)
         
         this.getBlackboard().addMessage({
           role: 'orchestrator',
@@ -81,6 +85,23 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
           type: 'error'
         })
       }
+    }
+    
+    // Step 4: Extract NEW messages for UI display (messages added during agent execution)
+    const messagesAfter = this.getBlackboard().getRecentMessages(1000)
+    const newMessages = messagesAfter.slice(messagesBefore)
+    
+    // Step 5: Add new messages to thinkingSteps for UI display
+    if (newMessages.length > 0) {
+      const agentSteps = newMessages.map(m => ({
+        content: m.content,
+        type: m.type || 'progress'
+      }))
+      
+      // Append agent messages to existing thinking steps
+      response.thinkingSteps = [...(response.thinkingSteps || []), ...agentSteps]
+      
+      console.log(`📨 [MultiAgentOrchestrator] Added ${agentSteps.length} agent messages to UI`)
     }
     
     return response
@@ -176,7 +197,8 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
    */
   async executeActionsWithAgents(
     actions: OrchestratorAction[],
-    sessionId: string = `session-${Date.now()}`
+    sessionId: string = `session-${Date.now()}`,
+    request?: any // Pass request for accessing currentStoryStructureNodeId
   ): Promise<void> {
     if (actions.length === 0) {
       console.log('⚠️ [MultiAgentOrchestrator] No actions to execute')
@@ -198,15 +220,15 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     // Route to appropriate execution method
     switch (strategy) {
       case 'sequential':
-        await this.executeSequential(actions)
+        await this.executeSequential(actions, request)
         break
         
       case 'parallel':
-        await this.executeParallel(actions, sessionId)
+        await this.executeParallel(actions, sessionId, request)
         break
         
       case 'cluster':
-        await this.executeCluster(actions, sessionId)
+        await this.executeCluster(actions, sessionId, request)
         break
     }
   }
@@ -215,7 +237,7 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
   // SEQUENTIAL EXECUTION
   // ============================================================
   
-  private async executeSequential(actions: OrchestratorAction[]): Promise<void> {
+  private async executeSequential(actions: OrchestratorAction[], request?: any): Promise<void> {
     console.log(`⏭️ [MultiAgentOrchestrator] Executing ${actions.length} action(s) sequentially`)
     
     this.getBlackboard().addMessage({
@@ -249,7 +271,8 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
   
   private async executeParallel(
     actions: OrchestratorAction[],
-    sessionId: string
+    sessionId: string,
+    request?: any
   ): Promise<void> {
     console.log(`🔀 [MultiAgentOrchestrator] Executing ${actions.length} action(s) in parallel`)
     
@@ -324,7 +347,8 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
   
   private async executeCluster(
     actions: OrchestratorAction[],
-    sessionId: string
+    sessionId: string,
+    request?: any
   ): Promise<void> {
     console.log(`🔄 [MultiAgentOrchestrator] Executing with writer-critic cluster`)
     
@@ -386,9 +410,17 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       })
       
       // Save result to database
-      const worldState = (this as any).worldState // Access protected worldState from base class
-      const storyStructureNodeId = worldState?.getState().canvas.activeDocumentNodeId
+      // Try to get node ID from request first (most reliable), then WorldState
+      const storyStructureNodeId = request?.currentStoryStructureNodeId || 
+                                   (this as any).worldState?.getState().canvas.activeDocumentNodeId
       const sectionId = task.payload.context?.section?.id
+      
+      console.log(`💾 [MultiAgentOrchestrator] Attempting to save content:`, {
+        hasNodeId: !!storyStructureNodeId,
+        hasSectionId: !!sectionId,
+        nodeId: storyStructureNodeId,
+        sectionId
+      })
       
       if (storyStructureNodeId && sectionId) {
         console.log(`💾 [MultiAgentOrchestrator] Saving content to database...`)
