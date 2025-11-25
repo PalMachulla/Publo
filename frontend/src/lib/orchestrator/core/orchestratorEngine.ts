@@ -770,28 +770,29 @@ export class OrchestratorEngine {
           
           console.log('🔍 [Canvas Awareness] Existing docs:', existingDocs)
           
-          // If there's content in those documents, suggest using them as inspiration
-          const docsWithContent = existingDocs.filter(d => d.hasContent)
+          // ✅ SIMPLIFIED: Don't check for content (nodes don't have it loaded)
+          // Just ask when creating a DIFFERENT format than what exists
+          const differentFormats = existingDocs.filter(d => d.format !== request.documentFormat)
           
-          console.log('🔍 [Canvas Awareness] Docs with content:', docsWithContent)
-          if (docsWithContent.length > 0) {
-            const docNames = docsWithContent.map(d => d.name).join(', ')
+          console.log('🔍 [Canvas Awareness] Different format docs:', differentFormats)
+          
+          if (differentFormats.length > 0) {
+            const docNames = differentFormats.map(d => `"${d.name}" (${d.format})`).join(', ')
             
-            console.log('✅ [Canvas Awareness] Requesting clarification - docs with content found!')
+            console.log('✅ [Canvas Awareness] Requesting clarification - different formats exist!')
             
             actions.push({
               type: 'request_clarification',
               payload: {
-                originalAction: 'create_structure', // ✅ FIX: Required by handler
-                message: `I see you already have ${docsWithContent.length === 1 ? 'a' : ''} ${docsWithContent.map(d => d.format).join(' and ')} (${docNames}) with content. Would you like me to:\n\n1. Base the ${request.documentFormat} on the existing content\n2. Create something completely new\n\nPlease let me know which you prefer!`, // ✅ FIX: Changed from 'question' to 'message'
+                originalAction: 'create_structure',
+                message: `I see you already have ${differentFormats.length === 1 ? 'a' : ''} ${differentFormats.map(d => d.format).join(' and ')} on the canvas (${docNames}).\n\nWould you like me to:\n\n1. Base the ${request.documentFormat} on the existing ${differentFormats[0].format}\n2. Create something completely new\n\nWhat's your preference?`,
                 options: [
-                  { id: 'use_existing', label: 'Base it on existing content', description: `Use ${docNames} as inspiration` },
-                  { id: 'create_new', label: 'Create something new', description: 'Start from scratch with a fresh story' }
+                  { id: 'use_existing', label: `Base it on ${differentFormats[0].format}`, description: `Use existing story as inspiration` },
+                  { id: 'create_new', label: 'Create something new', description: 'Start from scratch' }
                 ],
-                // Store context for when user responds
                 documentFormat: request.documentFormat,
                 userMessage: request.message,
-                existingDocs: docsWithContent
+                existingDocs: differentFormats
               },
               status: 'pending'
             })
@@ -807,7 +808,7 @@ export class OrchestratorEngine {
             // ✅ CRITICAL: Return early to prevent further action generation
             return actions
           } else {
-            console.log('⚠️ [Canvas Awareness] No docs with content found, continuing with generation')
+            console.log('⚠️ [Canvas Awareness] Same format or no conflicts, continuing with generation')
           }
         }
         
