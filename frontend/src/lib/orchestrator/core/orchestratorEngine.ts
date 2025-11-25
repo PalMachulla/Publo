@@ -704,12 +704,18 @@ export class OrchestratorEngine {
             node.data?.format &&
             node.data?.items?.length > 0
           )
-          .map((node: any) => ({
-            id: node.id,
-            name: node.data.label || node.data.name || 'Untitled',
-            format: node.data.format,
-            hasContent: Object.keys(node.data.contentMap || {}).length > 0
-          }))
+          .map((node: any) => {
+            // ✅ FIX: Check BOTH legacy contentMap AND new document_data for content
+            const hasLegacyContent = Object.keys(node.data.contentMap || {}).length > 0
+            const hasHierarchicalContent = node.data.document_data?.structure?.some((seg: any) => seg.content && seg.content.length > 0)
+            
+            return {
+              id: node.id,
+              name: node.data.label || node.data.name || 'Untitled',
+              format: node.data.format,
+              hasContent: hasLegacyContent || hasHierarchicalContent
+            }
+          })
         
         // If creating a new document while others exist, offer to base it on existing content
         if (existingDocs.length > 0 && !request.message.toLowerCase().includes('based on') && !request.message.toLowerCase().includes('from scratch')) {
@@ -719,10 +725,16 @@ export class OrchestratorEngine {
             type: 'thinking'
           })
           
+          console.log('🔍 [Canvas Awareness] Existing docs:', existingDocs)
+          
           // If there's content in those documents, suggest using them as inspiration
           const docsWithContent = existingDocs.filter(d => d.hasContent)
+          
+          console.log('🔍 [Canvas Awareness] Docs with content:', docsWithContent)
           if (docsWithContent.length > 0) {
             const docNames = docsWithContent.map(d => d.name).join(', ')
+            
+            console.log('✅ [Canvas Awareness] Requesting clarification - docs with content found!')
             
             actions.push({
               type: 'request_clarification',
@@ -747,8 +759,12 @@ export class OrchestratorEngine {
               type: 'decision'
             })
             
+            console.log('🔙 [Canvas Awareness] Returning early with clarification action')
+            
             // ✅ CRITICAL: Return early to prevent further action generation
             return actions
+          } else {
+            console.log('⚠️ [Canvas Awareness] No docs with content found, continuing with generation')
           }
         }
         
