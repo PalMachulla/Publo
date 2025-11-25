@@ -78,13 +78,19 @@ export function useHierarchicalDocument({
       setLoading(true)
       setError(null)
 
+      // ✅ FIX: Select entire node row, not just document_data
+      // This prevents 406 error when document_data is NULL
       const { data, error: fetchError } = await supabaseRef.current
         .from('nodes')
-        .select('document_data')
+        .select('id, document_data')
         .eq('id', nodeId)
         .single()
 
-      if (fetchError) throw fetchError
+      if (fetchError) {
+        // If node doesn't exist at all, throw
+        console.error('❌ [useHierarchicalDocument] Fetch error:', fetchError)
+        throw fetchError
+      }
 
       // If document_data exists, use it; otherwise, initialize from structure items
       if (data?.document_data) {
