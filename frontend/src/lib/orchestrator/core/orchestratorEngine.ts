@@ -2492,18 +2492,29 @@ Which option did the user select? Return ONLY the option ID.`
 
 const orchestrators = new Map<string, OrchestratorEngine>()
 
-export function getOrchestrator(userId: string, config?: Partial<OrchestratorConfig>): OrchestratorEngine {
-  if (!orchestrators.has(userId)) {
-    orchestrators.set(userId, new OrchestratorEngine({
+export function getOrchestrator(
+  userId: string, 
+  config?: Partial<OrchestratorConfig>,
+  worldState?: WorldStateManager // PHASE 1: Accept WorldState
+): OrchestratorEngine {
+  // PHASE 1: For now, create new orchestrator each time if WorldState is provided
+  // This ensures WorldState is always fresh. Later, we'll implement state updates.
+  const cacheKey = userId + (worldState ? '-ws' : '')
+  
+  if (!orchestrators.has(cacheKey) || worldState) {
+    orchestrators.set(cacheKey, new OrchestratorEngine({
       userId,
       ...config
-    }))
+    }, worldState)) // PHASE 1: Pass WorldState to constructor
   }
-  return orchestrators.get(userId)!
+  return orchestrators.get(cacheKey)!
 }
 
-export function createOrchestrator(config: OrchestratorConfig): OrchestratorEngine {
-  const orchestrator = new OrchestratorEngine(config)
+export function createOrchestrator(
+  config: OrchestratorConfig, 
+  worldState?: WorldStateManager // PHASE 1: Accept WorldState
+): OrchestratorEngine {
+  const orchestrator = new OrchestratorEngine(config, worldState) // PHASE 1: Pass WorldState
   orchestrators.set(config.userId, orchestrator)
   return orchestrator
 }

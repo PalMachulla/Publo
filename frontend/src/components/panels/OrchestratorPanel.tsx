@@ -410,7 +410,24 @@ export default function OrchestratorPanel({
   // ============================================================
   // TODO: This will eventually replace individual props passed to orchestrator
   // For now, we build it in parallel for gradual migration
+  
+  // FIX: Use stable dependency to prevent rebuild loop
+  // Only rebuild when node/edge structure actually changes, not on every render
+  const canvasStateKey = useMemo(() => 
+    JSON.stringify({
+      nodeIds: canvasNodes.map(n => n.id).sort(),
+      edgeIds: canvasEdges.map(e => e.id).sort(),
+      activeDocId: currentStoryStructureNodeId,
+      activeSectionId: activeContext?.id,
+      docPanelOpen: isDocumentViewOpen,
+      modelMode,
+      fixedModel: configuredModel.orchestrator
+    }),
+    [canvasNodes, canvasEdges, currentStoryStructureNodeId, activeContext?.id, isDocumentViewOpen, modelMode, configuredModel.orchestrator]
+  )
+  
   const worldState = useMemo(() => {
+    console.log('🔧 [WorldState] Rebuilding (canvasStateKey changed)')
     // We don't have user.id yet (fetched async), so we'll pass empty string
     // and update it in the orchestrate call
     return buildWorldStateFromReactFlow(
@@ -431,28 +448,23 @@ export default function OrchestratorPanel({
         orchestratorKeyId: undefined // Will be set from activeKeyId
       }
     )
-  }, [
-    canvasNodes,
-    canvasEdges,
-    currentStoryStructureNodeId,
-    activeContext?.id,
-    isDocumentViewOpen,
-    modelMode,
-    fixedModeStrategy,
-    configuredModel.orchestrator
-  ])
+  }, [canvasStateKey]) // FIX: Only depend on stable key, not raw arrays
   
-  // Debug: Log WorldState on changes
+  // Debug: Log WorldState on changes (reduced logging to prevent spam)
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
-      console.log('🗺️ [WorldState] Built:', {
-        version: worldState.getState().meta.version,
-        canvasNodes: worldState.getAllNodes().length,
-        canvasEdges: worldState.getAllEdges().length,
-        activeDocId: worldState.getActiveDocument().nodeId,
-        selectedSectionId: worldState.getActiveSectionId(),
-        documentPanelOpen: worldState.isDocumentPanelOpen()
-      })
+      // Only log on meaningful changes, not every rebuild
+      const state = worldState.getState()
+      if (state.meta.version === 1) { // Only log initial build
+        console.log('🗺️ [WorldState] Initial build:', {
+          version: state.meta.version,
+          canvasNodes: worldState.getAllNodes().length,
+          canvasEdges: worldState.getAllEdges().length,
+          activeDocId: worldState.getActiveDocument().nodeId,
+          selectedSectionId: worldState.getActiveSectionId(),
+          documentPanelOpen: worldState.isDocumentPanelOpen()
+        })
+      }
     }
   }, [worldState])
   
@@ -602,8 +614,16 @@ export default function OrchestratorPanel({
         // Continue with static MODEL_TIERS (backward compatible)
       }
       
-      // Call the new orchestrator
-      const response = await getOrchestrator(user.id).orchestrate({
+      // Call the new orchestrator with WorldState
+      // PHASE 1: Update WorldState with user.id before passing
+      worldState.update(draft => {
+        draft.user.id = user.id
+        draft.user.availableProviders = availableProviders
+        draft.user.availableModels = availableModelsToPass || []
+        draft.user.apiKeys.orchestratorKeyId = userKeyId
+      })
+      
+      const response = await getOrchestrator(user.id, undefined, worldState).orchestrate({
         message,
         canvasNodes,
         canvasEdges,
@@ -795,7 +815,14 @@ export default function OrchestratorPanel({
     
     // Send back to orchestrator WITH clarification context
     try {
-      const orchestratorResponse = await getOrchestrator(user.id).orchestrate({
+      // PHASE 1: Update WorldState before clarification response
+      worldState.update(draft => {
+        draft.user.id = user.id
+        draft.user.availableProviders = availableProviders
+        draft.user.apiKeys.orchestratorKeyId = userKeyId
+      })
+      
+      const orchestratorResponse = await getOrchestrator(user.id, undefined, worldState).orchestrate({
         message: response,
         canvasNodes,
         canvasEdges,
