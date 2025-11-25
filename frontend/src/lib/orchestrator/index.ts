@@ -21,6 +21,7 @@
 export {
   OrchestratorEngine,
   getOrchestrator,
+  getMultiAgentOrchestrator, // PHASE 3: Multi-agent support
   createOrchestrator,
   type OrchestratorConfig,
   type OrchestratorRequest,

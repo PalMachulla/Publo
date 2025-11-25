@@ -2705,6 +2705,23 @@ export function getOrchestrator(
   return orchestrators.get(cacheKey)!
 }
 
+// PHASE 3: Multi-Agent Orchestrator Factory
+// Import at runtime to avoid circular dependency
+export function getMultiAgentOrchestrator(
+  userId: string,
+  config?: Partial<OrchestratorConfig>,
+  worldState?: WorldStateManager
+): any { // Return type is MultiAgentOrchestrator, but we avoid import here
+  // Always create new instance for now (agent pool needs fresh state)
+  // TODO: Implement proper caching with state updates
+  const { MultiAgentOrchestrator } = require('../agents/MultiAgentOrchestrator')
+  
+  return new MultiAgentOrchestrator({
+    userId,
+    ...config
+  }, worldState)
+}
+
 export function createOrchestrator(
   config: OrchestratorConfig, 
   worldState?: WorldStateManager // PHASE 1: Accept WorldState

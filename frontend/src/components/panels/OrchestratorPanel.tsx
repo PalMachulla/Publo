@@ -14,7 +14,8 @@ import {
   Button
 } from '@/components/ui'
 import { 
-  getOrchestrator, 
+  getOrchestrator,
+  getMultiAgentOrchestrator, // PHASE 3: Multi-agent support
   buildCanvasContext, 
   type OrchestratorRequest,
   type OrchestratorAction,
@@ -655,7 +656,8 @@ export default function OrchestratorPanel({
         draft.user.apiKeys.orchestratorKeyId = userKeyId
       })
       
-      const response = await getOrchestrator(user.id, { toolRegistry }, worldState).orchestrate({
+      // PHASE 3: Use multi-agent orchestrator for intelligent task coordination
+      const response = await getMultiAgentOrchestrator(user.id, { toolRegistry }, worldState).orchestrate({
         message,
         canvasNodes,
         canvasEdges,
@@ -854,7 +856,8 @@ export default function OrchestratorPanel({
         draft.user.apiKeys.orchestratorKeyId = userKeyId
       })
       
-      const orchestratorResponse = await getOrchestrator(user.id, { toolRegistry }, worldState).orchestrate({
+      // PHASE 3: Use multi-agent orchestrator for clarification responses too
+      const orchestratorResponse = await getMultiAgentOrchestrator(user.id, { toolRegistry }, worldState).orchestrate({
         message: response,
         canvasNodes,
         canvasEdges,
