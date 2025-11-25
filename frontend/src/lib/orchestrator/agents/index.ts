@@ -42,6 +42,9 @@ export { CriticAgent } from './CriticAgent'
 // Agent Clusters
 export { WriterCriticCluster } from './clusters/WriterCriticCluster'
 
-// TODO: Export when implemented
-// export { MultiAgentOrchestrator } from './MultiAgentOrchestrator'
+// Multi-Agent Orchestrator
+export { MultiAgentOrchestrator } from './MultiAgentOrchestrator'
+
+// Observability
+export { ExecutionTracer, getTracer } from './ExecutionTracer'
 
