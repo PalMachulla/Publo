@@ -63,6 +63,13 @@ export interface OrchestratorRequest {
   availableProviders?: string[]
   // Structure generation (for create_structure intent)
   userKeyId?: string // API key ID for structure generation
+  // Clarification response context (when user is responding to a request_clarification action)
+  clarificationContext?: {
+    originalAction: string // 'create_structure', 'open_and_write', 'delete_node'
+    question: string // The question that was asked
+    options: Array<{id: string, label: string, description: string}>
+    payload: any // Original action payload (documentFormat, userMessage, existingDocs, etc.)
+  }
 }
 
 export interface OrchestratorResponse {
@@ -139,6 +146,11 @@ export class OrchestratorEngine {
    */
   async orchestrate(request: OrchestratorRequest): Promise<OrchestratorResponse> {
     const startTime = Date.now()
+    
+    // NEW: Handle clarification responses (user responding to request_clarification)
+    if (request.clarificationContext) {
+      return await this.handleClarificationResponse(request)
+    }
     
     // Step 1: Update blackboard with current state
     this.blackboard.updateCanvas(request.canvasNodes, request.canvasEdges)
@@ -1595,6 +1607,288 @@ Generate a complete structure plan with:
     instructions += '\n\nIMPORTANT: Only generate structure items for the FIRST 3-4 hierarchy levels. Do not include individual paragraphs, sentences, or lines in your structure plan.'
     
     return instructions
+  }
+
+  /**
+   * Handle clarification response (user responding to request_clarification action)
+   * Uses LLM reasoning to interpret natural language responses like "Go with the first option"
+   */
+  private async handleClarificationResponse(request: OrchestratorRequest): Promise<OrchestratorResponse> {
+    const { clarificationContext, message } = request
+    
+    if (!clarificationContext) {
+      throw new Error('handleClarificationResponse called without clarificationContext')
+    }
+    
+    this.blackboard.addMessage({
+      role: 'orchestrator',
+      content: `🔍 Interpreting clarification response...`,
+      type: 'thinking'
+    })
+    
+    // Build context for LLM to understand which option user selected
+    const optionsList = clarificationContext.options
+      .map((opt, idx) => `${idx + 1}. [${opt.id}] ${opt.label} - ${opt.description}`)
+      .join('\n')
+    
+    const systemPrompt = `You are an intelligent option selector. Parse the user's natural language response to determine which option they selected from a list.
+
+Available options:
+${optionsList}
+
+Return ONLY the option ID (e.g., "use_podcast", "create_new", "use_screenplay") with NO additional text, explanation, or formatting.
+
+Examples:
+- User: "#1" or "1" or "first" → Return: ${clarificationContext.options[0]?.id}
+- User: "Go with the first option" → Return: ${clarificationContext.options[0]?.id}
+- User: "Let's use the podcast" → Return: use_podcast (if that's option 1)
+- User: "Create something new" → Return: create_new`
+
+    const userPrompt = `Original question: "${clarificationContext.question}"
+
+User's response: "${message}"
+
+Which option did the user select? Return ONLY the option ID.`
+
+    try {
+      // Use fast model for simple classification
+      const response = await fetch('/api/intent/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_prompt: systemPrompt,
+          user_prompt: userPrompt,
+          temperature: 0.1 // Low temp for consistent classification
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to interpret clarification: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      const selectedOptionId = data.content.trim()
+      
+      // Find the selected option
+      const selectedOption = clarificationContext.options.find(opt => opt.id === selectedOptionId)
+      
+      if (!selectedOption) {
+        // Fallback: Try to match by content
+        const lowerMessage = message.toLowerCase()
+        const fallbackOption = clarificationContext.options.find(opt =>
+          lowerMessage.includes(opt.label.toLowerCase()) ||
+          lowerMessage.includes(opt.id.toLowerCase()) ||
+          lowerMessage.match(/^#?(\d+)$/)?.[1] === String(clarificationContext.options.indexOf(opt) + 1)
+        )
+        
+        if (fallbackOption) {
+          console.log('⚠️ [Clarification] LLM returned invalid ID, using fallback match')
+          return this.buildActionFromClarification(
+            clarificationContext.originalAction,
+            fallbackOption,
+            clarificationContext.payload,
+            request
+          )
+        }
+        
+        // If still no match, return error
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `❌ I didn't understand "${message}". Please choose by number (e.g., "1") or by name.`,
+          type: 'error'
+        })
+        
+        return {
+          intent: 'general_chat',
+          confidence: 0.3,
+          reasoning: 'Failed to interpret clarification response',
+          modelUsed: 'llama-3.1-8b-instant',
+          actions: [],
+          canvasChanged: false,
+          requiresUserInput: true,
+          estimatedCost: 0.0001
+        }
+      }
+      
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `✅ Understood: "${selectedOption.label}"`,
+        type: 'decision'
+      })
+      
+      // Build appropriate action based on original action type
+      return this.buildActionFromClarification(
+        clarificationContext.originalAction,
+        selectedOption,
+        clarificationContext.payload,
+        request
+      )
+      
+    } catch (error) {
+      console.error('❌ [Clarification] Error:', error)
+      
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `❌ Error interpreting response: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error'
+      })
+      
+      return {
+        intent: 'general_chat',
+        confidence: 0.2,
+        reasoning: 'Error processing clarification response',
+        modelUsed: 'none',
+        actions: [],
+        canvasChanged: false,
+        requiresUserInput: true,
+        estimatedCost: 0
+      }
+    }
+  }
+
+  /**
+   * Build appropriate action based on clarification selection
+   */
+  private async buildActionFromClarification(
+    originalAction: string,
+    selectedOption: {id: string, label: string, description: string},
+    payload: any,
+    request: OrchestratorRequest
+  ): Promise<OrchestratorResponse> {
+    
+    if (originalAction === 'create_structure') {
+      const { documentFormat, userMessage, existingDocs } = payload
+      
+      if (selectedOption.id === 'create_new') {
+        // User wants to create something new (ignore existing docs)
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `✅ Creating new ${documentFormat} from scratch...`,
+          type: 'result'
+        })
+        
+        // Return action to create new structure (add "from scratch" to bypass future clarification)
+        const enhancedPrompt = `${userMessage} from scratch`
+        
+        return {
+          intent: 'create_structure',
+          confidence: 0.95,
+          reasoning: `User chose to create new ${documentFormat} from scratch`,
+          modelUsed: 'none',
+          actions: [{
+            type: 'message',
+            payload: {
+              content: `✅ Creating new ${documentFormat} from scratch...`,
+              intent: 'create_structure',
+              format: documentFormat,
+              prompt: enhancedPrompt
+            },
+            status: 'pending'
+          }],
+          canvasChanged: false, // Canvas change will happen when UI executes onCreateStory
+          requiresUserInput: false,
+          estimatedCost: 0
+        }
+      } else {
+        // User wants to base it on an existing doc
+        const selectedDocId = selectedOption.id.replace('use_', '')
+        const selectedDoc = existingDocs.find((d: any) => d.id === selectedDocId)
+        
+        if (selectedDoc) {
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `✅ Creating ${documentFormat} based on "${selectedDoc.name}" (${selectedDoc.format})...`,
+            type: 'result'
+          })
+          
+          // Return action to create structure with reference to existing doc
+          const enhancedPrompt = `${userMessage} based on ${selectedDoc.name}`
+          
+          return {
+            intent: 'create_structure',
+            confidence: 0.95,
+            reasoning: `User chose to base ${documentFormat} on ${selectedDoc.format}`,
+            modelUsed: 'none',
+            actions: [{
+              type: 'message',
+              payload: {
+                content: `✅ Creating ${documentFormat} based on "${selectedDoc.name}"...`,
+                intent: 'create_structure',
+                format: documentFormat,
+                prompt: enhancedPrompt,
+                referenceDoc: selectedDocId
+              },
+              status: 'pending'
+            }],
+            canvasChanged: false, // Canvas change will happen when UI executes onCreateStory
+            requiresUserInput: false,
+            estimatedCost: 0
+          }
+        }
+      }
+    } else if (originalAction === 'open_and_write') {
+      // User selected which node to open
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `✅ Opening "${selectedOption.label}"...`,
+        type: 'result'
+      })
+      
+      return {
+        intent: 'open_and_write',
+        confidence: 0.95,
+        reasoning: `User selected node to open: ${selectedOption.label}`,
+        modelUsed: 'none',
+        actions: [{
+          type: 'open_document',
+          payload: {
+            nodeId: selectedOption.id,
+            sectionId: null
+          },
+          status: 'pending'
+        }],
+        canvasChanged: false,
+        requiresUserInput: false,
+        estimatedCost: 0
+      }
+    } else if (originalAction === 'delete_node') {
+      // User selected which node to delete
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `✅ Deleting "${selectedOption.label}"...`,
+        type: 'result'
+      })
+      
+      return {
+        intent: 'delete_node',
+        confidence: 0.95,
+        reasoning: `User confirmed deletion of: ${selectedOption.label}`,
+        modelUsed: 'none',
+        actions: [{
+          type: 'delete_node',
+          payload: {
+            nodeId: selectedOption.id,
+            nodeName: selectedOption.label
+          },
+          status: 'pending'
+        }],
+        canvasChanged: true,
+        requiresUserInput: false,
+        estimatedCost: 0
+      }
+    }
+    
+    // Fallback
+    return {
+      intent: 'general_chat',
+      confidence: 0.5,
+      reasoning: `Unknown original action: ${originalAction}`,
+      modelUsed: 'none',
+      actions: [],
+      canvasChanged: false,
+      requiresUserInput: false,
+      estimatedCost: 0
+    }
   }
 }
 

@@ -691,7 +691,7 @@ export default function OrchestratorPanel({
     return Date.now() > confirmation.expiresAt
   }
   
-  // ✅ NEW: Handle clarification response (for request_clarification actions)
+  // ✅ REFACTORED: Handle clarification response by sending back to orchestrator for LLM reasoning
   const handleClarificationResponse = async (response: string) => {
     if (!pendingClarification) {
       console.warn('No pending clarification')
@@ -707,65 +707,75 @@ export default function OrchestratorPanel({
     }
     setChatMessage('')
     
-    // Parse user response to find selected option
-    // Support: "#1", "1", "option 1", or the actual label text
-    const lowerResponse = response.toLowerCase().trim()
-    let selectedOption: typeof pendingClarification.options[0] | undefined
-    
-    // Try matching by number (#1, 1, option 1)
-    const numberMatch = lowerResponse.match(/^#?(\d+)|option\s*(\d+)/)
-    if (numberMatch) {
-      const optionIndex = parseInt(numberMatch[1] || numberMatch[2]) - 1 // Convert to 0-based
-      if (optionIndex >= 0 && optionIndex < pendingClarification.options.length) {
-        selectedOption = pendingClarification.options[optionIndex]
-      }
-    }
-    
-    // Try matching by label or description
-    if (!selectedOption) {
-      selectedOption = pendingClarification.options.find(opt => 
-        lowerResponse.includes(opt.label.toLowerCase()) ||
-        lowerResponse.includes(opt.description.toLowerCase()) ||
-        lowerResponse.includes(opt.id.toLowerCase())
-      )
-    }
-    
-    if (!selectedOption) {
-      if (onAddChatMessage) {
-        onAddChatMessage(`❌ I didn't understand "${response}". Please choose by number (e.g., "1", "#2") or by name.`, 'orchestrator', 'error')
-      }
+    // Get user ID for orchestration
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      console.error('User not authenticated')
       return
     }
     
-    console.log('✅ [Clarification] Selected option:', selectedOption)
+    // Get available providers
+    const availableProviders = Array.from(new Set(availableOrchestrators.map(m => m.provider)))
+    const userKeyId = availableOrchestrators.length > 0 ? availableOrchestrators[0].keyId : undefined
     
-    // Handle based on the original action
-    if (pendingClarification.action === 'create_structure') {
-      const { documentFormat, userMessage, existingDocs } = pendingClarification.payload
+    // Send back to orchestrator WITH clarification context
+    try {
+      const orchestratorResponse = await getOrchestrator(user.id).orchestrate({
+        message: response,
+        canvasNodes,
+        canvasEdges,
+        activeContext: activeContext || undefined,
+        isDocumentViewOpen,
+        documentFormat: pendingClarification.payload.documentFormat || selectedFormat,
+        structureItems,
+        contentMap,
+        currentStoryStructureNodeId,
+        modelMode,
+        fixedModeStrategy: modelMode === 'fixed' ? fixedModeStrategy : undefined,
+        fixedModelId: modelMode === 'fixed' ? configuredModel.orchestrator : undefined,
+        availableProviders: availableProviders.length > 0 ? availableProviders : undefined,
+        userKeyId,
+        // NEW: Pass clarification context
+        clarificationContext: {
+          originalAction: pendingClarification.action,
+          question: pendingClarification.payload.message,
+          options: pendingClarification.options,
+          payload: pendingClarification.payload
+        }
+      })
       
-      if (selectedOption.id === 'create_new') {
-        // User wants to create something new (ignore existing docs)
-        if (onAddChatMessage) {
-          onAddChatMessage(`✅ Creating new ${documentFormat} from scratch...`, 'orchestrator', 'result')
-        }
+      // Display thinking steps
+      if (onAddChatMessage && orchestratorResponse.thinkingSteps && orchestratorResponse.thinkingSteps.length > 0) {
+        orchestratorResponse.thinkingSteps.forEach(step => {
+          onAddChatMessage(step.content, 'orchestrator', step.type as any)
+        })
+      }
+      
+      // Execute actions returned by orchestrator
+      for (const action of orchestratorResponse.actions) {
+        console.log('▶️ [Clarification] Executing action:', action.type, action.payload)
         
-        // ✅ FIX: Add "from scratch" to bypass clarification check in orchestrator
-        const enhancedPrompt = `${userMessage} from scratch`
-        onCreateStory(documentFormat, undefined, enhancedPrompt)
-      } else {
-        // User wants to base it on an existing doc
-        const selectedDocId = selectedOption.id.replace('use_', '')
-        const selectedDoc = existingDocs.find((d: any) => d.id === selectedDocId)
-        
-        if (selectedDoc) {
+        // Handle message actions specially for create_structure
+        if (action.type === 'message' && action.payload.intent === 'create_structure') {
+          const { format, prompt, referenceDoc } = action.payload
           if (onAddChatMessage) {
-            onAddChatMessage(`✅ Creating ${documentFormat} based on "${selectedDoc.name}" (${selectedDoc.format})...`, 'orchestrator', 'result')
+            onAddChatMessage(action.payload.content, 'orchestrator', 'result')
           }
-          
-          // ✅ FIX: Add "based on X" to bypass clarification check in orchestrator
-          const enhancedPrompt = `${userMessage} based on ${selectedDoc.name}`
-          onCreateStory(documentFormat, undefined, enhancedPrompt)
+          // Call onCreateStory with the enhanced prompt
+          onCreateStory(format, undefined, prompt)
+        } else {
+          await executeActionDirectly(action)
         }
+      }
+      
+      if (onAddChatMessage) {
+        onAddChatMessage(`✅ Actions completed!`, 'orchestrator', 'result')
+      }
+      
+    } catch (error) {
+      console.error('❌ [Clarification] Error:', error)
+      if (onAddChatMessage) {
+        onAddChatMessage(`❌ Error processing clarification: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
       }
     }
     
