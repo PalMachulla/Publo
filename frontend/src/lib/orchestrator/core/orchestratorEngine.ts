@@ -707,16 +707,17 @@ export class OrchestratorEngine {
             node.data?.items?.length > 0
           )
           .map((node: any) => {
-            console.log(`🔍 [Canvas Awareness] Checking node "${node.data?.label}":`, {
-              type: node.type,
-              dataKeys: Object.keys(node.data || {}),
-              itemsCount: node.data?.items?.length || 0,
-              format: node.data?.format
-            })
+            const allDataKeys = Object.keys(node.data || {})
+            console.log(`🔍 [Canvas Awareness] Checking node "${node.data?.label}":`)
+            console.log(`  type: ${node.type}`)
+            console.log(`  dataKeys (${allDataKeys.length}):`, allDataKeys.join(', '))
+            console.log(`  itemsCount: ${node.data?.items?.length || 0}`)
+            console.log(`  format: ${node.data?.format}`)
+            console.log(`  hasContentMapKey: ${allDataKeys.includes('contentMap')}`)
             
             // ✅ FIX: Check BOTH legacy contentMap AND new document_data for content
             const contentMapKeys = Object.keys(node.data?.contentMap || {})
-            console.log(`  - contentMapKeys:`, contentMapKeys.length, contentMapKeys.slice(0, 3))
+            console.log(`  contentMapKeys (${contentMapKeys.length}):`, contentMapKeys.slice(0, 5).join(', '))
             
             const hasLegacyContent = contentMapKeys.length > 0 && 
               contentMapKeys.some(key => {
