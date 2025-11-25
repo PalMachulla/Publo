@@ -61,6 +61,10 @@ export interface OrchestratorRequest {
   fixedModelId?: string | null
   // Available providers (from user's API keys)
   availableProviders?: string[]
+  // PHASE 1.2: Dynamic model availability
+  // Models actually available to the user (from /api/models/available)
+  // If provided, orchestrator will use these instead of filtering MODEL_TIERS
+  availableModels?: TieredModel[]
   // Structure generation (for create_structure intent)
   userKeyId?: string // API key ID for structure generation
   // Clarification response context (when user is responding to a request_clarification action)
@@ -233,18 +237,24 @@ export class OrchestratorEngine {
     // Use user's available providers (from API keys) or fallback to common ones
     const availableProviders = request.availableProviders || ['openai', 'groq', 'anthropic', 'google']
     
-    // VALIDATE fixedModelId against MODEL_TIERS
+    // PHASE 1.2: Determine which models to use
+    // If availableModels is provided (from /api/models/available), use those
+    // Otherwise fall back to filtering MODEL_TIERS by providers
+    const modelsToUse: TieredModel[] = request.availableModels || 
+      MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
+    
+    console.log(`🎯 [Orchestrator] Using ${request.availableModels ? 'dynamic' : 'static'} model list: ${modelsToUse.length} models available`)
+    
+    // VALIDATE fixedModelId against available models
     let validatedFixedModelId: string | null = null
     if (request.modelMode === 'fixed' && request.fixedModelId) {
-      // Check if the configured model exists in MODEL_TIERS
-      const availableModels = MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
-      const isValidModel = availableModels.some(m => m.id === request.fixedModelId)
+      const isValidModel = modelsToUse.some(m => m.id === request.fixedModelId)
       
       if (isValidModel) {
         validatedFixedModelId = request.fixedModelId
         console.log('✅ [Orchestrator] Fixed model is valid:', validatedFixedModelId)
       } else {
-        console.warn(`⚠️ [Orchestrator] Configured model "${request.fixedModelId}" not found in MODEL_TIERS. Auto-selecting...`)
+        console.warn(`⚠️ [Orchestrator] Configured model "${request.fixedModelId}" not found in available models. Auto-selecting...`)
         
         // Add message to blackboard to inform user
         this.blackboard.addMessage({
@@ -257,10 +267,21 @@ export class OrchestratorEngine {
       }
     }
     
+    // PHASE 2: Determine if this task requires reasoning
+    // Orchestrator's own operations (planning, analysis, coordination) need reasoning
+    // Content generation will be delegated to writer models later
+    const requiresReasoning = 
+      intentAnalysis.intent === 'create_structure' || // Structure planning needs reasoning
+      intentAnalysis.intent === 'rewrite_with_coherence' || // Complex editing needs reasoning
+      taskComplexity === 'reasoning' || // Complex reasoning tasks
+      taskComplexity === 'complex' // Complex orchestration tasks
+    
     const modelSelection = selectModel(
       taskComplexity,
       this.config.modelPriority,
-      availableProviders
+      availableProviders,
+      modelsToUse, // PHASE 1.2: Pass actual available models
+      requiresReasoning // PHASE 2: Require reasoning for orchestrator operations
     )
     
     // Step 9: Log reasoning to blackboard
@@ -288,7 +309,8 @@ export class OrchestratorEngine {
       canvasContext,
       ragContext,
       modelSelection,
-      validatedFixedModelId
+      validatedFixedModelId,
+      modelsToUse // PHASE 2: Pass available models for writer delegation
     )
     
     // Step 11: Build response
@@ -386,7 +408,8 @@ export class OrchestratorEngine {
     canvasContext: CanvasContext,
     ragContext: any,
     modelSelection: any,
-    validatedFixedModelId: string | null = null
+    validatedFixedModelId: string | null = null,
+    availableModels?: TieredModel[] // PHASE 2: Available models for writer delegation
   ): Promise<OrchestratorAction[]> {
     const actions: OrchestratorAction[] = []
     
@@ -633,11 +656,12 @@ export class OrchestratorEngine {
               taskType = 'action'
             }
             
-            // Filter MODEL_TIERS by user's available providers
+            // PHASE 2: Use available models passed from orchestrate() or filter MODEL_TIERS
             const availableProviders = request.availableProviders || ['openai', 'groq', 'anthropic', 'google']
-            const availableModels = MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
+            const modelsForWriter = availableModels || MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
             
             // Select best model for this task from AVAILABLE models only
+            // Note: selectModelForTask does NOT require reasoning (writer models can be smaller/faster)
             const selectedModel = selectModelForTask(
               {
                 type: taskType,
@@ -645,7 +669,7 @@ export class OrchestratorEngine {
                 contextNeeded: 8000, // Typical scene context
                 priority: 'balanced' // Balance quality, speed, and cost
               },
-              availableModels // Only models user has API keys for!
+              modelsForWriter // Only models user has API keys for!
             )
             
             writerModel = {
@@ -894,12 +918,19 @@ export class OrchestratorEngine {
           type: 'decision'
         })
         
-        // Generate structure plan
-        const plan = await this.createStructurePlan(
+        // PHASE 3: Generate structure plan with automatic fallback
+        // Pass ALL available models (from parameter), not just filtered frontier models
+        const allAvailableModels = availableModels || MODEL_TIERS.filter(m => 
+          request.availableProviders?.includes(m.provider)
+        )
+        
+        const plan = await this.createStructurePlanWithFallback(
           request.message,
           request.documentFormat,
           selectedModel.id,
-          request.userKeyId
+          request.userKeyId,
+          allAvailableModels, // Pass ALL models for fallback (not just frontier)
+          3 // Max retries
         )
         
         // Return as action
@@ -1292,6 +1323,117 @@ export class OrchestratorEngine {
     }
     
     return prompt
+  }
+
+  /**
+   * PHASE 3: Retry wrapper for createStructurePlan with automatic fallback
+   * Attempts to generate structure with primary model, falls back to alternatives if it fails
+   */
+  private async createStructurePlanWithFallback(
+    userPrompt: string,
+    format: string,
+    primaryModelId: string,
+    userKeyId: string,
+    availableModels: TieredModel[],
+    maxRetries: number = 3
+  ): Promise<StructurePlan> {
+    const attemptedModels: string[] = []
+    let lastError: Error | null = null
+    
+    // Filter to reasoning models only (for structure generation)
+    const reasoningModels = availableModels
+      .filter(m => m.reasoning)
+      .sort((a, b) => {
+        // Sort by tier: frontier > premium > standard > fast
+        const tierOrder: Record<string, number> = { frontier: 4, premium: 3, standard: 2, fast: 1 }
+        return (tierOrder[b.tier] || 0) - (tierOrder[a.tier] || 0)
+      })
+    
+    // Start with primary model
+    const modelsToTry = [primaryModelId, ...reasoningModels.map(m => m.id).filter(id => id !== primaryModelId)]
+    
+    console.log(`🔄 [Fallback] Available reasoning models for retry: ${modelsToTry.join(', ')}`)
+    
+    for (let i = 0; i < Math.min(modelsToTry.length, maxRetries); i++) {
+      const modelId = modelsToTry[i]
+      attemptedModels.push(modelId)
+      
+      try {
+        if (i > 0) {
+          // This is a retry
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `🔄 Retrying with ${modelId}...`,
+            type: 'progress'
+          })
+        }
+        
+        const result = await this.createStructurePlan(userPrompt, format, modelId, userKeyId)
+        
+        if (i > 0) {
+          // Success after retry
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `✅ Structure generation succeeded with ${modelId}`,
+            type: 'result'
+          })
+        }
+        
+        return result
+      } catch (error: any) {
+        lastError = error
+        const errorReason = this.extractErrorReason(error)
+        
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `⚠️ ${modelId}: ${errorReason}`,
+          type: 'warning'
+        })
+        
+        console.warn(`❌ [Fallback] Attempt ${i + 1} failed with ${modelId}:`, errorReason)
+        
+        // If this was the last attempt, throw
+        if (i === Math.min(modelsToTry.length, maxRetries) - 1) {
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `❌ All ${attemptedModels.length} model(s) failed. Last error: ${errorReason}`,
+            type: 'error'
+          })
+          throw new Error(`Structure generation failed after ${attemptedModels.length} attempts. Last error: ${errorReason}`)
+        }
+      }
+    }
+    
+    // Should never reach here, but TypeScript needs it
+    throw lastError || new Error('Structure generation failed')
+  }
+  
+  /**
+   * PHASE 3: Extract human-readable error reason from API error
+   */
+  private extractErrorReason(error: any): string {
+    const message = error.message || ''
+    
+    if (message.includes('insufficient_quota') || message.includes('quota')) {
+      return 'Insufficient credits'
+    }
+    if (message.includes('does not exist') || message.includes('not found')) {
+      return 'Model not available'
+    }
+    if (message.includes('rate_limit') || message.includes('429')) {
+      return 'Rate limit exceeded'
+    }
+    if (message.includes('authentication') || message.includes('401')) {
+      return 'Invalid API key'
+    }
+    if (message.includes('access') || message.includes('permission')) {
+      return 'No access to this model'
+    }
+    if (message.includes('500')) {
+      return 'Server error (model might not be available)'
+    }
+    
+    return message.substring(0, 100) // Truncate long messages
   }
 
   /**

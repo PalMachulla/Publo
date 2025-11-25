@@ -544,20 +544,98 @@ export function assessTaskComplexity(
 }
 
 /**
+ * PHASE 1.2: Convert TieredModel to ModelCapability for selectModel() scoring
+ * This allows us to use both static MODEL_TIERS and dynamic available models
+ */
+function convertTieredToCapability(tiered: TieredModel): ModelCapability {
+  // Map tier and speed to estimated cost and speed
+  const costMap: Record<string, number> = {
+    'cheap': 0.2,
+    'moderate': 1.5,
+    'expensive': 10.0
+  }
+  
+  const speedMap: Record<string, number> = {
+    'instant': 500,
+    'fast': 200,
+    'medium': 100,
+    'slow': 50
+  }
+  
+  // Map bestFor from TieredModel to TaskComplexity for ModelCapability
+  const bestForMap: Record<string, TaskComplexity[]> = {
+    'orchestration': ['reasoning', 'complex'],
+    'complex-writing': ['complex', 'moderate'],
+    'general-writing': ['moderate', 'simple'],
+    'editing': ['simple', 'moderate'],
+    'speed-writing': ['simple']
+  }
+  
+  const bestFor: TaskComplexity[] = []
+  tiered.bestFor.forEach(use => {
+    const mapped = bestForMap[use]
+    if (mapped) bestFor.push(...mapped)
+  })
+  
+  // Deduplicate
+  const uniqueBestFor = [...new Set(bestFor)]
+  
+  return {
+    modelId: tiered.id,
+    provider: tiered.provider as 'openai' | 'anthropic' | 'groq' | 'google',
+    displayName: tiered.displayName,
+    costPer1kTokens: costMap[tiered.cost] || 1.0,
+    speedTokensPerSec: speedMap[tiered.speed] || 100,
+    contextWindow: tiered.contextWindow,
+    capabilities: {
+      reasoning: tiered.reasoning,
+      streaming: true, // Assume all models support streaming
+      functionCalling: tiered.structuredOutput !== 'none',
+      vision: tiered.multimodal
+    },
+    bestFor: uniqueBestFor.length > 0 ? uniqueBestFor : ['moderate']
+  }
+}
+
+/**
  * Select best model based on complexity (COMPLEXITY-BASED)
  * Used by orchestrator for its own operations
+ * 
+ * PHASE 1.2: Now accepts optional availableModels parameter
+ * If provided, uses those models instead of MODEL_REGISTRY
+ * 
+ * PHASE 2: Now accepts optional requireReasoning parameter
+ * If true, only reasoning-capable models are considered
  */
 export function selectModel(
   taskComplexity: TaskComplexity,
   priority: ModelPriority = 'balanced',
-  availableProviders: string[] = ['openai', 'groq', 'anthropic', 'google']
+  availableProviders: string[] = ['openai', 'groq', 'anthropic', 'google'],
+  availableModels?: TieredModel[], // PHASE 1.2: Optional dynamic models
+  requireReasoning: boolean = false // PHASE 2: Filter for reasoning models only
 ): ModelSelection {
-  const MODEL_REGISTRY = getModelRegistry()
+  // PHASE 1.2: Use provided models or fall back to MODEL_REGISTRY
+  const MODEL_REGISTRY = availableModels ? 
+    // Convert TieredModel[] to ModelCapability[] for scoring
+    availableModels.map(convertTieredToCapability) :
+    getModelRegistry()
   
-  const candidates = MODEL_REGISTRY.filter(model => 
+  // PHASE 2: Filter by reasoning capability if required
+  let candidates = MODEL_REGISTRY.filter(model => 
     availableProviders.includes(model.provider) &&
     model.bestFor.includes(taskComplexity)
   )
+  
+  if (requireReasoning) {
+    const reasoningCandidates = candidates.filter(m => m.capabilities.reasoning)
+    
+    if (reasoningCandidates.length > 0) {
+      candidates = reasoningCandidates
+      console.log(`🧠 [Model Router] Filtered to ${candidates.length} reasoning models`)
+    } else {
+      console.warn('⚠️ [Model Router] No reasoning models available, using all candidates')
+    }
+  }
   
   if (candidates.length === 0) {
     const fallback = MODEL_REGISTRY.find(m => availableProviders.includes(m.provider))

@@ -530,6 +530,25 @@ export default function OrchestratorPanel({
         message: message.substring(0, 100)
       })
       
+      // PHASE 1.2: Fetch available models with tier metadata
+      let availableModelsToPass: any[] | undefined = undefined
+      try {
+        console.log('🔍 [OrchestratorPanel] Fetching available models...')
+        const modelsResponse = await fetch('/api/models/available')
+        if (modelsResponse.ok) {
+          const modelsData = await modelsResponse.json()
+          if (modelsData.success && modelsData.models && modelsData.models.length > 0) {
+            availableModelsToPass = modelsData.models
+            console.log(`✅ [OrchestratorPanel] Loaded ${availableModelsToPass.length} available models (${modelsData.stats.reasoningCount} reasoning, ${modelsData.stats.writingCount} writing)`)
+          }
+        } else {
+          console.warn('⚠️ [OrchestratorPanel] Failed to fetch available models, using static MODEL_TIERS')
+        }
+      } catch (error) {
+        console.warn('⚠️ [OrchestratorPanel] Error fetching available models:', error)
+        // Continue with static MODEL_TIERS (backward compatible)
+      }
+      
       // Call the new orchestrator
       const response = await getOrchestrator(user.id).orchestrate({
         message,
@@ -547,6 +566,8 @@ export default function OrchestratorPanel({
         fixedModelId: modelMode === 'fixed' ? configuredModel.orchestrator : undefined,
         // Available providers (from user's API keys)
         availableProviders: availableProviders.length > 0 ? availableProviders : undefined,
+        // PHASE 1.2: Pass available models with tier metadata (undefined = fallback to static MODEL_TIERS)
+        availableModels: availableModelsToPass as any, // Intentionally allow undefined for backward compatibility
         // User key ID for structure generation
         userKeyId
       })
@@ -2397,6 +2418,7 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
                   group.type === 'decision' ? 'bg-blue-50 border-l-4 border-blue-400' :
                   group.type === 'task' ? 'bg-yellow-50 border-l-4 border-yellow-400' :
                   group.type === 'result' ? 'bg-green-50 border-l-4 border-green-400' :
+                  group.type === 'warning' ? 'bg-orange-50 border-l-4 border-orange-400' : // PHASE 3: Warning messages (retry/fallback)
                   'bg-red-50 border-l-4 border-red-400'
                 
                 const icon = isModelMessage ? (
@@ -2429,6 +2451,11 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
                   group.type === 'result' ? (
                     <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) :
+                  group.type === 'warning' ? (
+                    <svg className="w-3.5 h-3.5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                   ) :
                   (

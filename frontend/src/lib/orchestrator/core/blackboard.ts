@@ -28,7 +28,7 @@ export interface ConversationMessage {
   role: 'user' | 'orchestrator' | 'system'
   content: string
   timestamp: string
-  type?: 'user' | 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'progress'
+  type?: 'user' | 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'progress' | 'warning' // PHASE 3: Added 'warning' for fallback messages
   metadata?: {
     intent?: string
     confidence?: number
