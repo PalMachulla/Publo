@@ -2064,7 +2064,21 @@ Respond in JSON format:
     const reasoningModels = availableModels
       .filter(m => m.reasoning)
       .sort((a, b) => {
-        // Sort by tier: frontier > premium > standard > fast
+        // ⚡ OPTIMIZED: Sort by speed/reliability first, then tier
+        // Priority: gpt-4o (fast + reliable) > gpt-4o-mini (fastest) > others
+        const speedPriority: Record<string, number> = {
+          'gpt-4o': 100,
+          'gpt-4o-mini': 90,
+          'gpt-4.1': 80,
+          'gpt-5.1': 70,
+          'gpt-5.1-2025-11-13': 60
+        }
+        const aSpeed = speedPriority[a.id] || 0
+        const bSpeed = speedPriority[b.id] || 0
+        
+        if (aSpeed !== bSpeed) return bSpeed - aSpeed
+        
+        // Fallback to tier for unknown models
         const tierOrder: Record<string, number> = { frontier: 4, premium: 3, standard: 2, fast: 1 }
         return (tierOrder[b.tier] || 0) - (tierOrder[a.tier] || 0)
       })
@@ -2072,9 +2086,13 @@ Respond in JSON format:
     // ✅ FIX: Only use primaryModelId if it's actually available to the user!
     const isPrimaryAvailable = reasoningModels.some(m => m.id === primaryModelId)
     
-    const modelsToTry = isPrimaryAvailable 
-      ? [primaryModelId, ...reasoningModels.map(m => m.id).filter(id => id !== primaryModelId)]
-      : reasoningModels.map(m => m.id) // Skip primaryModelId if user doesn't have access
+    // ⚡ OPTIMIZED: Always try fast models first (gpt-4o, gpt-4o-mini), then primary, then others
+    const fastModels = reasoningModels.filter(m => m.id === 'gpt-4o' || m.id === 'gpt-4o-mini').map(m => m.id)
+    const otherModels = reasoningModels.filter(m => m.id !== 'gpt-4o' && m.id !== 'gpt-4o-mini' && m.id !== primaryModelId).map(m => m.id)
+    
+    const modelsToTry = isPrimaryAvailable
+      ? [...fastModels, primaryModelId, ...otherModels].filter((v, i, a) => a.indexOf(v) === i) // Remove duplicates
+      : [...fastModels, ...otherModels].filter((v, i, a) => a.indexOf(v) === i)
     
     console.log(`🔄 [Fallback] Primary model: ${primaryModelId} (available: ${isPrimaryAvailable})`)
     console.log(`🔄 [Fallback] Models to try: ${modelsToTry.join(', ')}`)
@@ -2234,7 +2252,7 @@ Generate a complete structure plan with:
       model: modelId,
       system_prompt: systemPrompt,
       user_prompt: userMessage,
-      max_completion_tokens: 4000,
+      max_completion_tokens: 2000, // ⚡ OPTIMIZED: Reduced from 4000 for faster generation
       user_key_id: userKeyId,
       stream: false
     }
@@ -2276,7 +2294,7 @@ Generate a complete structure plan with:
     
     // Add timeout and progress heartbeat for long-running API calls
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+    const timeout = setTimeout(() => controller.abort(), 30000) // ⚡ OPTIMIZED: 30s timeout (was 60s) for faster fallback
     
     // Heartbeat: Show "still waiting..." every 5 seconds
     const heartbeat = setInterval(() => {
@@ -2315,10 +2333,10 @@ Generate a complete structure plan with:
       if (error.name === 'AbortError') {
         this.blackboard.addMessage({
           role: 'orchestrator',
-          content: '❌ Structure generation timed out after 60 seconds',
+          content: '❌ Structure generation timed out after 30 seconds',
           type: 'error'
         })
-        throw new Error('Structure generation timed out - please try again')
+        throw new Error('Structure generation timed out - trying next model')
       }
       throw error
     }

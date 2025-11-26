@@ -166,7 +166,7 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     // 🔍 DEBUG: Log final state
     console.log('✅ [MultiAgentOrchestrator] Orchestration complete:', {
       intent: response.intent,
-      actionsExecuted: agentExecutedActions.length,
+      actionsFiltered: originalActionCount - filteredActions.length,
       actionsReturnedToUI: response.actions.length,
       messagesSent: newMessages.length,
       currentNodeId: request?.currentStoryStructureNodeId
