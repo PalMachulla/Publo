@@ -1092,6 +1092,15 @@ export default function CanvasPage() {
         
         // 🔍 VERIFICATION: Immediately query the node to confirm it's readable
         console.log('🔍 [saveAndFinalize] VERIFICATION: Re-querying node to confirm it exists...')
+        
+        // 🔍 DEBUG: Check auth session before verification
+        const { data: sessionData } = await supabase.auth.getSession()
+        console.log('🔐 [saveAndFinalize] Auth session check:', {
+          hasSession: !!sessionData?.session,
+          userId: sessionData?.session?.user?.id || 'NONE',
+          sessionExpiry: sessionData?.session?.expires_at || 'NONE'
+        })
+        
         const { data: verifyData, error: verifyError } = await supabase
           .from('nodes')
           .select('id, document_data')

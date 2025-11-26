@@ -45,9 +45,15 @@ export async function saveAgentContent(options: SaveContentOptions): Promise<Sav
   try {
     // ✅ FIX: Use provided authenticated client, fallback to creating new one
     const supabase = supabaseClient || createClient()
+    
+    // 🔍 DEBUG: Check auth session
+    const { data: sessionData } = await supabase.auth.getSession()
     console.log('🔑 [saveAgentContent] Using Supabase client:', {
       provided: !!supabaseClient,
-      source: supabaseClient ? 'authenticated (passed from canvas)' : 'new instance (may lack auth)'
+      source: supabaseClient ? 'authenticated (passed from canvas)' : 'new instance (may lack auth)',
+      hasSession: !!sessionData?.session,
+      userId: sessionData?.session?.user?.id || 'NONE',
+      sessionExpiry: sessionData?.session?.expires_at || 'NONE'
     })
     
     // Step 1: Fetch current document_data (with retry logic for race conditions)
