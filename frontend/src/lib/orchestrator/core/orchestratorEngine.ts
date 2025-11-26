@@ -133,7 +133,7 @@ export interface StructurePlan {
 
 export class OrchestratorEngine {
   private blackboard: Blackboard
-  private config: Omit<Required<OrchestratorConfig>, 'toolRegistry'> & { toolRegistry?: ToolRegistry }
+  private config: Omit<Required<OrchestratorConfig>, 'toolRegistry' | 'onMessage'> & { toolRegistry?: ToolRegistry; onMessage?: OrchestratorConfig['onMessage'] }
   private worldState?: WorldStateManager // PHASE 1: Optional for gradual migration
   private toolRegistry?: ToolRegistry // PHASE 2: Optional tool system
   
@@ -152,7 +152,8 @@ export class OrchestratorEngine {
       enableRAG: config.enableRAG !== false,
       enablePatternLearning: config.enablePatternLearning !== false,
       maxConversationDepth: config.maxConversationDepth || 50,
-      toolRegistry: config.toolRegistry // PHASE 2: Include in config (optional)
+      toolRegistry: config.toolRegistry, // PHASE 2: Include in config (optional)
+      ...(config.onMessage && { onMessage: config.onMessage }) // PHASE 3: Real-time message callback (optional)
     }
     
     console.log('🎯 [Orchestrator] Initialized', {
