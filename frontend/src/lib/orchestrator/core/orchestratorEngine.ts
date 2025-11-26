@@ -2582,28 +2582,21 @@ Which option did the user select? Return ONLY the option ID.`
           type: 'result'
         })
         
-        // Return action to create new structure (add "from scratch" to bypass future clarification)
-        const enhancedPrompt = `${userMessage} from scratch`
+        // 🔧 FIX: Actually call generateActions with create_structure intent
+        // instead of just returning a message action
+        console.log('✅ [Clarification] User chose create_new, proceeding with structure generation')
+        console.log('   Format:', documentFormat)
+        console.log('   Message:', userMessage)
         
-        return {
-          intent: 'create_structure',
-          confidence: 0.95,
-          reasoning: `User chose to create new ${documentFormat} from scratch`,
-          modelUsed: 'none',
-          actions: [{
-            type: 'message',
-            payload: {
-              content: `✅ Creating new ${documentFormat} from scratch...`,
-              intent: 'create_structure',
-              format: documentFormat,
-              prompt: enhancedPrompt
-            },
-            status: 'pending'
-          }],
-          canvasChanged: false, // Canvas change will happen when UI executes onCreateStory
-          requiresUserInput: false,
-          estimatedCost: 0
+        // Recursively call orchestrate with modified request (bypassing clarification)
+        const modifiedRequest = {
+          ...request,
+          message: `${userMessage} from scratch`, // Add "from scratch" to bypass future clarifications
+          clarificationContext: undefined // Remove clarification context
         }
+        
+        // This will go through normal flow: intent detection → generateActions → multi-step detection
+        return await this.orchestrate(modifiedRequest)
       } else {
         // User wants to base it on an existing doc
         const selectedDocId = selectedOption.id.replace('use_', '')
