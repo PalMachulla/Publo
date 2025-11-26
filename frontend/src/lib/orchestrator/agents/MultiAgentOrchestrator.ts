@@ -154,55 +154,96 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
   // ============================================================
   
   /**
-   * Analyze task complexity and decide execution strategy
+   * PHASE 3: LLM-powered execution strategy selection
+   * Replaces hard-coded rules with reasoning based on context
    */
-  private analyzeExecutionStrategy(actions: OrchestratorAction[]): {
+  private async analyzeExecutionStrategy(
+    actions: OrchestratorAction[],
+    blackboard: Blackboard,
+    worldState: any
+  ): Promise<{
     strategy: ExecutionStrategy
     reasoning: string
-  } {
-    // Filter to content generation actions (the ones we can parallelize)
+  }> {
+    // Build context for LLM
+    const actionSummary = actions.map(a => ({
+      type: a.type,
+      section: a.payload?.sectionName || null,
+      isContent: a.type === 'generate_content'
+    }))
+    
     const contentActions = actions.filter(a => a.type === 'generate_content')
     
-    // Simple tasks: Sequential execution
-    if (actions.length <= 2 || contentActions.length === 0) {
+    // Get recent blackboard messages for context
+    const recentMessages = blackboard.getRecentMessages(5)
+    const context = recentMessages.map(m => `${m.role}: ${m.content}`).join('\n')
+    
+    const systemPrompt = `You are an intelligent execution strategy selector for a multi-agent writing system.
+
+Available strategies:
+1. SEQUENTIAL - Execute actions one after another (safe, slower)
+2. PARALLEL - Execute multiple content generations simultaneously using DAG (fast, efficient)
+3. CLUSTER - Use Writer-Critic collaboration for high-quality iterative refinement (best quality, slower)
+
+Context:
+- Total actions: ${actions.length}
+- Content generation actions: ${contentActions.length}
+- Action details: ${JSON.stringify(actionSummary, null, 2)}
+- Recent activity: ${context}
+- Blackboard state: ${blackboard.getAgentStates().length} agents active
+
+Decision criteria:
+- SEQUENTIAL: Use for simple tasks, non-content actions, or mixed action types
+- PARALLEL: Use for 3+ independent content sections (chapters, scenes, etc.) where speed is important
+- CLUSTER: Use for 1-2 high-priority content sections where quality is critical (first chapters, openings, key scenes)
+
+Consider:
+- Section importance (first chapters, opening scenes are high-priority)
+- User's implicit quality expectations
+- Task complexity and interdependencies
+
+Respond in JSON format:
+{
+  "strategy": "sequential" | "parallel" | "cluster",
+  "reasoning": "Brief explanation of why this strategy is best for this situation"
+}`
+
+    try {
+      const response = await fetch('/api/intent/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_prompt: systemPrompt,
+          user_prompt: `Actions to execute: ${JSON.stringify(actionSummary, null, 2)}\n\nWhat's the best execution strategy?`,
+          temperature: 0.3 // Some creativity but mostly consistent
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Strategy selection failed: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      const analysis = JSON.parse(data.content)
+      
+      // Validate strategy
+      const validStrategies: ExecutionStrategy[] = ['sequential', 'parallel', 'cluster']
+      if (!validStrategies.includes(analysis.strategy)) {
+        throw new Error(`Invalid strategy: ${analysis.strategy}`)
+      }
+      
+      return {
+        strategy: analysis.strategy as ExecutionStrategy,
+        reasoning: analysis.reasoning
+      }
+    } catch (error) {
+      console.error('❌ [Strategy Selection] Error:', error)
+      
+      // Fallback: Conservative sequential approach
       return {
         strategy: 'sequential',
-        reasoning: `Simple task (${actions.length} action${actions.length > 1 ? 's' : ''}) - executing sequentially`
+        reasoning: 'Strategy analysis failed, defaulting to sequential execution for safety'
       }
-    }
-    
-    // Multiple content generation tasks: Parallel execution
-    if (contentActions.length >= 3) {
-      return {
-        strategy: 'parallel',
-        reasoning: `${contentActions.length} independent sections - executing in parallel for speed`
-      }
-    }
-    
-    // Single complex content task: Use writer-critic cluster for quality
-    if (contentActions.length === 1) {
-      // Check if this is a high-priority section (e.g., first chapter, opening)
-      const action = contentActions[0]
-      const sectionName = action.payload?.sectionName?.toLowerCase() || ''
-      
-      const isHighPriority = 
-        sectionName.includes('chapter 1') ||
-        sectionName.includes('opening') ||
-        sectionName.includes('prologue') ||
-        sectionName.includes('first')
-      
-      if (isHighPriority) {
-        return {
-          strategy: 'cluster',
-          reasoning: `High-priority section ("${action.payload?.sectionName}") - using writer-critic cluster for quality`
-        }
-      }
-    }
-    
-    // Default: Sequential
-    return {
-      strategy: 'sequential',
-      reasoning: 'Mixed action types - executing sequentially'
     }
   }
   
@@ -224,8 +265,12 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       return
     }
     
-    // Analyze and select strategy
-    const { strategy, reasoning } = this.analyzeExecutionStrategy(actions)
+    // 🧠 PHASE 3: LLM-powered strategy selection using Blackboard and WorldState
+    const { strategy, reasoning } = await this.analyzeExecutionStrategy(
+      actions,
+      this.getBlackboard(),
+      this.worldState
+    )
     
     console.log(`🎯 [MultiAgentOrchestrator] Strategy: ${strategy.toUpperCase()}`)
     console.log(`   Reasoning: ${reasoning}`)

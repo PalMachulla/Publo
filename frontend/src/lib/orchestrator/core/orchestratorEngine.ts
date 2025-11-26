@@ -1442,61 +1442,43 @@ Use this content overview to inform the ${request.documentFormat} structure and 
         
         console.log('✅ [create_structure] Action pushed to actions array')
         
-        // 🚀 MULTI-STEP TASK DETECTION: Check if user also wants content written
-        // Phrases like "fill the first chapter", "write content in", "and write", etc.
-        const lowerPrompt = request.message.toLowerCase()
-        const multiStepIndicators = [
-          /fill\s+(?:the\s+)?(first|chapter\s*\d*)/i,
-          /write\s+(?:content\s+in\s+)?(?:the\s+)?(first|chapter\s*\d*)/i,
-          /and\s+write/i,
-          /with\s+text/i,
-          /with\s+content/i
-        ]
+        // 🚀 PHASE 3: LLM-POWERED MULTI-STEP TASK DETECTION
+        // Use reasoning instead of hard-coded patterns
+        const taskAnalysis = await this.analyzeTaskComplexity(
+          request.message,
+          plan.structure,
+          intent,
+          this.blackboard
+        )
         
-        const isMultiStep = multiStepIndicators.some(pattern => pattern.test(lowerPrompt))
-        
-        if (isMultiStep && plan.structure.length > 0) {
-          // Find the first content-bearing section (skip title pages, working titles, etc.)
-          const firstSection = plan.structure.find(item => 
-            !item.name.toLowerCase().includes('working title') &&
-            !item.name.toLowerCase().includes('title page') &&
-            !item.name.toLowerCase().includes('cover')
-          )
+        if (taskAnalysis.requiresMultipleSteps && taskAnalysis.targetSections.length > 0) {
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `🎯 Multi-step task detected: ${taskAnalysis.reasoning}`,
+            type: 'decision'
+          })
           
-          if (firstSection) {
-            this.blackboard.addMessage({
-              role: 'orchestrator',
-              content: `🎯 Multi-step task detected: Will also write content for "${firstSection.name}"`,
-              type: 'decision'
-            })
-            
-            console.log('✅ [create_structure] Adding follow-up generate_content action for:', firstSection.name)
-            console.log('   Section ID:', firstSection.id)
-            console.log('   Section Name:', firstSection.name)
-            
-            // Add a generate_content action for the first section
+          console.log('✅ [create_structure] LLM detected multi-step task:', taskAnalysis.reasoning)
+          console.log('   Target sections:', taskAnalysis.targetSections.map(s => s.name))
+          
+          // Add generate_content actions for each target section
+          for (const section of taskAnalysis.targetSections) {
             const contentAction: OrchestratorAction = {
               type: 'generate_content',
               payload: {
-                sectionId: firstSection.id,
-                sectionName: firstSection.name,
-                prompt: `Write engaging content for "${firstSection.name}" based on the user's request: ${request.message}`,
-                autoStart: true // Flag to indicate this should execute automatically
+                sectionId: section.id,
+                sectionName: section.name,
+                prompt: `Write engaging content for "${section.name}" based on the user's request: ${request.message}`,
+                autoStart: true
               },
               status: 'pending'
             }
             
             actions.push(contentAction)
-            console.log('✅ [create_structure] Action pushed! Total actions now:', actions.length)
-            console.log('   Action details:', JSON.stringify(contentAction, null, 2))
-          } else {
-            console.warn('⚠️ [create_structure] No suitable first section found for multi-step')
+            console.log(`✅ [create_structure] Added content generation for: ${section.name}`)
           }
         } else {
-          console.log('ℹ️ [create_structure] Multi-step not triggered:', {
-            isMultiStep,
-            structureLength: plan.structure.length
-          })
+          console.log('ℹ️ [create_structure] Single-step task (structure only):', taskAnalysis.reasoning)
         }
         
         break
@@ -1859,6 +1841,91 @@ Use this content overview to inform the ${request.documentFormat} structure and 
     return actions
   }
   
+  /**
+   * PHASE 3: LLM-powered task complexity analysis
+   * Replaces hard-coded regex patterns with reasoning
+   */
+  private async analyzeTaskComplexity(
+    userMessage: string,
+    structure: any[],
+    intent: IntentAnalysis,
+    blackboard: Blackboard
+  ): Promise<{
+    requiresMultipleSteps: boolean
+    targetSections: Array<{ id: string; name: string }>
+    reasoning: string
+  }> {
+    const systemPrompt = `You are an intelligent task analyzer. Analyze user requests to determine if they want multiple steps completed.
+
+Context:
+- Primary intent: ${intent.intent}
+- User's request: "${userMessage}"
+- Available structure sections: ${structure.map(s => `"${s.name}"`).join(', ')}
+
+Determine:
+1. Does the user want BOTH structure creation AND content writing?
+2. If so, which section(s) should have content generated?
+
+Examples:
+- "Create a story about X" → Single step (structure only)
+- "Create a story and write the first chapter" → Multi-step (structure + Chapter 1 content)
+- "Write the first two chapters" → Multi-step (structure + Chapters 1 & 2)
+- "Create outline with content in introduction" → Multi-step (structure + Introduction content)
+
+Respond in JSON format:
+{
+  "requiresMultipleSteps": boolean,
+  "targetSectionNames": string[], // Section names to generate content for
+  "reasoning": "Brief explanation of your analysis"
+}`
+
+    try {
+      const response = await fetch('/api/intent/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_prompt: systemPrompt,
+          user_prompt: userMessage,
+          temperature: 0.2 // Low temp for consistent analysis
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Task analysis failed: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      const analysis = JSON.parse(data.content)
+      
+      // Map section names to actual section objects
+      const targetSections = analysis.targetSectionNames
+        .map((name: string) => {
+          // Normalize and find matching section
+          const normalizedSearchTerm = name.toLowerCase().trim()
+          return structure.find(s => 
+            s.name.toLowerCase().includes(normalizedSearchTerm) ||
+            normalizedSearchTerm.includes(s.name.toLowerCase())
+          )
+        })
+        .filter(Boolean) // Remove null matches
+      
+      return {
+        requiresMultipleSteps: analysis.requiresMultipleSteps,
+        targetSections,
+        reasoning: analysis.reasoning
+      }
+    } catch (error) {
+      console.error('❌ [Task Analysis] Error:', error)
+      
+      // Fallback: Conservative single-step approach
+      return {
+        requiresMultipleSteps: false,
+        targetSections: [],
+        reasoning: 'Analysis failed, defaulting to structure-only mode'
+      }
+    }
+  }
+
   private extractPattern(
     message: string,
     intent: IntentAnalysis,
