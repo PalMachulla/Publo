@@ -312,10 +312,43 @@ Evaluate the content honestly and provide feedback that will elevate the writing
   
   private parseCritique(responseContent: string): CritiqueResult {
     try {
-      // Parse JSON response
-      const critique = typeof responseContent === 'string' 
-        ? JSON.parse(responseContent)
-        : responseContent
+      let critique: any
+      
+      // Handle different response formats
+      if (typeof responseContent === 'object') {
+        // Already parsed
+        critique = responseContent
+      } else if (typeof responseContent === 'string') {
+        // Try to extract JSON from markdown code blocks or plain text
+        let jsonContent = responseContent.trim()
+        
+        // Remove markdown code blocks (```json ... ``` or ``` ... ```)
+        const codeBlockMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/)
+        if (codeBlockMatch) {
+          jsonContent = codeBlockMatch[1].trim()
+        }
+        
+        // Remove any leading/trailing markdown formatting
+        jsonContent = jsonContent.replace(/^\*\*.*?\*\*\s*/g, '') // Remove **headers**
+        jsonContent = jsonContent.replace(/^#+\s+.*$/gm, '') // Remove markdown headers
+        
+        // Try to find JSON object in text
+        const jsonMatch = jsonContent.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          jsonContent = jsonMatch[0]
+        }
+        
+        try {
+          critique = JSON.parse(jsonContent)
+        } catch (parseError) {
+          console.warn('⚠️ [CriticAgent] Failed to parse JSON, attempting fallback extraction')
+          console.log('Response content:', responseContent.substring(0, 200))
+          // If JSON parsing fails, create fallback
+          return this.createFallbackCritique()
+        }
+      } else {
+        return this.createFallbackCritique()
+      }
       
       // Validate structure
       if (!critique.score || typeof critique.score !== 'number') {
