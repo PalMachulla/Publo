@@ -2582,21 +2582,33 @@ Which option did the user select? Return ONLY the option ID.`
           type: 'result'
         })
         
-        // 🔧 FIX: Actually call generateActions with create_structure intent
-        // instead of just returning a message action
-        console.log('✅ [Clarification] User chose create_new, proceeding with structure generation')
+        // 🔧 FIX: Return message action to trigger UI flow
+        // The UI will call onCreateStory, which creates the node FIRST,
+        // then calls triggerOrchestratedGeneration with the proper node ID
+        console.log('✅ [Clarification] User chose create_new, returning message action')
         console.log('   Format:', documentFormat)
         console.log('   Message:', userMessage)
+        console.log('   → UI will create node and trigger orchestration with node ID')
         
-        // Recursively call orchestrate with modified request (bypassing clarification)
-        const modifiedRequest = {
-          ...request,
-          message: `${userMessage} from scratch`, // Add "from scratch" to bypass future clarifications
-          clarificationContext: undefined // Remove clarification context
+        return {
+          intent: 'create_structure',
+          confidence: 0.95,
+          reasoning: `User chose to create new ${documentFormat} from scratch`,
+          modelUsed: 'none',
+          actions: [{
+            type: 'message',
+            payload: {
+              content: `✅ Creating new ${documentFormat} from scratch...`,
+              intent: 'create_structure',
+              format: documentFormat,
+              prompt: `${userMessage} from scratch` // Will trigger structure generation in triggerOrchestratedGeneration
+            },
+            status: 'pending'
+          }],
+          canvasChanged: false, // Canvas change will happen when UI executes onCreateStory
+          requiresUserInput: false,
+          estimatedCost: 0
         }
-        
-        // This will go through normal flow: intent detection → generateActions → multi-step detection
-        return await this.orchestrate(modifiedRequest)
       } else {
         // User wants to base it on an existing doc
         const selectedDocId = selectedOption.id.replace('use_', '')
