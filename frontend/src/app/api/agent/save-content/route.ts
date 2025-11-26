@@ -117,8 +117,9 @@ export async function POST(request: NextRequest) {
 
     const updatedData = docManager.getData()
 
-    // Save back to Supabase
-    const { error: updateError } = await supabase
+    // STEP 4: Save back to Supabase using admin client (bypasses RLS)
+    console.log('💾 [API /api/agent/save-content] Saving updated content with admin client...')
+    const { error: updateError } = await adminClient
       .from('nodes')
       .update({ document_data: updatedData })
       .eq('id', storyStructureNodeId)
