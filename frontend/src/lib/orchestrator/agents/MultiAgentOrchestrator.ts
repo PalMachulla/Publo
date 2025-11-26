@@ -501,10 +501,19 @@ Respond in JSON format:
     
     // Execute with iterative refinement
     try {
+      // ✅ FIX: Pass storyStructureNodeId and format in metadata so WriterAgent can call /api/content/generate
+      const storyStructureNodeId = request?.currentStoryStructureNodeId || 
+                                   (this as any).worldState?.getState().canvas.activeDocumentNodeId
+      const format = request?.documentFormat || 'novel'
+      
       const result = await cluster.generate(task, {
         blackboard: this.getBlackboard(),
         dependencies: {},
-        sessionId
+        sessionId,
+        metadata: {
+          storyStructureNodeId,
+          format
+        }
       })
       
       console.log(`✅ [MultiAgentOrchestrator] Cluster execution complete`)
