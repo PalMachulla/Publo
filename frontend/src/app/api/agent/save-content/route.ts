@@ -2,10 +2,10 @@
  * API Route: /api/agent/save-content
  * 
  * Server-side endpoint for agents to save generated content.
- * Uses service role to bypass RLS restrictions.
+ * Uses TWO clients: regular client for auth, admin client for data access.
  */
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { DocumentManager } from '@/lib/document/DocumentManager'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -28,10 +28,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create Supabase client with server-side auth
+    // STEP 1: Verify user authentication (using regular client)
     const supabase = await createClient()
-
-    // Verify user is authenticated
     const { data: { user } } = await supabase.auth.getUser()
     
     if (!user) {
@@ -52,42 +50,58 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ [API /api/agent/save-content] User authenticated:', user.id)
 
-    // 🔧 CRITICAL FIX: Directly fetch with ownership proof that matches RLS policy
-    // RLS policy: story_id IN (SELECT stories.id FROM stories WHERE user_id = auth.uid())
-    // We need to query in a way that RLS can verify ownership
-    console.log('📡 [API /api/agent/save-content] Fetching node with RLS-compliant query...')
-    
-    const { data: node, error: fetchError } = await supabase
+    // STEP 2: Verify ownership using regular client (respects RLS)
+    console.log('🔐 [API /api/agent/save-content] Verifying story ownership...')
+    const { data: nodeOwnership, error: ownershipError } = await supabase
       .from('nodes')
-      .select(`
-        id,
-        document_data,
-        story_id,
-        stories!inner(id, user_id)
-      `)
+      .select('story_id')
       .eq('id', storyStructureNodeId)
-      .eq('stories.user_id', user.id)
       .single()
 
-    if (fetchError || !node) {
-      console.error('❌ [API /api/agent/save-content] Failed to fetch node:', {
-        error: fetchError,
-        errorCode: fetchError?.code,
-        errorMessage: fetchError?.message,
-        errorDetails: fetchError?.details,
-        nodeId: storyStructureNodeId,
-        userId: user.id
-      })
+    if (ownershipError || !nodeOwnership) {
+      console.error('❌ [API /api/agent/save-content] Node not found or access denied:', ownershipError)
       return NextResponse.json(
-        { success: false, error: `Node not found or unauthorized: ${fetchError?.message || 'Unknown error'}` },
-        { status: fetchError?.code === 'PGRST116' ? 403 : 404 }
+        { success: false, error: 'Node not found or you do not have access' },
+        { status: 403 }
       )
     }
 
-    console.log('✅ [API /api/agent/save-content] Node fetched successfully:', {
-      nodeId: node.id,
-      storyId: node.story_id
-    })
+    // Verify user owns the story
+    const { data: storyOwnership, error: storyError } = await supabase
+      .from('stories')
+      .select('user_id')
+      .eq('id', nodeOwnership.story_id)
+      .single()
+
+    if (storyError || !storyOwnership || storyOwnership.user_id !== userId) {
+      console.error('❌ [API /api/agent/save-content] User does not own this story')
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: You do not own this story' },
+        { status: 403 }
+      )
+    }
+
+    console.log('✅ [API /api/agent/save-content] Ownership verified')
+
+    // STEP 3: Fetch and update using ADMIN client (bypasses RLS after auth check)
+    console.log('📡 [API /api/agent/save-content] Using admin client to fetch node data...')
+    const adminClient = createAdminClient()
+    
+    const { data: node, error: fetchError } = await adminClient
+      .from('nodes')
+      .select('id, document_data, story_id')
+      .eq('id', storyStructureNodeId)
+      .single()
+
+    if (fetchError || !node) {
+      console.error('❌ [API /api/agent/save-content] Failed to fetch node with admin client:', fetchError)
+      return NextResponse.json(
+        { success: false, error: `Failed to fetch node: ${fetchError?.message || 'Unknown error'}` },
+        { status: 500 }
+      )
+    }
+
+    console.log('✅ [API /api/agent/save-content] Node fetched successfully')
 
     // Update content using DocumentManager
     const docManager = new DocumentManager(node.document_data)

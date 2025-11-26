@@ -1,4 +1,5 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 export async function createClient() {
@@ -61,5 +62,34 @@ export async function createClient() {
       },
     }
   )
+}
+
+/**
+ * Create a Supabase admin client using SERVICE_ROLE key
+ * 
+ * ⚠️ BYPASSES RLS - Use only for server-side operations where you've already verified permissions!
+ * 
+ * Use cases:
+ * - Agent content persistence (after verifying user owns story)
+ * - Background jobs
+ * - Admin operations
+ */
+export function createAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!url || !serviceRoleKey) {
+    throw new Error(
+      'Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. ' +
+      'Service role key is required for server-side admin operations.'
+    )
+  }
+  
+  return createSupabaseClient(url, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  })
 }
 
