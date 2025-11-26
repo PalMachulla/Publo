@@ -78,19 +78,35 @@ export class CriticAgent implements Agent {
       const prompt = this.buildReviewPrompt(content, constraints, context.dependencies)
       const systemPrompt = this.getSystemPrompt(constraints)
       
-      // Call LLM for structured critique
-      const response = await fetch('/api/generate', {
+      // ✅ FIX: Use /api/content/generate (like WriterAgent) instead of non-existent /api/generate
+      // Combine system prompt and user prompt with JSON format instruction
+      const combinedPrompt = `${systemPrompt}\n\n${prompt}\n\n**IMPORTANT: You must respond with ONLY valid JSON matching this exact structure (no markdown, no code blocks):**
+{
+  "approved": boolean,
+  "score": number (0-10),
+  "issues": ["issue1", "issue2"],
+  "suggestions": ["suggestion1", "suggestion2"],
+  "strengths": ["strength1", "strength2"],
+  "detailedFeedback": {
+    "craft": { "score": number, "notes": "string" },
+    "pacing": { "score": number, "notes": "string" },
+    "dialogue": { "score": number, "notes": "string" },
+    "consistency": { "score": number, "notes": "string" },
+    "formatting": { "score": number, "notes": "string" }
+  }
+}`
+      
+      const response = await fetch('/api/content/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: 'critic',
-          model: this.metadata.preferredModel,
-          system_prompt: systemPrompt,
-          user_prompt: prompt,
-          user_key_id: this.userKeyId,
-          stream: false,
-          response_format: { type: 'json_object' }, // Request structured JSON
-          max_completion_tokens: 2000 // Detailed feedback
+          segmentId: 'critic-review', // Identifier for review task
+          prompt: combinedPrompt,
+          storyStructureNodeId: context.metadata?.storyStructureNodeId || null,
+          structureItems: context.dependencies?.structure || [],
+          contentMap: context.dependencies?.contentMap || {},
+          format: context.metadata?.format || 'novel'
+          // /api/content/generate will auto-select model and handle streaming
         })
       })
       
@@ -100,6 +116,7 @@ export class CriticAgent implements Agent {
       }
       
       const data = await response.json()
+      // Extract critique from response - /api/content/generate returns { content: "..." }
       const critique = this.parseCritique(data.content)
       const executionTime = Date.now() - startTime
       
@@ -111,10 +128,10 @@ export class CriticAgent implements Agent {
       
       return {
         data: critique,
-        tokensUsed: data.usage?.total_tokens || 0,
+        tokensUsed: 0, // /api/content/generate doesn't return token usage yet
         executionTime,
         metadata: {
-          model: data.model,
+          model: 'auto-selected', // /api/content/generate auto-selects model
           approved: critique.approved,
           score: critique.score
         }
