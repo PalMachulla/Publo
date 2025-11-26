@@ -82,6 +82,8 @@ export interface OrchestratorRequest {
     options: Array<{id: string, label: string, description: string}>
     payload: any // Original action payload (documentFormat, userMessage, existingDocs, etc.)
   }
+  // ✅ FIX: Authenticated Supabase client (to avoid RLS issues in agents)
+  supabaseClient?: any
 }
 
 export interface OrchestratorResponse {
