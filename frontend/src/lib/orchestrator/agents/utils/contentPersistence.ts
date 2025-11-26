@@ -42,16 +42,40 @@ export async function saveAgentContent(options: SaveContentOptions): Promise<Sav
   try {
     const supabase = createClient()
     
-    // Step 1: Fetch current document_data
+    // Step 1: Fetch current document_data (with retry logic for race conditions)
     console.log('📡 [saveAgentContent] Fetching node from Supabase...')
-    const { data: node, error: fetchError } = await supabase
-      .from('nodes')
-      .select('document_data')
-      .eq('id', storyStructureNodeId)
-      .single()
+    
+    // ✅ FIX: Add retry logic to handle race condition where node was just created
+    const maxRetries = 3
+    const retryDelays = [500, 1000, 2000] // Exponential backoff
+    
+    let node: any = null
+    let fetchError: any = null
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const result = await supabase
+        .from('nodes')
+        .select('document_data')
+        .eq('id', storyStructureNodeId)
+        .single()
+      
+      node = result.data
+      fetchError = result.error
+      
+      if (!fetchError || fetchError.code !== 'PGRST116') {
+        // Success or non-retryable error
+        break
+      }
+      
+      if (attempt < maxRetries) {
+        const delay = retryDelays[attempt]
+        console.log(`⏳ [saveAgentContent] Node not found (PGRST116), retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
     
     if (fetchError) {
-      console.error('❌ [saveAgentContent] Failed to fetch node:', fetchError)
+      console.error(`❌ [saveAgentContent] Failed to fetch node after ${maxRetries + 1} attempts:`, fetchError)
       return { success: false, error: fetchError.message }
     }
     

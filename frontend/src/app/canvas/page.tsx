@@ -1021,11 +1021,21 @@ export default function CanvasPage() {
         const supabase = createClient()
         
         console.log('🔧 [saveAndFinalize] Attempting INSERT into Supabase...')
+        
+        // ✅ FIX: Initialize document_data so agents can save content immediately
+        // Import DocumentManager dynamically to avoid circular dependency
+        const { DocumentManager } = await import('@/lib/document/DocumentManager')
+        const docManager = DocumentManager.fromStructureItems(
+          newStructureNode.data.items || [],
+          (newStructureNode.data.format as 'novel' | 'screenplay' | 'report') || 'novel'
+        )
+        
         const insertPayload = {
           id: structureId,
           story_id: storyId,
           type: 'storyStructure',
           data: newStructureNode.data,
+          document_data: docManager.getData(), // ✅ FIX: Initialize with empty hierarchical document
           position_x: newStructureNode.position.x,
           position_y: newStructureNode.position.y
           // ✅ FIX: No user_id column in nodes table (tracked via story_id → stories.user_id)
@@ -1055,11 +1065,12 @@ export default function CanvasPage() {
             throw insertError
           } else {
             console.log('⚠️ [saveAndFinalize] Node already exists in database, updating instead...')
-            // Update existing node
+            // Update existing node (including document_data)
             const { error: updateError } = await supabase
               .from('nodes')
               .update({
                 data: newStructureNode.data,
+                document_data: docManager.getData(), // ✅ FIX: Ensure document_data is initialized
                 position_x: newStructureNode.position.x, // ✅ FIX: Use position_x/position_y columns
                 position_y: newStructureNode.position.y
               })
