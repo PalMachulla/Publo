@@ -181,6 +181,13 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
       }
 
       // Save to database
+      console.log('🔗 [WriteContentTool] Passing to saveAgentContent:', {
+        storyStructureNodeId,
+        sectionId,
+        userId,
+        contentLength: content.length
+      })
+      
       const saveResult = await saveAgentContent({
         storyStructureNodeId,
         sectionId,

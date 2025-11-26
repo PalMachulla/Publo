@@ -7,12 +7,14 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { DocumentManager } from '@/lib/document/DocumentManager'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface SaveContentOptions {
   storyStructureNodeId: string
   sectionId: string
   content: string
   userId: string
+  supabaseClient?: SupabaseClient // ✅ FIX: Accept authenticated client from caller
 }
 
 export interface SaveContentResult {
@@ -27,7 +29,7 @@ export interface SaveContentResult {
  * This replicates the logic from handleWriteContent in canvas/page.tsx
  */
 export async function saveAgentContent(options: SaveContentOptions): Promise<SaveContentResult> {
-  const { storyStructureNodeId, sectionId, content, userId } = options
+  const { storyStructureNodeId, sectionId, content, userId, supabaseClient } = options
   
   // 🔍 DEBUG: Log save attempt
   console.log('💾 [saveAgentContent] Attempting save:', {
@@ -36,11 +38,17 @@ export async function saveAgentContent(options: SaveContentOptions): Promise<Sav
     nodeIdFormat: storyStructureNodeId?.startsWith('structure-') ? '❌ WRONG (structure ID)' : '✅ CORRECT (node ID)',
     sectionId,
     contentLength: content.length,
-    contentPreview: content.substring(0, 100) + '...'
+    contentPreview: content.substring(0, 100) + '...',
+    hasProvidedClient: !!supabaseClient // ✅ FIX: Log if client was provided
   })
   
   try {
-    const supabase = createClient()
+    // ✅ FIX: Use provided authenticated client, fallback to creating new one
+    const supabase = supabaseClient || createClient()
+    console.log('🔑 [saveAgentContent] Using Supabase client:', {
+      provided: !!supabaseClient,
+      source: supabaseClient ? 'authenticated (passed from canvas)' : 'new instance (may lack auth)'
+    })
     
     // Step 1: Fetch current document_data (with retry logic for race conditions)
     console.log('📡 [saveAgentContent] Fetching node from Supabase...')
