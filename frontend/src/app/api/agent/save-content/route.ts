@@ -52,40 +52,39 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ [API /api/agent/save-content] User authenticated:', user.id)
 
-    // Fetch current document_data
-    console.log('📡 [API /api/agent/save-content] Fetching node from Supabase...')
-    const { data: node, error: fetchError } = await supabase
+    // ✅ FIX: Fetch node with explicit JOIN to stories table for RLS
+    // This satisfies RLS policy by proving ownership in a single query
+    console.log('📡 [API /api/agent/save-content] Fetching node with ownership verification...')
+    
+    const { data: result, error: fetchError } = await supabase
       .from('nodes')
-      .select('document_data, story_id')
+      .select(`
+        id,
+        document_data,
+        story_id,
+        stories!inner (
+          user_id
+        )
+      `)
       .eq('id', storyStructureNodeId)
+      .eq('stories.user_id', userId) // RLS-friendly: ownership check in query
       .single()
 
-    if (fetchError || !node) {
+    if (fetchError || !result) {
       console.error('❌ [API /api/agent/save-content] Failed to fetch node:', fetchError)
       return NextResponse.json(
-        { success: false, error: `Node not found: ${fetchError?.message || 'Unknown error'}` },
-        { status: 404 }
+        { success: false, error: `Node not found or unauthorized: ${fetchError?.message || 'Unknown error'}` },
+        { status: fetchError?.code === 'PGRST116' ? 403 : 404 }
       )
     }
 
-    console.log('✅ [API /api/agent/save-content] Node fetched successfully')
-
-    // Verify user owns the story (additional security check)
-    const { data: story, error: storyError } = await supabase
-      .from('stories')
-      .select('user_id')
-      .eq('id', node.story_id)
-      .single()
-
-    if (storyError || !story || story.user_id !== userId) {
-      console.error('❌ [API /api/agent/save-content] Story ownership check failed')
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: You do not own this story' },
-        { status: 403 }
-      )
+    console.log('✅ [API /api/agent/save-content] Node fetched and ownership verified')
+    
+    // Extract node data (result includes stories relationship)
+    const node = {
+      document_data: result.document_data,
+      story_id: result.story_id
     }
-
-    console.log('✅ [API /api/agent/save-content] Ownership verified')
 
     // Update content using DocumentManager
     const docManager = new DocumentManager(node.document_data)
