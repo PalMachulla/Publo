@@ -164,6 +164,21 @@ const templates: Record<StoryFormat, Template[]> = {
     { id: 'technical', name: 'Technical Report', description: 'Specifications, analysis, documentation' },
     { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
   ],
+  'report_script_coverage': [
+    { id: 'standard', name: 'Standard Coverage', description: 'Industry-standard screenplay analysis' },
+    { id: 'detailed', name: 'Detailed Coverage', description: 'In-depth analysis with recommendations' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
+  'report_business': [
+    { id: 'executive', name: 'Executive Report', description: 'High-level strategic analysis' },
+    { id: 'analytical', name: 'Analytical Report', description: 'Data-driven insights and recommendations' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
+  'report_content_analysis': [
+    { id: 'thematic', name: 'Thematic Analysis', description: 'Focus on themes and patterns' },
+    { id: 'structural', name: 'Structural Analysis', description: 'Analyze content structure and flow' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
   'article': [
     { id: 'how-to', name: 'How-To Guide', description: 'Step-by-step instructional' },
     { id: 'listicle', name: 'Listicle', description: 'Numbered or bulleted list format' },
@@ -637,7 +652,7 @@ export default function OrchestratorPanel({
           const modelsData = await modelsResponse.json()
           if (modelsData.success && modelsData.models && modelsData.models.length > 0) {
             availableModelsToPass = modelsData.models
-            console.log(`✅ [OrchestratorPanel] Loaded ${availableModelsToPass.length} available models (${modelsData.stats.reasoningCount} reasoning, ${modelsData.stats.writingCount} writing)`)
+            console.log(`✅ [OrchestratorPanel] Loaded ${modelsData.models.length} available models (${modelsData.stats.reasoningCount} reasoning, ${modelsData.stats.writingCount} writing)`)
           }
         } else {
           console.warn('⚠️ [OrchestratorPanel] Failed to fetch available models, using static MODEL_TIERS')
@@ -674,14 +689,14 @@ export default function OrchestratorPanel({
         // Available providers (from user's API keys)
         availableProviders: availableProviders.length > 0 ? availableProviders : undefined,
         // PHASE 1.2: Pass available models with tier metadata (undefined = fallback to static MODEL_TIERS)
-        availableModels: availableModelsToPass as any, // Intentionally allow undefined for backward compatibility
+        availableModels: availableModelsToPass || undefined as any, // Intentionally allow undefined for backward compatibility
         // User key ID for structure generation
         userKeyId
       })
       
       // Display detailed thinking steps from blackboard
       if (onAddChatMessage && response.thinkingSteps && response.thinkingSteps.length > 0) {
-        response.thinkingSteps.forEach(step => {
+        response.thinkingSteps.forEach((step: any) => {
           onAddChatMessage(step.content, 'orchestrator', step.type as any)
         })
       } else if (onAddChatMessage) {
@@ -883,7 +898,7 @@ export default function OrchestratorPanel({
       
       // Display thinking steps
       if (onAddChatMessage && orchestratorResponse.thinkingSteps && orchestratorResponse.thinkingSteps.length > 0) {
-        orchestratorResponse.thinkingSteps.forEach(step => {
+        orchestratorResponse.thinkingSteps.forEach((step: any) => {
           onAddChatMessage(step.content, 'orchestrator', step.type as any)
         })
       }
@@ -1814,9 +1829,9 @@ INSTRUCTION: Use the above ${referencedNode.detailedContext.format} structure an
                     onAddChatMessage(`ℹ️ Note: No written content found, using structure summaries only`)
                   }
                 }
-              } else if (referencedNode.nodeType === 'test' && referencedNode.detailedContext.markdown) {
+              } else if (referencedNode.nodeType === 'test' && (referencedNode.detailedContext as any).markdown) {
                 // Use markdown content from test node
-                const markdown = referencedNode.detailedContext.markdown as string
+                const markdown = (referencedNode.detailedContext as any).markdown as string
                 enhancedPrompt = `${message}
 
 REFERENCE CONTENT:
@@ -1827,7 +1842,7 @@ ${markdown.length > 8000 ? '... (content truncated for length)' : ''}
 Use the above content as inspiration for creating the new ${formatToUse} structure.`
 
                 if (onAddChatMessage) {
-                  onAddChatMessage(`✅ Extracted ${referencedNode.detailedContext.wordCount} words from "${referencedNode.label}"`)
+                  onAddChatMessage(`✅ Extracted ${(referencedNode.detailedContext as any).wordCount || 0} words from "${referencedNode.label}"`)
                 }
               }
             } else if (onAddChatMessage) {
