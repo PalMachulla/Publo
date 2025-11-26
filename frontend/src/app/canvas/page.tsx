@@ -998,16 +998,52 @@ export default function CanvasPage() {
           hasNodes: nodes.length > 0,
           saving
         })
-        await handleSave()
-        console.log('✅ [saveAndFinalize] Save completed for node:', structureId)
-      } catch (error: any) {
-        // Ignore duplicate key errors (node already exists)
-        if (error?.code !== '23505') {
-          console.error('❌ [saveAndFinalize] Save error:', error)
-          throw error // Re-throw non-duplicate errors
-        } else {
-          console.log('⚠️ [saveAndFinalize] Node already exists in database, continuing...')
+        
+        // ✅ FIX: Explicitly create node in Supabase first before calling handleSave()
+        // This ensures the node exists BEFORE any document operations can happen
+        const supabase = createClient()
+        const { error: insertError } = await supabase
+          .from('nodes')
+          .insert({
+            id: structureId,
+            story_id: storyId,
+            type: 'storyStructure',
+            data: newStructureNode.data,
+            position: newStructureNode.position,
+            user_id: user?.id
+          })
+        
+        if (insertError) {
+          // Ignore duplicate key errors (node already exists)
+          if (insertError.code !== '23505') {
+            console.error('❌ [saveAndFinalize] Node insert error:', insertError)
+            throw insertError
+          } else {
+            console.log('⚠️ [saveAndFinalize] Node already exists in database, updating instead...')
+            // Update existing node
+            const { error: updateError } = await supabase
+              .from('nodes')
+              .update({
+                data: newStructureNode.data,
+                position: newStructureNode.position
+              })
+              .eq('id', structureId)
+            
+            if (updateError) {
+              console.error('❌ [saveAndFinalize] Node update error:', updateError)
+              throw updateError
+            }
+          }
         }
+        
+        console.log('✅ [saveAndFinalize] Node explicitly saved to Supabase:', structureId)
+        
+        // Now call handleSave() for edges and other nodes
+        await handleSave()
+        console.log('✅ [saveAndFinalize] Full save completed')
+      } catch (error: any) {
+        console.error('❌ [saveAndFinalize] Save error:', error)
+        throw error
       }
       
       // Remove loading state after save completes
