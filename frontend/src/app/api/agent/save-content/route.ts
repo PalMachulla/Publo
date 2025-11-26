@@ -52,41 +52,31 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ [API /api/agent/save-content] User authenticated:', user.id)
 
-    // 🔍 WORKAROUND: Query stories first to establish ownership context
-    // Then query nodes - RLS might allow queries when user owns related story
-    console.log('📡 [API /api/agent/save-content] Step 1: Fetching all user stories...')
-    
-    const { data: userStories, error: storiesError } = await supabase
-      .from('stories')
-      .select('id')
-      .eq('user_id', userId)
-
-    if (storiesError || !userStories || userStories.length === 0) {
-      console.error('❌ [API /api/agent/save-content] Failed to fetch user stories:', storiesError)
-      return NextResponse.json(
-        { success: false, error: 'No stories found for user' },
-        { status: 404 }
-      )
-    }
-
-    const storyIds = userStories.map(s => s.id)
-    console.log(`✅ [API /api/agent/save-content] Found ${storyIds.length} stories owned by user`)
-
-    // Step 2: Fetch node filtered by user's story IDs
-    console.log('📡 [API /api/agent/save-content] Step 2: Fetching node...')
+    // 🔧 CRITICAL FIX: Directly fetch with ownership proof that matches RLS policy
+    // RLS policy: story_id IN (SELECT stories.id FROM stories WHERE user_id = auth.uid())
+    // We need to query in a way that RLS can verify ownership
+    console.log('📡 [API /api/agent/save-content] Fetching node with RLS-compliant query...')
     
     const { data: node, error: fetchError } = await supabase
       .from('nodes')
-      .select('id, document_data, story_id')
+      .select(`
+        id,
+        document_data,
+        story_id,
+        stories!inner(id, user_id)
+      `)
       .eq('id', storyStructureNodeId)
-      .in('story_id', storyIds) // Only nodes from user's stories
+      .eq('stories.user_id', user.id)
       .single()
 
     if (fetchError || !node) {
       console.error('❌ [API /api/agent/save-content] Failed to fetch node:', {
         error: fetchError,
+        errorCode: fetchError?.code,
+        errorMessage: fetchError?.message,
+        errorDetails: fetchError?.details,
         nodeId: storyStructureNodeId,
-        userStoryIds: storyIds
+        userId: user.id
       })
       return NextResponse.json(
         { success: false, error: `Node not found or unauthorized: ${fetchError?.message || 'Unknown error'}` },
@@ -94,7 +84,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ [API /api/agent/save-content] Node fetched and ownership verified:', {
+    console.log('✅ [API /api/agent/save-content] Node fetched successfully:', {
       nodeId: node.id,
       storyId: node.story_id
     })
