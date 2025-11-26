@@ -1009,28 +1009,48 @@ export default function CanvasPage() {
       try {
         console.log('💾 [saveAndFinalize] Starting save for node:', structureId, {
           storyId,
+          userId: user?.id,
           hasNodes: nodes.length > 0,
-          saving
+          saving,
+          nodeDataKeys: Object.keys(newStructureNode.data),
+          itemsCount: newStructureNode.data.items?.length || 0
         })
         
         // ✅ FIX: Explicitly create node in Supabase first before calling handleSave()
         // This ensures the node exists BEFORE any document operations can happen
         const supabase = createClient()
-        const { error: insertError } = await supabase
+        
+        console.log('🔧 [saveAndFinalize] Attempting INSERT into Supabase...')
+        const insertPayload = {
+          id: structureId,
+          story_id: storyId,
+          type: 'storyStructure',
+          data: newStructureNode.data,
+          position: newStructureNode.position,
+          user_id: user?.id
+        }
+        console.log('📦 [saveAndFinalize] INSERT payload:', JSON.stringify(insertPayload, null, 2).substring(0, 500))
+        
+        const { data: insertData, error: insertError } = await supabase
           .from('nodes')
-          .insert({
-            id: structureId,
-            story_id: storyId,
-            type: 'storyStructure',
-            data: newStructureNode.data,
-            position: newStructureNode.position,
-            user_id: user?.id
-          })
+          .insert(insertPayload)
+          .select()
+        
+        console.log('📡 [saveAndFinalize] INSERT response:', {
+          success: !insertError,
+          insertedData: insertData,
+          error: insertError
+        })
         
         if (insertError) {
           // Ignore duplicate key errors (node already exists)
           if (insertError.code !== '23505') {
-            console.error('❌ [saveAndFinalize] Node insert error:', insertError)
+            console.error('❌ [saveAndFinalize] Node insert error:', {
+              code: insertError.code,
+              message: insertError.message,
+              details: insertError.details,
+              hint: insertError.hint
+            })
             throw insertError
           } else {
             console.log('⚠️ [saveAndFinalize] Node already exists in database, updating instead...')
@@ -1047,7 +1067,10 @@ export default function CanvasPage() {
               console.error('❌ [saveAndFinalize] Node update error:', updateError)
               throw updateError
             }
+            console.log('✅ [saveAndFinalize] Node updated successfully')
           }
+        } else {
+          console.log('✅ [saveAndFinalize] Node inserted successfully:', insertData)
         }
         
         console.log('✅ [saveAndFinalize] Node explicitly saved to Supabase:', structureId)
