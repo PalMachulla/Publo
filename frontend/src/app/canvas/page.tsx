@@ -1071,40 +1071,38 @@ export default function CanvasPage() {
           throw upsertError
         }
         
-        console.log('✅ [saveAndFinalize] Node upserted successfully:', upsertData)
+        console.log('✅ [saveAndFinalize] Node upserted successfully with user client:', upsertData)
         
-        console.log('✅ [saveAndFinalize] Node explicitly saved to Supabase:', structureId)
-        
-        // 🔍 VERIFICATION: Immediately query the node to confirm it's readable
-        console.log('🔍 [saveAndFinalize] VERIFICATION: Re-querying node to confirm it exists...')
-        
-        // 🔍 DEBUG: Check auth session before verification
-        const { data: sessionData } = await supabase.auth.getSession()
-        console.log('🔐 [saveAndFinalize] Auth session check:', {
-          hasSession: !!sessionData?.session,
-          userId: sessionData?.session?.user?.id || 'NONE',
-          sessionExpiry: sessionData?.session?.expires_at || 'NONE'
-        })
-        
+        // 🔍 CRITICAL VERIFICATION: Can we query it back immediately?
+        console.log('🔍 [saveAndFinalize] VERIFICATION: Re-querying node with user client...')
         const { data: verifyData, error: verifyError } = await supabase
           .from('nodes')
-          .select('id, document_data')
+          .select('id, type, story_id, document_data')
           .eq('id', structureId)
-          .single()
+          .maybeSingle()
         
-        if (verifyError) {
-          console.error('❌ [saveAndFinalize] VERIFICATION FAILED: Node not immediately queryable!', {
+        if (verifyError || !verifyData) {
+          console.error('❌❌❌ [saveAndFinalize] CRITICAL: UPSERT succeeded but SELECT failed!', {
             nodeId: structureId,
-            errorCode: verifyError.code,
-            errorMessage: verifyError.message,
-            errorDetails: verifyError.details,
-            errorHint: verifyError.hint
+            upsertSuccess: !upsertError,
+            selectError: verifyError?.code,
+            selectMessage: verifyError?.message,
+            diagnosis: '🚨 RLS might be blocking SELECT even though UPSERT succeeded!'
           })
         } else {
-          console.log('✅ [saveAndFinalize] VERIFICATION SUCCESS: Node is immediately queryable', {
+          console.log('✅ [saveAndFinalize] VERIFICATION SUCCESS: Node queryable with user client', {
             nodeId: verifyData.id,
-            hasDocumentData: !!verifyData.document_data
+            nodeType: verifyData.type,
+            storyId: verifyData.story_id,
+            hasDocumentData: !!verifyData.document_data,
+            documentDataKeys: verifyData.document_data ? Object.keys(verifyData.document_data) : []
           })
+          
+          console.log('⚠️ [saveAndFinalize] IMPORTANT: Agents use ADMIN client (service_role)')
+          console.log('   If agents fail with "node not found", check:')
+          console.log('   1. Supabase RLS SELECT policy allows service_role')
+          console.log('   2. Node ID matches exactly (watch server logs)')
+          console.log('   3. Go to http://localhost:3002/api/agent/diagnose-rls?nodeId=' + structureId)
         }
         
         // Now call handleSave() for edges and other nodes
