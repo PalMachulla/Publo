@@ -136,7 +136,7 @@ export interface StructurePlan {
 export class OrchestratorEngine {
   private blackboard: Blackboard
   private config: Omit<Required<OrchestratorConfig>, 'toolRegistry' | 'onMessage'> & { toolRegistry?: ToolRegistry; onMessage?: OrchestratorConfig['onMessage'] }
-  private worldState?: WorldStateManager // PHASE 1: Optional for gradual migration
+  protected worldState?: WorldStateManager // PHASE 1: Optional for gradual migration (protected for child classes)
   private toolRegistry?: ToolRegistry // PHASE 2: Optional tool system
   
   constructor(config: OrchestratorConfig, worldState?: WorldStateManager) {

@@ -466,11 +466,17 @@ Respond in JSON format:
             })
           }
           
+          // ✅ FIX: Access worldState from parent class (now protected)
+          if (!this.worldState) {
+            console.error('❌ [executeSequential] CRITICAL: worldState is undefined!')
+            throw new Error('WorldState not available - cannot execute tools')
+          }
+          
           const toolResult = await toolRegistry.execute(
             toolName,
             toolPayload,
             {
-              worldState: (this as any).worldState!,
+              worldState: this.worldState,
               userId: this.getConfig().userId,
               userKeyId: request?.userKeyId,
               blackboard: this.getBlackboard(),
@@ -616,11 +622,17 @@ Respond in JSON format:
                 toolPayload.format = request.documentFormat || 'novel'
               }
               
+              // ✅ FIX: Access worldState from parent class (now protected)
+              if (!this.worldState) {
+                console.error('❌ [executeParallel] CRITICAL: worldState is undefined!')
+                throw new Error('WorldState not available - cannot execute tools')
+              }
+              
               const toolResult = await toolRegistry.execute(
                 toolName,
                 toolPayload,
                 {
-                  worldState: (this as any).worldState!,
+                  worldState: this.worldState,
                   userId: this.getConfig().userId,
                   userKeyId: request?.userKeyId,
                   blackboard: this.getBlackboard(),
@@ -740,7 +752,7 @@ Respond in JSON format:
               format // ✅ Pass document format
             },
             {
-              worldState: (this as any).worldState!,
+              worldState: this.worldState!,
               userId: this.getConfig().userId,
               userKeyId: request?.userKeyId,
               blackboard: this.getBlackboard(),
