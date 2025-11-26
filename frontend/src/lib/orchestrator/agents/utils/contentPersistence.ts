@@ -53,11 +53,27 @@ export async function saveAgentContent(options: SaveContentOptions): Promise<Sav
     let fetchError: any = null
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      console.log(`🔍 [saveAgentContent] Fetch attempt ${attempt + 1}/${maxRetries + 1}:`, {
+        query: 'nodes.select(document_data).eq(id, storyStructureNodeId).single()',
+        nodeId: storyStructureNodeId,
+        timestamp: new Date().toISOString()
+      })
+      
       const result = await supabase
         .from('nodes')
-        .select('document_data')
+        .select('id, document_data') // ✅ FIX: Select id too for debugging
         .eq('id', storyStructureNodeId)
         .single()
+      
+      console.log(`📡 [saveAgentContent] Fetch attempt ${attempt + 1} result:`, {
+        success: !result.error,
+        hasData: !!result.data,
+        dataKeys: result.data ? Object.keys(result.data) : [],
+        errorCode: result.error?.code,
+        errorMessage: result.error?.message,
+        errorDetails: result.error?.details,
+        errorHint: result.error?.hint
+      })
       
       node = result.data
       fetchError = result.error
@@ -69,8 +85,15 @@ export async function saveAgentContent(options: SaveContentOptions): Promise<Sav
       
       if (attempt < maxRetries) {
         const delay = retryDelays[attempt]
-        console.log(`⏳ [saveAgentContent] Node not found (PGRST116), retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`)
+        console.warn(`⚠️ [saveAgentContent] Node not found (PGRST116), retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`)
         await new Promise(resolve => setTimeout(resolve, delay))
+      } else {
+        console.error(`❌ [saveAgentContent] Max retries reached. Last error:`, {
+          code: fetchError.code,
+          message: fetchError.message,
+          details: fetchError.details,
+          hint: fetchError.hint
+        })
       }
     }
     

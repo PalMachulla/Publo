@@ -1088,6 +1088,29 @@ export default function CanvasPage() {
         
         console.log('✅ [saveAndFinalize] Node explicitly saved to Supabase:', structureId)
         
+        // 🔍 VERIFICATION: Immediately query the node to confirm it's readable
+        console.log('🔍 [saveAndFinalize] VERIFICATION: Re-querying node to confirm it exists...')
+        const { data: verifyData, error: verifyError } = await supabase
+          .from('nodes')
+          .select('id, document_data')
+          .eq('id', structureId)
+          .single()
+        
+        if (verifyError) {
+          console.error('❌ [saveAndFinalize] VERIFICATION FAILED: Node not immediately queryable!', {
+            nodeId: structureId,
+            errorCode: verifyError.code,
+            errorMessage: verifyError.message,
+            errorDetails: verifyError.details,
+            errorHint: verifyError.hint
+          })
+        } else {
+          console.log('✅ [saveAndFinalize] VERIFICATION SUCCESS: Node is immediately queryable', {
+            nodeId: verifyData.id,
+            hasDocumentData: !!verifyData.document_data
+          })
+        }
+        
         // Now call handleSave() for edges and other nodes
         await handleSave()
         console.log('✅ [saveAndFinalize] Full save completed')
