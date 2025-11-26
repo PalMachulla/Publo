@@ -123,19 +123,44 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     }
     
     // Step 6: CRITICAL - Manage actions to prevent double execution
-    // Actions were executed by executeActionsWithAgents() via tool system EXCEPT:
-    // - generate_structure: Must be executed by UI (creates node on canvas)
-    // Keep only UI-executed actions, remove agent-executed actions
-    const uiActions = ['generate_structure', 'message', 'request_clarification', 'open_document', 'select_section', 'delete_node']
-    const originalActionCount = response.actions?.length || 0
-    const agentExecutedActions = response.actions?.filter(a => !uiActions.includes(a.type)) || []
+    // Complex filtering logic:
+    // 1. Agent-executed actions (generate_content) → Remove from response (already executed)
+    // 2. UI-executed actions (generate_structure, etc.) → Keep in response
+    // 3. EXCEPT: generate_content without node ID → Remove (will be generated after structure)
     
-    response.actions = response.actions?.filter(a => uiActions.includes(a.type)) || []
+    const hasNodeId = !!(request?.currentStoryStructureNodeId)
+    const originalActionCount = response.actions?.length || 0
+    
+    const filteredActions = response.actions?.filter(a => {
+      // Keep UI-executed actions
+      if (['generate_structure', 'message', 'request_clarification', 'open_document', 'select_section', 'delete_node'].includes(a.type)) {
+        return true
+      }
+      
+      // Remove generate_content actions (either executed by agents OR waiting for node creation)
+      if (a.type === 'generate_content') {
+        if (hasNodeId) {
+          // Had node ID → was executed by agents → remove
+          console.log(`  ✂️ Removing generate_content (executed): ${a.payload?.sectionName}`)
+          return false
+        } else {
+          // No node ID → wasn't executed → remove anyway (will be re-generated after structure)
+          console.log(`  ✂️ Removing generate_content (pending node creation): ${a.payload?.sectionName}`)
+          return false
+        }
+      }
+      
+      // Keep other actions
+      return true
+    }) || []
+    
+    response.actions = filteredActions
     
     console.log('🔍 [MultiAgentOrchestrator] Action filtering:', {
       original: originalActionCount,
-      agentExecuted: agentExecutedActions.map(a => a.type),
-      returnedToUI: response.actions.map(a => a.type)
+      filtered: originalActionCount - filteredActions.length,
+      returnedToUI: filteredActions.map(a => a.type),
+      hasNodeId
     })
     
     // 🔍 DEBUG: Log final state
