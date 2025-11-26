@@ -33,7 +33,6 @@ import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/l
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
 import { NodeType, StoryFormat, StoryStructureNodeData } from '@/types/nodes'
 import { MODEL_TIERS } from '@/lib/orchestrator/core/modelRouter'
-import { getOrchestrator } from '@/lib/orchestrator'
 
 // Node types for React Flow
 const nodeTypes = {

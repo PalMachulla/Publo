@@ -93,13 +93,14 @@ export {
 
 /**
  * Quick start: Create and orchestrate in one call
+ * @deprecated Consider using getMultiAgentOrchestrator() directly for Phase 3 multi-agent features
  */
 export async function orchestrate(
   userId: string,
   request: import('./core/orchestratorEngine').OrchestratorRequest,
   config?: Partial<import('./core/orchestratorEngine').OrchestratorConfig>
 ) {
-  const orchestrator = getOrchestrator(userId, config)
+  const orchestrator = getMultiAgentOrchestrator(userId, config)
   return await orchestrator.orchestrate(request)
 }
 
@@ -115,7 +116,7 @@ export function getConversationHistory(userId: string, count: number = 10) {
  * Clear conversation history for a user
  */
 export function clearConversation(userId: string) {
-  const orchestrator = getOrchestrator(userId)
+  const orchestrator = getMultiAgentOrchestrator(userId)
   orchestrator.reset()
 }
 
