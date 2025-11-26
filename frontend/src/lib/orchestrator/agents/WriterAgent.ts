@@ -67,18 +67,18 @@ export class WriterAgent implements Agent {
       // Determine optimal model (can override default)
       const model = this.selectModel(taskContext)
       
-      // Call LLM generation API
-      const response = await fetch('/api/generate', {
+      // Call existing content generation API
+      // TODO: Eventually create a dedicated /api/agent/write endpoint for cleaner separation
+      const response = await fetch('/api/content/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: 'writer',
-          model,
-          system_prompt: systemPrompt,
-          user_prompt: prompt,
-          user_key_id: this.userKeyId,
-          stream: false, // TODO: Add streaming support in future
-          max_completion_tokens: this.estimateTokens(taskContext)
+          segmentId: taskContext.section?.id || 'unknown',
+          prompt: `${systemPrompt}\n\n${prompt}`,
+          storyStructureNodeId: context.metadata?.storyStructureNodeId || null,
+          structureItems: context.dependencies?.structure || [],
+          contentMap: context.dependencies?.contentMap || {},
+          format: context.metadata?.format || 'novel'
         })
       })
       
@@ -92,15 +92,15 @@ export class WriterAgent implements Agent {
       
       this.status = 'idle'
       
-      console.log(`✅ [WriterAgent ${this.id}] Completed in ${executionTime}ms (${data.usage?.total_tokens || 0} tokens)`)
+      console.log(`✅ [WriterAgent ${this.id}] Completed in ${executionTime}ms`)
       
       return {
         data: data.content,
-        tokensUsed: data.usage?.total_tokens || 0,
+        tokensUsed: 0, // /api/content/generate doesn't return token usage yet
         executionTime,
         metadata: {
-          model: data.model,
-          cost: data.cost,
+          model: 'auto-selected', // /api/content/generate auto-selects model
+          cost: 0, // Not tracked by /api/content/generate yet
           wordCount: this.countWords(data.content)
         }
       }
