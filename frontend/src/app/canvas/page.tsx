@@ -1483,6 +1483,7 @@ export default function CanvasPage() {
         canvasNodes: nodes,
         canvasEdges: edges,
         documentFormat: format,
+        currentStoryStructureNodeId: structureNodeId, // ✅ FIX: Pass node ID so agents can save content
         userKeyId: userKeyId || undefined,
         fixedModelId: finalOrchestratorModel || undefined,
         availableProviders,
