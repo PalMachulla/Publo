@@ -524,62 +524,142 @@ Respond in JSON format:
     sessionId: string,
     request?: any
   ): Promise<void> {
-    console.log(`🔀 [MultiAgentOrchestrator] Executing ${actions.length} action(s) in parallel`)
+    console.log(`🔀 [MultiAgentOrchestrator] Executing ${actions.length} action(s) in parallel via TOOL SYSTEM`)
     
-    // Convert actions to agent tasks
+    // Get tool registry from config
+    const toolRegistry = (this as any).config?.toolRegistry
+    if (!toolRegistry) {
+      console.warn('⚠️ [MultiAgentOrchestrator] No tool registry available, skipping execution')
+      return
+    }
+    
+    // Convert actions to tasks for dependency analysis
     const tasks = this.actionsToTasks(actions)
     
-    // Build DAG from tasks
+    // Build DAG from tasks for batching (dependency resolution)
     const dag = this.dagExecutor.buildDAG(tasks)
+    const batches = this.dagExecutor.getExecutionOrder(dag)
     
     // Log execution plan
     console.log('📋 [MultiAgentOrchestrator] Execution plan:')
-    const batches = this.dagExecutor.getExecutionOrder(dag)
     batches.forEach((batch, idx) => {
       console.log(`   Batch ${idx + 1}: ${batch.length} task(s) in parallel`)
       
       // Add to UI
       this.getBlackboard().addMessage({
         role: 'orchestrator',
-        content: `📦 Batch ${idx + 1}: ${batch.map(t => t.payload?.context?.section?.name || t.id).join(', ')}`,
+        content: `📦 Batch ${idx + 1}: ${batch.length} tasks in parallel`,
         type: 'progress'
       })
     })
     
     this.getBlackboard().addMessage({
       role: 'orchestrator',
-      content: `🔀 Parallel execution: ${tasks.length} tasks across ${batches.length} batch(es)`,
+      content: `🔀 Parallel execution: ${actions.length} actions across ${batches.length} batch(es) via tools`,
       type: 'progress'
     })
     
-    // Execute DAG
+    // Execute batches sequentially, tasks within each batch in parallel
+    const startTime = Date.now()
+    let completedCount = 0
+    let failedCount = 0
+    
     try {
-      const result = await this.dagExecutor.execute(dag, sessionId)
-      
-      if (result.success) {
-        const speedup = result.metadata.totalTasks > 1 ? `~${result.metadata.totalTasks}x faster` : ''
-        console.log(`✅ [MultiAgentOrchestrator] Parallel execution complete`)
-        console.log(`   Completed: ${result.completedTasks.size}/${result.metadata.totalTasks}`)
-        console.log(`   Time: ${result.executionTime}ms`)
-        console.log(`   Max parallelism: ${result.metadata.maxParallelism}`)
+      for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+        const batch = batches[batchIdx]
+        
+        console.log(`🔀 [executeParallel] Processing batch ${batchIdx + 1}/${batches.length} (${batch.length} tasks)`)
         
         this.getBlackboard().addMessage({
           role: 'orchestrator',
-          content: `✅ Completed ${result.completedTasks.size} tasks in ${(result.executionTime / 1000).toFixed(1)}s ${speedup}`,
-          type: 'result'
+          content: `⚙️ Processing batch ${batchIdx + 1}/${batches.length} (${batch.length} tasks in parallel)`,
+          type: 'progress'
         })
-      } else {
-        console.error(`❌ [MultiAgentOrchestrator] Parallel execution failed`)
-        console.error(`   Failed tasks: ${result.failedTasks.size}`)
         
+        // Map tasks back to actions (tasks were created from actions)
+        const batchActions = batch.map(task => {
+          // Find corresponding action by sectionId
+          return actions.find(a => a.payload?.sectionId === task.payload?.context?.section?.id)
+        }).filter(a => a !== undefined) as OrchestratorAction[]
+        
+        // Execute all tasks in this batch in parallel using tools
+        const batchPromises = batchActions.map(async (action) => {
+          const toolName = this.actionTypeToToolName(action.type)
+          
+          if (toolName && toolRegistry.has(toolName)) {
+            try {
+              // Build tool payload with node ID and format from request
+              const toolPayload: any = {
+                ...action.payload,
+                useCluster: false // Parallel = simple writer for speed
+              }
+              
+              // ✅ Pass storyStructureNodeId and format to tools
+              if (toolName === 'write_content' && request?.currentStoryStructureNodeId) {
+                toolPayload.storyStructureNodeId = request.currentStoryStructureNodeId
+                toolPayload.format = request.documentFormat || 'novel'
+              }
+              
+              const toolResult = await toolRegistry.execute(
+                toolName,
+                toolPayload,
+                {
+                  worldState: (this as any).worldState!,
+                  userId: this.getConfig().userId,
+                  userKeyId: request?.userKeyId,
+                  blackboard: this.getBlackboard()
+                }
+              )
+              
+              if (toolResult.success) {
+                completedCount++
+                console.log(`✅ [executeParallel] Tool ${toolName} completed: ${action.payload?.sectionName}`)
+              } else {
+                failedCount++
+                console.error(`❌ [executeParallel] Tool ${toolName} failed:`, toolResult.error)
+              }
+              
+              return toolResult
+            } catch (error) {
+              failedCount++
+              console.error(`❌ [executeParallel] Tool execution error:`, error)
+              return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+            }
+          } else {
+            console.warn(`⚠️ [executeParallel] No tool for action: ${action.type}`)
+            return { success: false, error: `No tool available for ${action.type}` }
+          }
+        })
+        
+        // Wait for all tasks in this batch to complete
+        await Promise.all(batchPromises)
+        
+        console.log(`✅ [executeParallel] Batch ${batchIdx + 1} complete (${completedCount}/${actions.length} total)`)
+      }
+      
+      const executionTime = Date.now() - startTime
+      const speedup = batches.length > 1 ? `~${batches.length}x faster` : ''
+      
+      console.log(`✅ [MultiAgentOrchestrator] Parallel execution complete`)
+      console.log(`   Completed: ${completedCount}/${actions.length}`)
+      console.log(`   Failed: ${failedCount}`)
+      console.log(`   Time: ${executionTime}ms`)
+      
+      this.getBlackboard().addMessage({
+        role: 'orchestrator',
+        content: `✅ Completed ${completedCount}/${actions.length} tasks in ${(executionTime / 1000).toFixed(1)}s ${speedup}`,
+        type: 'result'
+      })
+      
+      if (failedCount > 0) {
         this.getBlackboard().addMessage({
           role: 'orchestrator',
-          content: `❌ ${result.failedTasks.size} task(s) failed`,
+          content: `⚠️ ${failedCount} task(s) failed`,
           type: 'error'
         })
       }
     } catch (error) {
-      console.error(`❌ [MultiAgentOrchestrator] DAG execution error:`, error)
+      console.error(`❌ [MultiAgentOrchestrator] Parallel execution error:`, error)
       
       this.getBlackboard().addMessage({
         role: 'orchestrator',
