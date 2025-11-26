@@ -73,6 +73,9 @@ export default function CanvasPage() {
   const searchParams = useSearchParams()
   const storyId = searchParams.get('id')
   
+  // ✅ FIX: Create Supabase client ONCE at component level (maintains auth session)
+  const supabaseClient = useMemo(() => createClient(), [])
+  
   const [hasAccess, setHasAccess] = useState<boolean>(false)
   const [checkingAccess, setCheckingAccess] = useState(true)
   
@@ -1016,9 +1019,8 @@ export default function CanvasPage() {
           itemsCount: newStructureNode.data.items?.length || 0
         })
         
-        // ✅ FIX: Explicitly create node in Supabase first before calling handleSave()
-        // This ensures the node exists BEFORE any document operations can happen
-        const supabase = createClient()
+        // ✅ FIX: Use component-level Supabase client (same auth session everywhere)
+        const supabase = supabaseClient
         
         console.log('🔧 [saveAndFinalize] Attempting INSERT into Supabase...')
         
@@ -1593,8 +1595,9 @@ export default function CanvasPage() {
       
       onReasoning(`🔑 Available providers: ${availableProviders.join(', ')}`, 'thinking')
       
-      // 🔧 FIX: Get authenticated Supabase client (to avoid RLS issues in agents)
-      const supabase = createClient()
+      // 🔧 FIX: Use component-level Supabase client (same instance throughout lifecycle)
+      // This ensures the SAME authenticated session is used for node creation AND agent writes
+      const supabase = supabaseClient
       
       // Call unified orchestrator to create structure
       const response = await orchestrator.orchestrate({
@@ -1607,7 +1610,7 @@ export default function CanvasPage() {
         fixedModelId: finalOrchestratorModel || undefined,
         availableProviders,
         modelMode: finalOrchestratorModel ? 'fixed' : 'automatic',
-        supabaseClient: supabase // ✅ FIX: Pass authenticated client to avoid RLS errors
+        supabaseClient: supabase // ✅ FIX: Pass SAME authenticated client instance
       })
       
       // Extract plan from generate_structure action
