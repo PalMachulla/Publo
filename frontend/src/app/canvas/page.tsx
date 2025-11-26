@@ -1026,7 +1026,8 @@ export default function CanvasPage() {
           story_id: storyId,
           type: 'storyStructure',
           data: newStructureNode.data,
-          position: newStructureNode.position,
+          position_x: newStructureNode.position.x, // ✅ FIX: Use position_x/position_y columns
+          position_y: newStructureNode.position.y,
           user_id: user?.id
         }
         console.log('📦 [saveAndFinalize] INSERT payload:', JSON.stringify(insertPayload, null, 2).substring(0, 500))
@@ -1059,7 +1060,8 @@ export default function CanvasPage() {
               .from('nodes')
               .update({
                 data: newStructureNode.data,
-                position: newStructureNode.position
+                position_x: newStructureNode.position.x, // ✅ FIX: Use position_x/position_y columns
+                position_y: newStructureNode.position.y
               })
               .eq('id', structureId)
             
