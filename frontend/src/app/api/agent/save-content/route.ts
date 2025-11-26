@@ -50,41 +50,9 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ [API /api/agent/save-content] User authenticated:', user.id)
 
-    // STEP 2: Verify ownership using regular client (respects RLS)
-    console.log('🔐 [API /api/agent/save-content] Verifying story ownership...')
-    const { data: nodeOwnership, error: ownershipError } = await supabase
-      .from('nodes')
-      .select('story_id')
-      .eq('id', storyStructureNodeId)
-      .single()
-
-    if (ownershipError || !nodeOwnership) {
-      console.error('❌ [API /api/agent/save-content] Node not found or access denied:', ownershipError)
-      return NextResponse.json(
-        { success: false, error: 'Node not found or you do not have access' },
-        { status: 403 }
-      )
-    }
-
-    // Verify user owns the story
-    const { data: storyOwnership, error: storyError } = await supabase
-      .from('stories')
-      .select('user_id')
-      .eq('id', nodeOwnership.story_id)
-      .single()
-
-    if (storyError || !storyOwnership || storyOwnership.user_id !== userId) {
-      console.error('❌ [API /api/agent/save-content] User does not own this story')
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: You do not own this story' },
-        { status: 403 }
-      )
-    }
-
-    console.log('✅ [API /api/agent/save-content] Ownership verified')
-
-    // STEP 3: Fetch and update using ADMIN client (bypasses RLS after auth check)
-    console.log('📡 [API /api/agent/save-content] Using admin client to fetch node data...')
+    // STEP 2: Use ADMIN client to fetch node + verify ownership
+    // (Regular client blocked by RLS because auth.uid() is NULL in Next.js API routes)
+    console.log('📡 [API /api/agent/save-content] Using admin client to fetch node...')
     const adminClient = createAdminClient()
     
     const { data: node, error: fetchError } = await adminClient
@@ -94,14 +62,50 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (fetchError || !node) {
-      console.error('❌ [API /api/agent/save-content] Failed to fetch node with admin client:', fetchError)
+      console.error('❌ [API /api/agent/save-content] Failed to fetch node:', fetchError)
       return NextResponse.json(
-        { success: false, error: `Failed to fetch node: ${fetchError?.message || 'Unknown error'}` },
-        { status: 500 }
+        { success: false, error: `Node not found: ${fetchError?.message || 'Unknown error'}` },
+        { status: 404 }
       )
     }
 
-    console.log('✅ [API /api/agent/save-content] Node fetched successfully')
+    console.log('✅ [API /api/agent/save-content] Node fetched:', {
+      nodeId: node.id,
+      storyId: node.story_id
+    })
+
+    // STEP 3: Verify user owns the story (security check using admin client)
+    console.log('🔐 [API /api/agent/save-content] Verifying story ownership...')
+    const { data: story, error: storyError } = await adminClient
+      .from('stories')
+      .select('user_id')
+      .eq('id', node.story_id)
+      .single()
+
+    if (storyError || !story) {
+      console.error('❌ [API /api/agent/save-content] Story not found:', storyError)
+      return NextResponse.json(
+        { success: false, error: 'Story not found' },
+        { status: 404 }
+      )
+    }
+
+    if (story.user_id !== userId) {
+      console.error('❌ [API /api/agent/save-content] Ownership verification failed:', {
+        storyUserId: story.user_id,
+        requestUserId: userId,
+        match: false
+      })
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: You do not own this story' },
+        { status: 403 }
+      )
+    }
+
+    console.log('✅ [API /api/agent/save-content] Ownership verified:', {
+      userId: story.user_id,
+      match: true
+    })
 
     // Update content using DocumentManager
     const docManager = new DocumentManager(node.document_data)
