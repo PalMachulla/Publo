@@ -1416,13 +1416,18 @@ export default function CanvasPage() {
       }
       
       // Get unified orchestrator instance (PHASE 3: Use multi-agent orchestrator!)
-      const { getMultiAgentOrchestrator } = await import('@/lib/orchestrator')
+      const { getMultiAgentOrchestrator, createDefaultToolRegistry } = await import('@/lib/orchestrator')
+      
+      // ✅ FIX: Create and pass toolRegistry for content generation
+      const toolRegistry = createDefaultToolRegistry()
+      
       const orchestrator = getMultiAgentOrchestrator(user.id, {
         modelPriority: 'balanced',
         enableRAG: false, // Canvas doesn't need RAG for structure generation
-        enablePatternLearning: true
+        enablePatternLearning: true,
+        toolRegistry // ✅ FIX: Pass toolRegistry for parallel/cluster execution
       })
-      console.log('🤖 [triggerOrchestratedGeneration] Using MultiAgentOrchestrator')
+      console.log('🤖 [triggerOrchestratedGeneration] Using MultiAgentOrchestrator with', toolRegistry.getStats().totalTools, 'tools')
       
       // Determine available models
       let availableModels: string[] = []

@@ -87,6 +87,15 @@ export {
   type RouterScore
 } from './temporalMemory'
 
+// Tool system exports (PHASE 2)
+export {
+  createDefaultToolRegistry,
+  type Tool,
+  type ToolRegistry,
+  type ToolContext,
+  type ToolResult
+} from './tools'
+
 // ============================================================
 // CONVENIENCE FUNCTIONS
 // ============================================================
