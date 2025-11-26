@@ -2273,21 +2273,60 @@ Generate a complete structure plan with:
       })
     }
     
-    const response = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    })
+    // Add timeout and progress heartbeat for long-running API calls
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 60000) // 60 second timeout
     
-    if (!response.ok) {
-      const errorData = await response.json()
+    // Heartbeat: Show "still waiting..." every 5 seconds
+    const heartbeat = setInterval(() => {
       this.blackboard.addMessage({
         role: 'orchestrator',
-        content: `❌ Structure generation failed: ${errorData.error}`,
-        type: 'error'
+        content: '⏳ Still generating structure, please wait...',
+        type: 'progress'
       })
-      throw new Error(errorData.error || 'Structure generation API call failed')
+    }, 5000)
+    
+    let response: Response
+    try {
+      response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeout)
+      clearInterval(heartbeat)
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `❌ Structure generation failed: ${errorData.error}`,
+          type: 'error'
+        })
+        throw new Error(errorData.error || 'Structure generation API call failed')
+      }
+    } catch (error: any) {
+      clearTimeout(timeout)
+      clearInterval(heartbeat)
+      
+      if (error.name === 'AbortError') {
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: '❌ Structure generation timed out after 60 seconds',
+          type: 'error'
+        })
+        throw new Error('Structure generation timed out - please try again')
+      }
+      throw error
     }
+    
+    this.blackboard.addMessage({
+      role: 'orchestrator',
+      content: '🔄 Step 4/4: Validating structure plan...',
+      type: 'progress'
+    })
     
     this.blackboard.addMessage({
       role: 'orchestrator',
