@@ -1,19 +1,25 @@
 /**
  * Write Content Tool
  * 
- * Generates content for a specific section using an LLM.
- * This is the primary content generation tool.
+ * PHASE 2 + 3 INTEGRATION:
+ * This tool delegates to the WriterCriticCluster (multi-agent system)
+ * for high-quality content generation with iterative refinement.
  */
 
 import { BaseTool } from './BaseTool'
 import type { ToolContext, ToolResult, ToolParameter, WriteContentInput, WriteContentOutput } from './types'
+import { WriterAgent } from '../agents/WriterAgent'
+import { CriticAgent } from '../agents/CriticAgent'
+import { WriterCriticCluster } from '../agents/clusters/WriterCriticCluster'
+import type { AgentTask } from '../agents/types'
+import { saveAgentContent } from '../agents/utils/contentPersistence'
 
 export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOutput> {
   name = 'write_content'
   description = 'Generate content for a specific section in the document. Use this when the user wants to write, add, or generate text.'
   category: 'content' = 'content'
   requiresConfirmation = false
-  estimatedDuration = 5000 // 5 seconds
+  estimatedDuration = 5000 // 5 seconds (base, may take longer with revisions)
 
   parameters: ToolParameter[] = [
     {
@@ -21,6 +27,12 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
       type: 'string',
       description: 'ID of the section to write content in',
       required: true
+    },
+    {
+      name: 'sectionName',
+      type: 'string',
+      description: 'Name of the section (for context)',
+      required: false
     },
     {
       name: 'prompt',
@@ -35,9 +47,9 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
       required: false
     },
     {
-      name: 'streamingEnabled',
+      name: 'useCluster',
       type: 'boolean',
-      description: 'Whether to stream the response',
+      description: 'Whether to use writer-critic cluster for quality assurance',
       required: false,
       default: true
     }
@@ -47,33 +59,134 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
     input: WriteContentInput,
     context: ToolContext
   ): Promise<ToolResult<WriteContentOutput>> {
-    const { sectionId, prompt, model, streamingEnabled = true } = input
-    const { worldState, userId } = context
+    const { sectionId, sectionName, prompt, model, useCluster = true } = input
+    const { worldState, userId, userKeyId } = context
 
     // Verify section exists
     const activeDoc = worldState.getActiveDocument()
-    if (!activeDoc) {
+    if (!activeDoc || !activeDoc.nodeId) {
       return this.error('No active document found')
     }
 
-    // TODO: In Phase 2, this tool will:
-    // 1. Call the LLM provider directly (not via UI callback)
-    // 2. Stream responses and update WorldState in real-time
-    // 3. Track tokens and costs
-    // 4. Handle errors gracefully
-    //
-    // For now, we return a placeholder that indicates execution should happen
+    const storyStructureNodeId = activeDoc.nodeId
+    const format = activeDoc.format || 'novel'
 
-    return this.success({
-      generatedContent: '[Tool will generate content here]',
-      tokensUsed: 0,
-      modelUsed: model || 'auto-selected',
-      streamingChunks: streamingEnabled ? 0 : undefined
-    }, {
-      sectionId,
-      prompt: prompt.substring(0, 100), // Log first 100 chars
-      userId
-    })
+    try {
+      console.log(`🔧 [WriteContentTool] Executing for section "${sectionName || sectionId}"`)
+      console.log(`   Using ${useCluster ? 'writer-critic cluster' : 'direct writer agent'}`)
+
+      // Create agent task
+      const task: AgentTask = {
+        id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        type: 'write_chapter',
+        payload: {
+          taskId: '',
+          action: 'write_chapter',
+          context: {
+            section: {
+              id: sectionId,
+              name: sectionName || sectionId,
+              description: prompt
+            },
+            constraints: {
+              tone: 'professional',
+              style: 'engaging',
+              targetAudience: 'general readers',
+              length: 2000
+            }
+          },
+          dependencies: []
+        },
+        dependencies: [],
+        assignedTo: null,
+        status: 'pending',
+        priority: 'normal',
+        createdAt: Date.now()
+      }
+
+      // Execute with writer-critic cluster or direct writer
+      let content: string
+      let tokensUsed = 0
+      let iterations = 1
+      let finalScore = 0
+
+      if (useCluster) {
+        // PHASE 3: Use writer-critic cluster for quality assurance
+        const writer = new WriterAgent('writer-tool', userId, userKeyId)
+        const critic = new CriticAgent('critic-tool', userId)
+        const cluster = new WriterCriticCluster(writer, critic, 3, 7.0)
+
+        const result = await cluster.generate(task, {
+          blackboard: context.blackboard,
+          dependencies: {},
+          sessionId: `tool-${Date.now()}`,
+          metadata: {
+            storyStructureNodeId,
+            format
+          }
+        })
+
+        content = result.content
+        tokensUsed = result.metadata.totalTokens
+        iterations = result.iterations
+        finalScore = result.finalScore
+
+        console.log(`✅ [WriteContentTool] Cluster complete: ${iterations} iterations, score ${finalScore}/10`)
+      } else {
+        // Direct writer agent (no iterative refinement)
+        const writer = new WriterAgent('writer-tool-direct', userId, userKeyId)
+        
+        const result = await writer.execute(task, {
+          blackboard: context.blackboard,
+          dependencies: {},
+          sessionId: `tool-${Date.now()}`,
+          metadata: {
+            storyStructureNodeId,
+            format
+          }
+        })
+
+        content = result.data
+        tokensUsed = result.tokensUsed
+
+        console.log(`✅ [WriteContentTool] Direct write complete`)
+      }
+
+      // Save to database
+      const saveResult = await saveAgentContent({
+        storyStructureNodeId,
+        sectionId,
+        content,
+        userId
+      })
+
+      if (!saveResult.success) {
+        return this.error(`Content generated but save failed: ${saveResult.error}`)
+      }
+
+      console.log(`💾 [WriteContentTool] Content saved: ${saveResult.wordCount} words`)
+
+      return this.success({
+        generatedContent: content,
+        tokensUsed,
+        modelUsed: model || 'auto-selected',
+        metadata: {
+          iterations,
+          finalScore,
+          wordCount: saveResult.wordCount,
+          savedToDatabase: true
+        }
+      }, {
+        sectionId,
+        sectionName,
+        storyStructureNodeId,
+        userId
+      })
+
+    } catch (error) {
+      console.error(`❌ [WriteContentTool] Execution failed:`, error)
+      return this.error(`Failed to generate content: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 }
 

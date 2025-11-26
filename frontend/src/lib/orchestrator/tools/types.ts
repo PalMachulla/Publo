@@ -6,6 +6,7 @@
  */
 
 import type { WorldStateManager } from '../core/worldState'
+import type { Blackboard } from '../core/blackboard'
 
 // ============================================================
 // CORE TOOL INTERFACES
@@ -21,6 +22,8 @@ export interface ToolContext {
   userId: string
   /** Optional user API key ID for external services */
   userKeyId?: string
+  /** PHASE 3: Blackboard for agent coordination and message logging */
+  blackboard: Blackboard
 }
 
 /**

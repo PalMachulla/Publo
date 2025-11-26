@@ -346,7 +346,14 @@ Respond in JSON format:
   // ============================================================
   
   private async executeSequential(actions: OrchestratorAction[], request?: any): Promise<void> {
-    console.log(`⏭️ [MultiAgentOrchestrator] Executing ${actions.length} action(s) sequentially`)
+    console.log(`⏭️ [MultiAgentOrchestrator] Executing ${actions.length} action(s) sequentially via TOOL SYSTEM`)
+    
+    // Get tool registry from config
+    const toolRegistry = (this as any).config?.toolRegistry
+    if (!toolRegistry) {
+      console.warn('⚠️ [MultiAgentOrchestrator] No tool registry available, skipping execution')
+      return
+    }
     
     this.getBlackboard().addMessage({
       role: 'orchestrator',
@@ -354,8 +361,7 @@ Respond in JSON format:
       type: 'progress'
     })
     
-    // Use base class implementation (existing UI callbacks)
-    // TODO: Eventually replace with agent execution for all action types
+    // Execute each action via tool system
     for (const action of actions) {
       console.log(`▶️ [MultiAgentOrchestrator] Executing: ${action.type}`)
       console.log(`   Payload:`, action.payload)
@@ -366,8 +372,36 @@ Respond in JSON format:
         type: 'progress'
       })
       
-      // For now, just log that we would execute
-      // In full implementation, this would call UI callbacks or use tools
+      // Map action type to tool name
+      const toolName = this.actionTypeToToolName(action.type)
+      
+      if (toolName && toolRegistry.has(toolName)) {
+        try {
+          const toolResult = await toolRegistry.execute(
+            toolName,
+            {
+              ...action.payload,
+              useCluster: false // Sequential = simple writer, no cluster
+            },
+            {
+              worldState: (this as any).worldState!,
+              userId: this.getConfig().userId,
+              userKeyId: request?.userKeyId,
+              blackboard: this.getBlackboard()
+            }
+          )
+          
+          if (toolResult.success) {
+            console.log(`✅ [MultiAgentOrchestrator] Tool ${toolName} executed successfully`)
+          } else {
+            console.error(`❌ [MultiAgentOrchestrator] Tool ${toolName} failed:`, toolResult.error)
+          }
+        } catch (error) {
+          console.error(`❌ [MultiAgentOrchestrator] Tool execution error:`, error)
+        }
+      } else {
+        console.log(`⚠️ [MultiAgentOrchestrator] No tool available for action: ${action.type}`)
+      }
     }
     
     console.log(`✅ [MultiAgentOrchestrator] Sequential execution complete`)
@@ -377,6 +411,22 @@ Respond in JSON format:
       content: `✅ Sequential execution complete`,
       type: 'result'
     })
+  }
+  
+  /**
+   * Map action type to tool name
+   */
+  private actionTypeToToolName(actionType: string): string | null {
+    const mapping: Record<string, string> = {
+      'generate_content': 'write_content',
+      'generate_structure': 'create_structure',
+      'open_document': 'open_document',
+      'select_section': 'select_section',
+      'delete_node': 'delete_node',
+      'message': 'message'
+    }
+    
+    return mapping[actionType] || null
   }
   
   // ============================================================
@@ -464,14 +514,13 @@ Respond in JSON format:
     sessionId: string,
     request?: any
   ): Promise<void> {
-    console.log(`🔄 [MultiAgentOrchestrator] Executing with writer-critic cluster`)
+    console.log(`🔄 [MultiAgentOrchestrator] Executing with writer-critic cluster via TOOL SYSTEM`)
     
-    // Get first content generation action
-    const contentAction = actions.find(a => a.type === 'generate_content')
-    
-    if (!contentAction) {
-      console.warn('⚠️ [MultiAgentOrchestrator] No content action found for cluster, falling back to sequential')
-      return this.executeSequential(actions)
+    // Get tool registry from config
+    const toolRegistry = (this as any).config?.toolRegistry
+    if (!toolRegistry) {
+      console.warn('⚠️ [MultiAgentOrchestrator] No tool registry available, skipping execution')
+      return
     }
     
     this.getBlackboard().addMessage({
@@ -480,115 +529,61 @@ Respond in JSON format:
       type: 'progress'
     })
     
-    // Convert to agent task
-    const task = this.actionToTask(contentAction)
-    
-    // Get writer and critic from pool
-    const writer = this.agentRegistry.get('writer-0') as WriterAgent
-    const critic = this.agentRegistry.get('critic-0') as CriticAgent
-    
-    if (!writer || !critic) {
-      throw new Error('Writer or Critic agent not available')
-    }
-    
-    // Create cluster
-    const cluster = new WriterCriticCluster(
-      writer,
-      critic,
-      3, // max 3 iterations
-      7.0 // quality threshold
-    )
-    
-    // Execute with iterative refinement
-    try {
-      // ✅ FIX: Pass storyStructureNodeId and format in metadata so WriterAgent can call /api/content/generate
-      const storyStructureNodeId = request?.currentStoryStructureNodeId || 
-                                   (this as any).worldState?.getState().canvas.activeDocumentNodeId
-      const format = request?.documentFormat || 'novel'
-      
-      const result = await cluster.generate(task, {
-        blackboard: this.getBlackboard(),
-        dependencies: {},
-        sessionId,
-        metadata: {
-          storyStructureNodeId,
-          format
-        }
-      })
-      
-      console.log(`✅ [MultiAgentOrchestrator] Cluster execution complete`)
-      console.log(`   Iterations: ${result.iterations}`)
-      console.log(`   Final score: ${result.finalScore}/10`)
-      console.log(`   Approved: ${result.approved}`)
-      console.log(`   Total tokens: ${result.metadata.totalTokens}`)
-      console.log(`   Total time: ${result.metadata.totalTime}ms`)
-      
-      const wordCount = this.countWords(result.content)
-      const qualityEmoji = result.finalScore >= 8 ? '🌟' : result.finalScore >= 7 ? '✨' : '✅'
-      
-      this.getBlackboard().addMessage({
-        role: 'orchestrator',
-        content: `${qualityEmoji} Quality-assured: ${wordCount} words, score ${result.finalScore}/10 (${result.iterations} iteration${result.iterations > 1 ? 's' : ''})`,
-        type: 'result'
-      })
-      
-      // Save result to database
-      // Try to get node ID from request first (most reliable), then WorldState
-      const storyStructureNodeId = request?.currentStoryStructureNodeId || 
-                                   (this as any).worldState?.getState().canvas.activeDocumentNodeId
-      const sectionId = task.payload.context?.section?.id
-      
-      console.log(`💾 [MultiAgentOrchestrator] Attempting to save content:`, {
-        hasNodeId: !!storyStructureNodeId,
-        hasSectionId: !!sectionId,
-        nodeId: storyStructureNodeId,
-        sectionId
-      })
-      
-      if (storyStructureNodeId && sectionId) {
-        console.log(`💾 [MultiAgentOrchestrator] Saving content to database...`)
-        
-        const saveResult = await saveAgentContent({
-          storyStructureNodeId,
-          sectionId,
-          content: result.content,
-          userId: this.getConfig().userId
-        })
-        
-        if (saveResult.success) {
-          console.log(`✅ [MultiAgentOrchestrator] Content saved (total: ${saveResult.wordCount} words)`)
+    // Execute each generate_content action via write_content tool
+    for (const action of actions) {
+      if (action.type === 'generate_content') {
+        try {
+          console.log(`🔧 [MultiAgentOrchestrator] Calling write_content tool for: ${action.payload?.sectionName}`)
+          
+          // Execute via tool system (Tools → Agents → API)
+          const toolResult = await toolRegistry.execute(
+            'write_content',
+            {
+              sectionId: action.payload?.sectionId,
+              sectionName: action.payload?.sectionName,
+              prompt: action.payload?.prompt,
+              useCluster: true // Enable writer-critic cluster
+            },
+            {
+              worldState: (this as any).worldState!,
+              userId: this.getConfig().userId,
+              userKeyId: request?.userKeyId,
+              blackboard: this.getBlackboard()
+            }
+          )
+          
+          if (toolResult.success) {
+            console.log(`✅ [MultiAgentOrchestrator] Tool execution successful`)
+            
+            // Tool result already includes quality metrics
+            const metadata = toolResult.metadata || {}
+            this.getBlackboard().addMessage({
+              role: 'orchestrator',
+              content: `✨ Generated ${metadata.wordCount || 0} words (quality: ${metadata.finalScore || 0}/10, ${metadata.iterations || 1} iteration${metadata.iterations > 1 ? 's' : ''})`,
+              type: 'result'
+            })
+          } else {
+            console.error(`❌ [MultiAgentOrchestrator] Tool execution failed:`, toolResult.error)
+            
+            this.getBlackboard().addMessage({
+              role: 'orchestrator',
+              content: `❌ Failed to generate content: ${toolResult.error}`,
+              type: 'error'
+            })
+          }
+        } catch (error) {
+          console.error(`❌ [MultiAgentOrchestrator] Tool execution error:`, error)
           
           this.getBlackboard().addMessage({
             role: 'orchestrator',
-            content: `💾 Content saved to database`,
-            type: 'result'
-          })
-        } else {
-          console.error(`❌ [MultiAgentOrchestrator] Failed to save:`, saveResult.error)
-          
-          this.getBlackboard().addMessage({
-            role: 'orchestrator',
-            content: `⚠️ Content generated but save failed: ${saveResult.error}`,
+            content: `❌ Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
             type: 'error'
           })
         }
       } else {
-        console.warn(`⚠️ [MultiAgentOrchestrator] Missing save parameters:`, {
-          hasNodeId: !!storyStructureNodeId,
-          hasSectionId: !!sectionId
-        })
+        // For non-content actions, log that we're skipping
+        console.log(`⏭️ [MultiAgentOrchestrator] Skipping non-content action: ${action.type}`)
       }
-      
-    } catch (error) {
-      console.error(`❌ [MultiAgentOrchestrator] Cluster execution error:`, error)
-      
-      this.getBlackboard().addMessage({
-        role: 'orchestrator',
-        content: `❌ Cluster execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        type: 'error'
-      })
-      
-      throw error
     }
   }
   

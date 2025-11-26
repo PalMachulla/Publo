@@ -483,7 +483,8 @@ export class OrchestratorEngine {
             {
               worldState: this.worldState,
               userId: this.config.userId,
-              userKeyId: request.userKeyId
+              userKeyId: request.userKeyId,
+              blackboard: this.blackboard // PHASE 3: Pass blackboard for agent coordination
             }
           )
           
