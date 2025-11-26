@@ -1052,8 +1052,28 @@ export default function CanvasPage() {
         console.log('📡 [saveAndFinalize] INSERT response:', {
           success: !insertError,
           insertedData: insertData,
-          error: insertError
+          error: insertError,
+          errorCode: insertError?.code,
+          errorMessage: insertError?.message,
+          errorDetails: insertError?.details
         })
+        
+        // ✅ FIX: Add verification query to confirm node exists
+        if (!insertError && insertData) {
+          console.log('🔍 [saveAndFinalize] Verifying node exists with SELECT query...')
+          const { data: verifyData, error: verifyError } = await supabase
+            .from('nodes')
+            .select('id, type, story_id')
+            .eq('id', structureId)
+            .single()
+          
+          console.log('📡 [saveAndFinalize] Verification SELECT response:', {
+            found: !verifyError && verifyData,
+            verifyData,
+            verifyError,
+            note: 'If this fails, RLS is blocking even the user who just inserted!'
+          })
+        }
         
         if (insertError) {
           // Ignore duplicate key errors (node already exists)

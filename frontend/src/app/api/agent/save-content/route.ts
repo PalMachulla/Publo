@@ -55,6 +55,17 @@ export async function POST(request: NextRequest) {
     console.log('📡 [API /api/agent/save-content] Using admin client to fetch node...')
     const adminClient = createAdminClient()
     
+    // ✅ DEBUG: Verify admin client is using service_role key
+    console.log('🔑 [API /api/agent/save-content] Admin client check:', {
+      hasServiceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      serviceRolePrefix: process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20) + '...',
+      queryDetails: {
+        table: 'nodes',
+        filter: `id=eq.${storyStructureNodeId}`,
+        expectedBehavior: 'SERVICE_ROLE should bypass ALL RLS policies'
+      }
+    })
+    
     const { data: node, error: fetchError } = await adminClient
       .from('nodes')
       .select('id, document_data, story_id')
