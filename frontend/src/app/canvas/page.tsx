@@ -1137,25 +1137,27 @@ export default function CanvasPage() {
         source: userPromptDirect ? 'Chat Input (Direct)' : (orchestratorNode?.data as any)?.chatPrompt ? 'Chat Input (Node Data)' : aiPromptNode ? 'AI Prompt Node' : 'None'
       })
       
-      // 🔧 FIX: Save node to Supabase FIRST, then start orchestration
+      // 🔧 FIX: AWAIT save node to Supabase FIRST, then start orchestration
       // Otherwise, the node doesn't exist when orchestration tries to update document_data
       console.log('💾 [handleCreateStory] Saving node to Supabase first...')
-      saveAndFinalize()
-        .then(() => {
-          console.log('✅ [handleCreateStory] Node saved, now triggering orchestration')
-          triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
-        })
-        .catch(err => {
-          console.error('❌ [handleCreateStory] Failed to save node before orchestration:', err)
-          // Still try to orchestrate even if save failed (might be duplicate key error)
-          triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
-        })
+      try {
+        await saveAndFinalize() // ✅ CRITICAL: Must await to prevent race condition
+        console.log('✅ [handleCreateStory] Node saved, now triggering orchestration')
+        triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
+      } catch (err) {
+        console.error('❌ [handleCreateStory] Failed to save node before orchestration:', err)
+        // Still try to orchestrate even if save failed (might be duplicate key error)
+        triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
+      }
     } else {
       console.warn('⚠️ No AI Prompt node or chat prompt found, skipping auto-generation')
       // Still save the node even if not auto-generating
-      saveAndFinalize().catch(err => {
-        console.warn('Background save failed:', err)
-      })
+      try {
+        await saveAndFinalize() // ✅ CRITICAL: Must await to ensure node exists before user can interact
+        console.log('✅ [handleCreateStory] Node saved (no orchestration)')
+      } catch (err) {
+        console.error('❌ [handleCreateStory] Background save failed:', err)
+      }
     }
   }, [nodes, edges, setNodes, setEdges, handleSave])
   
