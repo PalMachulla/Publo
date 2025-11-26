@@ -1042,71 +1042,36 @@ export default function CanvasPage() {
           position_y: newStructureNode.position.y
           // ✅ FIX: No user_id column in nodes table (tracked via story_id → stories.user_id)
         }
-        console.log('📦 [saveAndFinalize] INSERT payload:', JSON.stringify(insertPayload, null, 2).substring(0, 500))
+        console.log('📦 [saveAndFinalize] UPSERT payload:', JSON.stringify(insertPayload, null, 2).substring(0, 500))
         
-        const { data: insertData, error: insertError } = await supabase
+        // ✅ FIX: Use UPSERT instead of INSERT (same as Save Changes button!)
+        // This bypasses INSERT RLS policy issues and handles duplicates gracefully
+        const { data: upsertData, error: upsertError } = await supabase
           .from('nodes')
-          .insert(insertPayload)
+          .upsert(insertPayload, { onConflict: 'id' })
           .select()
         
-        console.log('📡 [saveAndFinalize] INSERT response:', {
-          success: !insertError,
-          insertedData: insertData,
-          error: insertError,
-          errorCode: insertError?.code,
-          errorMessage: insertError?.message,
-          errorDetails: insertError?.details
+        console.log('📡 [saveAndFinalize] UPSERT response:', {
+          success: !upsertError,
+          upsertedData: upsertData,
+          error: upsertError,
+          errorCode: upsertError?.code,
+          errorMessage: upsertError?.message,
+          errorDetails: upsertError?.details,
+          note: 'Using UPSERT like Save Changes button (bypasses INSERT RLS issues)'
         })
         
-        // ✅ FIX: Add verification query to confirm node exists
-        if (!insertError && insertData) {
-          console.log('🔍 [saveAndFinalize] Verifying node exists with SELECT query...')
-          const { data: verifyData, error: verifyError } = await supabase
-            .from('nodes')
-            .select('id, type, story_id')
-            .eq('id', structureId)
-            .single()
-          
-          console.log('📡 [saveAndFinalize] Verification SELECT response:', {
-            found: !verifyError && verifyData,
-            verifyData,
-            verifyError,
-            note: 'If this fails, RLS is blocking even the user who just inserted!'
+        if (upsertError) {
+          console.error('❌ [saveAndFinalize] Node upsert error:', {
+            code: upsertError.code,
+            message: upsertError.message,
+            details: upsertError.details,
+            hint: upsertError.hint
           })
+          throw upsertError
         }
         
-        if (insertError) {
-          // Ignore duplicate key errors (node already exists)
-          if (insertError.code !== '23505') {
-            console.error('❌ [saveAndFinalize] Node insert error:', {
-              code: insertError.code,
-              message: insertError.message,
-              details: insertError.details,
-              hint: insertError.hint
-            })
-            throw insertError
-          } else {
-            console.log('⚠️ [saveAndFinalize] Node already exists in database, updating instead...')
-            // Update existing node (including document_data)
-            const { error: updateError } = await supabase
-              .from('nodes')
-              .update({
-                data: newStructureNode.data,
-                document_data: docManager.getData(), // ✅ FIX: Ensure document_data is initialized
-                position_x: newStructureNode.position.x, // ✅ FIX: Use position_x/position_y columns
-                position_y: newStructureNode.position.y
-              })
-              .eq('id', structureId)
-            
-            if (updateError) {
-              console.error('❌ [saveAndFinalize] Node update error:', updateError)
-              throw updateError
-            }
-            console.log('✅ [saveAndFinalize] Node updated successfully')
-          }
-        } else {
-          console.log('✅ [saveAndFinalize] Node inserted successfully:', insertData)
-        }
+        console.log('✅ [saveAndFinalize] Node upserted successfully:', upsertData)
         
         console.log('✅ [saveAndFinalize] Node explicitly saved to Supabase:', structureId)
         
