@@ -1339,12 +1339,14 @@ export default function CanvasPage() {
         }
       }
       
-      // Get unified orchestrator instance
-      const orchestrator = getOrchestrator(user.id, {
+      // Get unified orchestrator instance (PHASE 3: Use multi-agent orchestrator!)
+      const { getMultiAgentOrchestrator } = await import('@/lib/orchestrator')
+      const orchestrator = getMultiAgentOrchestrator(user.id, {
         modelPriority: 'balanced',
         enableRAG: false, // Canvas doesn't need RAG for structure generation
         enablePatternLearning: true
       })
+      console.log('🤖 [triggerOrchestratedGeneration] Using MultiAgentOrchestrator')
       
       // Determine available models
       let availableModels: string[] = []
