@@ -672,7 +672,10 @@ export default function OrchestratorPanel({
       })
       
       // PHASE 3: Use multi-agent orchestrator for intelligent task coordination
-      const response = await getMultiAgentOrchestrator(user.id, { toolRegistry }, worldState).orchestrate({
+      const response = await getMultiAgentOrchestrator(user.id, { 
+        toolRegistry,
+        onMessage: onAddChatMessage // PHASE 3: Real-time message streaming
+      }, worldState).orchestrate({
         message,
         canvasNodes,
         canvasEdges,
@@ -872,7 +875,10 @@ export default function OrchestratorPanel({
       })
       
       // PHASE 3: Use multi-agent orchestrator for clarification responses too
-      const orchestratorResponse = await getMultiAgentOrchestrator(user.id, { toolRegistry }, worldState).orchestrate({
+      const orchestratorResponse = await getMultiAgentOrchestrator(user.id, { 
+        toolRegistry,
+        onMessage: onAddChatMessage // PHASE 3: Real-time message streaming
+      }, worldState).orchestrate({
         message: response,
         canvasNodes,
         canvasEdges,

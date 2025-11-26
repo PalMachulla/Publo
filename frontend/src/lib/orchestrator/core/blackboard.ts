@@ -153,8 +153,10 @@ export interface PatternMemory {
 export class Blackboard {
   private state: BlackboardState
   private subscribers: Map<string, Set<(state: BlackboardState) => void>>
+  private messageCallback?: (message: ConversationMessage) => void // Real-time UI callback
   
-  constructor(userId: string) {
+  constructor(userId: string, messageCallback?: (message: ConversationMessage) => void) {
+    this.messageCallback = messageCallback
     this.state = {
       messages: [],
       canvas: {
@@ -212,6 +214,12 @@ export class Blackboard {
     })
     
     this.notify('messages')
+    
+    // 🚀 REAL-TIME: Call UI callback immediately if provided
+    if (this.messageCallback) {
+      this.messageCallback(newMessage)
+    }
+    
     return newMessage
   }
   

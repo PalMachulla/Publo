@@ -46,6 +46,8 @@ export interface OrchestratorConfig {
   maxConversationDepth?: number
   // PHASE 2: Tool system
   toolRegistry?: ToolRegistry
+  // PHASE 3: Real-time UI callback for immediate message display
+  onMessage?: (content: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => void
 }
 
 export interface OrchestratorRequest {
@@ -136,7 +138,12 @@ export class OrchestratorEngine {
   private toolRegistry?: ToolRegistry // PHASE 2: Optional tool system
   
   constructor(config: OrchestratorConfig, worldState?: WorldStateManager) {
-    this.blackboard = new Blackboard(config.userId)
+    // PHASE 3: Pass real-time message callback to Blackboard
+    const messageCallback = config.onMessage ? (msg: any) => {
+      config.onMessage!(msg.content, msg.role, msg.type)
+    } : undefined
+    
+    this.blackboard = new Blackboard(config.userId, messageCallback)
     this.worldState = worldState // PHASE 1: Store WorldState if provided
     this.toolRegistry = config.toolRegistry // PHASE 2: Store ToolRegistry if provided
     this.config = {
