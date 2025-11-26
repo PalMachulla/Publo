@@ -79,20 +79,30 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
     let storyStructureNodeId: string | undefined
     let format: string
     
+    // ✅ DEBUG: Log WorldState status
+    const activeDoc = worldState.getActiveDocument()
+    console.log('📊 [WriteContentTool] WorldState check:', {
+      hasActiveDoc: !!activeDoc.nodeId,
+      activeDocId: activeDoc.nodeId,
+      activeDocFormat: activeDoc.format,
+      providedNodeId: inputNodeId,
+      providedFormat: inputFormat
+    })
+    
     if (inputNodeId) {
       // Use provided node ID (from action payload)
       storyStructureNodeId = inputNodeId
       format = inputFormat || 'novel'
       console.log(`🔧 [WriteContentTool] Using provided node ID: ${storyStructureNodeId}`)
+      console.log(`   (WorldState ${activeDoc.nodeId ? `has ${activeDoc.nodeId}` : 'has no active doc'})`)
     } else {
       // Fall back to active document from WorldState
-      const activeDoc = worldState.getActiveDocument()
       if (!activeDoc || !activeDoc.nodeId) {
         return this.error('No active document found. Please provide storyStructureNodeId or ensure a document is active.')
       }
       storyStructureNodeId = activeDoc.nodeId
       format = activeDoc.format || 'novel'
-      console.log(`🔧 [WriteContentTool] Using active document: ${storyStructureNodeId}`)
+      console.log(`🔧 [WriteContentTool] Using active document from WorldState: ${storyStructureNodeId}`)
     }
     
     if (!storyStructureNodeId) {

@@ -1062,9 +1062,18 @@ export default function CanvasPage() {
         console.log('   Node is now persistently saved to Supabase!')
         console.log('   Both user and admin clients can now query this node!')
         console.log('   Agents can now save content to this node!')
+        console.log('   Format:', newStructureNode.data.format)
+        console.log('   Sections:', newStructureNode.data.items?.length || 0)
         
         console.log('✅ [saveAndFinalize] Skipping saveCanvas() - node already saved via API')
         console.log('   (Edges will be saved on next auto-save or "Save Changes" click)')
+        console.log('')
+        console.log('📊 [saveAndFinalize] Document State Summary:')
+        console.log('   - Node ID:', createNodeResult.nodeId)
+        console.log('   - Format:', newStructureNode.data.format)
+        console.log('   - Structure Items:', newStructureNode.data.items?.length || 0)
+        console.log('   - Ready for agent content generation: ✅')
+        console.log('')
       } catch (error: any) {
         console.error('❌ [saveAndFinalize] Save error:', error)
         throw error

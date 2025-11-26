@@ -183,6 +183,37 @@ export class WorldStateManager {
   }
   
   /**
+   * Set the active document (e.g., after creating a new node)
+   */
+  setActiveDocument(nodeId: string, format: string, structure?: any[]): void {
+    this.state.activeDocument = {
+      nodeId,
+      format,
+      structure: structure ? {
+        items: structure,
+        hierarchy: format
+      } : null,
+      content: new Map(),
+      selectedSectionId: null
+    }
+    this.incrementVersion()
+  }
+  
+  /**
+   * Clear the active document (e.g., when closing document panel)
+   */
+  clearActiveDocument(): void {
+    this.state.activeDocument = {
+      nodeId: null,
+      format: null,
+      structure: null,
+      content: new Map(),
+      selectedSectionId: null
+    }
+    this.incrementVersion()
+  }
+  
+  /**
    * Get canvas context (nodes + edges) - useful for contextProvider
    */
   getCanvasContext(): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
