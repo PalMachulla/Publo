@@ -1052,17 +1052,19 @@ export default function CanvasPage() {
         source: userPromptDirect ? 'Chat Input (Direct)' : (orchestratorNode?.data as any)?.chatPrompt ? 'Chat Input (Node Data)' : aiPromptNode ? 'AI Prompt Node' : 'None'
       })
       
-      // Pass AI Prompt node if exists, otherwise null (chat prompt will be used)
-      // Start orchestration BEFORE saving to avoid delays from database errors
-      setTimeout(() => {
-        console.log('⏰ Triggering orchestration for structure:', structureId)
-        triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
-      }, 100)
-      
-      // Save in background (don't block orchestration)
-      saveAndFinalize().catch(err => {
-        console.warn('Background save failed, but orchestration continues:', err)
-      })
+      // 🔧 FIX: Save node to Supabase FIRST, then start orchestration
+      // Otherwise, the node doesn't exist when orchestration tries to update document_data
+      console.log('💾 [handleCreateStory] Saving node to Supabase first...')
+      saveAndFinalize()
+        .then(() => {
+          console.log('✅ [handleCreateStory] Node saved, now triggering orchestration')
+          triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
+        })
+        .catch(err => {
+          console.error('❌ [handleCreateStory] Failed to save node before orchestration:', err)
+          // Still try to orchestrate even if save failed (might be duplicate key error)
+          triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
+        })
     } else {
       console.warn('⚠️ No AI Prompt node or chat prompt found, skipping auto-generation')
       // Still save the node even if not auto-generating
