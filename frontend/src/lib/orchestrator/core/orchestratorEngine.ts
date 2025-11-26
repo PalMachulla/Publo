@@ -1132,6 +1132,8 @@ export class OrchestratorEngine {
             })
             
             console.log('🔙 [Canvas Awareness] Returning early with clarification action')
+            console.log('   Actions count:', actions.length)
+            console.log('   Actions types:', actions.map(a => a.type))
             
             // ✅ CRITICAL: Return early to prevent further action generation
             return actions
