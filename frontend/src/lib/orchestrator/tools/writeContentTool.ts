@@ -52,6 +52,18 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
       description: 'Whether to use writer-critic cluster for quality assurance',
       required: false,
       default: true
+    },
+    {
+      name: 'storyStructureNodeId',
+      type: 'string',
+      description: 'Optional: ID of the story structure node (if not using active document)',
+      required: false
+    },
+    {
+      name: 'format',
+      type: 'string',
+      description: 'Optional: document format (novel, screenplay, etc.)',
+      required: false
     }
   ]
 
@@ -59,17 +71,33 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
     input: WriteContentInput,
     context: ToolContext
   ): Promise<ToolResult<WriteContentOutput>> {
-    const { sectionId, sectionName, prompt, model, useCluster = true } = input
+    const { sectionId, sectionName, prompt, model, useCluster = true, storyStructureNodeId: inputNodeId, format: inputFormat } = input
     const { worldState, userId, userKeyId } = context
 
-    // Verify section exists
-    const activeDoc = worldState.getActiveDocument()
-    if (!activeDoc || !activeDoc.nodeId) {
-      return this.error('No active document found')
+    // Get document info - prioritize input parameters over worldState
+    // This handles cases where structure was just created and worldState hasn't updated yet
+    let storyStructureNodeId: string | undefined
+    let format: string
+    
+    if (inputNodeId) {
+      // Use provided node ID (from action payload)
+      storyStructureNodeId = inputNodeId
+      format = inputFormat || 'novel'
+      console.log(`🔧 [WriteContentTool] Using provided node ID: ${storyStructureNodeId}`)
+    } else {
+      // Fall back to active document from WorldState
+      const activeDoc = worldState.getActiveDocument()
+      if (!activeDoc || !activeDoc.nodeId) {
+        return this.error('No active document found. Please provide storyStructureNodeId or ensure a document is active.')
+      }
+      storyStructureNodeId = activeDoc.nodeId
+      format = activeDoc.format || 'novel'
+      console.log(`🔧 [WriteContentTool] Using active document: ${storyStructureNodeId}`)
     }
-
-    const storyStructureNodeId = activeDoc.nodeId
-    const format = activeDoc.format || 'novel'
+    
+    if (!storyStructureNodeId) {
+      return this.error('Cannot determine target document. No storyStructureNodeId available.')
+    }
 
     try {
       console.log(`🔧 [WriteContentTool] Executing for section "${sectionName || sectionId}"`)

@@ -270,14 +270,17 @@ Respond in JSON format:
         throw new Error(`Failed to parse strategy analysis: ${parseError.message}`)
       }
       
+      // Normalize strategy to lowercase (LLM might return SEQUENTIAL, Sequential, etc.)
+      const normalizedStrategy = (analysis.strategy || '').toLowerCase().trim()
+      
       // Validate strategy
       const validStrategies: ExecutionStrategy[] = ['sequential', 'parallel', 'cluster']
-      if (!validStrategies.includes(analysis.strategy)) {
-        throw new Error(`Invalid strategy: ${analysis.strategy}`)
+      if (!validStrategies.includes(normalizedStrategy as ExecutionStrategy)) {
+        throw new Error(`Invalid strategy: ${analysis.strategy} (normalized: ${normalizedStrategy})`)
       }
       
       return {
-        strategy: analysis.strategy as ExecutionStrategy,
+        strategy: normalizedStrategy as ExecutionStrategy,
         reasoning: analysis.reasoning
       }
     } catch (error) {
@@ -384,12 +387,25 @@ Respond in JSON format:
       
       if (toolName && toolRegistry.has(toolName)) {
         try {
+          // Build tool payload with node ID and format from request
+          const toolPayload: any = {
+            ...action.payload,
+            useCluster: false // Sequential = simple writer, no cluster
+          }
+          
+          // ✅ FIX: Pass storyStructureNodeId and format to tools (for content generation)
+          if (toolName === 'write_content' && request?.currentStoryStructureNodeId) {
+            toolPayload.storyStructureNodeId = request.currentStoryStructureNodeId
+            toolPayload.format = request.documentFormat || 'novel'
+            console.log(`🔧 [executeSequential] Adding node context to write_content:`, {
+              nodeId: toolPayload.storyStructureNodeId,
+              format: toolPayload.format
+            })
+          }
+          
           const toolResult = await toolRegistry.execute(
             toolName,
-            {
-              ...action.payload,
-              useCluster: false // Sequential = simple writer, no cluster
-            },
+            toolPayload,
             {
               worldState: (this as any).worldState!,
               userId: this.getConfig().userId,
@@ -542,6 +558,16 @@ Respond in JSON format:
         try {
           console.log(`🔧 [MultiAgentOrchestrator] Calling write_content tool for: ${action.payload?.sectionName}`)
           
+          // ✅ FIX: Pass storyStructureNodeId and format from request
+          const storyStructureNodeId = request?.currentStoryStructureNodeId || 
+                                       (this as any).worldState?.getState().canvas.activeDocumentNodeId
+          const format = request?.documentFormat || 'novel'
+          
+          console.log(`🔧 [executeCluster] Adding node context to write_content:`, {
+            nodeId: storyStructureNodeId,
+            format: format
+          })
+          
           // Execute via tool system (Tools → Agents → API)
           const toolResult = await toolRegistry.execute(
             'write_content',
@@ -549,7 +575,9 @@ Respond in JSON format:
               sectionId: action.payload?.sectionId,
               sectionName: action.payload?.sectionName,
               prompt: action.payload?.prompt,
-              useCluster: true // Enable writer-critic cluster
+              useCluster: true, // Enable writer-critic cluster
+              storyStructureNodeId, // ✅ NEW: Pass node ID
+              format // ✅ NEW: Pass document format
             },
             {
               worldState: (this as any).worldState!,
