@@ -86,7 +86,7 @@ export interface Tool<TInput = any, TOutput = any> {
   parameters: ToolParameter[]
   
   /** Category for organization */
-  category: 'content' | 'structure' | 'navigation' | 'analysis' | 'system'
+  category: 'content' | 'structure' | 'navigation' | 'analysis' | 'system' | 'persistence'
   
   /** Whether this tool requires user confirmation */
   requiresConfirmation: boolean

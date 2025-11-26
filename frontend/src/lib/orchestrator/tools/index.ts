@@ -22,6 +22,7 @@ export { OpenDocumentTool } from './openDocumentTool'
 export { SelectSectionTool } from './selectSectionTool'
 export { DeleteNodeTool } from './deleteNodeTool'
 export { MessageTool } from './messageTool'
+export { SaveTool } from './saveTool'
 
 /**
  * Create a default tool registry with all core tools registered
@@ -34,6 +35,7 @@ import { OpenDocumentTool } from './openDocumentTool'
 import { SelectSectionTool } from './selectSectionTool'
 import { DeleteNodeTool } from './deleteNodeTool'
 import { MessageTool } from './messageTool'
+import { SaveTool } from './saveTool'
 
 export function createDefaultToolRegistry() {
   const registry = createRegistry()
@@ -46,6 +48,7 @@ export function createDefaultToolRegistry() {
   registry.register(new SelectSectionTool())
   registry.register(new DeleteNodeTool())
   registry.register(new MessageTool())
+  registry.register(new SaveTool()) // 🆕 Unified persistence
   
   console.log('[ToolRegistry] Default registry created with', registry.getStats().totalTools, 'tools')
   
