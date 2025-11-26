@@ -908,8 +908,13 @@ export default function CanvasPage() {
   const handleCreateStory = useCallback(async (format: StoryFormat, template?: string, userPromptDirect?: string, plan?: any) => {
     console.log('handleCreateStory called with format:', format, 'template:', template, 'userPromptDirect:', userPromptDirect, 'plan:', plan)
     
-    // Generate unique ID for the story structure
-    const structureId = `structure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    // 🔧 FIX: Generate proper UUID for node ID (not "structure-..." prefix!)
+    // Structure items inside will have "structure-..." IDs, but the NODE itself needs a UUID
+    const structureId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    console.log('✅ [handleCreateStory] Generated node ID:', {
+      nodeId: structureId,
+      format: structureId.startsWith('structure-') ? '❌ WRONG' : '✅ CORRECT'
+    })
     
     // Get formatted title based on format (including report subtypes)
     const formatLabels: Record<string, string> = {
