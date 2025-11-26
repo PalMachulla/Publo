@@ -79,8 +79,15 @@ export class CriticAgent implements Agent {
       const systemPrompt = this.getSystemPrompt(constraints)
       
       // ✅ FIX: Use /api/content/generate (like WriterAgent) instead of non-existent /api/generate
-      // Combine system prompt and user prompt with JSON format instruction
-      const combinedPrompt = `${systemPrompt}\n\n${prompt}\n\n**IMPORTANT: You must respond with ONLY valid JSON matching this exact structure (no markdown, no code blocks):**
+      // Combine system prompt and user prompt with VERY explicit JSON format instruction
+      const combinedPrompt = `${systemPrompt}\n\n${prompt}\n\n**CRITICAL INSTRUCTION:**
+- Your response MUST be ONLY a JSON object
+- DO NOT include any text before or after the JSON
+- DO NOT use markdown code blocks (\`\`\`)
+- DO NOT say "Here is..." or "Based on..."
+- START your response with { and END with }
+- The JSON must match this exact structure:
+
 {
   "approved": boolean,
   "score": number (0-10),
@@ -94,7 +101,9 @@ export class CriticAgent implements Agent {
     "consistency": { "score": number, "notes": "string" },
     "formatting": { "score": number, "notes": "string" }
   }
-}`
+}
+
+RESPOND WITH ONLY THE JSON OBJECT ABOVE. NO OTHER TEXT.`
       
       const response = await fetch('/api/content/generate', {
         method: 'POST',
@@ -319,31 +328,53 @@ Evaluate the content honestly and provide feedback that will elevate the writing
         // Already parsed
         critique = responseContent
       } else if (typeof responseContent === 'string') {
-        // Try to extract JSON from markdown code blocks or plain text
+        // ✅ ENHANCED: Try multiple extraction strategies
         let jsonContent = responseContent.trim()
         
-        // Remove markdown code blocks (```json ... ``` or ``` ... ```)
+        console.log('🎭 [CriticAgent] Raw response (first 300 chars):', jsonContent.substring(0, 300))
+        
+        // Strategy 1: Remove markdown code blocks (```json ... ``` or ``` ... ```)
         const codeBlockMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/)
         if (codeBlockMatch) {
           jsonContent = codeBlockMatch[1].trim()
+          console.log('✅ [CriticAgent] Extracted from code block')
         }
         
-        // Remove any leading/trailing markdown formatting
-        jsonContent = jsonContent.replace(/^\*\*.*?\*\*\s*/g, '') // Remove **headers**
+        // Strategy 2: Remove markdown formatting and prose
+        jsonContent = jsonContent.replace(/^\*\*.*?\*\*\s*/gm, '') // Remove **headers**
         jsonContent = jsonContent.replace(/^#+\s+.*$/gm, '') // Remove markdown headers
+        jsonContent = jsonContent.replace(/^Here.*?:\s*/gim, '') // Remove "Here is the..." prose
+        jsonContent = jsonContent.replace(/^Based on.*?:\s*/gim, '') // Remove "Based on..." prose
         
-        // Try to find JSON object in text
+        // Strategy 3: Find JSON object (greedy match for nested objects)
         const jsonMatch = jsonContent.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
           jsonContent = jsonMatch[0]
         }
         
+        // Strategy 4: If still no valid JSON, try to find any object-like structure
+        if (!jsonContent.includes('{')) {
+          console.warn('⚠️ [CriticAgent] No JSON object found in response')
+          console.log('Full response:', responseContent)
+          return this.createFallbackCritique()
+        }
+        
         try {
           critique = JSON.parse(jsonContent)
+          console.log('✅ [CriticAgent] Successfully parsed JSON critique')
         } catch (parseError) {
-          console.warn('⚠️ [CriticAgent] Failed to parse JSON, attempting fallback extraction')
-          console.log('Response content:', responseContent.substring(0, 200))
-          // If JSON parsing fails, create fallback
+          console.warn('⚠️ [CriticAgent] JSON parse failed, attempting manual extraction')
+          console.log('Failed content:', jsonContent.substring(0, 500))
+          
+          // Strategy 5: Last resort - try to extract key fields manually using regex
+          const scoreMatch = jsonContent.match(/"score"\s*:\s*(\d+\.?\d*)/i)
+          const approvedMatch = jsonContent.match(/"approved"\s*:\s*(true|false)/i)
+          
+          if (scoreMatch) {
+            console.log('📊 [CriticAgent] Manual extraction: score =', scoreMatch[1])
+            return this.createFallbackCritique(parseFloat(scoreMatch[1]))
+          }
+          
           return this.createFallbackCritique()
         }
       } else {
@@ -382,19 +413,20 @@ Evaluate the content honestly and provide feedback that will elevate the writing
     }
   }
   
-  private createFallbackCritique(): CritiqueResult {
+  private createFallbackCritique(score: number = 5.0): CritiqueResult {
+    const fallbackScore = Math.max(0, Math.min(10, score)) // Clamp to 0-10
     return {
-      approved: false,
-      score: 5.0,
+      approved: fallbackScore >= this.qualityThreshold,
+      score: fallbackScore,
       issues: ['Review failed - unable to parse critique'],
       suggestions: ['Please try regenerating the content'],
       strengths: [],
       detailedFeedback: {
-        craft: { score: 5, notes: 'Review incomplete' },
-        pacing: { score: 5, notes: 'Review incomplete' },
-        dialogue: { score: 5, notes: 'Review incomplete' },
-        consistency: { score: 5, notes: 'Review incomplete' },
-        formatting: { score: 5, notes: 'Review incomplete' }
+        craft: { score: fallbackScore, notes: 'Review incomplete' },
+        pacing: { score: fallbackScore, notes: 'Review incomplete' },
+        dialogue: { score: fallbackScore, notes: 'Review incomplete' },
+        consistency: { score: fallbackScore, notes: 'Review incomplete' },
+        formatting: { score: fallbackScore, notes: 'Review incomplete' }
       }
     }
   }
