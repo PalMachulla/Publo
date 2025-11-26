@@ -634,9 +634,17 @@ export default function CanvasPage() {
     
     // CRITICAL: Use setNodes to get the LATEST nodes (not stale closure)
     let latestContentMap: Record<string, string> = {}
+    let isNodeLoading = false
     
     setNodes((currentNodes) => {
       const structureNode = currentNodes.find(n => n.id === nodeId)
+      
+      // ✅ CHECK: Prevent opening document panel if node is still being initialized
+      if (structureNode?.data?.isLoading) {
+        isNodeLoading = true
+        console.warn('⏳ [handleStructureItemClick] Node is still loading, cannot open document panel yet')
+        return currentNodes
+      }
       
       console.log('🔍 Looking for structure node in LATEST state:', {
         searchingForNodeId: nodeId,
@@ -661,6 +669,12 @@ export default function CanvasPage() {
       
       return currentNodes // Don't modify nodes, just read from them
     })
+    
+    // ✅ GUARD: Don't open document panel if node is still loading
+    if (isNodeLoading) {
+      alert('⏳ Document is still being generated. Please wait a moment and try again.')
+      return
+    }
     
     // Set initial prompt
     setInitialPrompt(`Write content for ${clickedItem.name}${clickedItem.title ? `: ${clickedItem.title}` : ''}`)

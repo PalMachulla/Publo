@@ -86,6 +86,8 @@ export function useHierarchicalDocument({
       const retryDelays = [500, 1000, 2000] // ms
       
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        console.log(`🔍 [useHierarchicalDocument] Fetch attempt ${attempt + 1}/${maxRetries + 1} for node:`, nodeId)
+        
         const result = await supabaseRef.current
           .from('nodes')
           .select('id, document_data')
