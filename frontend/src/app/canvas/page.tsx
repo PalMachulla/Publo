@@ -1019,91 +1019,48 @@ export default function CanvasPage() {
           itemsCount: newStructureNode.data.items?.length || 0
         })
         
-        // ✅ FIX: Use component-level Supabase client (same auth session everywhere)
-        const supabase = supabaseClient
-        
-        console.log('🔧 [saveAndFinalize] Attempting INSERT into Supabase...')
+        console.log('🔧 [saveAndFinalize] Creating node via server-side API (bypasses RLS)...')
         
         // ✅ FIX: Initialize document_data so agents can save content immediately
-        // Import DocumentManager dynamically to avoid circular dependency
         const { DocumentManager } = await import('@/lib/document/DocumentManager')
         const docManager = DocumentManager.fromStructureItems(
           newStructureNode.data.items || [],
           (newStructureNode.data.format as 'novel' | 'screenplay' | 'report') || 'novel'
         )
         
-        const insertPayload = {
-          id: structureId,
-          story_id: storyId,
-          type: 'storyStructure',
-          data: newStructureNode.data,
-          document_data: docManager.getData(), // ✅ FIX: Initialize with empty hierarchical document
-          position_x: newStructureNode.position.x,
-          position_y: newStructureNode.position.y
-          // ✅ FIX: No user_id column in nodes table (tracked via story_id → stories.user_id)
-        }
-        console.log('📦 [saveAndFinalize] UPSERT payload:', JSON.stringify(insertPayload, null, 2).substring(0, 500))
-        
-        // ✅ FIX: Use UPSERT instead of INSERT (same as Save Changes button!)
-        // This bypasses INSERT RLS policy issues and handles duplicates gracefully
-        const { data: upsertData, error: upsertError } = await supabase
-          .from('nodes')
-          .upsert(insertPayload, { onConflict: 'id' })
-          .select()
-        
-        console.log('📡 [saveAndFinalize] UPSERT response:', {
-          success: !upsertError,
-          upsertedData: upsertData,
-          error: upsertError,
-          errorCode: upsertError?.code,
-          errorMessage: upsertError?.message,
-          errorDetails: upsertError?.details,
-          note: 'Using UPSERT like Save Changes button (bypasses INSERT RLS issues)'
+        // ✅ NEW: Use server-side API to create node (uses admin client, bypasses RLS INSERT policy)
+        const createNodeResponse = await fetch('/api/node/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodeId: structureId,
+            storyId,
+            nodeType: 'storyStructure',
+            data: newStructureNode.data,
+            documentData: docManager.getData(),
+            positionX: newStructureNode.position.x,
+            positionY: newStructureNode.position.y,
+            userId: user?.id
+          })
         })
         
-        if (upsertError) {
-          console.error('❌ [saveAndFinalize] Node upsert error:', {
-            code: upsertError.code,
-            message: upsertError.message,
-            details: upsertError.details,
-            hint: upsertError.hint
-          })
-          throw upsertError
+        const createNodeResult = await createNodeResponse.json()
+        
+        console.log('📡 [saveAndFinalize] Node creation API response:', {
+          status: createNodeResponse.status,
+          success: createNodeResult.success,
+          nodeId: createNodeResult.nodeId,
+          error: createNodeResult.error
+        })
+        
+        if (!createNodeResponse.ok || !createNodeResult.success) {
+          console.error('❌ [saveAndFinalize] Node creation failed:', createNodeResult.error)
+          throw new Error(`Failed to create node: ${createNodeResult.error}`)
         }
         
-        console.log('✅ [saveAndFinalize] Node upserted successfully with user client:', upsertData)
-        
-        // 🔍 CRITICAL VERIFICATION: Can we query it back immediately?
-        console.log('🔍 [saveAndFinalize] VERIFICATION: Re-querying node with user client...')
-        const { data: verifyData, error: verifyError } = await supabase
-          .from('nodes')
-          .select('id, type, story_id, document_data')
-          .eq('id', structureId)
-          .maybeSingle()
-        
-        if (verifyError || !verifyData) {
-          console.error('❌❌❌ [saveAndFinalize] CRITICAL: UPSERT succeeded but SELECT failed!', {
-            nodeId: structureId,
-            upsertSuccess: !upsertError,
-            selectError: verifyError?.code,
-            selectMessage: verifyError?.message,
-            diagnosis: '🚨 RLS might be blocking SELECT even though UPSERT succeeded!'
-          })
-        } else {
-          console.log('✅ [saveAndFinalize] VERIFICATION SUCCESS: Node queryable with user client', {
-            nodeId: verifyData.id,
-            nodeType: verifyData.type,
-            storyId: verifyData.story_id,
-            hasDocumentData: !!verifyData.document_data,
-            documentDataKeys: verifyData.document_data ? Object.keys(verifyData.document_data) : []
-          })
-          
-          console.log('⚠️ [saveAndFinalize] IMPORTANT: Agents use ADMIN client (service_role)')
-          console.log('   If agents fail with "node not found", check:')
-          console.log('   1. Supabase RLS SELECT policy allows service_role')
-          console.log('   2. Node ID matches exactly (watch server logs)')
-          console.log('   3. Go to http://localhost:3002/api/agent/diagnose-rls?nodeId=' + structureId)
-        }
+        console.log('✅ [saveAndFinalize] Node created successfully via API:', createNodeResult.nodeId)
+        console.log('   Node is now queryable by both user and admin clients!')
+        console.log('   Agents can now save content to this node!')
         
         // Now call handleSave() for edges and other nodes
         await handleSave()
