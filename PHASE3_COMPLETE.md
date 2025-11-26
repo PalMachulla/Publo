@@ -453,15 +453,120 @@ Documentation:
 
 ---
 
+## ⚠️ Known Limitations & Future Work
+
+### **CriticAgent Currently Disabled**
+
+**Status:** Writer-Critic cluster is **DISABLED** (as of 2025-11-26)  
+**Impact:** Content generation works with WriterAgent only, no quality review loop
+
+#### **Root Cause**
+
+The `CriticAgent` requires **structured JSON output**, but `/api/content/generate` is designed for **creative writing**:
+
+```
+CriticAgent asks for JSON:
+{
+  "approved": boolean,
+  "score": 7.5,
+  "issues": [...],
+  ...
+}
+
+But LLM returns creative writing instead:
+"**Critic Review: A Scathing Rebuke**
+
+The dimly lit theater was abuzz with the soft murmur
+of hushed conversations as the audience awaited the
+critic's review of the latest production..."
+```
+
+**Why This Happens:**
+- `/api/content/generate` is optimized for creative content generation
+- LLM sees `segmentId: 'critic-review'` + creative writing endpoint → writes a story about a critic
+- Even explicit JSON instructions are ignored in favor of creative output
+- This is **by design** for the content generation endpoint
+
+#### **Attempted Solutions (All Failed)**
+
+1. ✅ Explicit JSON format instructions in prompt → Ignored
+2. ✅ Multi-strategy JSON extraction (5 layers) → No JSON found in response
+3. ✅ Manual regex extraction → No structured data to extract
+4. ✅ Adapted from `/api/generate` to `/api/content/generate` → Wrong endpoint type
+
+#### **Proper Solution (Future Work)**
+
+Create a **dedicated agent communication endpoint**:
+
+```typescript
+POST /api/agent/review  // or /api/agent/critique
+{
+  content: "...",
+  criteria: ["craft", "pacing", "dialogue", ...],
+  format: "screenplay",
+  responseFormat: { type: "json_schema", schema: {...} }
+}
+
+Response (guaranteed JSON via OpenAI structured outputs):
+{
+  "approved": boolean,
+  "score": number,
+  "issues": string[],
+  "suggestions": string[],
+  "detailedFeedback": {...}
+}
+```
+
+**Key Requirements:**
+- Use OpenAI's native JSON schema validation
+- Designed for agent-to-agent communication, not creative writing
+- Returns pure structured data
+- Separate from content generation pipeline
+
+#### **Current Workaround**
+
+```typescript
+// writeContentTool.ts
+useCluster: false  // Disabled (default)
+
+// MultiAgentOrchestrator.ts (executeCluster)
+useCluster: false  // Disabled
+
+// Effect: WriterAgent generates content directly
+// No critic review, no iterative refinement
+// Faster, but lower quality assurance
+```
+
+#### **How to Re-Enable (After Creating Endpoint)**
+
+1. Create `/api/agent/review` endpoint with JSON schema validation
+2. Update `CriticAgent.ts` to call new endpoint instead of `/api/content/generate`
+3. Set `useCluster: true` in `writeContentTool.ts` and `MultiAgentOrchestrator.ts`
+4. Test iterative refinement loop
+
+---
+
 ## 🚀 Ready for Testing!
 
-Phase 3 is **COMPLETE** and ready for real-world testing. The orchestrator now has a full team of agents that can:
+Phase 3 is **FUNCTIONALLY COMPLETE** with the following capabilities:
 
 ✅ Write multiple chapters in parallel (3x faster)  
-✅ Quality-assure content with automatic review loops  
 ✅ Intelligently route tasks based on complexity  
 ✅ Provide full observability into what agents are doing  
 ✅ Track performance, tokens, and costs  
+✅ Save generated content to Supabase  
+✅ Full end-to-end orchestration flow  
 
-**Next step:** Wire MultiAgentOrchestrator into OrchestratorPanel and test! 🎯
+⚠️ **Quality assurance disabled** (CriticAgent) - see "Known Limitations" above  
+⏳ **Future:** Implement dedicated agent endpoint for structured data  
+
+**Current Flow:**
+```
+User Request → Structure → Parallel Execution → WriterAgent → Content → Supabase → Document Panel
+```
+
+**Future Flow (with Critic):**
+```
+User Request → Structure → Cluster Strategy → WriterAgent → CriticAgent → Revise (if needed) → Supabase
+```
 

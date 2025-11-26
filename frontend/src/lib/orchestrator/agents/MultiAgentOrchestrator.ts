@@ -718,9 +718,9 @@ Respond in JSON format:
               sectionId: action.payload?.sectionId,
               sectionName: action.payload?.sectionName,
               prompt: action.payload?.prompt,
-              useCluster: true, // ✅ ENABLED: CriticAgent fixed to use /api/content/generate
-              storyStructureNodeId, // ✅ NEW: Pass node ID
-              format // ✅ NEW: Pass document format
+              useCluster: false, // ⚠️ DISABLED: See PHASE3_COMPLETE.md "Known Limitations"
+              storyStructureNodeId, // ✅ Pass node ID
+              format // ✅ Pass document format
             },
             {
               worldState: (this as any).worldState!,

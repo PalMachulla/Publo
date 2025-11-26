@@ -51,7 +51,7 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
       type: 'boolean',
       description: 'Whether to use writer-critic cluster for quality assurance',
       required: false,
-      default: true // ✅ ENABLED: CriticAgent now uses /api/content/generate
+      default: false // ⚠️ DISABLED: See PHASE3_COMPLETE.md "Known Limitations" section
     },
     {
       name: 'storyStructureNodeId',
@@ -71,7 +71,7 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
     input: WriteContentInput,
     context: ToolContext
   ): Promise<ToolResult<WriteContentOutput>> {
-    const { sectionId, sectionName, prompt, model, useCluster = true, storyStructureNodeId: inputNodeId, format: inputFormat } = input // ✅ Default to true (critic enabled)
+    const { sectionId, sectionName, prompt, model, useCluster = false, storyStructureNodeId: inputNodeId, format: inputFormat } = input // ⚠️ Default to false (see PHASE3_COMPLETE.md)
     const { worldState, userId, userKeyId } = context
 
     // Get document info - prioritize input parameters over worldState
