@@ -578,14 +578,29 @@ Respond in JSON format:
         })
         
         // Map tasks back to actions (tasks were created from actions)
+        console.log(`🔍 [executeParallel] Mapping ${batch.length} tasks to actions...`)
+        console.log(`   Task IDs:`, batch.map(t => t.payload?.context?.section?.id))
+        console.log(`   Action IDs:`, actions.map(a => a.payload?.sectionId))
+        
         const batchActions = batch.map(task => {
           // Find corresponding action by sectionId
           return actions.find(a => a.payload?.sectionId === task.payload?.context?.section?.id)
         }).filter(a => a !== undefined) as OrchestratorAction[]
         
+        console.log(`✅ [executeParallel] Mapped ${batchActions.length}/${batch.length} tasks to actions`)
+        
+        if (batchActions.length === 0) {
+          console.error(`❌ [executeParallel] CRITICAL: No actions mapped! Tasks won't execute!`)
+          console.error(`   This means task/action ID mismatch`)
+          continue // Skip this batch
+        }
+        
+        console.log(`✅ [executeParallel] Starting execution of ${batchActions.length} tools...`)
+        
         // Execute all tasks in this batch in parallel using tools
         const batchPromises = batchActions.map(async (action) => {
           const toolName = this.actionTypeToToolName(action.type)
+          console.log(`🔧 [executeParallel] Tool: ${toolName} | Section: ${action.payload?.sectionName || action.payload?.sectionId}`)
           
           if (toolName && toolRegistry.has(toolName)) {
             try {
