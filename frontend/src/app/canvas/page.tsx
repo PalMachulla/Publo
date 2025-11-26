@@ -1026,9 +1026,9 @@ export default function CanvasPage() {
           story_id: storyId,
           type: 'storyStructure',
           data: newStructureNode.data,
-          position_x: newStructureNode.position.x, // ✅ FIX: Use position_x/position_y columns
-          position_y: newStructureNode.position.y,
-          user_id: user?.id
+          position_x: newStructureNode.position.x,
+          position_y: newStructureNode.position.y
+          // ✅ FIX: No user_id column in nodes table (tracked via story_id → stories.user_id)
         }
         console.log('📦 [saveAndFinalize] INSERT payload:', JSON.stringify(insertPayload, null, 2).substring(0, 500))
         
