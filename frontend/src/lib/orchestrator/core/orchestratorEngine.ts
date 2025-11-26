@@ -2086,13 +2086,17 @@ Respond in JSON format:
     // ✅ FIX: Only use primaryModelId if it's actually available to the user!
     const isPrimaryAvailable = reasoningModels.some(m => m.id === primaryModelId)
     
-    // ⚡ OPTIMIZED: Always try fast models first (gpt-4o, gpt-4o-mini), then primary, then others
-    const fastModels = reasoningModels.filter(m => m.id === 'gpt-4o' || m.id === 'gpt-4o-mini').map(m => m.id)
-    const otherModels = reasoningModels.filter(m => m.id !== 'gpt-4o' && m.id !== 'gpt-4o-mini' && m.id !== primaryModelId).map(m => m.id)
+    // ⚡ OPTIMIZED: ALWAYS prioritize fast models first, regardless of primaryModelId
+    const fastModelIds = ['gpt-4o', 'gpt-4o-mini']
+    const isFastModel = fastModelIds.includes(primaryModelId)
     
-    const modelsToTry = isPrimaryAvailable
-      ? [...fastModels, primaryModelId, ...otherModels].filter((v, i, a) => a.indexOf(v) === i) // Remove duplicates
-      : [...fastModels, ...otherModels].filter((v, i, a) => a.indexOf(v) === i)
+    // Build final list: fast models FIRST, then others by speed priority
+    const modelList = reasoningModels.map(m => m.id) // Already sorted by speed priority above
+    
+    // Remove duplicates while preserving order
+    const modelsToTry = [...new Set(modelList)]
+    
+    console.log(`🎯 [Model Selection] Primary model: ${primaryModelId} (is fast: ${isFastModel}, available: ${isPrimaryAvailable})`)
     
     console.log(`🔄 [Fallback] Primary model: ${primaryModelId} (available: ${isPrimaryAvailable})`)
     console.log(`🔄 [Fallback] Models to try: ${modelsToTry.join(', ')}`)
