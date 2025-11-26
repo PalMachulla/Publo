@@ -14,7 +14,6 @@ import {
   Button
 } from '@/components/ui'
 import { 
-  getOrchestrator,
   getMultiAgentOrchestrator, // PHASE 3: Multi-agent support
   buildCanvasContext, 
   type OrchestratorRequest,
