@@ -787,7 +787,7 @@ export default function OrchestratorPanel({
       case 'create_structure':
         // Extract format from user message (screenplay, novel, report, etc.)
         const detectedFormat = detectFormatFromMessage(message)
-        onCreateStory(detectedFormat || selectedFormat, selectedTemplate || undefined, message)
+        await onCreateStory(detectedFormat || selectedFormat, selectedTemplate || undefined, message) // ✅ FIX: Await
         break
         
       case 'general_chat':
@@ -904,8 +904,8 @@ export default function OrchestratorPanel({
           if (onAddChatMessage) {
             onAddChatMessage(action.payload.content, 'orchestrator', 'result')
           }
-          // Call onCreateStory with the enhanced prompt
-          onCreateStory(format, undefined, prompt)
+          // ✅ FIX: AWAIT onCreateStory to ensure node is saved before continuing
+          await onCreateStory(format, undefined, prompt)
         } else {
           await executeActionDirectly(action)
         }
@@ -1109,7 +1109,7 @@ export default function OrchestratorPanel({
         case 'modify_structure':
           // Handle structure creation/modification
           if (action.payload.action === 'create') {
-            onCreateStory(
+            await onCreateStory( // ✅ FIX: Await
               action.payload.format || selectedFormat,
               selectedTemplate || undefined,
               action.payload.prompt
@@ -1400,7 +1400,7 @@ export default function OrchestratorPanel({
             await onWriteContent(activeContext.id, improvePrompt)
           } else {
             // Fallback
-            onCreateStory(selectedFormat, selectedTemplate || undefined, `Improve: ${message}`)
+            await onCreateStory(selectedFormat, selectedTemplate || undefined, `Improve: ${message}`) // ✅ FIX: Await
           }
           break
         
@@ -2108,7 +2108,7 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
               onAddChatMessage(`💬 ${response}`)
             }
           } else {
-            onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+            await onCreateStory(selectedFormat, selectedTemplate || undefined, message) // ✅ FIX: Await
           }
           break
       }
