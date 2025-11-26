@@ -1159,9 +1159,16 @@ export default function CanvasPage() {
       // 🔧 FIX: AWAIT save node to Supabase FIRST, then start orchestration
       // Otherwise, the node doesn't exist when orchestration tries to update document_data
       console.log('💾 [handleCreateStory] Saving node to Supabase first...')
+      console.log('   Node ID to save:', structureId)
+      console.log('   Node ID format check:', {
+        length: structureId.length,
+        format: structureId.match(/^[0-9]+-[a-z0-9]+$/) ? 'VALID (timestamp-random)' : 'UNKNOWN FORMAT',
+        sample: structureId
+      })
       try {
         await saveAndFinalize() // ✅ CRITICAL: Must await to prevent race condition
-        console.log('✅ [handleCreateStory] Node saved, now triggering orchestration')
+        console.log('✅ [handleCreateStory] Node saved successfully, ID:', structureId)
+        console.log('🎬 [handleCreateStory] Now triggering orchestration with same ID:', structureId)
         triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
       } catch (err) {
         console.error('❌ [handleCreateStory] Failed to save node before orchestration:', err)
@@ -1191,10 +1198,18 @@ export default function CanvasPage() {
     console.log('═══════════════════════════════════════════════')
     console.log('🎬 ORCHESTRATION STARTED')
     console.log('═══════════════════════════════════════════════')
-    console.log('Structure ID:', structureNodeId)
+    console.log('Structure Node ID:', structureNodeId)
+    console.log('   ID Format Check:', {
+      length: structureNodeId.length,
+      format: structureNodeId.match(/^[0-9]+-[a-z0-9]+$/) ? 'VALID' : 'INVALID!',
+      sample: structureNodeId
+    })
     console.log('Format:', format)
     console.log('Has AI Prompt Node:', !!aiPromptNode)
     console.log('Orchestrator ID:', orchestratorNodeId)
+    console.log('═══════════════════════════════════════════════')
+    console.log('⚠️ CRITICAL: This ID will be passed to agents for content saving')
+    console.log('⚠️ If agents fail with "Node not found", verify this ID matches UPSERT ID')
     console.log('═══════════════════════════════════════════════')
     
     // Check authentication

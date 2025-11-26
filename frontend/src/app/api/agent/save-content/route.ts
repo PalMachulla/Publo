@@ -50,9 +50,50 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ [API /api/agent/save-content] User authenticated:', user.id)
 
+    // STEP 1.5: PRE-CHECK - Does the node exist at all? (using maybeSingle to avoid errors)
+    console.log('🔍 [API /api/agent/save-content] PRE-CHECK: Verifying node exists...')
+    const preCheckClient = createAdminClient()
+    const { data: preCheckNode, error: preCheckError } = await preCheckClient
+      .from('nodes')
+      .select('id, type, story_id, created_at')
+      .eq('id', storyStructureNodeId)
+      .maybeSingle()
+    
+    console.log('📊 [API /api/agent/save-content] PRE-CHECK result:', {
+      nodeId: storyStructureNodeId,
+      found: !!preCheckNode,
+      nodeType: preCheckNode?.type,
+      storyId: preCheckNode?.story_id,
+      createdAt: preCheckNode?.created_at,
+      error: preCheckError,
+      diagnosis: preCheckNode 
+        ? `✅ Node exists (type: ${preCheckNode.type})` 
+        : `❌ NODE NOT IN DATABASE! Query returned 0 rows.`
+    })
+    
+    if (!preCheckNode) {
+      console.error('❌ [API /api/agent/save-content] FATAL: Node does not exist in database!')
+      console.error('   This means either:')
+      console.error('   1. Node was never created (UPSERT failed silently)')
+      console.error('   2. Node ID format is wrong')
+      console.error('   3. Node was deleted/rolled back')
+      
+      // List recent nodes to help debug
+      const { data: recentNodes } = await preCheckClient
+        .from('nodes')
+        .select('id, type, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5)
+      
+      console.log('📋 [API /api/agent/save-content] Recent nodes in database:', {
+        count: recentNodes?.length || 0,
+        nodeIds: recentNodes?.map(n => ({ id: n.id, type: n.type, created: n.created_at })) || []
+      })
+    }
+
     // STEP 2: Use ADMIN client to fetch node + verify ownership
     // (Regular client blocked by RLS because auth.uid() is NULL in Next.js API routes)
-    console.log('📡 [API /api/agent/save-content] Using admin client to fetch node...')
+    console.log('📡 [API /api/agent/save-content] Using admin client to fetch node data...')
     const adminClient = createAdminClient()
     
     // ✅ DEBUG: Verify admin client is using service_role key
