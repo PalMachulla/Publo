@@ -41,6 +41,13 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     this.initializeAgents()
     
     console.log('🤖 [MultiAgentOrchestrator] Initialized with multi-agent coordination')
+    
+    // Log initialization to Blackboard for UI visibility
+    this.getBlackboard().addMessage({
+      role: 'orchestrator',
+      content: '🤖 Multi-agent system initialized',
+      type: 'thinking'
+    })
   }
   
   // ============================================================
@@ -190,7 +197,7 @@ Context:
 - Content generation actions: ${contentActions.length}
 - Action details: ${JSON.stringify(actionSummary, null, 2)}
 - Recent activity: ${context}
-- Blackboard state: ${blackboard.getAgentStates().length} agents active
+- Blackboard state: ${blackboard.getAllAgents().length} agents active
 
 Decision criteria:
 - SEQUENTIAL: Use for simple tasks, non-content actions, or mixed action types
@@ -314,19 +321,25 @@ Respond in JSON format:
     // TODO: Eventually replace with agent execution for all action types
     for (const action of actions) {
       console.log(`▶️ [MultiAgentOrchestrator] Executing: ${action.type}`)
+      console.log(`   Payload:`, action.payload)
       
       this.getBlackboard().addMessage({
         role: 'orchestrator',
-        content: `▶️ ${action.type}: ${action.payload?.sectionName || 'processing...'}`,
+        content: `▶️ ${action.type}: ${action.payload?.sectionName || action.payload?.prompt?.substring(0, 50) || 'processing...'}`,
         type: 'progress'
       })
       
       // For now, just log that we would execute
       // In full implementation, this would call UI callbacks or use tools
-      console.log(`   Payload:`, action.payload)
     }
     
     console.log(`✅ [MultiAgentOrchestrator] Sequential execution complete`)
+    
+    this.getBlackboard().addMessage({
+      role: 'orchestrator',
+      content: `✅ Sequential execution complete`,
+      type: 'result'
+    })
   }
   
   // ============================================================

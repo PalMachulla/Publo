@@ -1895,7 +1895,37 @@ Respond in JSON format:
       }
 
       const data = await response.json()
-      const analysis = JSON.parse(data.content)
+      
+      // Parse JSON with better error handling
+      let analysis: any
+      try {
+        // Try to parse content directly
+        if (typeof data.content === 'object') {
+          analysis = data.content
+        } else if (typeof data.content === 'string') {
+          // Extract JSON from markdown code blocks if present
+          let jsonContent = data.content.trim()
+          const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/)
+          if (jsonMatch) {
+            jsonContent = jsonMatch[1].trim()
+          }
+          
+          // Remove any leading/trailing non-JSON content
+          const jsonStart = jsonContent.indexOf('{')
+          const jsonEnd = jsonContent.lastIndexOf('}')
+          if (jsonStart >= 0 && jsonEnd > jsonStart) {
+            jsonContent = jsonContent.substring(jsonStart, jsonEnd + 1)
+          }
+          
+          analysis = JSON.parse(jsonContent)
+        } else {
+          throw new Error('Invalid response format')
+        }
+      } catch (parseError: any) {
+        console.error('❌ [Task Analysis] JSON parse error:', parseError.message)
+        console.error('   Content:', typeof data.content === 'string' ? data.content.substring(0, 500) : data.content)
+        throw new Error(`Failed to parse task analysis: ${parseError.message}`)
+      }
       
       // Map section names to actual section objects
       const targetSections = analysis.targetSectionNames
