@@ -548,7 +548,7 @@ Respond in JSON format:
       // Add to UI
       this.getBlackboard().addMessage({
         role: 'orchestrator',
-        content: `📦 Batch ${idx + 1}: ${batch.map(t => t.payload.context?.section?.name || t.id).join(', ')}`,
+        content: `📦 Batch ${idx + 1}: ${batch.map(t => t.payload?.context?.section?.name || t.id).join(', ')}`,
         type: 'progress'
       })
     })
