@@ -139,14 +139,31 @@ Critical shift from rule-based to LLM-powered decision making:
     Sequential      Parallel       Cluster
    (LLM decides)  (LLM decides)  (LLM decides)
          │              │              │
-         │              ▼              ▼
-         │      ┌──────────────┐  ┌──────────────┐
-         │      │ DAG Executor │  │Writer-Critic │
-         │      │  (Promise    │  │   Cluster    │
-         │      │   .all)      │  │ (Iterative)  │
-         │      └───────┬──────┘  └──────┬───────┘
-         │              │                 │
-         └──────────────┼─────────────────┘
+         └──────────────┼──────────────┘
+                        ▼
+              ┌──────────────────────┐
+              │    ToolRegistry      │ ← 🆕 PHASE 2+3 INTEGRATION
+              │  (Execute Tools via  │    Tools = Interface
+              │   action → tool map) │    Agents = Implementation
+              └──────────┬───────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+  ┌────────────┐  ┌────────────┐  ┌────────────┐
+  │   write_   │  │  create_   │  │   answer_  │ ← 🆕 TOOLS LAYER
+  │  content   │  │ structure  │  │  question  │    (Abstraction)
+  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘
+        │               │               │
+        │ useCluster:   │               │
+        │ true/false    │               │
+        └───────────────┼───────────────┘
+                        ▼
+              ┌──────────────────┐
+              │Writer-Critic     │
+              │   Cluster        │ ← Tools delegate to agents
+              │ (Iterative QA)   │    based on strategy
+              └─────────┬────────┘
+                        │
                         ▼
               ┌──────────────────┐
               │  Agent Registry  │
@@ -172,6 +189,8 @@ Critical shift from rule-based to LLM-powered decision making:
            │  Tasks)  │
            └──────────┘
 ```
+
+**Key Addition:** The ToolRegistry and Tools layer (Phase 2 integration) now sits between strategy execution and agent allocation. Tools are the interface, agents are the implementation. Sequential strategy passes `useCluster: false` (direct writer), while Cluster strategy passes `useCluster: true` (writer-critic iterations).
 
 **🆕 Key Enhancement (2025-11-26):** Replaced hard-coded rules with LLM-powered reasoning at two critical decision points (see `REASONING_ARCHITECTURE.md` for details).
 
