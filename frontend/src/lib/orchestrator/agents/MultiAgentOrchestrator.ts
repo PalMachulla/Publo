@@ -54,6 +54,17 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     // Step 1: Call parent to analyze and generate actions
     const response = await super.orchestrate(request)
     
+    // 🔍 DEBUG: Log what actions were generated
+    console.log('🔍 [MultiAgentOrchestrator] Actions generated:', {
+      count: response.actions?.length || 0,
+      actions: response.actions?.map((a: any) => ({
+        type: a.type,
+        sectionId: a.payload?.sectionId,
+        sectionName: a.payload?.sectionName,
+        autoStart: a.payload?.autoStart
+      }))
+    })
+    
     // Step 2: Get the blackboard message count BEFORE agent execution
     const messagesBefore = this.getBlackboard().getRecentMessages(1000).length
     

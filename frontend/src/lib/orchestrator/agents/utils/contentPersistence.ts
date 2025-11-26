@@ -29,10 +29,21 @@ export interface SaveContentResult {
 export async function saveAgentContent(options: SaveContentOptions): Promise<SaveContentResult> {
   const { storyStructureNodeId, sectionId, content, userId } = options
   
+  // 🔍 DEBUG: Log save attempt
+  console.log('💾 [saveAgentContent] Attempting save:', {
+    nodeId: storyStructureNodeId,
+    nodeIdType: typeof storyStructureNodeId,
+    nodeIdFormat: storyStructureNodeId?.startsWith('structure-') ? '❌ WRONG (structure ID)' : '✅ CORRECT (node ID)',
+    sectionId,
+    contentLength: content.length,
+    contentPreview: content.substring(0, 100) + '...'
+  })
+  
   try {
     const supabase = createClient()
     
     // Step 1: Fetch current document_data
+    console.log('📡 [saveAgentContent] Fetching node from Supabase...')
     const { data: node, error: fetchError } = await supabase
       .from('nodes')
       .select('document_data')
@@ -44,12 +55,30 @@ export async function saveAgentContent(options: SaveContentOptions): Promise<Sav
       return { success: false, error: fetchError.message }
     }
     
+    console.log('✅ [saveAgentContent] Node fetched:', {
+      hasNode: !!node,
+      hasDocumentData: !!node?.document_data,
+      documentDataKeys: node?.document_data ? Object.keys(node.document_data) : []
+    })
+    
     if (!node?.document_data) {
+      console.error('❌ [saveAgentContent] No document_data in node')
       return { success: false, error: 'No document_data found in node' }
     }
     
     // Step 2: Update content in DocumentManager
+    console.log('📝 [saveAgentContent] Updating content in DocumentManager...')
     const docManager = new DocumentManager(node.document_data)
+    
+    // 🔍 DEBUG: Log available sections
+    const flatSections = docManager.getFlatStructure()
+    console.log('📋 [saveAgentContent] Available sections:', {
+      count: flatSections.length,
+      ids: flatSections.map(s => s.id),
+      targetSectionId: sectionId,
+      sectionExists: flatSections.some(s => s.id === sectionId)
+    })
+    
     const updateSuccess = docManager.updateContent(sectionId, content)
     
     if (!updateSuccess) {
