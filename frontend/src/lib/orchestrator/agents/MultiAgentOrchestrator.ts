@@ -72,22 +72,52 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       }))
     })
     
-    // Step 2: Get the blackboard message count BEFORE agent execution
+    // Step 2: CRITICAL - Filter actions BEFORE execution
+    // Determine which actions should be executed by agents vs. returned to UI
+    const hasNodeId = !!(request?.currentStoryStructureNodeId)
+    const originalActionCount = response.actions?.length || 0
+    
+    // Split actions into two groups:
+    // 1. actionsForAgentExecution: generate_content actions when we HAVE a node ID
+    // 2. actionsForUI: everything else (structure creation, clarifications, etc.)
+    const actionsForAgentExecution: OrchestratorAction[] = []
+    const actionsForUI: OrchestratorAction[] = []
+    
+    response.actions?.forEach(a => {
+      if (a.type === 'generate_content' && hasNodeId) {
+        // We have a node ID, agents can execute this
+        actionsForAgentExecution.push(a)
+        console.log(`  ✅ Agent will execute: ${a.type} (${a.payload?.sectionName})`)
+      } else {
+        // UI needs to handle this (structure creation, clarifications, etc.)
+        actionsForUI.push(a)
+        console.log(`  📤 Returning to UI: ${a.type}`)
+      }
+    })
+    
+    console.log('🔍 [MultiAgentOrchestrator] Action split:', {
+      total: originalActionCount,
+      forAgents: actionsForAgentExecution.length,
+      forUI: actionsForUI.length,
+      hasNodeId
+    })
+    
+    // Step 3: Get the blackboard message count BEFORE agent execution
     const messagesBefore = this.getBlackboard().getRecentMessages(1000).length
     
-    // Step 3: Execute actions with agents (if any)
-    if (response.actions && response.actions.length > 0) {
+    // Step 4: Execute ONLY the filtered actions with agents
+    if (actionsForAgentExecution.length > 0) {
       const sessionId = `session-${Date.now()}`
       
       this.getBlackboard().addMessage({
         role: 'orchestrator',
-        content: `🚀 Starting agent execution for ${response.actions.length} action(s)`,
+        content: `🚀 Starting agent execution for ${actionsForAgentExecution.length} action(s)`,
         type: 'progress'
       })
       
       try {
         // Pass the request so agents have access to currentStoryStructureNodeId
-        await this.executeActionsWithAgents(response.actions, sessionId, request)
+        await this.executeActionsWithAgents(actionsForAgentExecution, sessionId, request)
         
         this.getBlackboard().addMessage({
           role: 'orchestrator',
@@ -105,11 +135,11 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       }
     }
     
-    // Step 4: Extract NEW messages for UI display (messages added during agent execution)
+    // Step 5: Extract NEW messages for UI display (messages added during agent execution)
     const messagesAfter = this.getBlackboard().getRecentMessages(1000)
     const newMessages = messagesAfter.slice(messagesBefore)
     
-    // Step 5: Add new messages to thinkingSteps for UI display
+    // Step 6: Add new messages to thinkingSteps for UI display
     if (newMessages.length > 0) {
       const agentSteps = newMessages.map(m => ({
         content: m.content,
@@ -122,52 +152,15 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       console.log(`📨 [MultiAgentOrchestrator] Added ${agentSteps.length} agent messages to UI`)
     }
     
-    // Step 6: CRITICAL - Manage actions to prevent double execution
-    // Complex filtering logic:
-    // 1. Agent-executed actions (generate_content) → Remove from response (already executed)
-    // 2. UI-executed actions (generate_structure, etc.) → Keep in response
-    // 3. EXCEPT: generate_content without node ID → Remove (will be generated after structure)
+    // Step 7: Return ONLY UI actions (already filtered above)
     
-    const hasNodeId = !!(request?.currentStoryStructureNodeId)
-    const originalActionCount = response.actions?.length || 0
+    response.actions = actionsForUI
     
-    const filteredActions = response.actions?.filter(a => {
-      // Keep UI-executed actions
-      if (['generate_structure', 'message', 'request_clarification', 'open_document', 'select_section', 'delete_node'].includes(a.type)) {
-        return true
-      }
-      
-      // Remove generate_content actions (either executed by agents OR waiting for node creation)
-      if (a.type === 'generate_content') {
-        if (hasNodeId) {
-          // Had node ID → was executed by agents → remove
-          console.log(`  ✂️ Removing generate_content (executed): ${a.payload?.sectionName}`)
-          return false
-        } else {
-          // No node ID → wasn't executed → remove anyway (will be re-generated after structure)
-          console.log(`  ✂️ Removing generate_content (pending node creation): ${a.payload?.sectionName}`)
-          return false
-        }
-      }
-      
-      // Keep other actions
-      return true
-    }) || []
-    
-    response.actions = filteredActions
-    
-    console.log('🔍 [MultiAgentOrchestrator] Action filtering:', {
-      original: originalActionCount,
-      filtered: originalActionCount - filteredActions.length,
-      returnedToUI: filteredActions.map(a => a.type),
-      hasNodeId
-    })
-    
-    // 🔍 DEBUG: Log final state
     console.log('✅ [MultiAgentOrchestrator] Orchestration complete:', {
       intent: response.intent,
-      actionsFiltered: originalActionCount - filteredActions.length,
-      actionsReturnedToUI: response.actions.length,
+      totalActionsGenerated: originalActionCount,
+      agentExecutedActions: actionsForAgentExecution.length,
+      actionsReturnedToUI: actionsForUI.length,
       messagesSent: newMessages.length,
       currentNodeId: request?.currentStoryStructureNodeId
     })
