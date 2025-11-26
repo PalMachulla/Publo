@@ -1473,7 +1473,7 @@ Use this content overview to inform the ${request.documentFormat} structure and 
             console.log('   Section Name:', firstSection.name)
             
             // Add a generate_content action for the first section
-            const contentAction = {
+            const contentAction: OrchestratorAction = {
               type: 'generate_content',
               payload: {
                 sectionId: firstSection.id,
