@@ -718,7 +718,7 @@ Respond in JSON format:
               sectionId: action.payload?.sectionId,
               sectionName: action.payload?.sectionName,
               prompt: action.payload?.prompt,
-              useCluster: true, // Enable writer-critic cluster
+              useCluster: false, // ⚠️ DISABLED: CriticAgent endpoint doesn't exist yet
               storyStructureNodeId, // ✅ NEW: Pass node ID
               format // ✅ NEW: Pass document format
             },
