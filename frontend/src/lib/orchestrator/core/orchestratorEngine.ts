@@ -1469,9 +1469,11 @@ Use this content overview to inform the ${request.documentFormat} structure and 
             })
             
             console.log('✅ [create_structure] Adding follow-up generate_content action for:', firstSection.name)
+            console.log('   Section ID:', firstSection.id)
+            console.log('   Section Name:', firstSection.name)
             
             // Add a generate_content action for the first section
-            actions.push({
+            const contentAction = {
               type: 'generate_content',
               payload: {
                 sectionId: firstSection.id,
@@ -1480,8 +1482,19 @@ Use this content overview to inform the ${request.documentFormat} structure and 
                 autoStart: true // Flag to indicate this should execute automatically
               },
               status: 'pending'
-            })
+            }
+            
+            actions.push(contentAction)
+            console.log('✅ [create_structure] Action pushed! Total actions now:', actions.length)
+            console.log('   Action details:', JSON.stringify(contentAction, null, 2))
+          } else {
+            console.warn('⚠️ [create_structure] No suitable first section found for multi-step')
           }
+        } else {
+          console.log('ℹ️ [create_structure] Multi-step not triggered:', {
+            isMultiStep,
+            structureLength: plan.structure.length
+          })
         }
         
         break
@@ -1829,6 +1842,17 @@ Use this content overview to inform the ${request.documentFormat} structure and 
         break
       }
     }
+    
+    // 🔍 DEBUG: Log final actions before returning
+    console.log('🔍 [generateActions] Returning actions:', {
+      count: actions.length,
+      types: actions.map(a => a.type),
+      details: actions.map(a => ({
+        type: a.type,
+        sectionId: a.payload?.sectionId,
+        sectionName: a.payload?.sectionName
+      }))
+    })
     
     return actions
   }
