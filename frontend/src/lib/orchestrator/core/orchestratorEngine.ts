@@ -2328,12 +2328,6 @@ Generate a complete structure plan with:
       type: 'progress'
     })
     
-    this.blackboard.addMessage({
-      role: 'orchestrator',
-      content: '🔄 Step 4/4: Validating structure plan...',
-      type: 'progress'
-    })
-    
     const data = await response.json()
     
     // DEBUG: Log to console what we actually received
