@@ -122,10 +122,17 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       console.log(`📨 [MultiAgentOrchestrator] Added ${agentSteps.length} agent messages to UI`)
     }
     
+    // Step 6: CRITICAL - Clear actions array to prevent double execution
+    // Actions were already executed by executeActionsWithAgents() via tool system
+    // If we leave them in response.actions, OrchestratorPanel will execute them AGAIN
+    const executedActionCount = response.actions?.length || 0
+    response.actions = [] // Clear to prevent UI re-execution
+    
     // 🔍 DEBUG: Log final state
     console.log('✅ [MultiAgentOrchestrator] Orchestration complete:', {
       intent: response.intent,
-      actionsExecuted: response.actions?.length || 0,
+      actionsExecuted: executedActionCount,
+      actionsInResponse: response.actions.length, // Should be 0
       messagesSent: newMessages.length,
       currentNodeId: request?.currentStoryStructureNodeId
     })
