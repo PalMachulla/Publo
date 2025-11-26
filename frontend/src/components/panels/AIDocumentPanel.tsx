@@ -45,6 +45,28 @@ export default function AIDocumentPanel({
   onSectionsLoaded,
   onRefreshSections,
 }: AIDocumentPanelProps) {
+  
+  // 🔍 DEBUG: Validate node ID format
+  useEffect(() => {
+    if (storyStructureNodeId) {
+      const isStructureId = storyStructureNodeId.startsWith('structure-')
+      const isValidNodeId = !isStructureId && storyStructureNodeId.includes('-')
+      
+      console.log('🔍 [AIDocumentPanel] Received storyStructureNodeId:', {
+        nodeId: storyStructureNodeId,
+        format: isStructureId ? '❌ WRONG (structure ID)' : isValidNodeId ? '✅ CORRECT (UUID)' : '⚠️ UNKNOWN',
+        isStructureId,
+        isValidNodeId
+      })
+      
+      if (isStructureId) {
+        console.error('❌ [AIDocumentPanel] CRITICAL: Received structure item ID instead of node ID!')
+        console.error('   This will cause Supabase errors!')
+        console.error('   Expected: UUID format (e.g., "abc-123-def-456")')
+        console.error('   Received:', storyStructureNodeId)
+      }
+    }
+  }, [storyStructureNodeId])
   const [activeSectionId, setActiveSectionId] = useState<string | null>(initialSectionId)
   
   // Update active section when initialSectionId changes (e.g., orchestrator opens a specific section)
