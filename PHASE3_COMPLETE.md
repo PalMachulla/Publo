@@ -419,19 +419,38 @@ frontend/src/lib/orchestrator/
 │   ├── WriterAgent.ts              # Content generation (360 lines)
 │   ├── CriticAgent.ts              # Quality review (330 lines)
 │   ├── ExecutionTracer.ts          # Observability (330 lines)
-│   ├── MultiAgentOrchestrator.ts   # Integration (632 lines) 🆕 +LLM reasoning
+│   ├── MultiAgentOrchestrator.ts   # Integration (894 lines) 🆕 +LLM reasoning
 │   ├── clusters/
 │   │   └── WriterCriticCluster.ts  # Iterative refinement (300 lines)
 │   └── index.ts                    # Public API (exports)
 │
+├── tools/
+│   ├── types.ts                    # Tool interfaces & types
+│   ├── ToolRegistry.ts             # Tool registration & execution
+│   ├── BaseTool.ts                 # Abstract base class
+│   ├── writeContentTool.ts         # Content generation tool
+│   ├── createStructureTool.ts      # Structure creation tool
+│   ├── answerQuestionTool.ts       # Q&A tool
+│   ├── openDocumentTool.ts         # Document navigation
+│   ├── selectSectionTool.ts        # Section selection
+│   ├── deleteNodeTool.ts           # Node deletion
+│   ├── messageTool.ts              # User messaging
+│   ├── saveTool.ts                 # 🆕 Unified persistence (150 lines)
+│   └── index.ts                    # Tool exports & registry factory
+│
 └── core/
     ├── blackboard.ts               # Enhanced with agent coordination (+250 lines)
-    ├── orchestratorEngine.ts       # Base class (2832 lines) 🆕 +Task analysis
-    └── worldState.ts               # Phase 1 foundation (existing)
+    ├── orchestratorEngine.ts       # Base class (2929 lines) 🆕 +Task analysis
+    └── worldState.ts               # Phase 1 foundation (530 lines)
+
+API Routes:
+├── api/node/create/route.ts        # Node creation (admin client)
+├── api/node/save/route.ts          # 🆕 Unified persistence (220 lines)
+└── api/agent/save-content/route.ts # Agent content saves (admin client)
 
 Documentation:
 ├── REASONING_ARCHITECTURE.md       # 🆕 Reasoning-first architecture guide (339 lines)
-├── PHASE3_COMPLETE.md              # This file (updated)
+├── PHASE3_COMPLETE.md              # This file (updated with persistence)
 ├── PHASE3_MULTI_AGENT_DESIGN.md    # Original design document
 └── PHASE3_TESTING_GUIDE.md         # Testing scenarios & examples
 ```
@@ -450,6 +469,162 @@ Documentation:
 - [ ] **Performance:** Measure parallel speedup (3x expected)
 - [ ] **Cost Tracking:** Verify token & cost metrics
 - [ ] **Error Handling:** Test failure scenarios
+
+---
+
+## 🔄 Persistence Architecture (Phase 3.5)
+
+### **SaveTool: Unified Persistence**
+
+**Problem Before:**
+```
+5 different save mechanisms:
+❌ /api/node/create → Initial creation (admin)
+❌ /api/agent/save-content → Content updates (admin)  
+❌ saveCanvas() → Manual "Save Changes" (user client)
+❌ useHierarchicalDocument → Document panel saves (user client)
+❌ saveAndFinalize() → Orchestrator saves (mixed)
+```
+
+**Result:** Fragmented, inconsistent saves. Node created but disappears on refresh!
+
+---
+
+### **Solution: ONE SaveTool to Rule Them All**
+
+```typescript
+// NEW: SaveTool
+await toolRegistry.execute('save', {
+  nodeId: '123-456',
+  storyId: 'story-789',
+  updates: {
+    data: { format: 'screenplay', items: [...] },         // Node metadata
+    document_data: { sections: [...], content: {} },      // Document content
+    position_x: 100,                                      // Canvas position
+    position_y: 200
+  },
+  reason: 'Structure created'  // For logging
+}, context)
+```
+
+**How It Works:**
+1. **SaveTool** → Calls `/api/node/save` endpoint
+2. **API verifies** → User auth + ownership
+3. **Admin client** → UPSERTs (bypasses RLS)
+4. **Blackboard logs** → User sees "💾 Saving structure to database..."
+5. **Success/Failure** → Returned to orchestrator
+
+---
+
+### **Key Moments to Save**
+
+The orchestrator automatically saves at these moments:
+
+| **Moment** | **What Gets Saved** | **Fields Updated** |
+|------------|---------------------|-------------------|
+| 📖 Node created | Initial node + metadata | `data`, `position_x`, `position_y` |
+| 🏗️ Structure created | Node data + empty document | `data`, `document_data` |
+| ✍️ Content generated | Document content | `document_data` |
+| 🔄 Structure modified | Updated structure | `data`, `document_data` |
+
+---
+
+### **Architecture Diagram**
+
+```
+Orchestrator Action
+      ↓
+[WorldState tracks changes]
+      ↓
+[SaveTool decides what to save]
+      ↓
+  /api/node/save (admin client)
+      ↓
+ Supabase UPSERT (RLS bypassed)
+      ↓
+   ✅ Persisted!
+```
+
+**vs. Manual "Save Changes":**
+- User clicks button → `saveCanvas()` → UPSERT nodes + edges (user client)
+- Works for manual edits, but RLS can block programmatic creates
+
+---
+
+### **Example: Complete Flow**
+
+```typescript
+// 1. User requests: "Create a screenplay about a donkey"
+orchestrator.orchestrate(request)
+
+// 2. Structure generated
+orchestrator → generate_structure action
+         ↓
+    SaveTool.execute({
+      updates: { data: structure, document_data: emptyDoc },
+      reason: 'Structure created'
+    })
+         ↓
+    /api/node/save (admin)
+         ↓
+    ✅ Node saved to Supabase
+
+// 3. Content generated  
+orchestrator → generate_content action
+         ↓
+    WriterAgent → generates content
+         ↓
+    SaveTool.execute({
+      updates: { document_data: updatedDoc },
+      reason: 'Content added'
+    })
+         ↓
+    /api/node/save (admin)
+         ↓
+    ✅ Content saved to Supabase
+
+// 4. User refreshes page
+    ✅ Node still there!
+    ✅ Structure still there!
+    ✅ Content still there!
+```
+
+---
+
+### **API Endpoint: `/api/node/save`**
+
+**Features:**
+- ✅ Handles partial updates (only update provided fields)
+- ✅ Verifies user authentication and ownership
+- ✅ Uses admin client to bypass RLS issues
+- ✅ Returns fields saved + timestamp
+- ✅ Validates node exists before updating
+
+**Request:**
+```typescript
+POST /api/node/save
+{
+  nodeId: string,
+  storyId: string,
+  updates: {
+    data?: any,          // Optional: node metadata
+    document_data?: any, // Optional: document content
+    position_x?: number, // Optional: canvas position
+    position_y?: number
+  },
+  userId: string
+}
+```
+
+**Response:**
+```typescript
+{
+  success: true,
+  nodeId: "123-456",
+  fieldsSaved: ["data", "document_data"],
+  timestamp: "2025-11-26T12:53:00.000Z"
+}
+```
 
 ---
 
