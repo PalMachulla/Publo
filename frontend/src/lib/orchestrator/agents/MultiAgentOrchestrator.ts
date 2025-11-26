@@ -122,17 +122,27 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       console.log(`📨 [MultiAgentOrchestrator] Added ${agentSteps.length} agent messages to UI`)
     }
     
-    // Step 6: CRITICAL - Clear actions array to prevent double execution
-    // Actions were already executed by executeActionsWithAgents() via tool system
-    // If we leave them in response.actions, OrchestratorPanel will execute them AGAIN
-    const executedActionCount = response.actions?.length || 0
-    response.actions = [] // Clear to prevent UI re-execution
+    // Step 6: CRITICAL - Manage actions to prevent double execution
+    // Actions were executed by executeActionsWithAgents() via tool system EXCEPT:
+    // - generate_structure: Must be executed by UI (creates node on canvas)
+    // Keep only UI-executed actions, remove agent-executed actions
+    const uiActions = ['generate_structure', 'message', 'request_clarification', 'open_document', 'select_section', 'delete_node']
+    const originalActionCount = response.actions?.length || 0
+    const agentExecutedActions = response.actions?.filter(a => !uiActions.includes(a.type)) || []
+    
+    response.actions = response.actions?.filter(a => uiActions.includes(a.type)) || []
+    
+    console.log('🔍 [MultiAgentOrchestrator] Action filtering:', {
+      original: originalActionCount,
+      agentExecuted: agentExecutedActions.map(a => a.type),
+      returnedToUI: response.actions.map(a => a.type)
+    })
     
     // 🔍 DEBUG: Log final state
     console.log('✅ [MultiAgentOrchestrator] Orchestration complete:', {
       intent: response.intent,
-      actionsExecuted: executedActionCount,
-      actionsInResponse: response.actions.length, // Should be 0
+      actionsExecuted: agentExecutedActions.length,
+      actionsReturnedToUI: response.actions.length,
       messagesSent: newMessages.length,
       currentNodeId: request?.currentStoryStructureNodeId
     })
@@ -319,9 +329,44 @@ Respond in JSON format:
       return
     }
     
+    // ✅ FIX: Filter out UI-executed actions
+    // - generate_structure: UI creates node on canvas first
+    // - generate_content: Only execute if we have a node ID (otherwise UI must create node first)
+    const hasNodeId = !!(request?.currentStoryStructureNodeId)
+    
+    const executableActions = actions.filter(a => {
+      // Structure generation is always executed by UI
+      if (a.type === 'generate_structure') return false
+      
+      // Content generation requires a node ID
+      if (a.type === 'generate_content' && !hasNodeId) {
+        console.log(`⚠️ [MultiAgentOrchestrator] Skipping generate_content (no node ID): ${a.payload?.sectionName}`)
+        return false
+      }
+      
+      return true
+    })
+    
+    if (executableActions.length === 0) {
+      console.log('⚠️ [MultiAgentOrchestrator] No executable actions (structure/content must be created by UI first)')
+      this.getBlackboard().addMessage({
+        role: 'orchestrator',
+        content: '📋 Structure generation complete. UI will create node and generate content.',
+        type: 'result'
+      })
+      return
+    }
+    
+    console.log(`🔍 [MultiAgentOrchestrator] Filtered actions:`, {
+      original: actions.length,
+      executable: executableActions.length,
+      skipped: actions.length - executableActions.length,
+      hasNodeId
+    })
+    
     // 🧠 PHASE 3: LLM-powered strategy selection using Blackboard and WorldState
     const { strategy, reasoning } = await this.analyzeExecutionStrategy(
-      actions,
+      executableActions,
       this.getBlackboard(),
       this.worldState
     )
@@ -335,18 +380,18 @@ Respond in JSON format:
       type: 'decision'
     })
     
-    // Route to appropriate execution method
+    // Route to appropriate execution method with FILTERED actions
     switch (strategy) {
       case 'sequential':
-        await this.executeSequential(actions, request)
+        await this.executeSequential(executableActions, request)
         break
         
       case 'parallel':
-        await this.executeParallel(actions, sessionId, request)
+        await this.executeParallel(executableActions, sessionId, request)
         break
         
       case 'cluster':
-        await this.executeCluster(actions, sessionId, request)
+        await this.executeCluster(executableActions, sessionId, request)
         break
     }
   }
