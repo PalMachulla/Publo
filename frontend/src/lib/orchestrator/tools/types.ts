@@ -7,6 +7,7 @@
 
 import type { WorldStateManager } from '../core/worldState'
 import type { Blackboard } from '../core/blackboard'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ============================================================
 // CORE TOOL INTERFACES
@@ -24,6 +25,8 @@ export interface ToolContext {
   userKeyId?: string
   /** PHASE 3: Blackboard for agent coordination and message logging */
   blackboard: Blackboard
+  /** ✅ FIX: Authenticated Supabase client (to avoid RLS issues) */
+  supabaseClient?: SupabaseClient
 }
 
 /**

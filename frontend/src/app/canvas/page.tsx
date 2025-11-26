@@ -1593,6 +1593,9 @@ export default function CanvasPage() {
       
       onReasoning(`🔑 Available providers: ${availableProviders.join(', ')}`, 'thinking')
       
+      // 🔧 FIX: Get authenticated Supabase client (to avoid RLS issues in agents)
+      const supabase = createClient()
+      
       // Call unified orchestrator to create structure
       const response = await orchestrator.orchestrate({
         message: effectivePrompt,
@@ -1603,7 +1606,8 @@ export default function CanvasPage() {
         userKeyId: userKeyId || undefined,
         fixedModelId: finalOrchestratorModel || undefined,
         availableProviders,
-        modelMode: finalOrchestratorModel ? 'fixed' : 'automatic'
+        modelMode: finalOrchestratorModel ? 'fixed' : 'automatic',
+        supabaseClient: supabase // ✅ FIX: Pass authenticated client to avoid RLS errors
       })
       
       // Extract plan from generate_structure action

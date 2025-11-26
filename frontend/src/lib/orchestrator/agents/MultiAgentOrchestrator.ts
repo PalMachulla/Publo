@@ -473,7 +473,8 @@ Respond in JSON format:
               worldState: (this as any).worldState!,
               userId: this.getConfig().userId,
               userKeyId: request?.userKeyId,
-              blackboard: this.getBlackboard()
+              blackboard: this.getBlackboard(),
+              supabaseClient: request?.supabaseClient // ✅ FIX: Pass authenticated Supabase client
             }
           )
           
@@ -607,7 +608,8 @@ Respond in JSON format:
                   worldState: (this as any).worldState!,
                   userId: this.getConfig().userId,
                   userKeyId: request?.userKeyId,
-                  blackboard: this.getBlackboard()
+                  blackboard: this.getBlackboard(),
+                  supabaseClient: request?.supabaseClient // ✅ FIX: Pass authenticated Supabase client
                 }
               )
               
@@ -726,7 +728,8 @@ Respond in JSON format:
               worldState: (this as any).worldState!,
               userId: this.getConfig().userId,
               userKeyId: request?.userKeyId,
-              blackboard: this.getBlackboard()
+              blackboard: this.getBlackboard(),
+              supabaseClient: request?.supabaseClient // ✅ FIX: Pass authenticated Supabase client
             }
           )
           

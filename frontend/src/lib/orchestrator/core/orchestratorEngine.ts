@@ -484,7 +484,8 @@ export class OrchestratorEngine {
               worldState: this.worldState,
               userId: this.config.userId,
               userKeyId: request.userKeyId,
-              blackboard: this.blackboard // PHASE 3: Pass blackboard for agent coordination
+              blackboard: this.blackboard, // PHASE 3: Pass blackboard for agent coordination
+              supabaseClient: request.supabaseClient // ✅ FIX: Pass authenticated Supabase client
             }
           )
           

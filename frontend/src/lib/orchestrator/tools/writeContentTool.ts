@@ -192,7 +192,8 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
         storyStructureNodeId,
         sectionId,
         content,
-        userId
+        userId,
+        supabaseClient: context.supabaseClient // ✅ FIX: Pass authenticated client
       })
 
       if (!saveResult.success) {
