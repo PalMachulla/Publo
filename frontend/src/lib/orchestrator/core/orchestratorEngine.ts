@@ -37,6 +37,7 @@ import type { ToolRegistry } from '../tools'
 import { BaseAction } from '../actions/base/BaseAction'
 import { AnswerQuestionAction } from '../actions/content/AnswerQuestionAction'
 import { WriteContentAction } from '../actions/content/WriteContentAction'
+import { CreateStructureAction } from '../actions/structure/CreateStructureAction'
 import { DeleteNodeAction } from '../actions/navigation/DeleteNodeAction'
 import { OpenDocumentAction } from '../actions/navigation/OpenDocumentAction'
 import { NavigateSectionAction } from '../actions/navigation/NavigateSectionAction'
@@ -170,6 +171,7 @@ export class OrchestratorEngine {
     this.actionGenerators = new Map([
       ['answer_question', new AnswerQuestionAction()],
       ['write_content', new WriteContentAction()],
+      ['create_structure', new CreateStructureAction(this)],
       ['delete_node', new DeleteNodeAction(this.blackboard)],
       ['open_and_write', new OpenDocumentAction(this.blackboard)],
       ['navigate_section', new NavigateSectionAction()],
