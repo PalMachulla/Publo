@@ -221,16 +221,40 @@ export class CreateStructureAction extends BaseAction {
         .map(doc => `• ${doc.label} (${doc.format}, ${doc.itemsCount} sections, ${doc.wordsWritten} words${doc.hasContent ? ', has content' : ', empty'})`)
         .join('\n')
       
-      const awarenessMessage = `📚 I noticed you already have ${existingDocs.length} document${existingDocs.length > 1 ? 's' : ''} on your canvas:\n\n${docsList}\n\nWould you like me to:\n1. Create a new ${request.documentFormat} (separate document)\n2. Add content to one of the existing documents\n3. Something else?`
+      const formatLabel = request.documentFormat.charAt(0).toUpperCase() + request.documentFormat.slice(1).replace(/-/g, ' ')
       
-      blackboard.addMessage({
-        role: 'orchestrator',
-        content: awarenessMessage,
-        type: 'result'
-      })
-      
+      // Return request_clarification action with structured options
       return [
-        this.message(awarenessMessage, 'info')
+        {
+          type: 'request_clarification',
+          status: 'pending',
+          payload: {
+            question: `I noticed you already have ${existingDocs.length} document${existingDocs.length > 1 ? 's' : ''} on your canvas`,
+            context: docsList,
+            options: [
+              {
+                id: 'create_new',
+                label: `Create a new ${formatLabel}`,
+                description: 'Separate document'
+              },
+              {
+                id: 'use_existing',
+                label: 'Add content to existing document',
+                description: 'Open one of your current documents'
+              },
+              {
+                id: 'something_else',
+                label: 'Something else',
+                description: 'Tell me what you need'
+              }
+            ],
+            originalIntent: 'create_structure',
+            originalPayload: {
+              format: request.documentFormat,
+              userMessage: request.message
+            }
+          }
+        } as OrchestratorAction
       ]
     }
     

@@ -328,9 +328,11 @@ export default function OrchestratorPanel({
   
   // ✅ NEW: Clarification state - for inline chat options (not modal)
   const [pendingClarification, setPendingClarification] = useState<{
-    action: string
-    payload: any
+    question: string
+    context?: string
     options: Array<{id: string, label: string, description: string}>
+    originalIntent: string
+    originalPayload: any
   } | null>(null)
   
   // Chat state (local input only, history is canvas-level)
@@ -859,7 +861,7 @@ export default function OrchestratorPanel({
         canvasEdges,
         activeContext: activeContext || undefined,
         isDocumentViewOpen,
-        documentFormat: pendingClarification.payload.documentFormat || selectedFormat,
+        documentFormat: pendingClarification.originalPayload?.format || selectedFormat,
         structureItems: freshStructureItemsForClarification, // ✅ FIX: Use WorldState items
         contentMap,
         currentStoryStructureNodeId,
@@ -870,10 +872,10 @@ export default function OrchestratorPanel({
         userKeyId,
         // NEW: Pass clarification context
         clarificationContext: {
-          originalAction: pendingClarification.action,
-          question: pendingClarification.payload.message,
+          originalAction: pendingClarification.originalIntent,
+          question: pendingClarification.question,
           options: pendingClarification.options,
-          payload: pendingClarification.payload
+          payload: pendingClarification.originalPayload
         }
       })
       
@@ -1061,6 +1063,18 @@ export default function OrchestratorPanel({
             onAddChatMessage(action.payload.content, 'orchestrator', action.payload.type || 'result')
           }
           break
+        
+        case 'request_clarification':
+          // Handle clarification requests with ChatOptionsSelector
+          console.log('🤔 [Orchestrator] Clarification requested:', action.payload)
+          setPendingClarification({
+            question: action.payload.question,
+            context: action.payload.context,
+            options: action.payload.options,
+            originalIntent: action.payload.originalIntent,
+            originalPayload: action.payload.originalPayload
+          })
+          break
           
         case 'open_document':
           if (onSelectNode) {
@@ -1116,9 +1130,11 @@ export default function OrchestratorPanel({
           // ✅ NEW: Display in chat stream with clickable options (not pop-up modal)
           // Store pending clarification for when user responds
           setPendingClarification({
-            action: action.payload.originalAction,
-            payload: action.payload,
-            options: action.payload.options
+            question: action.payload.question || 'Please select an option',
+            context: action.payload.context,
+            options: action.payload.options,
+            originalIntent: action.payload.originalIntent,
+            originalPayload: action.payload.originalPayload
           })
           
           // Add message to chat
@@ -2421,41 +2437,45 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
         {/* ✅ Clarification UI - shown when waiting for user to select an option */}
         {pendingClarification && (
           <div className="mb-4 p-4 border-2 rounded-lg bg-purple-50 border-purple-300">
-            {/* Clarification message (already displayed in chat, this is just the options) */}
-            <p className="text-sm font-medium text-gray-900 mb-3">
-              Please select an option:
-            </p>
+            {/* Context (if provided) */}
+            {pendingClarification.context && (
+              <div className="mb-3 text-xs text-gray-700 whitespace-pre-wrap">
+                {pendingClarification.context}
+              </div>
+            )}
             
-            {/* Clarification options */}
-            <div className="space-y-2">
-              {pendingClarification.options.map((option, idx) => (
-                <button
-                  key={option.id}
-                  onClick={() => {
-                    // Send the option label as the user's response
-                    handleSendMessage_NEW(option.label)
-                  }}
-                  className="w-full flex items-start gap-3 p-3 bg-white border-2 border-gray-200 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-all text-left group"
-                >
-                  <span className="text-sm font-bold text-purple-600 min-w-[24px]">
-                    {idx + 1}.
-                  </span>
-                  <div className="flex-1">
-                    <div className="font-medium text-gray-900 group-hover:text-purple-700">
-                      {option.label}
-                    </div>
-                    {option.description && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        {option.description}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              ))}
-              <p className="text-xs text-gray-500 mt-2">
-                💬 Or describe your choice: &quot;{pendingClarification.options[0]?.label.toLowerCase()}&quot;
-              </p>
-            </div>
+            {/* ChatOptionsSelector for clarification */}
+            <ChatOptionsSelector
+              title={pendingClarification.question}
+              options={pendingClarification.options.map(opt => ({
+                id: opt.id,
+                title: opt.label,
+                description: opt.description
+              }))}
+              onSelect={(optionId, optionTitle) => {
+                console.log('✅ [Clarification] Option selected:', { optionId, optionTitle })
+                
+                // Store clarification for processing
+                const clarification = pendingClarification
+                setPendingClarification(null)
+                
+                // Handle based on option selected
+                if (optionId === 'create_new') {
+                  // User wants to create new - show template selection
+                  setPendingCreation({
+                    format: clarification.originalPayload.format as StoryFormat,
+                    userMessage: clarification.originalPayload.userMessage
+                  })
+                } else if (optionId === 'use_existing') {
+                  // User wants to use existing - send to orchestrator
+                  handleSendMessage_NEW('Open the existing document')
+                } else {
+                  // Something else - send option title back
+                  handleSendMessage_NEW(optionTitle)
+                }
+              }}
+              showNumberHint={true}
+            />
           </div>
         )}
         
