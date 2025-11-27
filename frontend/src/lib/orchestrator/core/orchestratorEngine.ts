@@ -36,6 +36,7 @@ import type { ToolRegistry } from '../tools'
 // PHASE 1 REFACTORING: Modular action generators
 import { BaseAction } from '../actions/base/BaseAction'
 import { AnswerQuestionAction } from '../actions/content/AnswerQuestionAction'
+import { WriteContentAction } from '../actions/content/WriteContentAction'
 import { DeleteNodeAction } from '../actions/navigation/DeleteNodeAction'
 import { OpenDocumentAction } from '../actions/navigation/OpenDocumentAction'
 import { NavigateSectionAction } from '../actions/navigation/NavigateSectionAction'
@@ -168,6 +169,7 @@ export class OrchestratorEngine {
     // PHASE 1 REFACTORING: Initialize modular action generators
     this.actionGenerators = new Map([
       ['answer_question', new AnswerQuestionAction()],
+      ['write_content', new WriteContentAction()],
       ['delete_node', new DeleteNodeAction(this.blackboard)],
       ['open_and_write', new OpenDocumentAction(this.blackboard)],
       ['navigate_section', new NavigateSectionAction()],
