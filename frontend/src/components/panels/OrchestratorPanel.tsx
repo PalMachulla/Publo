@@ -13,7 +13,8 @@ import {
   RadioItem,
   Button,
   ChatAccordion,
-  TemplateSelector
+  ChatOptionsSelector,
+  templateToChatOption
 } from '@/components/ui'
 import { 
   getMultiAgentOrchestrator, // PHASE 3: Multi-agent support
@@ -2409,13 +2410,9 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
         {/* Template Selection UI - shown when waiting for user to choose template */}
         {pendingCreation && (
           <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm font-medium text-gray-900 mb-3">
-              Choose a template for your {storyFormats.find(f => f.type === pendingCreation.format)?.label || pendingCreation.format}:
-            </p>
-            <TemplateSelector
-              format={pendingCreation.format}
-              formatLabel={storyFormats.find(f => f.type === pendingCreation.format)?.label || pendingCreation.format}
-              templates={getTemplatesForFormat(pendingCreation.format)}
+            <ChatOptionsSelector
+              title={`Choose a template for your ${storyFormats.find(f => f.type === pendingCreation.format)?.label || pendingCreation.format}`}
+              options={getTemplatesForFormat(pendingCreation.format).map(templateToChatOption)}
               onSelect={handleTemplateSelection}
             />
           </div>

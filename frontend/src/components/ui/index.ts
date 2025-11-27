@@ -43,8 +43,8 @@ export type { MessageBadgeProps } from './atoms/MessageBadge'
 export { MessageTimestamp } from './atoms/MessageTimestamp'
 export type { MessageTimestampProps } from './atoms/MessageTimestamp'
 
-export { TemplatePill } from './atoms/TemplatePill'
-export type { TemplatePillProps } from './atoms/TemplatePill'
+export { ChatOptionPill } from './atoms/ChatOptionPill'
+export type { ChatOptionPillProps } from './atoms/ChatOptionPill'
 
 export { 
   Card, 
@@ -77,8 +77,8 @@ export type { StatusMessageProps } from './molecules/StatusMessage'
 export { ChatMessage } from './molecules/ChatMessage'
 export type { ChatMessageProps } from './molecules/ChatMessage'
 
-export { TemplateSelector } from './molecules/TemplateSelector'
-export type { TemplateSelectorProps } from './molecules/TemplateSelector'
+export { ChatOptionsSelector, templateToChatOption } from './molecules/ChatOptionsSelector'
+export type { ChatOptionsSelectorProps, ChatOption } from './molecules/ChatOptionsSelector'
 
 // Organisms
 export { ChatAccordion } from './organisms/ChatAccordion'
