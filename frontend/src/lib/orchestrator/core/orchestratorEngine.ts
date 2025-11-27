@@ -28,7 +28,7 @@ import {
 import { analyzeIntent, type IntentAnalysis, type UserIntent } from '../context/intentRouter'
 import { enhanceContextWithRAG } from '../context/ragIntegration'
 import { Node, Edge } from 'reactflow'
-import { getDocumentHierarchy, DOCUMENT_HIERARCHY } from '@/lib/documentHierarchy'
+import { getDocumentHierarchy, DOCUMENT_HIERARCHY } from '../schemas/documentHierarchy'
 // PHASE 1: WorldState - Unified state management
 import type { WorldStateManager } from './worldState'
 // PHASE 2: Tool System - Executable tools

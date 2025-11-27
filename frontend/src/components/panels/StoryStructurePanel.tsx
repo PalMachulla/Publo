@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Node, Edge } from 'reactflow'
 import { StoryStructureNodeData, StoryStructureItem } from '@/types/nodes'
-import { getDocumentHierarchy } from '@/lib/documentHierarchy'
+import { getDocumentHierarchy } from '@/lib/orchestrator/schemas/documentHierarchy'
 import { getFormatIcon } from '@/components/menus/StoryFormatMenu'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { generateFromTestNode } from '@/lib/testNode'

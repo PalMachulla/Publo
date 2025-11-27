@@ -10,6 +10,7 @@
  */
 
 import type { IntentAnalysis, UserIntent } from './intentRouter'
+import { buildFormatDescriptionsForLLM } from '../schemas/documentHierarchy'
 
 export interface ConversationMessage {
   role: 'user' | 'assistant'
@@ -237,12 +238,7 @@ Return your analysis as JSON with this structure:
   }
 }
 
-STRUCTURE REASONING (CRITICAL):
-- Short story → typically has SCENES (not chapters!) - brief narrative fiction
-- Novel → typically has chapters or parts (long-form fiction)
-- Screenplay → typically has acts and scenes (Act 1, Scene 1, etc.)
-- Report → typically has sections (Introduction, Background, Conclusion, etc.)
-- Podcast → typically has episodes and segments
+${buildFormatDescriptionsForLLM()}
 
 EDUCATIONAL CLARIFICATION (CRITICAL):
 When user mentions a section that doesn't match the format conventions:
@@ -273,31 +269,6 @@ BE CONVERSATIONAL AND ENCOURAGING:
 - Offer alternatives
 - Let them decide (maybe they DO want chapters in a short story - that's okay!)
 - Be enthusiastic and supportive, not pedantic
-
-DOCUMENT FORMAT CONVENTIONS (from documentHierarchy.ts):
-- Short Story: Scenes (optional) → Paragraph → Sentence
-  * Brief narrative fiction, typically 1,000-7,500 words
-  * NO chapters! Use scenes for section breaks
-  
-- Novel: Part (optional) → Chapter (required) → Scene (optional) → Paragraph → Sentence
-  * Long-form narrative fiction, 60,000-100,000 words
-  * Chapters are the primary structure
-  
-- Screenplay: Act (required) → Sequence (optional) → Scene (required) → Beat (optional)
-  * Script for film/TV, 90-120 pages
-  * Acts and scenes, NOT chapters
-  
-- Report: Executive Summary (optional) → Section (required) → Subsection (optional)
-  * Structured analysis document
-  * Uses numbered sections (1.0, 2.0), NOT chapters
-  
-- Podcast: Season (optional) → Episode (required) → Segment (optional) → Topic
-  * Audio show format
-  * Episodes and segments, NOT chapters
-  
-- Article: Introduction → Section (optional) → Subsection (optional) → Paragraph
-  * Editorial or blog post, 800-2,000 words
-  * Marked by subheadings, NOT chapters
 
 WHEN USER MIXES FORMATS:
 If user says "short story chapter 2" or "screenplay chapter 1":

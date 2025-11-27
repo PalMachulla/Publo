@@ -468,6 +468,47 @@ export function getPrimaryStructuralLevel(documentType: string): string | null {
 }
 
 /**
+ * Generate format descriptions for LLM prompts
+ * This ensures the LLM always has up-to-date format information
+ */
+export function buildFormatDescriptionsForLLM(): string {
+  let descriptions = 'DOCUMENT FORMAT CONVENTIONS:\n\n'
+  
+  for (const [key, docType] of Object.entries(DOCUMENT_HIERARCHY.document_types)) {
+    // Convert key to display name (e.g., 'short_story' -> 'Short Story')
+    const displayName = key
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+    
+    descriptions += `**${displayName}**: ${docType.description}\n`
+    
+    // Build hierarchy string (show main structural levels only)
+    const mainLevels = docType.hierarchy
+      .filter(level => level.level <= 4) // Show up to 4 levels
+      .map(level => {
+        const optional = level.optional ? ' (optional)' : ''
+        return `${level.name}${optional}`
+      })
+    
+    descriptions += `  Structure: ${mainLevels.join(' → ')}\n`
+    
+    // Highlight primary structural level
+    const primaryLevel = docType.hierarchy.find(l => !l.optional)
+    if (primaryLevel) {
+      descriptions += `  Primary structure: ${primaryLevel.name}\n`
+      if (primaryLevel.description) {
+        descriptions += `  Note: ${primaryLevel.description}\n`
+      }
+    }
+    
+    descriptions += '\n'
+  }
+  
+  return descriptions
+}
+
+/**
  * Recommend report type based on source document format
  */
 export interface ReportTypeRecommendation {

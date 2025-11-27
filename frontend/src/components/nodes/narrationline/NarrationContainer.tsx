@@ -3,7 +3,7 @@
 import { memo, useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { StoryStructureItem, AgentOption } from '@/types/nodes'
 import { useNarrationZoom } from './useNarrationZoom'
-import { getDocumentHierarchy } from '@/lib/documentHierarchy'
+import { getDocumentHierarchy } from '@/lib/orchestrator/schemas/documentHierarchy'
 import StructureTrackLane from './StructureTrackLane'
 import NarrationRuler from './NarrationRuler'
 import ZoomControls from './ZoomControls'
