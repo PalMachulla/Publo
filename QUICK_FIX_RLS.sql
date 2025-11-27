@@ -8,3 +8,5 @@ ALTER TABLE user_profiles DISABLE ROW LEVEL SECURITY;
 -- If they don't, then it's something else
 
 
+
+

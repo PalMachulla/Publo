@@ -49,9 +49,17 @@ export async function POST(request: NextRequest) {
       .from('stories')
       .select('user_id')
       .eq('id', storyId)
-      .single()
+      .maybeSingle() // ✅ FIX: Use maybeSingle() to handle 0 rows gracefully
     
-    if (storyError || !story || story.user_id !== userId) {
+    if (storyError) {
+      console.error('❌ [API /api/node/create] Database error fetching story:', storyError)
+      return NextResponse.json(
+        { success: false, error: `Database error: ${storyError.message}` },
+        { status: 500 }
+      )
+    }
+    
+    if (!story || story.user_id !== userId) {
       console.error('❌ [API /api/node/create] Story not found or unauthorized')
       return NextResponse.json(
         { success: false, error: 'Story not found or unauthorized' },
@@ -86,12 +94,20 @@ export async function POST(request: NextRequest) {
       .from('nodes')
       .upsert(nodePayload, { onConflict: 'id' })
       .select()
-      .single()
+      .maybeSingle() // ✅ FIX: Use maybeSingle() for safety (upsert should return 1 row)
 
     if (upsertError) {
       console.error('❌ [API /api/node/create] UPSERT failed:', upsertError)
       return NextResponse.json(
         { success: false, error: upsertError.message },
+        { status: 500 }
+      )
+    }
+    
+    if (!upsertedNode) {
+      console.error('❌ [API /api/node/create] UPSERT succeeded but returned no data')
+      return NextResponse.json(
+        { success: false, error: 'Node creation failed: no data returned' },
         { status: 500 }
       )
     }

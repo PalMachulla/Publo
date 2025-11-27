@@ -27,3 +27,5 @@ CREATE POLICY "Enable update for authenticated users"
   WITH CHECK (auth.uid() = id);
 
 
+
+

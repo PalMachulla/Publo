@@ -196,7 +196,11 @@ export class WorldStateManager {
       content: new Map(),
       selectedSectionId: null
     }
-    this.incrementVersion()
+    // Update metadata
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.state.meta.isDirty = true
+    this.notifyObservers()
   }
   
   /**
@@ -210,7 +214,11 @@ export class WorldStateManager {
       content: new Map(),
       selectedSectionId: null
     }
-    this.incrementVersion()
+    // Update metadata
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.state.meta.isDirty = true
+    this.notifyObservers()
   }
   
   /**

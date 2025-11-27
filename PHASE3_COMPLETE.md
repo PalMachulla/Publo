@@ -554,36 +554,48 @@ Orchestrator Action
 ### **Example: Complete Flow**
 
 ```typescript
-// 1. User requests: "Create a screenplay about a donkey"
+// 1. User requests: "Screenplay, write act 1"
 orchestrator.orchestrate(request)
 
-// 2. Structure generated
-orchestrator → generate_structure action
+// 2. Structure generated (Phase 1)
+orchestrator → analyzeTaskComplexity()
          ↓
-    SaveTool.execute({
-      updates: { data: structure, document_data: emptyDoc },
-      reason: 'Structure created'
-    })
+    LLM detects: "Multi-step task: structure + content"
          ↓
-    /api/node/save (admin)
+    Actions generated: [generate_structure, generate_content(act-1)]
          ↓
-    ✅ Node saved to Supabase
+    MultiAgentOrchestrator filters:
+      - generate_structure → returned to UI (no nodeId yet)
+      - generate_content → returned to UI (no nodeId yet)
+         ↓
+    Canvas creates node → saves to Supabase
+         ↓
+    ✅ Node saved with structure
 
-// 3. Content generated  
-orchestrator → generate_content action
+// 3. WorldState updated
+    worldState.setActiveDocument(nodeId, format, structure)
+         ↓
+    ✅ Agents can now access node info
+
+// 4. Content generated (Phase 2)
+    Canvas detects: hasContentActions = true
+         ↓
+    orchestrator.orchestrate(request + nodeId)
+         ↓
+    MultiAgentOrchestrator filters:
+      - generate_content → executed by agents (nodeId exists!)
+         ↓
+    DAGExecutor.buildDAG([write_act_1])
          ↓
     WriterAgent → generates content
          ↓
-    SaveTool.execute({
-      updates: { document_data: updatedDoc },
-      reason: 'Content added'
-    })
+    saveAgentContent() → /api/agent/save-content
          ↓
-    /api/node/save (admin)
+    DocumentManager.updateContent(sectionId, content)
          ↓
-    ✅ Content saved to Supabase
+    ✅ Content saved to document_data JSON blob
 
-// 4. User refreshes page
+// 5. User refreshes page
     ✅ Node still there!
     ✅ Structure still there!
     ✅ Content still there!

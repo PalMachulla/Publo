@@ -62,6 +62,17 @@ export class WriterCriticCluster {
     
     console.log(`🔄 [WriterCriticCluster] Starting generation for task ${task.id}`)
     
+    // ✅ NEW: Post progress to Blackboard for orchestrator chat
+    const sectionName = (task.payload as any).context?.section?.name || 'section'
+    if (context.blackboard) {
+      context.blackboard.postMessage({
+        type: 'progress',
+        agentId: this.writer.id,
+        content: `✍️ Writing "${sectionName}" (initial draft)...`,
+        timestamp: Date.now()
+      })
+    }
+    
     // Iteration 0: Initial write
     try {
       console.log(`✍️ [WriterCriticCluster] Iteration 0: Initial write`)
@@ -86,6 +97,16 @@ export class WriterCriticCluster {
       totalTokens += writeResult.tokensUsed
       
       console.log(`✅ [WriterCriticCluster] Initial draft: ${this.countWords(content)} words (${writeResult.tokensUsed} tokens)`)
+      
+      // ✅ NEW: Post progress to Blackboard
+      if (context.blackboard) {
+        context.blackboard.postMessage({
+          type: 'progress',
+          agentId: this.critic.id,
+          content: `🎭 Reviewing "${sectionName}" (${this.countWords(content)} words)...`,
+          timestamp: Date.now()
+        })
+      }
       
       // Review initial draft
       const criticStart = Date.now()
@@ -119,6 +140,25 @@ export class WriterCriticCluster {
       
       console.log(`🎭 [WriterCriticCluster] Review: ${critique.approved ? '✅ APPROVED' : '⚠️ NEEDS WORK'} (score: ${critique.score}/10)`)
       
+      // ✅ NEW: Post review result to Blackboard
+      if (context.blackboard) {
+        if (critique.approved) {
+          context.blackboard.postMessage({
+            type: 'progress',
+            agentId: this.critic.id,
+            content: `✅ "${sectionName}" approved (quality: ${critique.score}/10)`,
+            timestamp: Date.now()
+          })
+        } else {
+          context.blackboard.postMessage({
+            type: 'progress',
+            agentId: this.critic.id,
+            content: `⚠️ "${sectionName}" needs revision (score: ${critique.score}/10) - ${critique.issues.length} issues found`,
+            timestamp: Date.now()
+          })
+        }
+      }
+      
       if (critique.approved) {
         approved = true
         console.log(`✨ [WriterCriticCluster] Content approved on first draft!`)
@@ -134,6 +174,16 @@ export class WriterCriticCluster {
     // Revision iterations
     while (!approved && iteration < this.maxIterations) {
       iteration++
+      
+      // ✅ NEW: Post revision progress to Blackboard
+      if (context.blackboard) {
+        context.blackboard.postMessage({
+          type: 'progress',
+          agentId: this.writer.id,
+          content: `✍️ Revising "${sectionName}" (iteration ${iteration}/${this.maxIterations})...`,
+          timestamp: Date.now()
+        })
+      }
       
       try {
         console.log(`🔄 [WriterCriticCluster] Iteration ${iteration}: Revision based on critique`)

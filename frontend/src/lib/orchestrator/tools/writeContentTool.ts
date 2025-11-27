@@ -74,29 +74,50 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
     const { sectionId, sectionName, prompt, model, useCluster = false, storyStructureNodeId: inputNodeId, format: inputFormat } = input // ⚠️ Default to false (see PHASE3_COMPLETE.md)
     const { worldState, userId, userKeyId } = context
 
+    // ✅ CHECK: Ensure worldState exists before accessing properties
+    if (!worldState) {
+      console.error('❌ [WriteContentTool] Context.worldState is undefined!')
+      return this.error('System Error: WorldState not available in tool context.')
+    }
+
     // Get document info - prioritize input parameters over worldState
     // This handles cases where structure was just created and worldState hasn't updated yet
     let storyStructureNodeId: string | undefined
     let format: string
     
     // ✅ DEBUG: Log WorldState status
-    const activeDoc = worldState.getActiveDocument()
-    console.log('📊 [WriteContentTool] WorldState check:', {
-      hasActiveDoc: !!activeDoc.nodeId,
-      activeDocId: activeDoc.nodeId,
-      activeDocFormat: activeDoc.format,
-      providedNodeId: inputNodeId,
-      providedFormat: inputFormat
-    })
+    let activeDoc
+    try {
+      activeDoc = worldState.getActiveDocument()
+      console.log('📊 [WriteContentTool] WorldState check:', {
+        hasActiveDoc: !!activeDoc.nodeId,
+        activeDocId: activeDoc.nodeId,
+        activeDocFormat: activeDoc.format,
+        providedNodeId: inputNodeId,
+        providedFormat: inputFormat
+      })
+    } catch (e) {
+      console.error('❌ [WriteContentTool] Error accessing active document:', e)
+      activeDoc = { nodeId: null, format: null }
+    }
     
     if (inputNodeId) {
       // Use provided node ID (from action payload)
       storyStructureNodeId = inputNodeId
       format = inputFormat || 'novel'
       console.log(`🔧 [WriteContentTool] Using provided node ID: ${storyStructureNodeId}`)
-      console.log(`   (WorldState ${activeDoc.nodeId ? `has ${activeDoc.nodeId}` : 'has no active doc'})`)
+      // Only check WorldState if it exists
+      if (activeDoc?.nodeId) {
+        console.log(`   (WorldState has ${activeDoc.nodeId})`)
+      } else {
+        console.log(`   (WorldState has no active doc)`)
+      }
     } else {
       // Fall back to active document from WorldState
+      if (!worldState) {
+        return this.error('WorldState not available. Cannot resolve active document.')
+      }
+      
       if (!activeDoc || !activeDoc.nodeId) {
         return this.error('No active document found. Please provide storyStructureNodeId or ensure a document is active.')
       }
@@ -113,6 +134,28 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
       console.log(`🔧 [WriteContentTool] Executing for section "${sectionName || sectionId}"`)
       console.log(`   Using ${useCluster ? 'writer-critic cluster' : 'direct writer agent'}`)
 
+      // ✅ FIX: Get structure and content context from WorldState FIRST
+      const activeDoc = worldState.getActiveDocument()
+      const structureItems = activeDoc.structure?.items || []
+      const contentMap = activeDoc.content ? Object.fromEntries(activeDoc.content) : {}
+      
+      // ✅ DEBUG: Log all available section IDs
+      console.log(`🔍 [WriteContentTool] Available section IDs in structure:`, structureItems.map(item => item.id))
+      console.log(`🔍 [WriteContentTool] Looking for section ID: "${sectionId}"`)
+      
+      // ✅ CRITICAL: Find the structure item to get its summary
+      const targetStructureItem = structureItems.find(item => item.id === sectionId)
+      
+      console.log(`📚 [WriteContentTool] Structure context:`, {
+        structureItemsCount: structureItems.length,
+        contentMapKeys: Object.keys(contentMap).length,
+        targetSection: targetStructureItem?.name,
+        hasSummary: !!targetStructureItem?.summary,
+        summary: targetStructureItem?.summary?.substring(0, 100),
+        requestedSectionId: sectionId,
+        foundMatch: !!targetStructureItem
+      })
+
       // Create agent task
       const task: AgentTask = {
         id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -123,8 +166,11 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
           context: {
             section: {
               id: sectionId,
-              name: sectionName || sectionId,
-              description: prompt
+              name: sectionName || targetStructureItem?.name || sectionId,
+              description: prompt,
+              summary: targetStructureItem?.summary || undefined, // ✅ CRITICAL: Include summary!
+              title: targetStructureItem?.title || undefined,
+              level: targetStructureItem?.level || undefined
             },
             constraints: {
               tone: 'professional',
@@ -148,6 +194,19 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
       let iterations = 1
       let finalScore = 0
 
+      // ✅ NEW: Emit event to show progress indicator in document panel
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('content-generation-started', {
+          detail: { 
+            nodeId: storyStructureNodeId, 
+            sectionId,
+            sectionName: sectionName || sectionId,
+            useCluster
+          }
+        }))
+        console.log('📡 [WriteContentTool] Emitted content-generation-started event for', sectionName || sectionId)
+      }
+
       if (useCluster) {
         // PHASE 3: Use writer-critic cluster for quality assurance
         const writer = new WriterAgent('writer-tool', userId, userKeyId)
@@ -156,7 +215,11 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
 
         const result = await cluster.generate(task, {
           blackboard: context.blackboard,
-          dependencies: {},
+          dependencies: {
+            structure: structureItems,
+            contentMap: contentMap,
+            previousContent: contentMap[sectionId] || null
+          },
           sessionId: `tool-${Date.now()}`,
           metadata: {
             storyStructureNodeId,
@@ -176,7 +239,11 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
         
         const result = await writer.execute(task, {
           blackboard: context.blackboard,
-          dependencies: {},
+          dependencies: {
+            structure: structureItems,
+            contentMap: contentMap,
+            previousContent: contentMap[sectionId] || null
+          },
           sessionId: `tool-${Date.now()}`,
           metadata: {
             storyStructureNodeId,

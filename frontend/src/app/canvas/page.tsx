@@ -243,27 +243,27 @@ export default function CanvasPage() {
           .from('user_profiles')
           .select('role, access_status')
           .eq('id', user.id)
-          .single()
+          .maybeSingle() // ✅ Use maybeSingle() for graceful handling
 
         if (error) {
-          console.error('Error checking access:', error)
-          // If profile doesn't exist, create it
-          if (error.code === 'PGRST116') {
-            await supabase.from('user_profiles').insert({
-              id: user.id,
-              email: user.email,
-              full_name: user.user_metadata?.name,
-              role: 'prospect',
-              access_status: 'waitlist'
-            })
-            setHasAccess(false)
-          } else {
-            setHasAccess(false)
-          }
+          console.error('Database error checking access:', error)
+          setHasAccess(false)
+        } else if (!profile) {
+          // Profile doesn't exist, create it
+          console.log('Creating new user profile...')
+          await supabase.from('user_profiles').insert({
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.name,
+            role: 'prospect',
+            access_status: 'waitlist'
+          })
+          setHasAccess(false)
         } else {
-          // Check if user has proper role (admin or user)
-          // Prospects must go to waitlist
-          if (profile.role === 'admin' || profile.role === 'user') {
+          // Profile exists, check access and role
+          if (profile.access_status === 'granted') {
+            setHasAccess(true)
+          } else if (profile.role === 'admin' || profile.role === 'user') {
             setHasAccess(true)
           } else if (profile.role === 'prospect') {
             setHasAccess(false)
@@ -301,24 +301,26 @@ export default function CanvasPage() {
       const checkUserRole = async () => {
         try {
           const supabase = createClient()
-          console.log('🔍 Checking user role for:', user.id, user.email)
           
+          // Fetch user profile
           const { data, error } = await supabase
             .from('user_profiles')
             .select('role, access_status, access_tier')
             .eq('id', user.id)
-            .single()
+            .maybeSingle() // ✅ Use maybeSingle() for graceful handling
           
           if (error) {
             console.error('❌ Error fetching user role:', error)
             console.error('Error details:', JSON.stringify(error, null, 2))
+          } else if (!data) {
+            console.warn('⚠️ User profile not found for:', user.id)
           } else {
             console.log('✅ User profile data:', data)
-            if (data && data.role) {
+            if (data.role) {
               setUserRole(data.role)
               console.log('✅ User role set to:', data.role)
             } else {
-              console.warn('⚠️ No role found in data:', data)
+              console.warn('⚠️ No role found in profile')
             }
           }
         } catch (err) {
@@ -1003,8 +1005,10 @@ export default function CanvasPage() {
       fullNode: newStructureNode
     })
     
-    setNodes([...nodes, newStructureNode])
-    setEdges([...edges, newEdge])
+    // ✅ CRITICAL FIX: Use functional updates to avoid race conditions
+    // This ensures we're working with the latest state, not stale closure values
+    setNodes((currentNodes) => [...currentNodes, newStructureNode])
+    setEdges((currentEdges) => [...currentEdges, newEdge])
     hasUnsavedChangesRef.current = true
 
     // Save immediately to database so node exists for when items are clicked
@@ -1065,8 +1069,22 @@ export default function CanvasPage() {
         console.log('   Format:', newStructureNode.data.format)
         console.log('   Sections:', newStructureNode.data.items?.length || 0)
         
-        console.log('✅ [saveAndFinalize] Skipping saveCanvas() - node already saved via API')
-        console.log('   (Edges will be saved on next auto-save or "Save Changes" click)')
+        // ✅ CRITICAL FIX: Save edges immediately so node is connected on canvas
+        console.log('🔗 [saveAndFinalize] Saving edges to connect new node...')
+        if (storyId) {
+          try {
+            // Get the updated edges that include the new edge
+            const updatedEdges = [...edges, newEdge]
+            
+            // Save edges to database
+            await saveCanvas(storyId, [...nodes, newStructureNode], updatedEdges)
+            console.log('✅ [saveAndFinalize] Edges saved - node is now connected on canvas')
+          } catch (edgeError) {
+            console.error('❌ [saveAndFinalize] Failed to save edges:', edgeError)
+            console.warn('⚠️ Node created but edges not saved - node may appear disconnected')
+          }
+        }
+        
         console.log('')
         console.log('📊 [saveAndFinalize] Document State Summary:')
         console.log('   - Node ID:', createNodeResult.nodeId)
@@ -1089,19 +1107,7 @@ export default function CanvasPage() {
       )
     }
     
-    // If plan is already provided, skip orchestration and just save
-    // ✅ FIX: Await the save to prevent race condition when opening document immediately after creation
-    if (plan) {
-      console.log('✅ Plan already provided by orchestrator, saving synchronously to prevent race condition')
-      try {
-        await saveAndFinalize()
-        console.log('✅ Node saved to database successfully')
-      } catch (err) {
-        console.error('❌ Failed to save new structure node:', err)
-      }
-      return // Exit early - no need to orchestrate again
-    }
-    
+    // ✅ FIX: Declare aiPromptNode and hasChatPrompt BEFORE using them (line 1118)
     // AUTO-GENERATE: Check if AI Prompt node is connected OR chat prompt exists
     const aiPromptNode = nodes.find(n => 
       n.data?.nodeType === 'aiPrompt' && 
@@ -1111,6 +1117,32 @@ export default function CanvasPage() {
     // Check if chat prompt exists (direct parameter OR orchestrator node data)
     const orchestratorNode = nodes.find(n => n.id === 'context')
     const hasChatPrompt = !!userPromptDirect || !!(orchestratorNode?.data as any)?.chatPrompt
+    
+    // If plan is already provided, save the node and check if content generation is needed
+    // ✅ FIX: Await the save to prevent race condition when opening document immediately after creation
+    if (plan) {
+      console.log('✅ Plan already provided by orchestrator, saving synchronously to prevent race condition')
+      try {
+        await saveAndFinalize()
+        console.log('✅ Node saved to database successfully')
+        
+        // ✅ CRITICAL FIX: Check if content generation was requested in the plan
+        // The plan has a 'tasks' array that indicates if content should be generated
+        if (plan.tasks && plan.tasks.length > 0 && (aiPromptNode || hasChatPrompt)) {
+          console.log('🎯 [handleCreateStory] Plan has tasks, triggering content generation')
+          console.log('   Tasks:', plan.tasks.map((t: any) => ({ id: t.id, type: t.type, sectionId: t.sectionId })))
+          
+          // Don't exit early - continue to trigger orchestration for content generation
+          // Fall through to the orchestration logic below
+        } else {
+          console.log('ℹ️ [handleCreateStory] No tasks in plan, structure-only creation')
+          return // Exit early - no content generation needed
+        }
+      } catch (err) {
+        console.error('❌ Failed to save new structure node:', err)
+        // Continue anyway to try orchestration
+      }
+    }
     
     if (aiPromptNode || hasChatPrompt) {
       console.log('🚀 Auto-generating structure with orchestrator after node creation', {
@@ -1133,6 +1165,9 @@ export default function CanvasPage() {
         await saveAndFinalize() // ✅ CRITICAL: Must await to prevent race condition
         console.log('✅ [handleCreateStory] Node saved successfully, ID:', structureId)
         console.log('🎬 [handleCreateStory] Now triggering orchestration with same ID:', structureId)
+        
+        // Note: WorldState will be created and updated inside triggerOrchestratedGeneration
+        // after the structure is generated and saved
         triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
       } catch (err) {
         console.error('❌ [handleCreateStory] Failed to save node before orchestration:', err)
@@ -1428,21 +1463,46 @@ export default function CanvasPage() {
       
       // Get unified orchestrator instance (PHASE 3: Use multi-agent orchestrator!)
       const { getMultiAgentOrchestrator, createDefaultToolRegistry } = await import('@/lib/orchestrator')
+      const { buildWorldStateFromReactFlow } = await import('@/lib/orchestrator/core/worldState')
       
       // ✅ FIX: Create and pass toolRegistry for content generation
       const toolRegistry = createDefaultToolRegistry()
+      
+      // ✅ FIX: Extract availableProviders BEFORE using it in WorldState
+      const availableProviders = prefsData.keys
+        ?.map((k: any) => k.provider)
+        .filter(Boolean) || []
+      
+      // ✅ FIX: Declare model variables before WorldState creation
+      // These will be populated below, but need to exist for WorldState initialization
+      let availableModels: string[] = []
+      let finalOrchestratorModel: string | null = null
+      
+      // ✅ FIX: Create WorldState for agents (using temporary values, will be updated in orchestrate call)
+      const worldState = buildWorldStateFromReactFlow(
+        nodes,
+        edges,
+        user.id,
+        {
+          activeDocumentNodeId: structureNodeId,
+          availableProviders: availableProviders,
+          modelPreferences: {
+            modelMode: 'automatic', // Will be set correctly in orchestrate() call
+            fixedModelId: null // Will be set correctly in orchestrate() call
+          },
+          orchestratorKeyId: userKeyId || undefined
+        }
+      )
       
       const orchestrator = getMultiAgentOrchestrator(user.id, {
         modelPriority: 'balanced',
         enableRAG: false, // Canvas doesn't need RAG for structure generation
         enablePatternLearning: true,
         toolRegistry // ✅ FIX: Pass toolRegistry for parallel/cluster execution
-      })
+      }, worldState)
       console.log('🤖 [triggerOrchestratedGeneration] Using MultiAgentOrchestrator with', toolRegistry.getStats().totalTools, 'tools')
       
-      // Determine available models
-      let availableModels: string[] = []
-      let finalOrchestratorModel: string | null = null
+      // Determine available models (populate variables declared above)
       
       // Priority 1: Use configured orchestrator model from Profile (with validation)
       if (orchestratorModelId) {
@@ -1561,11 +1621,7 @@ export default function CanvasPage() {
       
       onReasoning(`📝 Analyzing prompt: "${effectivePrompt.substring(0, 100)}..."`, 'thinking')
       
-      // Get available providers from API keys
-      const availableProviders = prefsData.keys
-        ?.map((k: any) => k.provider)
-        .filter(Boolean) || []
-      
+      // ✅ Already extracted above (before WorldState creation)
       onReasoning(`🔑 Available providers: ${availableProviders.join(', ')}`, 'thinking')
       
       // 🔧 FIX: Use component-level Supabase client (same instance throughout lifecycle)
@@ -1587,22 +1643,34 @@ export default function CanvasPage() {
       })
       
       // Extract plan from generate_structure action
-      console.log('🔍 [triggerOrchestratedGeneration] Response actions:', response.actions.map(a => ({ type: a.type, status: a.status })))
+      console.log('🔍 [triggerOrchestratedGeneration] Response actions:', response.actions.map((a: any) => ({ type: a.type, status: a.status })))
       
-      const structureAction = response.actions.find(a => a.type === 'generate_structure')
+      // ✅ NEW: Check for clarification/educational messages first
+      const clarificationAction = response.actions.find((a: any) => 
+        a.type === 'message' && a.status === 'pending' && a.payload?.type === 'result'
+      )
+      
+      if (clarificationAction) {
+        console.log('💬 [triggerOrchestratedGeneration] Orchestrator needs clarification')
+        onReasoning(clarificationAction.payload.content, 'result')
+        // Don't throw error - just return early and let user respond
+        return
+      }
+      
+      const structureAction = response.actions.find((a: any) => a.type === 'generate_structure')
       
       if (!structureAction) {
         console.error('❌ [triggerOrchestratedGeneration] No generate_structure action found')
         console.log('Available actions:', response.actions)
         
         // Check if there's an error message action instead
-        const errorAction = response.actions.find(a => a.type === 'message' && a.status === 'failed')
+        const errorAction = response.actions.find((a: any) => a.type === 'message' && a.status === 'failed')
         if (errorAction) {
           onReasoning(`❌ ${errorAction.payload.content}`, 'error')
           throw new Error(errorAction.payload.content)
         }
         
-        throw new Error(`Orchestrator did not return a structure plan. Intent was: ${response.intent}. Actions: ${response.actions.map(a => a.type).join(', ')}`)
+        throw new Error(`Orchestrator did not return a structure plan. Intent was: ${response.intent}. Actions: ${response.actions.map((a: any) => a.type).join(', ')}`)
       }
       
       if (!structureAction.payload?.plan) {
@@ -1615,7 +1683,7 @@ export default function CanvasPage() {
       
       // Display orchestrator's thinking steps
       if (response.thinkingSteps && response.thinkingSteps.length > 0) {
-        response.thinkingSteps.forEach(step => {
+        response.thinkingSteps.forEach((step: any) => {
           onReasoning(step.content, step.type as any)
         })
       }
@@ -1632,9 +1700,37 @@ export default function CanvasPage() {
         summary: section.summary || ''
       }))
       
+      // ✅ DEBUG: Log structure and task IDs for verification
+      console.log('🔍 [triggerOrchestratedGeneration] Structure IDs:', structureItems.map((s: any) => s.id))
+      console.log('🔍 [triggerOrchestratedGeneration] Task section IDs:', plan.tasks.map((t: any) => t.sectionId))
+      
+      // ✅ CRITICAL FIX: Validate that all task sectionIds exist in structure
+      const validSectionIds = new Set(structureItems.map((s: any) => s.id))
+      const invalidTasks = plan.tasks.filter((task: any) => !validSectionIds.has(task.sectionId))
+      
+      if (invalidTasks.length > 0) {
+        console.warn('⚠️ [triggerOrchestratedGeneration] Found tasks with invalid sectionIds:', {
+          invalidTasks: invalidTasks.map((t: any) => ({ taskId: t.id, sectionId: t.sectionId })),
+          validSectionIds: Array.from(validSectionIds)
+        })
+        
+        // Remove invalid tasks to prevent "section not found" errors
+        plan.tasks = plan.tasks.filter((task: any) => validSectionIds.has(task.sectionId))
+        
+        onReasoning(`⚠️ Removed ${invalidTasks.length} invalid tasks (section IDs don't match structure)`, 'decision')
+      }
+      
+      console.log('✅ [triggerOrchestratedGeneration] Task validation complete:', {
+        totalTasks: plan.tasks.length,
+        validTasks: plan.tasks.length,
+        removedTasks: invalidTasks.length
+      })
+      
       // Update structure node with initial structure
-      setNodes((nds) =>
-        nds.map((n) => {
+      // ✅ CRITICAL: Store updated nodes in a variable so we can save them immediately
+      let updatedNodes: Node[] = []
+      setNodes((nds) => {
+        updatedNodes = nds.map((n) => {
           if (n.id === structureNodeId) {
             return {
               ...n,
@@ -1649,53 +1745,118 @@ export default function CanvasPage() {
           }
           return n
         })
-      )
+        return updatedNodes
+      })
       
       onReasoning(`📊 Structure initialized with ${structureItems.length} sections`, 'result')
       
-      // ✅ CRITICAL: Initialize document_data in database for hierarchical system
-      try {
-        onReasoning('💾 Initializing hierarchical document system...', 'progress')
-        
-        const { DocumentManager } = await import('@/lib/document/DocumentManager')
-        const supabase = createClient()
-        
-        // Map StoryFormat to DocumentManager format (only supports subset)
-        let docManagerFormat: 'novel' | 'screenplay' | 'report'
-        if (format === 'short-story') {
-          docManagerFormat = 'novel'
-        } else if (format === 'novel' || format === 'screenplay' || format === 'report') {
-          docManagerFormat = format
-        } else {
-          // podcast, essay, article, custom → default to report
-          docManagerFormat = 'report'
+      // ✅ NOTE: document_data was already initialized during node creation (line 1040)
+      // The node was created via /api/node/create with documentData included
+      // No need to update it again here - it's already in the database!
+      console.log('✅ document_data already initialized during node creation')
+      onReasoning('✅ Hierarchical document system ready', 'result')
+      
+      // ✅ CRITICAL FIX: Save canvas with UPDATED nodes AND edges (not stale closure)
+      // We need to save both the nodes with structure items AND the edges that connect them
+      console.log('💾 [triggerOrchestratedGeneration] Saving canvas with updated structure...')
+      hasUnsavedChangesRef.current = true
+      
+      // ✅ FIX: Capture updated edges from state (includes the new edge created in handleCreateStory)
+      let updatedEdges: Edge[] = []
+      setEdges((currentEdges) => {
+        updatedEdges = currentEdges
+        return currentEdges // Don't modify, just capture
+      })
+      
+      // Save using the updated nodes and edges
+      if (storyId) {
+        try {
+          await saveCanvas(storyId, updatedNodes, updatedEdges)
+          console.log('✅ [triggerOrchestratedGeneration] Canvas saved with structure and edges:', {
+            nodesCount: updatedNodes.length,
+            edgesCount: updatedEdges.length
+          })
+        } catch (saveError) {
+          console.error('❌ [triggerOrchestratedGeneration] Failed to save canvas:', saveError)
+          onReasoning('⚠️ Warning: Structure created but canvas save failed', 'error')
         }
-        
-        // Create document_data from structure items
-        const docManager = DocumentManager.fromStructureItems(structureItems, docManagerFormat)
-        const documentData = docManager.getData()
-        
-        // Save to database
-        const { error: saveError } = await supabase
-          .from('nodes')
-          .update({ document_data: documentData })
-          .eq('id', structureNodeId)
-        
-        if (saveError) {
-          console.error('❌ Failed to initialize document_data:', saveError)
-          onReasoning('⚠️ Warning: Document structure saved to canvas but not to database', 'error')
-        } else {
-          console.log('✅ document_data initialized successfully')
-          onReasoning('✅ Hierarchical document system initialized', 'result')
-        }
-      } catch (initError) {
-        console.error('❌ Error initializing document_data:', initError)
-        onReasoning('⚠️ Warning: Could not initialize hierarchical document', 'error')
       }
       
-      // Save canvas with structure
-      hasUnsavedChangesRef.current = true
-      await handleSave()
+      // ✨ PHASE 3 FIX: Update WorldState with newly created node
+      // This allows agents to access the node structure when generating content
+      console.log('🔄 [triggerOrchestratedGeneration] Updating WorldState with new node')
+      worldState.setActiveDocument(structureNodeId, format, structureItems)
+      console.log('✅ [triggerOrchestratedGeneration] WorldState updated')
+      
+      // ✨ PHASE 3 FIX: Check if content generation was requested
+      // The orchestrator may have generated content actions that were deferred
+      // because the node didn't exist yet. Now that it exists, trigger content generation.
+      const hasContentActions = response.actions.some((a: any) => 
+        a.type === 'generate_content' && a.payload?.autoStart
+      )
+      
+      if (hasContentActions) {
+        console.log('🎯 [triggerOrchestratedGeneration] Content generation requested, triggering second orchestration')
+        onReasoning('🎯 Multi-step task detected: Generating content...', 'decision')
+        
+        try {
+          // ✅ CRITICAL FIX: Use updated nodes and edges (not stale closure)
+          // The orchestrator needs to see the new structure node we just created!
+          console.log('🔄 [triggerOrchestratedGeneration] Using updated canvas state for content generation:', {
+            updatedNodesCount: updatedNodes.length,
+            updatedEdgesCount: updatedEdges.length,
+            structureNodeId
+          })
+          
+          // ✅ DEBUG: Verify structureItems before second orchestration
+          console.log('🔍 [triggerOrchestratedGeneration] About to call second orchestration:', {
+            structureNodeId,
+            structureItemsLength: structureItems?.length || 0,
+            structureItemsIds: structureItems?.map((s: any) => s.id) || [],
+            format
+          })
+          
+          // Trigger second orchestration with node ID now available
+          const contentResponse = await orchestrator.orchestrate({
+            message: effectivePrompt,
+            canvasNodes: updatedNodes, // ✅ Use updated nodes (includes structure node)
+            canvasEdges: updatedEdges, // ✅ Use updated edges (includes connection)
+            documentFormat: format,
+            currentStoryStructureNodeId: structureNodeId, // ✅ NOW we have the node ID!
+            structureItems: structureItems,
+            contentMap: {},
+            userKeyId: userKeyId || undefined,
+            fixedModelId: finalOrchestratorModel || undefined,
+            availableProviders,
+            modelMode: finalOrchestratorModel ? 'fixed' : 'automatic',
+            supabaseClient: supabase
+          })
+          
+          // Display agent execution messages
+          if (contentResponse.thinkingSteps && contentResponse.thinkingSteps.length > 0) {
+            contentResponse.thinkingSteps.forEach((step: any) => {
+              onReasoning(step.content, step.type as any)
+            })
+          }
+          
+          onReasoning('✅ Content generation complete', 'result')
+          console.log('✅ [triggerOrchestratedGeneration] Content generation orchestration complete')
+        } catch (contentError) {
+          console.error('❌ [triggerOrchestratedGeneration] Content generation failed:', contentError)
+          onReasoning(`⚠️ Content generation failed: ${contentError instanceof Error ? contentError.message : 'Unknown error'}`, 'error')
+        }
+      } else {
+        console.log('ℹ️ [triggerOrchestratedGeneration] No content generation requested (structure only)')
+      }
+      
+      // ✅ CRITICAL FIX: Automatically open the document panel after structure creation
+      // This ensures the user can immediately see the generated content
+      console.log('📂 [triggerOrchestratedGeneration] Opening document panel for new structure')
+      setCurrentStoryStructureNodeId(structureNodeId)
+      setCurrentStructureItems(structureItems)
+      setCurrentStructureFormat(format)
+      setCurrentContentMap({}) // Will be populated by content generation
+      setIsAIDocPanelOpen(true)
       
       // Clear inference flag
       isInferencingRef.current = false
@@ -1709,7 +1870,7 @@ export default function CanvasPage() {
         )
       )
       
-      onReasoning('✅ Orchestration complete!', 'result')
+      onReasoning('✅ Orchestration complete! Document panel opened.', 'result')
       
       alert(`✅ ${format.charAt(0).toUpperCase() + format.slice(1)} structure generated with orchestrator!`)
       
@@ -2093,6 +2254,12 @@ export default function CanvasPage() {
       })
       
       try {
+        // ✅ Validate nodeId before fetching
+        if (!currentStoryStructureNodeId) {
+          console.error('❌ Cannot save content: No active document')
+          return
+        }
+        
         const supabase = createClient()
         
         // Fetch current document_data
@@ -2100,11 +2267,19 @@ export default function CanvasPage() {
           .from('nodes')
           .select('document_data')
           .eq('id', currentStoryStructureNodeId)
-          .single()
-        
+          .maybeSingle() // ✅ Use maybeSingle() instead of single()
+          
         if (fetchError) {
           console.error('❌ Failed to fetch document_data:', fetchError)
-        } else if (nodeData?.document_data) {
+          return
+        }
+        
+        if (!nodeData) {
+          console.error('❌ Node not found:', currentStoryStructureNodeId)
+          return
+        }
+        
+        if (nodeData?.document_data) {
           // Import DocumentManager dynamically
           const { DocumentManager } = await import('@/lib/document/DocumentManager')
           

@@ -9,6 +9,7 @@
  */
 
 import { OrchestratorEngine } from '../core/orchestratorEngine'
+import type { Blackboard, ConversationMessage } from '../core/blackboard'
 import type { 
   OrchestratorConfig, 
   OrchestratorRequest,
@@ -34,16 +35,17 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     super(config, worldState)
     
     // Initialize agent infrastructure
-    this.agentRegistry = new AgentRegistry(this.getBlackboard())
-    this.dagExecutor = new DAGExecutor(this.getBlackboard(), this.agentRegistry)
+    this.agentRegistry = new AgentRegistry(this.getAgentBlackboard())
+    this.dagExecutor = new DAGExecutor(this.getAgentBlackboard(), this.agentRegistry)
     
     // Initialize agent pool
     this.initializeAgents()
     
     console.log('🤖 [MultiAgentOrchestrator] Initialized with multi-agent coordination')
+    console.log('   Has WorldState:', !!this.worldState)
     
     // Log initialization to Blackboard for UI visibility
-    this.getBlackboard().addMessage({
+    this.getAgentBlackboard().addMessage({
       role: 'orchestrator',
       content: '🤖 Multi-agent system initialized',
       type: 'thinking'
@@ -103,13 +105,13 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     })
     
     // Step 3: Get the blackboard message count BEFORE agent execution
-    const messagesBefore = this.getBlackboard().getRecentMessages(1000).length
+    const messagesBefore = this.getAgentBlackboard().getRecentMessages(1000).length
     
     // Step 4: Execute ONLY the filtered actions with agents
     if (actionsForAgentExecution.length > 0) {
       const sessionId = `session-${Date.now()}`
       
-      this.getBlackboard().addMessage({
+      this.getAgentBlackboard().addMessage({
         role: 'orchestrator',
         content: `🚀 Starting agent execution for ${actionsForAgentExecution.length} action(s)`,
         type: 'progress'
@@ -119,7 +121,7 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
         // Pass the request so agents have access to currentStoryStructureNodeId
         await this.executeActionsWithAgents(actionsForAgentExecution, sessionId, request)
         
-        this.getBlackboard().addMessage({
+        this.getAgentBlackboard().addMessage({
           role: 'orchestrator',
           content: `✅ Agent execution complete`,
           type: 'result'
@@ -127,7 +129,7 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       } catch (error) {
         console.error('[MultiAgentOrchestrator] Agent execution failed:', error)
         
-        this.getBlackboard().addMessage({
+        this.getAgentBlackboard().addMessage({
           role: 'orchestrator',
           content: `❌ Agent execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
           type: 'error'
@@ -136,12 +138,12 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     }
     
     // Step 5: Extract NEW messages for UI display (messages added during agent execution)
-    const messagesAfter = this.getBlackboard().getRecentMessages(1000)
+    const messagesAfter = this.getAgentBlackboard().getRecentMessages(1000)
     const newMessages = messagesAfter.slice(messagesBefore)
     
     // Step 6: Add new messages to thinkingSteps for UI display
     if (newMessages.length > 0) {
-      const agentSteps = newMessages.map(m => ({
+      const agentSteps = newMessages.map((m: ConversationMessage) => ({
         content: m.content,
         type: m.type || 'progress'
       }))
@@ -315,7 +317,7 @@ Respond in JSON format:
       console.error('❌ [Strategy Selection] Error:', error)
       
       // Log to Blackboard for UI visibility
-      this.getBlackboard().addMessage({
+      this.getAgentBlackboard().addMessage({
         role: 'orchestrator',
         content: `⚠️ Strategy selection failed, defaulting to sequential: ${error instanceof Error ? error.message : 'Unknown error'}`,
         type: 'warning'
@@ -385,14 +387,14 @@ Respond in JSON format:
     // 🧠 PHASE 3: LLM-powered strategy selection using Blackboard and WorldState
     const { strategy, reasoning } = await this.analyzeExecutionStrategy(
       executableActions,
-      this.getBlackboard(),
+      this.getAgentBlackboard(),
       this.worldState
     )
     
     console.log(`🎯 [MultiAgentOrchestrator] Strategy: ${strategy.toUpperCase()}`)
     console.log(`   Reasoning: ${reasoning}`)
     
-    this.getBlackboard().addMessage({
+    this.getAgentBlackboard().addMessage({
       role: 'orchestrator',
       content: `🎯 Execution strategy: ${strategy} - ${reasoning}`,
       type: 'decision'
@@ -428,7 +430,7 @@ Respond in JSON format:
       return
     }
     
-    this.getBlackboard().addMessage({
+    this.getAgentBlackboard().addMessage({
       role: 'orchestrator',
       content: `⏭️ Sequential execution: ${actions.length} action(s)`,
       type: 'progress'
@@ -439,7 +441,7 @@ Respond in JSON format:
       console.log(`▶️ [MultiAgentOrchestrator] Executing: ${action.type}`)
       console.log(`   Payload:`, action.payload)
       
-      this.getBlackboard().addMessage({
+      this.getAgentBlackboard().addMessage({
         role: 'orchestrator',
         content: `▶️ ${action.type}: ${action.payload?.sectionName || action.payload?.prompt?.substring(0, 50) || 'processing...'}`,
         type: 'progress'
@@ -479,7 +481,7 @@ Respond in JSON format:
               worldState: this.worldState,
               userId: this.getConfig().userId,
               userKeyId: request?.userKeyId,
-              blackboard: this.getBlackboard(),
+              blackboard: this.getAgentBlackboard(),
               supabaseClient: request?.supabaseClient // ✅ FIX: Pass authenticated Supabase client
             }
           )
@@ -499,7 +501,7 @@ Respond in JSON format:
     
     console.log(`✅ [MultiAgentOrchestrator] Sequential execution complete`)
     
-    this.getBlackboard().addMessage({
+    this.getAgentBlackboard().addMessage({
       role: 'orchestrator',
       content: `✅ Sequential execution complete`,
       type: 'result'
@@ -553,14 +555,14 @@ Respond in JSON format:
       console.log(`   Batch ${idx + 1}: ${batch.length} task(s) in parallel`)
       
       // Add to UI
-      this.getBlackboard().addMessage({
+      this.getAgentBlackboard().addMessage({
         role: 'orchestrator',
         content: `📦 Batch ${idx + 1}: ${batch.length} tasks in parallel`,
         type: 'progress'
       })
     })
     
-    this.getBlackboard().addMessage({
+    this.getAgentBlackboard().addMessage({
       role: 'orchestrator',
       content: `🔀 Parallel execution: ${actions.length} actions across ${batches.length} batch(es) via tools`,
       type: 'progress'
@@ -573,27 +575,30 @@ Respond in JSON format:
     
     try {
       for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
-        const batch = batches[batchIdx]
+        const batchTaskIds = batches[batchIdx] // These are IDs
         
-        console.log(`🔀 [executeParallel] Processing batch ${batchIdx + 1}/${batches.length} (${batch.length} tasks)`)
+        console.log(`🔀 [executeParallel] Processing batch ${batchIdx + 1}/${batches.length} (${batchTaskIds.length} tasks)`)
         
-        this.getBlackboard().addMessage({
+        this.getAgentBlackboard().addMessage({
           role: 'orchestrator',
-          content: `⚙️ Processing batch ${batchIdx + 1}/${batches.length} (${batch.length} tasks in parallel)`,
+          content: `⚙️ Processing batch ${batchIdx + 1}/${batches.length} (${batchTaskIds.length} tasks in parallel)`,
           type: 'progress'
         })
         
         // Map tasks back to actions (tasks were created from actions)
-        console.log(`🔍 [executeParallel] Mapping ${batch.length} tasks to actions...`)
-        console.log(`   Task IDs:`, batch.map(t => t.payload?.context?.section?.id))
+        // Fetch task objects from DAG using IDs
+        const batchTasks = batchTaskIds.map(id => dag.get(id)?.task).filter(t => t)
+        
+        console.log(`🔍 [executeParallel] Mapping ${batchTasks.length} tasks to actions...`)
+        console.log(`   Task IDs:`, batchTaskIds)
         console.log(`   Action IDs:`, actions.map(a => a.payload?.sectionId))
         
-        const batchActions = batch.map(task => {
+        const batchActions = batchTasks.map(task => {
           // Find corresponding action by sectionId
-          return actions.find(a => a.payload?.sectionId === task.payload?.context?.section?.id)
+          return actions.find(a => a.payload?.sectionId === task?.payload?.context?.section?.id)
         }).filter(a => a !== undefined) as OrchestratorAction[]
         
-        console.log(`✅ [executeParallel] Mapped ${batchActions.length}/${batch.length} tasks to actions`)
+        console.log(`✅ [executeParallel] Mapped ${batchActions.length}/${batchTaskIds.length} tasks to actions`)
         
         if (batchActions.length === 0) {
           console.error(`❌ [executeParallel] CRITICAL: No actions mapped! Tasks won't execute!`)
@@ -635,7 +640,7 @@ Respond in JSON format:
                   worldState: this.worldState,
                   userId: this.getConfig().userId,
                   userKeyId: request?.userKeyId,
-                  blackboard: this.getBlackboard(),
+                  blackboard: this.getAgentBlackboard(),
                   supabaseClient: request?.supabaseClient // ✅ FIX: Pass authenticated Supabase client
                 }
               )
@@ -674,14 +679,14 @@ Respond in JSON format:
       console.log(`   Failed: ${failedCount}`)
       console.log(`   Time: ${executionTime}ms`)
       
-      this.getBlackboard().addMessage({
+      this.getAgentBlackboard().addMessage({
         role: 'orchestrator',
         content: `✅ Completed ${completedCount}/${actions.length} tasks in ${(executionTime / 1000).toFixed(1)}s ${speedup}`,
         type: 'result'
       })
       
       if (failedCount > 0) {
-        this.getBlackboard().addMessage({
+        this.getAgentBlackboard().addMessage({
           role: 'orchestrator',
           content: `⚠️ ${failedCount} task(s) failed`,
           type: 'error'
@@ -690,7 +695,7 @@ Respond in JSON format:
     } catch (error) {
       console.error(`❌ [MultiAgentOrchestrator] Parallel execution error:`, error)
       
-      this.getBlackboard().addMessage({
+      this.getAgentBlackboard().addMessage({
         role: 'orchestrator',
         content: `❌ Execution error: ${error instanceof Error ? error.message : 'Unknown error'}`,
         type: 'error'
@@ -711,6 +716,17 @@ Respond in JSON format:
   ): Promise<void> {
     console.log(`🔄 [MultiAgentOrchestrator] Executing with writer-critic cluster via TOOL SYSTEM`)
     
+    // Check WorldState availability (CRITICAL FIX)
+    if (!this.worldState) {
+      console.error('❌ [executeCluster] CRITICAL: worldState is undefined!')
+      this.getAgentBlackboard().addMessage({
+        role: 'orchestrator',
+        content: '❌ System Error: WorldState not available for cluster execution.',
+        type: 'error'
+      })
+      throw new Error('WorldState not available - cannot execute tools in cluster mode')
+    }
+
     // Get tool registry from config
     const toolRegistry = (this as any).config?.toolRegistry
     if (!toolRegistry) {
@@ -718,7 +734,7 @@ Respond in JSON format:
       return
     }
     
-    this.getBlackboard().addMessage({
+    this.getAgentBlackboard().addMessage({
       role: 'orchestrator',
       content: `🔄 Using writer-critic cluster for high-quality generation`,
       type: 'progress'
@@ -752,10 +768,10 @@ Respond in JSON format:
               format // ✅ Pass document format
             },
             {
-              worldState: this.worldState!,
+              worldState: this.worldState, // ✅ Guaranteed defined by check above
               userId: this.getConfig().userId,
               userKeyId: request?.userKeyId,
-              blackboard: this.getBlackboard(),
+              blackboard: this.getAgentBlackboard(),
               supabaseClient: request?.supabaseClient // ✅ FIX: Pass authenticated Supabase client
             }
           )
@@ -765,7 +781,7 @@ Respond in JSON format:
             
             // Tool result already includes quality metrics
             const metadata = toolResult.metadata || {}
-            this.getBlackboard().addMessage({
+            this.getAgentBlackboard().addMessage({
               role: 'orchestrator',
               content: `✨ Generated ${metadata.wordCount || 0} words (quality: ${metadata.finalScore || 0}/10, ${metadata.iterations || 1} iteration${metadata.iterations > 1 ? 's' : ''})`,
               type: 'result'
@@ -773,7 +789,7 @@ Respond in JSON format:
           } else {
             console.error(`❌ [MultiAgentOrchestrator] Tool execution failed:`, toolResult.error)
             
-            this.getBlackboard().addMessage({
+            this.getAgentBlackboard().addMessage({
               role: 'orchestrator',
               content: `❌ Failed to generate content: ${toolResult.error}`,
               type: 'error'
@@ -782,7 +798,7 @@ Respond in JSON format:
         } catch (error) {
           console.error(`❌ [MultiAgentOrchestrator] Tool execution error:`, error)
           
-          this.getBlackboard().addMessage({
+          this.getAgentBlackboard().addMessage({
             role: 'orchestrator',
             content: `❌ Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
             type: 'error'
@@ -809,7 +825,7 @@ Respond in JSON format:
       type: this.actionTypeToTaskType(action.type),
       payload: {
         taskId: '',
-        action: this.actionTypeToTaskType(action.type),
+        action: this.actionTypeToTaskType(action.type) as any,
         context: {
           section: {
             id: action.payload?.sectionId || '',
@@ -869,7 +885,7 @@ Respond in JSON format:
     return {
       registry: this.agentRegistry.getStats(),
       performance: this.agentRegistry.getPerformanceSummary(),
-      execution: this.getBlackboard().getExecutionStats()
+      execution: this.getAgentBlackboard().getExecutionStats()
     }
   }
   
@@ -882,7 +898,7 @@ Respond in JSON format:
   }
   
   // Expose protected methods for agent access
-  private getBlackboard() {
+  private getAgentBlackboard() {
     return (this as any).blackboard
   }
   

@@ -70,6 +70,14 @@ export async function saveAgentContent(options: SaveContentOptions): Promise<Sav
       wordCount: result.wordCount
     })
 
+    // ✅ NEW: Emit event for UI to refresh
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('content-saved', {
+        detail: { nodeId: storyStructureNodeId, sectionId, wordCount: result.wordCount }
+      }))
+      console.log('📡 [saveAgentContent] Emitted content-saved event')
+    }
+
     return {
       success: true,
       wordCount: result.wordCount
@@ -116,7 +124,7 @@ async function saveAgentContentDirect_DEPRECATED(options: SaveContentOptions): P
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       console.log(`🔍 [saveAgentContent] Fetch attempt ${attempt + 1}/${maxRetries + 1}:`, {
-        query: 'nodes.select(document_data).eq(id, storyStructureNodeId).single()',
+        query: 'nodes.select(document_data).eq(id, storyStructureNodeId).maybeSingle()',
         nodeId: storyStructureNodeId,
         timestamp: new Date().toISOString()
       })
@@ -125,7 +133,7 @@ async function saveAgentContentDirect_DEPRECATED(options: SaveContentOptions): P
         .from('nodes')
         .select('id, document_data') // ✅ FIX: Select id too for debugging
         .eq('id', storyStructureNodeId)
-        .single()
+        .maybeSingle() // ✅ FIX: Use maybeSingle() to handle 0 rows gracefully
       
       console.log(`📡 [saveAgentContent] Fetch attempt ${attempt + 1} result:`, {
         success: !result.error,
@@ -140,21 +148,27 @@ async function saveAgentContentDirect_DEPRECATED(options: SaveContentOptions): P
       node = result.data
       fetchError = result.error
       
-      if (!fetchError || fetchError.code !== 'PGRST116') {
+      // ✅ FIX: Handle null result from maybeSingle()
+      if (!fetchError && !node) {
+        fetchError = { code: 'NOT_FOUND', message: 'Node not found in database' }
+      }
+      
+      if (!fetchError || (fetchError.code !== 'PGRST116' && fetchError.code !== 'NOT_FOUND')) {
         // Success or non-retryable error
         break
       }
       
       if (attempt < maxRetries) {
         const delay = retryDelays[attempt]
-        console.warn(`⚠️ [saveAgentContent] Node not found (PGRST116), retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`)
+        const errorType = fetchError.code === 'NOT_FOUND' ? 'Node not found' : 'PGRST116'
+        console.warn(`⚠️ [saveAgentContent] ${errorType}, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`)
         await new Promise(resolve => setTimeout(resolve, delay))
       } else {
         console.error(`❌ [saveAgentContent] Max retries reached. Last error:`, {
           code: fetchError.code,
           message: fetchError.message,
-          details: fetchError.details,
-          hint: fetchError.hint
+          details: fetchError.details || 'N/A',
+          hint: fetchError.hint || 'N/A'
         })
       }
     }
@@ -188,9 +202,17 @@ async function saveAgentContentDirect_DEPRECATED(options: SaveContentOptions): P
       sectionExists: flatSections.some(s => s.id === sectionId)
     })
     
+    // ✅ DEBUG: Show section names too for easier debugging
+    console.log('📋 [saveAgentContent] Section ID → Name mapping:')
+    flatSections.forEach(s => {
+      console.log(`   - "${s.id}" → "${s.name}"`)
+    })
+    console.log(`🎯 [saveAgentContent] Trying to save to: "${sectionId}"`)
+    
     const updateSuccess = docManager.updateContent(sectionId, content)
     
     if (!updateSuccess) {
+      console.error(`❌ [saveAgentContent] Section "${sectionId}" not found! Available IDs:`, flatSections.map(s => s.id))
       return { success: false, error: `Section ${sectionId} not found in document` }
     }
     

@@ -670,6 +670,17 @@ export default function OrchestratorPanel({
         draft.user.apiKeys.orchestratorKeyId = userKeyId
       })
       
+      // ✅ CRITICAL: Get structureItems from WorldState if available (more up-to-date than props)
+      const activeDoc = worldState.getActiveDocument()
+      const freshStructureItems = activeDoc.structure?.items || structureItems || []
+      
+      console.log('🔍 [OrchestratorPanel] Structure items source:', {
+        fromWorldState: activeDoc.structure?.items?.length || 0,
+        fromProps: structureItems?.length || 0,
+        using: freshStructureItems.length,
+        currentNodeId: currentStoryStructureNodeId
+      })
+      
       // PHASE 3: Use multi-agent orchestrator for intelligent task coordination
       const response = await getMultiAgentOrchestrator(user.id, { 
         toolRegistry,
@@ -681,7 +692,7 @@ export default function OrchestratorPanel({
         activeContext: activeContext || undefined, // Convert null to undefined
         isDocumentViewOpen,
         documentFormat: formatToUse, // ✅ FIX: Use detected format instead of selectedFormat
-        structureItems,
+        structureItems: freshStructureItems, // ✅ FIX: Use WorldState items if available
         contentMap,
         currentStoryStructureNodeId,
         // Model selection preferences
@@ -864,6 +875,10 @@ export default function OrchestratorPanel({
         draft.user.apiKeys.orchestratorKeyId = userKeyId
       })
       
+      // ✅ CRITICAL: Get structureItems from WorldState (clarification responses)
+      const activeDocForClarification = worldState.getActiveDocument()
+      const freshStructureItemsForClarification = activeDocForClarification.structure?.items || structureItems || []
+      
       // PHASE 3: Use multi-agent orchestrator for clarification responses too
       const orchestratorResponse = await getMultiAgentOrchestrator(user.id, { 
         toolRegistry,
@@ -875,7 +890,7 @@ export default function OrchestratorPanel({
         activeContext: activeContext || undefined,
         isDocumentViewOpen,
         documentFormat: pendingClarification.payload.documentFormat || selectedFormat,
-        structureItems,
+        structureItems: freshStructureItemsForClarification, // ✅ FIX: Use WorldState items
         contentMap,
         currentStoryStructureNodeId,
         modelMode,

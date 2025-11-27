@@ -149,6 +149,11 @@ export interface AgentContext {
   blackboard: Blackboard        // Read-only access to blackboard
   dependencies: Record<string, any>  // Results from dependency tasks
   sessionId: string
+  metadata?: {                  // Optional metadata for context
+    storyStructureNodeId?: string
+    format?: string
+    [key: string]: any
+  }
 }
 
 /**

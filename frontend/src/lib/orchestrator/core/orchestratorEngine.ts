@@ -193,6 +193,33 @@ export class OrchestratorEngine {
     const _availableModels = this.getAvailableModels(request)
     const _modelPrefs = this.getModelPreferences(request)
     
+    // ✅ CRITICAL FIX: Update WorldState if structureItems provided
+    // This ensures agents have access to the latest structure context
+    console.log('🔍 [Orchestrator] Checking WorldState update conditions:', {
+      hasWorldState: !!this.worldState,
+      hasStructureItems: !!request.structureItems,
+      structureItemsLength: request.structureItems?.length || 0,
+      hasNodeId: !!request.currentStoryStructureNodeId,
+      nodeId: request.currentStoryStructureNodeId
+    })
+    
+    if (this.worldState && request.structureItems && request.structureItems.length > 0 && request.currentStoryStructureNodeId) {
+      console.log('🔄 [Orchestrator] Updating WorldState with structure items:', {
+        nodeId: request.currentStoryStructureNodeId,
+        format: _documentFormat || 'novel',
+        itemsCount: request.structureItems.length,
+        firstItemId: request.structureItems[0]?.id
+      })
+      this.worldState.setActiveDocument(
+        request.currentStoryStructureNodeId,
+        _documentFormat || 'novel',
+        request.structureItems
+      )
+      console.log('✅ [Orchestrator] WorldState updated - agents can now access structure')
+    } else {
+      console.warn('⚠️ [Orchestrator] WorldState NOT updated - missing requirements')
+    }
+    
     // Step 1: Update blackboard with current state
     this.blackboard.updateCanvas(_canvasNodes, _canvasEdges)
     
@@ -724,9 +751,11 @@ export class OrchestratorEngine {
         
         let targetSectionId = request.activeContext?.id
         
-        // If no active context, try to detect section from message
-        if (!targetSectionId && request.structureItems && request.structureItems.length > 0) {
+        // ✅ FIX: Always check message for explicit section references (overrides active context)
+        // User saying "Write Chapter 1" should work even if Prologue is selected
+        if (request.structureItems && request.structureItems.length > 0) {
           const lowerMessage = request.message.toLowerCase()
+          let messageTargetSectionId: string | null = null
           
           // Helper to find section by name (case-insensitive, fuzzy match)
           const findSectionByName = (items: any[], searchTerm: string): any => {
@@ -764,9 +793,97 @@ export class OrchestratorEngine {
             return null
           }
           
+          // ✅ NEW: Handle numeric references (act 1, scene 2, chapter 3, etc.)
+          const numericPattern = /(act|scene|chapter|section|sequence|beat)\s+(\d+|i+|ii+|iii+|iv+|v+|vi+|vii+|viii+|ix+|x+)/i
+          const numericMatch = request.message.match(numericPattern)
+          
+          if (numericMatch) {
+            const type = numericMatch[1].toLowerCase()
+            const numberStr = numericMatch[2].toLowerCase()
+            
+            console.log(`🔍 [Numeric Detection] Detected: ${type} ${numberStr}`)
+            
+            // Convert Roman numerals to numbers
+            const romanToNumber: Record<string, number> = {
+              'i': 1, 'ii': 2, 'iii': 3, 'iv': 4, 'v': 5,
+              'vi': 6, 'vii': 7, 'viii': 8, 'ix': 9, 'x': 10
+            }
+            
+            const targetNumber = romanToNumber[numberStr] || parseInt(numberStr, 10)
+            
+            // Find matching sections by name pattern
+            const matchingSections = request.structureItems.filter((item: any) => {
+              const itemName = item.name || ''
+              const itemNameLower = itemName.toLowerCase()
+              
+              // Match by type and number
+              if (type === 'act') {
+                // Match "Act I", "Act 1", "ACT I", "Act I - Setup", etc.
+                return /^act\s+(i+|[0-9]+)/i.test(itemName)
+              } else if (type === 'scene') {
+                // Match "Scene 1", "SCENE 1:", "Scene I", etc.
+                return /scene\s+(\d+|i+)/i.test(itemName)
+              } else if (type === 'chapter') {
+                // Match "Chapter 1", "Ch. 1", "Chapter I", etc.
+                return /(chapter|ch\.?)\s+(\d+|i+)/i.test(itemName)
+              } else if (type === 'section') {
+                // Match "Section 1", etc.
+                return /section\s+(\d+|i+)/i.test(itemName)
+              } else if (type === 'sequence') {
+                // Match "Sequence 1", etc.
+                return /sequence\s+(\d+|i+)/i.test(itemName)
+              } else if (type === 'beat') {
+                // Match "Beat 1", etc.
+                return /beat\s+(\d+|i+)/i.test(itemName)
+              }
+              
+              // Generic fallback
+              return itemNameLower.includes(type) && itemNameLower.includes(numberStr)
+            })
+            
+            console.log('🔍 [Numeric Detection] Debug:', {
+              searchType: type,
+              searchNumber: numberStr,
+              targetNumber,
+              totalStructureItems: request.structureItems.length,
+              matchingSectionsCount: matchingSections.length,
+              matchedNames: matchingSections.map((s: any) => s.name),
+              allItemNames: request.structureItems.map((s: any) => s.name).slice(0, 10)
+            })
+            
+            // Find the section with the matching number
+            const targetSection = matchingSections.find((item: any) => {
+              const itemName = item.name || ''
+              
+              // Extract number from item name
+              const itemNumberMatch = itemName.match(/(\d+|i+|ii+|iii+|iv+|v+|vi+|vii+|viii+|ix+|x+)/i)
+              if (itemNumberMatch) {
+                const itemNumberStr = itemNumberMatch[1].toLowerCase()
+                const itemNumber = romanToNumber[itemNumberStr] || parseInt(itemNumberStr, 10)
+                return itemNumber === targetNumber
+              }
+              
+              return false
+            })
+            
+            if (targetSection) {
+              messageTargetSectionId = targetSection.id
+              console.log('✅ [Numeric Detection] Found section:', {
+                type,
+                number: numberStr,
+                foundSection: targetSection.name,
+                sectionId: messageTargetSectionId
+              })
+            } else {
+              console.warn('⚠️ [Numeric Detection] No match found for', type, numberStr)
+            }
+          }
+          
           // ✅ NEW: Handle ordinal/positional references (first scene, second act, etc.)
-          const ordinalPattern = /(?:start with|write|begin with)?\s*(?:the\s+)?(first|second|third|1st|2nd|3rd|opening|initial)\s+(scene|act|sequence|chapter|section|beat)/i
-          const ordinalMatch = request.message.match(ordinalPattern)
+          // Only try this if numeric pattern didn't match
+          if (!messageTargetSectionId) {
+            const ordinalPattern = /(?:start with|write|begin with)?\s*(?:the\s+)?(first|second|third|1st|2nd|3rd|opening|initial)\s+(scene|act|sequence|chapter|section|beat)/i
+            const ordinalMatch = request.message.match(ordinalPattern)
           
           if (ordinalMatch) {
             const position = ordinalMatch[1].toLowerCase()
@@ -816,21 +933,22 @@ export class OrchestratorEngine {
             })
             
             if (matchingSections[targetIndex]) {
-              targetSectionId = matchingSections[targetIndex].id
+              messageTargetSectionId = matchingSections[targetIndex].id
               console.log('🎯 [Ordinal Detection] Found section:', {
                 position,
                 type,
                 targetIndex,
                 foundSection: matchingSections[targetIndex].name,
-                sectionId: targetSectionId
+                sectionId: messageTargetSectionId
               })
             } else {
               console.warn('⚠️ [Ordinal Detection] No match found at index', targetIndex, 'for type', type)
             }
           }
+          } // Close the if (!messageTargetSectionId) block for ordinal pattern
           
-          // Try to extract section name from message (if ordinal didn't match)
-          if (!targetSectionId) {
+          // Try to extract section name from message (if numeric and ordinal didn't match)
+          if (!messageTargetSectionId) {
             // Patterns: "add to X", "write in X", "add text to X", "write X"
             const patterns = [
               /(?:add|write|put|insert).*(?:to|in|into)\s+(?:the\s+)?(.+?)(?:\s+(?:section|part|chapter|scene|act|sequence))?$/i,
@@ -862,11 +980,11 @@ export class OrchestratorEngine {
             if (sectionName) {
               const foundSection = findSectionByName(request.structureItems, sectionName)
               if (foundSection) {
-                targetSectionId = foundSection.id
+                messageTargetSectionId = foundSection.id
                 console.log('🎯 [Smart Section Detection] Found section:', {
                   searchTerm: sectionName,
                   foundSection: foundSection.name,
-                  sectionId: targetSectionId
+                  sectionId: messageTargetSectionId
                 })
               } else {
                 console.warn('⚠️ [Smart Section Detection] No match found for:', sectionName)
@@ -874,6 +992,23 @@ export class OrchestratorEngine {
             } else {
               console.warn('⚠️ [Pattern Match] No section name extracted from message:', request.message)
             }
+          }
+          
+          // ✅ FIX: If we found a section from the message, use it (overrides active context)
+          if (messageTargetSectionId) {
+            targetSectionId = messageTargetSectionId
+            console.log('✅ [Section Override] Using section from message instead of active context:', {
+              fromMessage: messageTargetSectionId,
+              wasActive: request.activeContext?.id
+            })
+          }
+        }
+        
+        // ✅ FIX: Only fallback to active context if no section found in message
+        if (!targetSectionId) {
+          targetSectionId = request.activeContext?.id
+          if (targetSectionId) {
+            console.log('ℹ️ [Section Fallback] Using active context section:', targetSectionId)
           }
         }
         
@@ -1005,10 +1140,9 @@ export class OrchestratorEngine {
       }
       
       case 'create_structure': {
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: '🏗️ Generating story structure plan...',
-          type: 'thinking'
+        console.log('🏗️ [generateActions] create_structure case reached', {
+          format: request.documentFormat,
+          message: request.message
         })
         
         // Validate required fields
@@ -1018,6 +1152,43 @@ export class OrchestratorEngine {
         if (!request.userKeyId) {
           throw new Error('userKeyId is required for create_structure intent')
         }
+        
+        // ✅ NEW: Validate format conventions (educate user if mismatch)
+        const formatValidation = this.validateFormatConventions(request.documentFormat, request.message)
+        console.log('🔍 [Format Validation]', {
+          format: request.documentFormat,
+          message: request.message,
+          validation: formatValidation
+        })
+        
+        if (!formatValidation.valid && formatValidation.mismatch && formatValidation.suggestion) {
+          // Return educational clarification instead of creating wrong structure
+          const formatLabel = request.documentFormat.replace(/-/g, ' ')
+          const clarificationMessage = `I'd love to help with your ${formatLabel}! Just to clarify - ${formatLabel}s typically use ${formatValidation.suggestion}s rather than ${formatValidation.mismatch}s. Did you mean ${formatValidation.suggestion.charAt(0).toUpperCase() + formatValidation.suggestion.slice(1)} 2? Or are you planning a different format (like a novel)?`
+          
+          // ✅ CRITICAL: Add clarification to Blackboard so it's in conversation history for next call!
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: clarificationMessage,
+            type: 'result'
+          })
+          
+          actions.push({
+            type: 'message',
+            payload: {
+              content: clarificationMessage,
+              type: 'result'
+            },
+            status: 'pending'
+          })
+          break // Don't create structure yet - wait for user response
+        }
+        
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: '🏗️ Generating story structure plan...',
+          type: 'thinking'
+        })
         
         // ✅ PROACTIVE CANVAS AWARENESS: Check for existing documents
         console.log('🔍 [Canvas Awareness] Raw canvasNodes:', request.canvasNodes?.length || 0)
@@ -2242,7 +2413,26 @@ Generate a complete structure plan with:
 - 3-20 hierarchical structure items with clear parent-child relationships
 - Realistic word count estimates for each section
 - Specific writing tasks (minimum 1)
-- Metadata with total word count, estimated time, and recommended models (REQUIRED)`
+- Metadata with total word count, estimated time, and recommended models (REQUIRED)
+
+CRITICAL - SECTION ID CONSISTENCY:
+Each task's sectionId MUST EXACTLY match an id from the structure array.
+
+EXAMPLES OF CORRECT ID MATCHING:
+✅ Structure: { "id": "chapter2", ... } → Task: { "sectionId": "chapter2" }
+✅ Structure: { "id": "act1_scene1", ... } → Task: { "sectionId": "act1_scene1" }
+✅ Structure: { "id": "scene1", ... } → Task: { "sectionId": "scene1" }
+
+EXAMPLES OF WRONG ID MATCHING (DO NOT DO THIS):
+❌ Structure: { "id": "chapter2", ... } → Task: { "sectionId": "ch2" } (abbreviated!)
+❌ Structure: { "id": "chapter2", ... } → Task: { "sectionId": "chap2" } (abbreviated!)
+❌ Structure: { "id": "act1_seq1", ... } → Task: { "sectionId": "seq1" } (missing parent!)
+
+USE CONSISTENT ID FORMAT:
+- Recommended: "{type}{number}" (e.g., "chapter1", "chapter2", "scene1", "scene2")
+- For nested: "{parent}_{type}{number}" (e.g., "act1_scene1", "act1_scene2")
+- NO abbreviations (not "ch2", not "chap2", use full "chapter2")
+- NO inconsistencies between structure and tasks`
 
     const formatLabel = format.charAt(0).toUpperCase() + format.slice(1).replace(/-/g, ' ')
     const userMessage = `The user wants to create a ${formatLabel}.\n\nUser's creative prompt:\n${userPrompt}\n\nAnalyze this prompt and create a detailed structure plan optimized for the ${formatLabel} format.`
@@ -2301,7 +2491,10 @@ Generate a complete structure plan with:
     
     // Add timeout and progress heartbeat for long-running API calls
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 30000) // ⚡ OPTIMIZED: 30s timeout (was 60s) for faster fallback
+    const timeout = setTimeout(() => {
+      console.error('⏰ [Structure Generation] Request timed out after 60s')
+      controller.abort()
+    }, 60000) // ⚡ Increased to 60s for structure generation (complex task)
     
     // Heartbeat: Show "still waiting..." every 5 seconds
     const heartbeat = setInterval(() => {
@@ -2311,6 +2504,14 @@ Generate a complete structure plan with:
         type: 'progress'
       })
     }, 5000)
+    
+    console.log('🚀 [Structure Generation] Starting API call...', {
+      endpoint: '/api/generate',
+      model: modelId,
+      useStructuredOutput,
+      hasResponseFormat: !!requestBody.response_format,
+      hasTools: !!requestBody.tools
+    })
     
     let response: Response
     try {
@@ -2337,14 +2538,28 @@ Generate a complete structure plan with:
       clearTimeout(timeout)
       clearInterval(heartbeat)
       
+      console.error('❌ [Structure Generation] API call failed:', {
+        errorName: error.name,
+        errorMessage: error.message,
+        isAbortError: error.name === 'AbortError',
+        fullError: error
+      })
+      
       if (error.name === 'AbortError') {
         this.blackboard.addMessage({
           role: 'orchestrator',
-          content: '❌ Structure generation timed out after 30 seconds',
+          content: '❌ Structure generation timed out after 60 seconds',
           type: 'error'
         })
         throw new Error('Structure generation timed out - trying next model')
       }
+      
+      // Add more context to the error
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `❌ Structure generation error: ${error.message}`,
+        type: 'error'
+      })
       throw error
     }
     
@@ -2496,6 +2711,76 @@ Generate a complete structure plan with:
     })
     
     return plan
+  }
+
+  /**
+   * Validate format conventions (educate user if they mix formats)
+   */
+  private validateFormatConventions(
+    format: string,
+    userMessage: string
+  ): { valid: boolean; mismatch?: string; suggestion?: string } {
+    const normalizedFormat = format.toLowerCase().replace(/-/g, '_')
+    const lowerMessage = userMessage.toLowerCase()
+    
+    // Short story: Should use SCENES, not chapters
+    if (normalizedFormat === 'short_story') {
+      if (lowerMessage.includes('chapter')) {
+        return {
+          valid: false,
+          mismatch: 'chapter',
+          suggestion: 'scene'
+        }
+      }
+    }
+    
+    // Screenplay: Should use ACTS and SCENES, not chapters
+    if (normalizedFormat === 'screenplay') {
+      if (lowerMessage.includes('chapter')) {
+        return {
+          valid: false,
+          mismatch: 'chapter',
+          suggestion: 'act or scene'
+        }
+      }
+    }
+    
+    // Report: Should use SECTIONS, not chapters
+    if (normalizedFormat.startsWith('report')) {
+      if (lowerMessage.includes('chapter')) {
+        return {
+          valid: false,
+          mismatch: 'chapter',
+          suggestion: 'section'
+        }
+      }
+    }
+    
+    // Podcast: Should use EPISODES and SEGMENTS, not chapters
+    if (normalizedFormat === 'podcast') {
+      if (lowerMessage.includes('chapter')) {
+        return {
+          valid: false,
+          mismatch: 'chapter',
+          suggestion: 'episode or segment'
+        }
+      }
+    }
+    
+    // Article/Essay: Should use SECTIONS, not chapters
+    if (normalizedFormat === 'article' || normalizedFormat === 'essay') {
+      if (lowerMessage.includes('chapter')) {
+        return {
+          valid: false,
+          mismatch: 'chapter',
+          suggestion: 'section'
+        }
+      }
+    }
+    
+    // Novel: Chapters are correct, no validation needed
+    
+    return { valid: true }
   }
 
   /**

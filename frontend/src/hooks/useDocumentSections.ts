@@ -78,6 +78,32 @@ export function useDocumentSections({
     }
   }, [storyStructureNodeId, enabled, supabase])
 
+  // Helper function to generate initial content based on section type
+  const generateInitialContent = (item: StoryStructureItem): string => {
+    const headerLevel = Math.min(item.level, 3)
+    const headerTag = '#'.repeat(headerLevel)
+    
+    let placeholder = ''
+    
+    // Use summary if available (provides context for writers)
+    if (item.summary && item.summary.trim().length > 0) {
+      placeholder = `*${item.summary}*\n\n---\n\n*Awaiting content generation...*`
+    } else {
+      // Fallback based on section type
+      const nameLower = item.name.toLowerCase()
+      
+      if (nameLower.includes('scene')) {
+        placeholder = `**INT./EXT. [LOCATION] - [TIME]**\n\n*Scene content will appear here once generated.*`
+      } else if (nameLower.includes('act') || nameLower.includes('chapter')) {
+        placeholder = `*This ${nameLower.includes('act') ? 'act' : 'chapter'} will be written by the AI.*`
+      } else {
+        placeholder = `*Content will appear here once generated.*`
+      }
+    }
+    
+    return `${headerTag} ${item.name}\n\n${placeholder}`
+  }
+
   // Initialize sections from structure items if they don't exist
   const initializeSections = useCallback(async () => {
     if (!storyStructureNodeId || !enabled || structureItems.length === 0) {
@@ -114,7 +140,7 @@ export function useDocumentSections({
         .map(({ item, originalIndex }) => ({
           story_structure_node_id: storyStructureNodeId,
           structure_item_id: item.id,
-          content: `<h${Math.min(item.level, 3)} data-section-id="${item.id}" id="section-${item.id}">${item.name}</h${Math.min(item.level, 3)}>\n<p></p>`,
+          content: generateInitialContent(item), // ✅ Use helper function with summary
           word_count: 0,
           status: 'draft' as const,
           order_index: typeof item.order === 'number' ? item.order : originalIndex, // Use item.order if valid, fallback to original index

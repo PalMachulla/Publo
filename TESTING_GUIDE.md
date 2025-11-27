@@ -1,535 +1,503 @@
-# Orchestrator Agentic System - Testing Guide
+# Phase 3 Testing Guide
+**Date:** November 26, 2025  
+**Implementation:** Two-Phase Orchestration with Multi-Agent Content Generation
 
-## 🎯 Overview
+## 🎯 Test Scenarios
 
-This guide covers testing the new orchestrator-based agentic system with real-time streaming reasoning.
-
-**Branch:** `feature/streaming-reasoning`  
-**Status:** ✅ Implementation Complete, Ready for Testing  
-**Features:** Orchestrator Planning + Real-Time Token Streaming + Model Reasoning Visibility  
-**Do NOT merge to main until testing passes**
-
----
-
-## 📋 Pre-Testing Setup
-
-### 1. Run Database Migration
-
-The system requires new database columns for orchestrator preferences.
-
-```bash
-cd /Users/palmac/Aiakaki/Code/publo
-npx supabase db push
-```
-
-**Expected Output:**
-```
-✓ Applying migration 012_add_orchestrator_preferences.sql...
-✓ Migration complete
-```
-
-**What it does:**
-- Adds `orchestrator_model_id` column (TEXT, nullable)
-- Adds `writer_model_ids` column (TEXT[], nullable)
-- Adds index on `orchestrator_model_id`
-
-### 2. Start Development Server
-
-```bash
-cd frontend
-npm run dev
-```
-
-### 3. Prepare Test API Keys
-
-You'll need at least ONE API key from:
-- ✅ Groq (recommended for testing - fast & free tier)
-- OpenAI (GPT-4o for orchestrator, GPT-4o-mini for writer)
-- Anthropic (Claude Sonnet 3.5 for orchestrator)
-
----
-
-## 🧪 Test Cases
-
-### Test 1: Profile Page Model Selection
-
-**Objective:** Verify orchestrator/writer configuration UI works
-
-**Steps:**
-1. Navigate to `/profile`
-2. Find your API key section
-3. Click "Model Configuration" accordion
-4. Verify two sections appear:
-   - 🧠 Orchestrator Model (radio buttons)
-   - ✍️ Writer Models (checkboxes)
+### Test 1: Simple Structure Creation (Single-Step)
+**User Input:** `"Create a screenplay about a space adventure"`
 
 **Expected Behavior:**
-- [ ] Auto-select option is checked by default
-- [ ] High-capability models show in Orchestrator section
-- [ ] Other models show in Writer section
-- [ ] Info banner explains the three modes
-- [ ] Save button is enabled
+1. ✅ Orchestrator analyzes intent → `create_structure`
+2. ✅ LLM generates structure with 3 acts
+3. ✅ Node created and saved to Supabase
+4. ✅ Structure displayed in canvas
+5. ❌ **NO content generation** (single-step task)
 
-**Test Scenarios:**
+**Expected Logs:**
+```
+🎬 ORCHESTRATION STARTED
+✅ Plan created: 3 sections, 0 tasks
+💾 Initializing hierarchical document system...
+✅ Hierarchical document system initialized
+🔄 Updating WorldState with new node
+✅ WorldState updated
+ℹ️ No content generation requested (structure only)
+```
 
-**A. Auto Mode (Recommended):**
-- Keep "Auto-select" checked
-- Leave writers empty
-- Click "Save Configuration"
-- ✅ Should save successfully
-
-**B. Single-Model Mode:**
-- Select an orchestrator (e.g., GPT-4o, Llama 70B)
-- Leave writers empty
-- Click "Save Configuration"
-- ✅ Orchestrator does BOTH planning and writing
-
-**C. Multi-Agent Mode:**
-- Select an orchestrator (e.g., GPT-4o)
-- Check writer models (e.g., GPT-4o-mini, Llama 8B)
-- Click "Save Configuration"
-- ✅ Orchestrator plans, delegates to cheaper writers
-
-**Validation:**
-- Check browser console for API call: `PATCH /api/user/api-keys/[id]/preferences`
-- Should see alert: "✅ Model preferences saved!"
-- Refresh page - selections should persist
+**Verification:**
+- Check canvas: Node exists with structure
+- Check database: `node.data.items` has structure
+- Check database: `node.document_data` is initialized but empty
+- Check UI: No "Generating content..." message
 
 ---
 
-### Test 2: Canvas Story Generation
-
-**Objective:** Verify orchestrator-based generation creates structure
-
-**Steps:**
-1. Navigate to `/canvas` (or create new canvas)
-2. Click the "Create Story" node (context node)
-3. In the panel:
-   - Verify "Model Configuration" shows your Profile settings (read-only)
-   - Select format (e.g., "Novel")
-   - Select template (e.g., "Three-Act Structure")
-4. Click "Create Novel"
-
-**Note:** Model selection has been moved to Profile page. The canvas panel now shows a read-only display of your configured orchestrator. If you need to change models, click "Change in Profile →"
+### Test 2: Multi-Step Task (Structure + Content)
+**User Input:** `"Screenplay, write act 1"`
 
 **Expected Behavior:**
-- [ ] New structure node appears on canvas
-- [ ] Structure node shows "Loading..." initially
-- [ ] Orchestrator node shows pink spinner + "INFERENCE"
-- [ ] **Reasoning panel auto-opens** in Create Story panel
-- [ ] Reasoning messages appear in real-time:
-  - 🧠 "Initializing orchestrator engine..."
-  - 📝 "Analyzing prompt..."
-  - ✅ "Plan created: X sections, Y tasks"
-  - 📊 "Structure initialized with X sections"
-  - ✅ "Orchestration complete!"
-- [ ] Structure node populates with sections
-- [ ] Alert shows: "✅ Novel structure generated with orchestrator!"
+1. ✅ Orchestrator analyzes intent → `create_structure`
+2. ✅ LLM detects multi-step task → "User wants structure AND content for act 1"
+3. ✅ Actions generated: `[generate_structure, generate_content(act-1)]`
+4. ✅ Node created and saved to Supabase
+5. ✅ WorldState updated with new node
+6. ✅ **Second orchestration triggered automatically**
+7. ✅ WriterAgent generates content for act 1
+8. ✅ Content saved to `document_data` JSON blob
 
-**Console Validation:**
-Check browser console for:
+**Expected Logs:**
 ```
-🎬 Starting orchestrator-based agentic generation...
-🔍 Fetching user preferences...
-📋 User preferences: { orchestratorModelId, writerModelIds, ... }
-🚀 Initializing orchestrator engine...
-📝 Analyzing prompt...
-✅ Plan created: X sections, Y tasks
-📊 Structure initialized with X sections
-✅ Orchestration complete!
+🎬 ORCHESTRATION STARTED
+✅ Plan created: 3 sections, 1 tasks
+🎯 Multi-step task detected: User wants structure AND content for act 1
+💾 Initializing hierarchical document system...
+✅ Hierarchical document system initialized
+🔄 Updating WorldState with new node
+✅ WorldState updated
+🎯 Multi-step task detected: Generating content...
+🚀 Starting agent execution for 1 action(s)
+🔀 Parallel execution: 1 actions across 1 batch(es) via tools
+✍️ [WriterAgent writer-tool-direct] Executing: write_content for section "Act 1"
+💾 [saveAgentContent] Content saved via API route
+✅ Agent execution complete
+✅ Content generation complete
 ```
+
+**Verification:**
+- Check canvas: Node exists with structure
+- Check database: `node.data.items` has structure
+- Check database: `node.document_data.sections[0].content` has generated text
+- Check UI: "Content generation complete" message
+- Open document view: Act 1 shows content
 
 ---
 
-### Test 3: Reasoning Chat UI
-
-**Objective:** Verify reasoning visibility works correctly
-
-**Steps:**
-1. During generation (Test 2), watch the reasoning panel
-2. Click the "Orchestrator Reasoning" header to toggle
+### Test 3: Multi-Step Task (Multiple Sections)
+**User Input:** `"Create a novel and write chapters 1, 2, and 3"`
 
 **Expected Behavior:**
-- [ ] Panel opens automatically when first message arrives
-- [ ] Messages appear in chronological order
-- [ ] Each message shows:
-  - Timestamp (HH:MM:SS)
-  - Icon (🧠/💭/⚡/✅)
-  - Colored background (blue/purple/yellow/green)
-  - Message text
-- [ ] Collapsible section works (toggle open/closed)
-- [ ] Messages persist across panel re-opens
+1. ✅ Orchestrator analyzes intent → `create_structure`
+2. ✅ LLM detects multi-step task → "User wants chapters 1-3 written"
+3. ✅ Actions generated: `[generate_structure, generate_content(ch1), generate_content(ch2), generate_content(ch3)]`
+4. ✅ Node created and saved
+5. ✅ WorldState updated
+6. ✅ **Second orchestration triggered**
+7. ✅ **DAGExecutor runs 3 WriterAgents in parallel**
+8. ✅ All 3 chapters saved to database
 
-**Message Types:**
-- **Thinking** (blue): Analysis, initialization
-- **Decision** (purple): Model selection, task assignment
-- **Task** (yellow): Task execution
-- **Result** (green): Completion, success
-
----
-
-### Test 4: Real-Time Streaming & Model Reasoning 🌊 NEW!
-
-**Objective:** Verify streaming tokens and model reasoning display in real-time
-
-**Background:**
-The system now streams the model's internal reasoning tokens as they're generated, giving users visibility into how the AI thinks through the planning process.
-
-**Steps:**
-1. Navigate to `/canvas` and click "Create Story" node
-2. Configure a Groq Llama model in Profile (recommended for fast streaming)
-3. Select a format and template
-4. Click "Create Novel"
-5. **Immediately watch the "Orchestrator Reasoning" section**
-
-**Expected Streaming Behavior:**
-
-**Phase 1: Orchestrator Messages (Instant)**
-- [ ] 🚀 "Initializing orchestrator engine..." (purple)
-- [ ] 🧠 "Temporal memory initialized" (purple)
-- [ ] ✅ "Using configured orchestrator: llama-3.3-70b-versatile" (blue)
-- [ ] 💭 "Orchestrator analyzing prompt and planning structure..." (purple)
-
-**Phase 2: Model Reasoning Stream (Character-by-Character)**
-- [ ] 🤖 "Model reasoning:" message appears (indigo gradient background)
-- [ ] Text streams character-by-character in real-time
-- [ ] Blinking cursor (|) appears at the end of streaming text
-- [ ] Message has pulse animation while streaming
-- [ ] Auto-scrolls to keep latest content visible
-
-**Phase 3: Completion**
-- [ ] 📋 "Plan created: X sections, Y tasks" (green)
-- [ ] Cursor disappears when streaming completes
-- [ ] Pulse animation stops
-
-**Visual Indicators to Verify:**
-
-1. **Model Message Styling:**
-   - Background: Indigo gradient (`from-indigo-50 to-purple-50`)
-   - Border: Left border (indigo-500)
-   - Icon: CPU chip with pulse animation
-   - Label: "MODEL" (bold indigo text)
-   - Typing cursor: Blinking vertical bar at end
-
-2. **Orchestrator Message Styling:**
-   - Background: Solid colors (purple/blue/yellow/green)
-   - Icon: Static (lightbulb/clipboard/lightning)
-   - Label: "THINKING", "DECISION", etc.
-
-3. **Auto-Scroll:**
-   - Panel should automatically scroll down as new tokens arrive
-   - Scroll behavior should be smooth (not jumpy)
-   - Latest message always visible
-
-**Console Validation:**
+**Expected Logs:**
 ```
-🌊 Streaming enabled for orchestrator model
-data: {"type":"reasoning","content":"Let me analyze..."}
-data: {"type":"reasoning","content":" this prompt..."}
-data: {"type":"content","content":"{\"structure\":["}
-data: {"type":"done","done":true}
-✅ Streaming complete: 1247 tokens
+🎬 ORCHESTRATION STARTED
+✅ Plan created: 10 sections, 3 tasks
+🎯 Multi-step task detected: User wants chapters 1, 2, and 3 written
+💾 Initializing hierarchical document system...
+✅ Hierarchical document system initialized
+🔄 Updating WorldState with new node
+✅ WorldState updated
+🎯 Multi-step task detected: Generating content...
+🚀 Starting agent execution for 3 action(s)
+🔀 Parallel execution: 3 actions across 1 batch(es) via tools
+📋 Execution plan:
+   Batch 1: 3 task(s) in parallel
+✍️ [WriterAgent writer-0] Executing: write_content for "Chapter 1"
+✍️ [WriterAgent writer-1] Executing: write_content for "Chapter 2"
+✍️ [WriterAgent writer-2] Executing: write_content for "Chapter 3"
+💾 [saveAgentContent] Content saved via API route (Chapter 1)
+💾 [saveAgentContent] Content saved via API route (Chapter 2)
+💾 [saveAgentContent] Content saved via API route (Chapter 3)
+✅ Agent execution complete
+✅ Content generation complete
 ```
 
-**Performance Metrics:**
-- [ ] First token appears within 500ms
-- [ ] Tokens stream smoothly (no long pauses)
-- [ ] UI remains responsive during streaming
-- [ ] Memory usage stays stable
-
-**Edge Cases to Test:**
-
-**A. No <think> Tags:**
-- Model doesn't wrap reasoning in tags
-- ✅ Should still stream content normally
-- ✅ No "Model reasoning" message (goes straight to plan)
-
-**B. Multiple <think> Blocks:**
-- Model uses multiple reasoning sections
-- ✅ All reasoning should accumulate in single message
-- ✅ Content between blocks streams normally
-
-**C. Very Long Reasoning:**
-- Model generates 500+ tokens of reasoning
-- ✅ Message container should scroll internally
-- ✅ Panel should auto-scroll to bottom
-- ✅ No performance degradation
-
-**Troubleshooting:**
-
-❌ **No streaming (instant response):**
-- Check: Provider adapter supports `generateStream()`
-- Check: `stream: true` in API call
-- Solution: Groq has streaming, OpenAI needs implementation
-
-❌ **Cursor doesn't appear:**
-- Check: `isStreaming` detection logic
-- Check: Last message starts with "🤖 Model reasoning:"
-
-❌ **No auto-scroll:**
-- Check: `reasoningEndRef` is attached
-- Check: useEffect dependency on `reasoningMessages`
+**Verification:**
+- Check database: 3 sections have content
+- Check logs: "Batch 1: 3 task(s) in parallel"
+- Check execution time: Should be ~same as single chapter (parallel execution)
+- Open document view: All 3 chapters show content
 
 ---
 
-### Test 5: Temporal Memory Logging
+### Test 4: Clarification Flow
+**User Input:** `"Write chapter 1"` (when multiple novels exist)
 
-**Objective:** Verify temporal memory tracks orchestration events
+**Expected Behavior:**
+1. ✅ Orchestrator analyzes intent → `open_and_write`
+2. ✅ Finds multiple matching nodes
+3. ✅ Returns `request_clarification` action
+4. ✅ UI displays options: "Novel A", "Novel B", "Novel C"
+5. ✅ User selects "Novel A"
+6. ✅ Orchestrator receives clarification response
+7. ✅ Opens Novel A and generates content for Chapter 1
 
-**How to Check:**
-1. Open browser DevTools → Console
-2. Look for temporal memory logs during generation:
-
+**Expected Logs:**
 ```
-📝 Event logged: orchestration/orchestration_started structure-...
-📝 Event logged: orchestration/models_selected gpt-4o
-📝 Event logged: orchestration/plan_created 15_sections
-📝 Event logged: orchestration/task_assigned task-1
-📝 Event logged: orchestration/orchestration_completed novel
-📊 Snapshot created: 5 events in 900000ms window
+🔍 [open_and_write] Search results: 3 candidates
+📋 Requesting clarification...
+[User selects option]
+✅ Clarification received: Novel A
+✍️ [WriterAgent] Executing: write_content for "Chapter 1"
+💾 [saveAgentContent] Content saved
+✅ Content generation complete
 ```
 
-**Expected Events:**
-- [ ] `orchestration_started` (with context hash)
-- [ ] `models_selected` (orchestrator + writers)
-- [ ] `plan_created` (section + task counts)
-- [ ] `task_assigned` (for each task)
-- [ ] `orchestration_completed` (duration)
-
-**Snapshot Behavior:**
-- After 15 minutes of activity, should see: `📊 Snapshot created`
-- After 1 hour, old events roll up into snapshots
+**Verification:**
+- Check UI: Clarification options displayed
+- Check logs: "Requesting clarification"
+- After selection: Content generated for correct novel
 
 ---
 
-### Test 6: Error Handling
+### Test 5: WorldState Synchronization
+**User Input:** `"Screenplay, write act 1"`
 
-**Objective:** Verify graceful error handling
+**Expected Behavior:**
+1. ✅ WorldState created with empty nodes array
+2. ✅ Node created and saved to database
+3. ✅ **WorldState.setActiveDocument() called**
+4. ✅ Agents can access node via `worldState.getActiveDocument()`
 
-**Test Scenarios:**
+**Verification Steps:**
+```typescript
+// Before node creation:
+worldState.getActiveDocument()
+// → { nodeId: null, format: null, structure: null }
 
-**A. No API Key:**
-- Remove all API keys from profile
-- Try to generate structure
-- ✅ Should show: "❌ No API key available. Go to Profile → Add API key"
+// After node creation + WorldState update:
+worldState.getActiveDocument()
+// → { nodeId: "12345-abc", format: "screenplay", structure: [...] }
 
-**B. Invalid API Key:**
-- Add invalid API key
-- Try to generate
-- ✅ Should show error from provider
+// Agents can now access:
+const doc = context.worldState.getActiveDocument()
+console.log(doc.nodeId) // "12345-abc"
+console.log(doc.structure) // [{ id: "act-1", name: "Act 1", ... }]
+```
 
-**C. Rate Limiting:**
-- Generate 11 structures within 1 minute
-- ✅ 11th should be blocked by constraint: "Rate limit exceeded: Max 10 orchestrations per minute"
-
-**D. Network Failure:**
-- Disconnect internet during generation
-- ✅ Should show: "Failed to generate structure" with helpful error
-
----
-
-### Test 7: Backward Compatibility
-
-**Objective:** Ensure existing workflows still work
-
-**Test:**
-1. Use the old `triggerAIGeneration` directly (if exposed)
-2. Or verify legacy YAML generation still exists
-3. Check that existing stories open without errors
-
-**Expected:**
-- [ ] Legacy function still exists in code
-- [ ] No breaking changes to existing data structures
-- [ ] Old stories load correctly
+**Check Logs:**
+```
+🔄 [triggerOrchestratedGeneration] Updating WorldState with new node
+✅ [triggerOrchestratedGeneration] WorldState updated
+```
 
 ---
 
-## 🔍 Known Issues & Workarounds
+### Test 6: Blackboard Tracking
+**User Input:** `"Screenplay, write act 1"`
 
-### Issue 1: Orchestrator Not Finding Models
+**Expected Behavior:**
+1. ✅ Blackboard tracks canvas state
+2. ✅ Blackboard tracks document state
+3. ✅ Blackboard tracks task assignments
+4. ✅ Blackboard tracks task results
 
-**Symptom:** "No orchestrator models found" error
+**Verification:**
+```typescript
+// Check blackboard state:
+const messages = blackboard.getRecentMessages(100)
 
-**Fix:**
-- Go to Profile → BYOAPI
-- Expand API key
-- Open "Model Configuration"
-- Save configuration (even with Auto-select)
+// Should include:
+// - User message: "Screenplay, write act 1"
+// - Orchestrator: "🎯 Multi-step task detected"
+// - Orchestrator: "🚀 Starting agent execution"
+// - Agent: "✍️ Executing: write_content"
+// - Agent: "💾 Content saved"
+// - Orchestrator: "✅ Agent execution complete"
 
-### Issue 2: Reasoning Panel Not Opening
-
-**Symptom:** Messages logged but panel stays closed
-
-**Workaround:**
-- Manually click "Orchestrator Reasoning" header
-- Check browser console for errors
-
-### Issue 3: Structure Empty After Generation
-
-**Symptom:** Structure node shows 0 sections
-
-**Debug:**
-1. Check console for `plan.structure` log
-2. Verify plan has sections
-3. Check if `structureItems` mapping failed
+// Check task tracking:
+const tasks = blackboard.getTasks()
+// Should show: task assigned to writer-0, status: completed
+```
 
 ---
 
-## 📊 Success Criteria
+### Test 7: Content Persistence
+**User Input:** `"Screenplay, write act 1"`
 
-### Minimum Viable Test (MVP):
-- [x] Database migration runs successfully
-- [ ] Profile page model selection works
-- [ ] Canvas generates structure with orchestrator
-- [ ] Reasoning messages appear
-- [ ] No console errors
-- [ ] Structure node populates
+**Expected Behavior:**
+1. ✅ Content generated by WriterAgent
+2. ✅ Saved via `/api/agent/save-content`
+3. ✅ Persists across page refreshes
+4. ✅ Accessible in document view
 
-### Full Test Suite:
-- [ ] All 6 test cases pass
-- [ ] Temporal memory logs events correctly
-- [ ] Error scenarios handled gracefully
-- [ ] UI is responsive and intuitive
-- [ ] Performance is acceptable (<10s for generation)
+**Verification Steps:**
+1. Generate content
+2. Check database directly:
+   ```sql
+   SELECT document_data FROM nodes WHERE id = '12345-abc';
+   ```
+3. Refresh page
+4. Open document view
+5. Verify content is still there
+
+**Expected Database Structure:**
+```json
+{
+  "format": "screenplay",
+  "sections": [
+    {
+      "id": "act-1",
+      "name": "Act 1",
+      "level": 1,
+      "parentId": null,
+      "content": "FADE IN:\n\nINT. SPACESHIP - DAY\n\n...",
+      "wordCount": 1234,
+      "summary": "The hero discovers..."
+    }
+  ],
+  "totalWordCount": 1234,
+  "lastUpdated": "2025-11-26T14:00:00.000Z"
+}
+```
 
 ---
 
-## 🚀 Post-Testing Actions
+### Test 8: Error Handling
+**User Input:** `"Screenplay, write act 1"` (with invalid API key)
 
-### If Tests Pass ✅
+**Expected Behavior:**
+1. ✅ Orchestrator attempts to generate structure
+2. ✅ LLM call fails (invalid API key)
+3. ✅ Error caught and logged
+4. ✅ User sees error message
+5. ✅ System doesn't crash
 
-1. **Update Documentation:**
-   ```bash
-   git add ORCHESTRATOR_AGENTIC_SYSTEM.md
-   git commit -m "docs: Update with test results"
+**Expected Logs:**
+```
+❌ [create_structure] Failed to generate plan: API key invalid
+❌ Failed to generate structure: API key invalid
+⚠️ Content generation failed: API key invalid
+```
+
+**Verification:**
+- Check UI: Error message displayed
+- Check logs: Error logged with details
+- Check system: No crash, user can retry
+
+---
+
+## 🔍 Debug Checklist
+
+### If Content Generation Doesn't Start:
+
+1. **Check orchestrator response:**
+   ```javascript
+   console.log('Actions:', response.actions)
+   // Should include: { type: 'generate_content', payload: { autoStart: true } }
    ```
 
-2. **Merge to Main:**
-   ```bash
-   git checkout main
-   git merge feature/agentic-orchestrator
-   git push origin main
+2. **Check hasContentActions:**
+   ```javascript
+   const hasContentActions = response.actions.some(a => 
+     a.type === 'generate_content' && a.payload?.autoStart
+   )
+   console.log('Has content actions:', hasContentActions)
+   // Should be: true
    ```
 
-3. **Deploy:**
-   ```bash
-   npm run build
-   # Deploy to production
+3. **Check WorldState update:**
+   ```javascript
+   console.log('WorldState before:', worldState.getActiveDocument())
+   worldState.setActiveDocument(nodeId, format, structure)
+   console.log('WorldState after:', worldState.getActiveDocument())
+   // Should show: nodeId populated
    ```
 
-### If Tests Fail ❌
+4. **Check second orchestration call:**
+   ```javascript
+   console.log('Triggering second orchestration with nodeId:', structureNodeId)
+   const contentResponse = await orchestrator.orchestrate({
+     currentStoryStructureNodeId: structureNodeId,
+     // ...
+   })
+   console.log('Content response:', contentResponse)
+   ```
 
-1. **Document Issues:**
-   - Note which test failed
-   - Copy error messages
-   - Take screenshots
+### If Content Doesn't Save:
 
-2. **File Issues:**
-   - Create GitHub issues for each bug
-   - Link to test case
-   - Add reproduction steps
+1. **Check agent execution:**
+   ```javascript
+   console.log('Agent execution started')
+   // Should see: ✍️ [WriterAgent] Executing...
+   ```
 
-3. **Fix & Retest:**
-   - Fix issues on feature branch
-   - Re-run tests
-   - Do NOT merge until all tests pass
+2. **Check saveAgentContent call:**
+   ```javascript
+   console.log('Saving content:', { nodeId, sectionId, contentLength })
+   // Should see: 💾 [saveAgentContent] Attempting save
+   ```
+
+3. **Check API response:**
+   ```javascript
+   console.log('Save result:', saveResult)
+   // Should see: { success: true, wordCount: 1234 }
+   ```
+
+4. **Check database:**
+   ```sql
+   SELECT document_data FROM nodes WHERE id = 'your-node-id';
+   ```
+
+### If WorldState is Stale:
+
+1. **Check update call:**
+   ```javascript
+   console.log('Updating WorldState...')
+   worldState.setActiveDocument(nodeId, format, structure)
+   console.log('WorldState updated')
+   ```
+
+2. **Check agent access:**
+   ```javascript
+   // In WriteContentTool:
+   const doc = context.worldState?.getActiveDocument()
+   console.log('Agent sees document:', doc)
+   // Should show: { nodeId: "...", format: "...", structure: [...] }
+   ```
 
 ---
 
-## 🎯 Testing Checklist
+## 📊 Performance Metrics
 
-**Setup:**
-- [ ] Database migration complete
-- [ ] Dev server running
-- [ ] API keys ready
+### Expected Execution Times:
 
-**Tests:**
-- [ ] Test 1: Profile Page Model Selection
-- [ ] Test 2: Canvas Story Generation
-- [ ] Test 3: Reasoning Chat UI
-- [ ] Test 4: Temporal Memory Logging
-- [ ] Test 5: Error Handling
-- [ ] Test 6: Backward Compatibility
+| Task | Expected Time | Notes |
+|------|---------------|-------|
+| Structure generation | 3-8 seconds | LLM call |
+| Single section content | 10-20 seconds | LLM call + save |
+| 3 sections (parallel) | 10-20 seconds | Same as single (parallel) |
+| 10 sections (parallel) | 15-30 seconds | Batched execution |
 
-**Validation:**
-- [ ] No console errors
-- [ ] Performance acceptable
-- [ ] UI/UX smooth
-- [ ] Documentation updated
+### Token Usage:
 
-**Ready for Merge:**
-- [ ] All tests passed
-- [ ] Issues documented/fixed
-- [ ] Team review completed
-- [ ] Changelog updated
+| Task | Estimated Tokens | Cost (GPT-4o) |
+|------|------------------|---------------|
+| Structure generation | 2,000-5,000 | $0.01-0.03 |
+| Single section content | 3,000-8,000 | $0.02-0.05 |
+| 3 sections (parallel) | 9,000-24,000 | $0.05-0.15 |
 
 ---
 
-## 📝 Test Log Template
+## ✅ Success Criteria
 
-Use this template to log your test results:
+### Phase 3 is successful if:
+
+1. ✅ User can request "Screenplay, write act 1"
+2. ✅ Structure is created automatically
+3. ✅ Content is generated automatically for act 1
+4. ✅ Content persists across page refreshes
+5. ✅ User can open document view and see content
+6. ✅ WorldState is always up-to-date
+7. ✅ Blackboard tracks all operations
+8. ✅ Tools handle all actions
+9. ✅ Parallel execution works for multiple sections
+10. ✅ Error handling prevents crashes
+
+---
+
+## 🚀 Next Steps After Testing
+
+1. **Monitor Production Logs:**
+   - Track agent execution times
+   - Monitor token usage
+   - Watch for errors
+
+2. **Optimize Performance:**
+   - Cache structure generation results
+   - Implement content streaming
+   - Add progress indicators
+
+3. **Enhance Features:**
+   - Add content revision flow
+   - Implement CriticAgent (when API limits allow)
+   - Add collaborative editing
+
+4. **User Experience:**
+   - Add real-time progress updates
+   - Show token usage estimates
+   - Display estimated completion time
+
+---
+
+## 📝 Test Report Template
 
 ```markdown
-## Test Session: [DATE] [TIME]
+## Test Report: [Test Name]
 
-**Tester:** [NAME]
-**Branch:** feature/agentic-orchestrator
-**Commit:** [HASH]
+**Date:** [Date]
+**Tester:** [Name]
+**Build:** [Commit Hash]
 
-### Environment:
-- Node: [VERSION]
-- Browser: [BROWSER + VERSION]
-- API Keys: [PROVIDERS TESTED]
+### Test Input:
+[User prompt]
 
-### Test Results:
+### Expected Behavior:
+[What should happen]
 
-**Test 1: Profile Page**
-- Status: ✅ PASS / ❌ FAIL
-- Notes: [OBSERVATIONS]
+### Actual Behavior:
+[What actually happened]
 
-**Test 2: Canvas Generation**
-- Status: ✅ PASS / ❌ FAIL
-- Notes: [OBSERVATIONS]
+### Logs:
+```
+[Paste relevant logs]
+```
 
-[... continue for all tests ...]
+### Screenshots:
+[Attach screenshots]
 
-### Issues Found:
-1. [ISSUE DESCRIPTION]
-2. [ISSUE DESCRIPTION]
+### Status:
+- [ ] ✅ PASS
+- [ ] ❌ FAIL
+- [ ] ⚠️ PARTIAL
 
-### Recommendations:
-- [ACTION ITEMS]
-
-### Ready to Merge: ✅ YES / ❌ NO
+### Notes:
+[Any additional observations]
 ```
 
 ---
 
-## 🆘 Getting Help
+## 🎯 Manual Testing Procedure
 
-**Console Errors:**
-- Check browser DevTools → Console
-- Look for red error messages
-- Copy full stack trace
+1. **Start dev server:** `npm run dev`
+2. **Open browser:** `http://localhost:3002`
+3. **Login** with test account
+4. **Navigate to canvas**
+5. **Run Test 1:** Simple structure creation
+6. **Run Test 2:** Multi-step task (single section)
+7. **Run Test 3:** Multi-step task (multiple sections)
+8. **Run Test 4:** Clarification flow
+9. **Run Test 5:** WorldState synchronization
+10. **Run Test 6:** Blackboard tracking
+11. **Run Test 7:** Content persistence
+12. **Run Test 8:** Error handling
 
-**API Errors:**
-- Check Network tab in DevTools
-- Find failed requests
-- Check response body
-
-**Supabase Errors:**
-- Check Supabase Studio → Database → Logs
-- Verify migration applied
-- Check table schema
-
-**Contact:**
-- Create GitHub issue with "bug" label
-- Include console logs, screenshots
-- Describe expected vs actual behavior
+**Record results for each test using the template above.**
 
 ---
 
-**Last Updated:** [DATE]  
-**Version:** 1.0  
-**Status:** Ready for Testing
+## 🔧 Troubleshooting
 
+### Common Issues:
+
+1. **"Node not found" error:**
+   - Check: Node ID format (should be `timestamp-random`)
+   - Check: Node saved to database before agent execution
+   - Check: WorldState updated with correct node ID
+
+2. **Content not generating:**
+   - Check: `hasContentActions` is true
+   - Check: Second orchestration call is triggered
+   - Check: `currentStoryStructureNodeId` is passed
+
+3. **Content not saving:**
+   - Check: `/api/agent/save-content` endpoint is accessible
+   - Check: User authentication is valid
+   - Check: Node ownership is correct
+
+4. **WorldState is stale:**
+   - Check: `worldState.setActiveDocument()` is called
+   - Check: Called AFTER node is saved
+   - Check: Called BEFORE second orchestration
+
+---
+
+**Ready to test!** 🚀

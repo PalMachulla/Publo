@@ -66,12 +66,20 @@ export async function POST(request: NextRequest) {
       .from('stories')
       .select('user_id')
       .eq('id', storyId)
-      .single()
+      .maybeSingle() // ✅ FIX: Use maybeSingle() to handle 0 rows gracefully
     
-    if (storyError || !storyData) {
-      console.error('❌ [API /api/node/save] Story not found:', storyError)
+    if (storyError) {
+      console.error('❌ [API /api/node/save] Database error fetching story:', storyError)
       return NextResponse.json(
-        { success: false, error: `Story not found: ${storyError?.message}` },
+        { success: false, error: `Database error: ${storyError.message}` },
+        { status: 500 }
+      )
+    }
+    
+    if (!storyData) {
+      console.error('❌ [API /api/node/save] Story not found:', storyId)
+      return NextResponse.json(
+        { success: false, error: 'Story not found' },
         { status: 404 }
       )
     }
@@ -161,10 +169,13 @@ export async function POST(request: NextRequest) {
       .from('nodes')
       .select('id, updated_at')
       .eq('id', nodeId)
-      .single()
+      .maybeSingle() // ✅ FIX: Use maybeSingle() for verification query
     
-    if (verifyError || !verifyData) {
-      console.warn('⚠️ [API /api/node/save] Could not verify update:', verifyError)
+    if (verifyError) {
+      console.warn('⚠️ [API /api/node/save] Database error during verification:', verifyError)
+      // Don't fail, update likely succeeded
+    } else if (!verifyData) {
+      console.warn('⚠️ [API /api/node/save] Could not verify update: node not found')
       // Don't fail, update likely succeeded
     } else {
       console.log('✅ [API /api/node/save] Update verified:', verifyData.updated_at)

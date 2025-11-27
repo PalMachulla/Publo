@@ -89,6 +89,15 @@ export async function POST(request: NextRequest) {
         count: recentNodes?.length || 0,
         nodeIds: recentNodes?.map(n => ({ id: n.id, type: n.type, created: n.created_at })) || []
       })
+      
+      // ✅ Return early to prevent .single() error on non-existent node
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Node ${storyStructureNodeId} does not exist in database. Check logs for recent nodes.` 
+        },
+        { status: 404 }
+      )
     }
 
     // STEP 2: Use ADMIN client to fetch node + verify ownership
@@ -111,12 +120,20 @@ export async function POST(request: NextRequest) {
       .from('nodes')
       .select('id, document_data, story_id')
       .eq('id', storyStructureNodeId)
-      .single()
+      .maybeSingle() // ✅ FIX: Use maybeSingle() to handle 0 rows gracefully
 
-    if (fetchError || !node) {
-      console.error('❌ [API /api/agent/save-content] Failed to fetch node:', fetchError)
+    if (fetchError) {
+      console.error('❌ [API /api/agent/save-content] Database error:', fetchError)
       return NextResponse.json(
-        { success: false, error: `Node not found: ${fetchError?.message || 'Unknown error'}` },
+        { success: false, error: `Database error: ${fetchError.message}` },
+        { status: 500 }
+      )
+    }
+
+    if (!node) {
+      console.error('❌ [API /api/agent/save-content] Node not found:', storyStructureNodeId)
+      return NextResponse.json(
+        { success: false, error: `Node not found: ${storyStructureNodeId}` },
         { status: 404 }
       )
     }
@@ -132,10 +149,18 @@ export async function POST(request: NextRequest) {
       .from('stories')
       .select('user_id')
       .eq('id', node.story_id)
-      .single()
+      .maybeSingle() // ✅ FIX: Use maybeSingle() to handle 0 rows gracefully
 
-    if (storyError || !story) {
-      console.error('❌ [API /api/agent/save-content] Story not found:', storyError)
+    if (storyError) {
+      console.error('❌ [API /api/agent/save-content] Database error fetching story:', storyError)
+      return NextResponse.json(
+        { success: false, error: `Database error: ${storyError.message}` },
+        { status: 500 }
+      )
+    }
+
+    if (!story) {
+      console.error('❌ [API /api/agent/save-content] Story not found:', node.story_id)
       return NextResponse.json(
         { success: false, error: 'Story not found' },
         { status: 404 }

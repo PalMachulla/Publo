@@ -78,7 +78,7 @@ export class WriterAgent implements Agent {
           storyStructureNodeId: context.metadata?.storyStructureNodeId || null,
           structureItems: context.dependencies?.structure || [],
           contentMap: context.dependencies?.contentMap || {},
-          format: context.metadata?.format || 'novel'
+          format: context.metadata?.format || 'prose' // Generic fallback instead of 'novel'
         })
       })
       
@@ -130,10 +130,17 @@ export class WriterAgent implements Agent {
     
     // Section details
     if (taskContext.section) {
-      const { name, description } = taskContext.section
+      const { name, description, summary } = taskContext.section as any
       prompt += `## Section: ${name}\n`
-      if (description) {
-        prompt += `Description: ${description}\n`
+      
+      // ✅ CRITICAL: Use summary as primary guidance (this is what the orchestrator planned)
+      if (summary) {
+        prompt += `\n**REQUIRED CONTENT:**\n${summary}\n`
+        prompt += `\n⚠️ Your content MUST accomplish what is described above. This is the core objective for this section.\n\n`
+      }
+      
+      if (description && description !== summary) {
+        prompt += `Additional context: ${description}\n`
       }
       prompt += '\n'
     }
