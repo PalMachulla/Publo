@@ -12,7 +12,8 @@ import {
   RadioGroup,
   RadioItem,
   Button,
-  ChatAccordion
+  ChatAccordion,
+  TemplateSelector
 } from '@/components/ui'
 import { 
   getMultiAgentOrchestrator, // PHASE 3: Multi-agent support
@@ -138,73 +139,12 @@ interface CreateStoryPanelProps {
   onDeleteNode?: (nodeId: string) => Promise<void> // DELETE: Delete a canvas node
 }
 
-interface Template {
-  id: string
-  name: string
-  description: string
-}
+// ✅ REFACTORED: Templates now imported from schema (single source of truth)
+import { getTemplatesForFormat, type Template } from '@/lib/orchestrator/schemas/templateRegistry'
 
-const templates: Record<StoryFormat, Template[]> = {
-  'novel': [
-    { id: 'three-act', name: 'Three-Act Structure', description: 'Classic beginning, middle, and end' },
-    { id: 'heros-journey', name: "Hero's Journey", description: 'Archetypal adventure narrative' },
-    { id: 'freytag', name: 'Freytag\'s Pyramid', description: 'Rising action, climax, falling action' },
-    { id: 'save-the-cat', name: 'Save The Cat', description: 'Modern screenplay structure adapted for novels' },
-    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
-  ],
-  'short-story': [
-    { id: 'classic', name: 'Classic Short Story', description: 'Single plot, few characters, brief timespan' },
-    { id: 'flash-fiction', name: 'Flash Fiction', description: 'Ultra-short 500-1000 words' },
-    { id: 'twist-ending', name: 'Twist Ending', description: 'Surprise revelation structure' },
-    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
-  ],
-  'report': [
-    { id: 'business', name: 'Business Report', description: 'Executive summary, findings, recommendations' },
-    { id: 'research', name: 'Research Report', description: 'Literature review, methodology, results' },
-    { id: 'technical', name: 'Technical Report', description: 'Specifications, analysis, documentation' },
-    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
-  ],
-  'report_script_coverage': [
-    { id: 'standard', name: 'Standard Coverage', description: 'Industry-standard screenplay analysis' },
-    { id: 'detailed', name: 'Detailed Coverage', description: 'In-depth analysis with recommendations' },
-    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
-  ],
-  'report_business': [
-    { id: 'executive', name: 'Executive Report', description: 'High-level strategic analysis' },
-    { id: 'analytical', name: 'Analytical Report', description: 'Data-driven insights and recommendations' },
-    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
-  ],
-  'report_content_analysis': [
-    { id: 'thematic', name: 'Thematic Analysis', description: 'Focus on themes and patterns' },
-    { id: 'structural', name: 'Structural Analysis', description: 'Analyze content structure and flow' },
-    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
-  ],
-  'article': [
-    { id: 'how-to', name: 'How-To Guide', description: 'Step-by-step instructional' },
-    { id: 'listicle', name: 'Listicle', description: 'Numbered or bulleted list format' },
-    { id: 'opinion', name: 'Opinion Piece', description: 'Editorial or commentary' },
-    { id: 'feature', name: 'Feature Article', description: 'In-depth exploration of topic' },
-    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
-  ],
-  'screenplay': [
-    { id: 'feature', name: 'Feature Film', description: '90-120 pages, three acts' },
-    { id: 'tv-pilot', name: 'TV Pilot', description: '30 or 60-minute episode' },
-    { id: 'short-film', name: 'Short Film', description: '5-30 pages' },
-    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
-  ],
-  'essay': [
-    { id: 'argumentative', name: 'Argumentative', description: 'Claim, evidence, counterarguments' },
-    { id: 'narrative', name: 'Narrative Essay', description: 'Personal story with reflection' },
-    { id: 'compare-contrast', name: 'Compare & Contrast', description: 'Analyze similarities and differences' },
-    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
-  ],
-  'podcast': [
-    { id: 'interview', name: 'Interview Format', description: 'Host interviews guests' },
-    { id: 'co-hosted', name: 'Co-Hosted', description: 'Multiple hosts in conversation' },
-    { id: 'storytelling', name: 'Storytelling', description: 'Narrative-driven episodes' },
-    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
-  ]
-}
+// Removed hardcoded templates - now using templateRegistry schema
+// Old location: lines 141-207 (67 lines removed)
+// New location: frontend/src/lib/orchestrator/schemas/templateRegistry.ts
 
 const storyFormats: Array<{ type: StoryFormat; label: string; description: string; icon: JSX.Element }> = [
   {
@@ -1199,7 +1139,7 @@ export default function OrchestratorPanel({
     if (pendingCreation) {
       // Parse conversational template selection
       const lowerMessage = message.toLowerCase()
-      const availableTemplates = templates[pendingCreation.format] || []
+      const availableTemplates = getTemplatesForFormat(pendingCreation.format)
       
       // Try to match user response to a template
       for (const template of availableTemplates) {
@@ -1862,7 +1802,7 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
           
           // Show template options to user
           const formatLabel = storyFormats.find(f => f.type === formatToUse)?.label || formatToUse
-          const availableTemplates = templates[formatToUse] || []
+          const availableTemplates = getTemplatesForFormat(formatToUse)
           
           if (onAddChatMessage) {
             onAddChatMessage(`📝 Great! Let's create a ${formatLabel}. What style would you like?`, 'orchestrator', 'result')
@@ -2437,25 +2377,12 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
             <p className="text-sm font-medium text-gray-900 mb-3">
               Choose a template for your {storyFormats.find(f => f.type === pendingCreation.format)?.label || pendingCreation.format}:
             </p>
-            <div className="grid grid-cols-1 gap-2">
-              {(templates[pendingCreation.format] || []).map((template) => (
-                <button
-                  key={template.id}
-                  onClick={() => handleTemplateSelection(template.id, template.name)}
-                  className="flex flex-col items-start p-3 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all text-left group"
-                >
-                  <span className="font-medium text-gray-900 group-hover:text-blue-700">
-                    {template.name}
-                  </span>
-                  <span className="text-xs text-gray-500 mt-1">
-                    {template.description}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-500 mt-3">
-              💬 Or just tell me which one: &quot;The interview one looks good&quot; or &quot;Let&apos;s go with blank canvas&quot;
-            </p>
+            <TemplateSelector
+              format={pendingCreation.format}
+              formatLabel={storyFormats.find(f => f.type === pendingCreation.format)?.label || pendingCreation.format}
+              templates={getTemplatesForFormat(pendingCreation.format)}
+              onSelect={handleTemplateSelection}
+            />
           </div>
         )}
         

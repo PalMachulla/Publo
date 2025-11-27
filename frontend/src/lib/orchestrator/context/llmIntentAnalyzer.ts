@@ -11,6 +11,7 @@
 
 import type { IntentAnalysis, UserIntent } from './intentRouter'
 import { buildFormatDescriptionsForLLM } from '../schemas/documentHierarchy'
+import { buildTemplateDescriptionsForLLM } from '../schemas/templateRegistry'
 
 export interface ConversationMessage {
   role: 'user' | 'assistant'
@@ -48,6 +49,7 @@ export interface LLMIntentResult extends IntentAnalysis {
     isExplicitSourceReference?: boolean // True if user explicitly said "based on X", "using X"
     autoGenerateSections?: string[] // Sections to auto-generate after structure creation (e.g., ["scene2", "act1"])
     documentFormat?: string // Format extracted from message (e.g., "short-story", "novel", "screenplay")
+    suggestedTemplate?: string // Template ID matched from keywords (e.g., "interview", "heros-journey", "feature")
   }
 }
 
@@ -234,11 +236,14 @@ Return your analysis as JSON with this structure:
     "sourceDocument": "When user says 'based on X' or 'using X', extract the name/ID of the source document from canvas context",
     "isExplicitSourceReference": "Boolean - true if user explicitly mentioned a specific document to base new content on (e.g., 'based on the screenplay', 'using the podcast')",
     "autoGenerateSections": "Array of section references to auto-generate (e.g., ['chapter 2'] when user says 'write chapter 2 straight away')",
-    "documentFormat": "Format extracted from user's message (e.g., 'short story' → 'short-story', 'screenplay' → 'screenplay')"
+    "documentFormat": "Format extracted from user's message (e.g., 'short story' → 'short-story', 'screenplay' → 'screenplay')",
+    "suggestedTemplate": "Template ID if user mentioned specific template keywords (e.g., 'interview' → 'interview', 'hero's journey' → 'heros-journey', 'feature film' → 'feature')"
   }
 }
 
 ${buildFormatDescriptionsForLLM()}
+
+${buildTemplateDescriptionsForLLM()}
 
 EDUCATIONAL CLARIFICATION (CRITICAL):
 When user mentions a section that doesn't match the format conventions:

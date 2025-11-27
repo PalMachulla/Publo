@@ -38,6 +38,7 @@ export interface IntentAnalysis {
     referenceContent?: string
     sourceDocument?: string // Name or ID of source document (e.g., "Screenplay", "Podcast")
     isExplicitSourceReference?: boolean // True if user explicitly said "based on X", "using X"
+    suggestedTemplate?: string // Template ID matched from keywords (e.g., "interview", "heros-journey", "feature")
   }
 }
 

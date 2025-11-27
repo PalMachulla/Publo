@@ -42,6 +42,7 @@ import type { IntentAnalysis } from '../../context/intentRouter'
 import type { OrchestratorRequest, OrchestratorAction } from '../../core/orchestratorEngine'
 import type { CanvasContext } from '../../context/contextProvider'
 import type { TieredModel } from '../../core/modelRouter'
+import { getTemplateById } from '../../schemas/templateRegistry'
 
 /**
  * CreateStructureAction
@@ -99,9 +100,16 @@ export class CreateStructureAction extends BaseAction {
       availableModels?: TieredModel[]
     }
   ): Promise<OrchestratorAction[]> {
+    // Check if LLM suggested a specific template
+    const suggestedTemplate = intent.extractedEntities?.suggestedTemplate
+    const templateInfo = suggestedTemplate && request.documentFormat
+      ? getTemplateById(request.documentFormat, suggestedTemplate)
+      : null
+    
     console.log('🏗️ [CreateStructureAction] Processing structure request:', {
       format: request.documentFormat,
-      message: request.message
+      message: request.message,
+      suggestedTemplate: templateInfo ? `${templateInfo.name} (${templateInfo.id})` : 'none'
     })
     
     const actions: OrchestratorAction[] = []
