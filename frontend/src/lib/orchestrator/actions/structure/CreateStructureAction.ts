@@ -293,10 +293,11 @@ export class CreateStructureAction extends BaseAction {
     // STEP 6: Analyze task complexity
     // ============================================================
     
-    const taskAnalysis = this.orchestratorEngine.analyzeTaskComplexity(
+    const taskAnalysis = await this.orchestratorEngine.analyzeTaskComplexity(
       request.message,
-      structurePlan,
-      request.documentFormat
+      structurePlan.structure,
+      intent,
+      blackboard
     )
     
     console.log('🔍 [Task Analysis]', taskAnalysis)
