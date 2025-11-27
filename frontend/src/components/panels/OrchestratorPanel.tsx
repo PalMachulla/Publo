@@ -593,10 +593,9 @@ export default function OrchestratorPanel({
       return
     }
     
-    // Add user message to chat
-    if (onAddChatMessage) {
-      onAddChatMessage(message, 'user')
-    }
+    // ✅ FIX: Don't add user message here - orchestrator will add it automatically
+    // The orchestrator adds the user message to blackboard, which triggers the messageCallback
+    // Adding it here causes duplication in the UI
     setChatMessage('')
     
     // Show canvas context if changed
@@ -847,10 +846,7 @@ export default function OrchestratorPanel({
     console.log('📥 [Clarification] Received response:', response)
     console.log('📥 [Clarification] Pending:', pendingClarification)
     
-    // Add user response to chat
-    if (onAddChatMessage) {
-      onAddChatMessage(response, 'user')
-    }
+    // ✅ FIX: Don't add user response here - orchestrator will add it automatically
     setChatMessage('')
     
     // Get user ID for orchestration
