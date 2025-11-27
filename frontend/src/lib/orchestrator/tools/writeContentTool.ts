@@ -219,7 +219,8 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
 
       if (useCluster) {
         // PHASE 3: Use writer-critic cluster for quality assurance
-        const writer = new WriterAgent('writer-tool', userId, userKeyId)
+        // ✅ FIX: WriterAgent expects userKeyIds as string[] | undefined
+        const writer = new WriterAgent('writer-tool', userId, userKeyId ? [userKeyId] : undefined)
         const critic = new CriticAgent('critic-tool', userId)
         const cluster = new WriterCriticCluster(writer, critic, 3, 7.0)
 
@@ -245,7 +246,8 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
         console.log(`✅ [WriteContentTool] Cluster complete: ${iterations} iterations, score ${finalScore}/10`)
       } else {
         // Direct writer agent (no iterative refinement)
-        const writer = new WriterAgent('writer-tool-direct', userId, userKeyId)
+        // ✅ FIX: WriterAgent expects userKeyIds as string[] | undefined
+        const writer = new WriterAgent('writer-tool-direct', userId, userKeyId ? [userKeyId] : undefined)
         
         const result = await writer.execute(task, {
           blackboard: context.blackboard,
