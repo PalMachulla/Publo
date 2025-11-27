@@ -73,6 +73,14 @@ export function useHierarchicalDocument({
       return
     }
 
+    // ✅ FIX: Validate nodeId format before querying
+    if (nodeId === 'null' || nodeId === 'undefined') {
+      console.error('❌ [useHierarchicalDocument] Invalid nodeId:', nodeId)
+      setError('Invalid node ID')
+      setLoading(false)
+      return
+    }
+
     try {
       console.log('🔍 [useHierarchicalDocument] Fetching document for node:', nodeId)
       setLoading(true)
@@ -86,11 +94,13 @@ export function useHierarchicalDocument({
       const retryDelays = [500, 1000, 2000] // ms
       
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        console.log(`🔍 [useHierarchicalDocument] Fetch attempt ${attempt + 1}/${maxRetries + 1} for node:`, nodeId)
+        
         const result = await supabaseRef.current
           .from('nodes')
           .select('id, document_data')
           .eq('id', nodeId)
-          .single()
+          .maybeSingle() // ✅ FIX: Use maybeSingle() instead of single() to handle 0 rows gracefully
         
         data = result.data
         fetchError = result.error
@@ -111,6 +121,23 @@ export function useHierarchicalDocument({
         // If node doesn't exist after all retries, throw
         console.error('❌ [useHierarchicalDocument] Fetch error after retries:', fetchError)
         throw fetchError
+      }
+
+      // ✅ FIX: Handle case where node doesn't exist (0 rows)
+      if (!data) {
+        console.warn('⚠️ [useHierarchicalDocument] Node not found in database:', nodeId)
+        console.log('🔄 [useHierarchicalDocument] Initializing from structure items as fallback')
+        
+        // Initialize from structure items
+        if (structureItemsRef.current && structureItemsRef.current.length > 0) {
+          const docManager = DocumentManager.fromStructureItems(structureItemsRef.current, formatRef.current)
+          setManager(docManager)
+        } else {
+          throw new Error('Node not found and no structure items available for initialization')
+        }
+        
+        setLoading(false)
+        return
       }
 
       // If document_data exists, use it; otherwise, initialize from structure items

@@ -22,3 +22,5 @@ SELECT
   (SELECT COUNT(*) FROM user_profiles) as total_profiles;
 
 
+
+

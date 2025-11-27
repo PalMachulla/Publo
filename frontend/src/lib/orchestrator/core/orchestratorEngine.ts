@@ -33,6 +33,14 @@ import { getDocumentHierarchy, DOCUMENT_HIERARCHY } from '@/lib/documentHierarch
 import type { WorldStateManager } from './worldState'
 // PHASE 2: Tool System - Executable tools
 import type { ToolRegistry } from '../tools'
+// PHASE 1 REFACTORING: Modular action generators
+import { BaseAction } from '../actions/base/BaseAction'
+import { AnswerQuestionAction } from '../actions/content/AnswerQuestionAction'
+import { WriteContentAction } from '../actions/content/WriteContentAction'
+import { CreateStructureAction } from '../actions/structure/CreateStructureAction'
+import { DeleteNodeAction } from '../actions/navigation/DeleteNodeAction'
+import { OpenDocumentAction } from '../actions/navigation/OpenDocumentAction'
+import { NavigateSectionAction } from '../actions/navigation/NavigateSectionAction'
 
 // ============================================================
 // TYPES
@@ -46,6 +54,8 @@ export interface OrchestratorConfig {
   maxConversationDepth?: number
   // PHASE 2: Tool system
   toolRegistry?: ToolRegistry
+  // PHASE 3: Real-time UI callback for immediate message display
+  onMessage?: (content: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => void
 }
 
 export interface OrchestratorRequest {
@@ -80,6 +90,8 @@ export interface OrchestratorRequest {
     options: Array<{id: string, label: string, description: string}>
     payload: any // Original action payload (documentFormat, userMessage, existingDocs, etc.)
   }
+  // ✅ FIX: Authenticated Supabase client (to avoid RLS issues in agents)
+  supabaseClient?: any
 }
 
 export interface OrchestratorResponse {
@@ -131,12 +143,18 @@ export interface StructurePlan {
 
 export class OrchestratorEngine {
   private blackboard: Blackboard
-  private config: Omit<Required<OrchestratorConfig>, 'toolRegistry'> & { toolRegistry?: ToolRegistry }
-  private worldState?: WorldStateManager // PHASE 1: Optional for gradual migration
+  private config: Omit<Required<OrchestratorConfig>, 'toolRegistry' | 'onMessage'> & { toolRegistry?: ToolRegistry; onMessage?: OrchestratorConfig['onMessage'] }
+  protected worldState?: WorldStateManager // PHASE 1: Optional for gradual migration (protected for child classes)
   private toolRegistry?: ToolRegistry // PHASE 2: Optional tool system
+  private actionGenerators: Map<UserIntent, BaseAction> // PHASE 1 REFACTORING: Modular action generators
   
   constructor(config: OrchestratorConfig, worldState?: WorldStateManager) {
-    this.blackboard = new Blackboard(config.userId)
+    // PHASE 3: Pass real-time message callback to Blackboard
+    const messageCallback = config.onMessage ? (msg: any) => {
+      config.onMessage!(msg.content, msg.role, msg.type)
+    } : undefined
+    
+    this.blackboard = new Blackboard(config.userId, messageCallback)
     this.worldState = worldState // PHASE 1: Store WorldState if provided
     this.toolRegistry = config.toolRegistry // PHASE 2: Store ToolRegistry if provided
     this.config = {
@@ -145,8 +163,20 @@ export class OrchestratorEngine {
       enableRAG: config.enableRAG !== false,
       enablePatternLearning: config.enablePatternLearning !== false,
       maxConversationDepth: config.maxConversationDepth || 50,
-      toolRegistry: config.toolRegistry // PHASE 2: Include in config (optional)
+      toolRegistry: config.toolRegistry, // PHASE 2: Include in config (optional)
+      ...(config.onMessage && { onMessage: config.onMessage }) // PHASE 3: Real-time message callback (optional)
     }
+    
+    // PHASE 1 REFACTORING: Initialize modular action generators
+    this.actionGenerators = new Map([
+      ['answer_question', new AnswerQuestionAction()],
+      ['write_content', new WriteContentAction()],
+      ['create_structure', new CreateStructureAction(this)],
+      ['delete_node', new DeleteNodeAction(this.blackboard)],
+      ['open_and_write', new OpenDocumentAction(this.blackboard)],
+      ['navigate_section', new NavigateSectionAction()],
+      // More actions will be added as they're extracted
+    ])
     
     console.log('🎯 [Orchestrator] Initialized', {
       userId: config.userId,
@@ -155,7 +185,8 @@ export class OrchestratorEngine {
       learning: this.config.enablePatternLearning,
       hasWorldState: !!worldState, // PHASE 1: Log if using WorldState
       hasToolRegistry: !!config.toolRegistry, // PHASE 2: Log if using tools
-      toolCount: config.toolRegistry?.getAll().length || 0
+      toolCount: config.toolRegistry?.getAll().length || 0,
+      actionGeneratorsCount: this.actionGenerators.size // PHASE 1 REFACTORING: Log action generators
     })
   }
   
@@ -182,6 +213,33 @@ export class OrchestratorEngine {
     const _availableProviders = this.getAvailableProviders(request)
     const _availableModels = this.getAvailableModels(request)
     const _modelPrefs = this.getModelPreferences(request)
+    
+    // ✅ CRITICAL FIX: Update WorldState if structureItems provided
+    // This ensures agents have access to the latest structure context
+    console.log('🔍 [Orchestrator] Checking WorldState update conditions:', {
+      hasWorldState: !!this.worldState,
+      hasStructureItems: !!request.structureItems,
+      structureItemsLength: request.structureItems?.length || 0,
+      hasNodeId: !!request.currentStoryStructureNodeId,
+      nodeId: request.currentStoryStructureNodeId
+    })
+    
+    if (this.worldState && request.structureItems && request.structureItems.length > 0 && request.currentStoryStructureNodeId) {
+      console.log('🔄 [Orchestrator] Updating WorldState with structure items:', {
+        nodeId: request.currentStoryStructureNodeId,
+        format: _documentFormat || 'novel',
+        itemsCount: request.structureItems.length,
+        firstItemId: request.structureItems[0]?.id
+      })
+      this.worldState.setActiveDocument(
+        request.currentStoryStructureNodeId,
+        _documentFormat || 'novel',
+        request.structureItems
+      )
+      console.log('✅ [Orchestrator] WorldState updated - agents can now access structure')
+    } else {
+      console.warn('⚠️ [Orchestrator] WorldState NOT updated - missing requirements')
+    }
     
     // Step 1: Update blackboard with current state
     this.blackboard.updateCanvas(_canvasNodes, _canvasEdges)
@@ -475,7 +533,9 @@ export class OrchestratorEngine {
             {
               worldState: this.worldState,
               userId: this.config.userId,
-              userKeyId: request.userKeyId
+              userKeyId: request.userKeyId,
+              blackboard: this.blackboard, // PHASE 3: Pass blackboard for agent coordination
+              supabaseClient: request.supabaseClient // ✅ FIX: Pass authenticated Supabase client
             }
           )
           
@@ -648,1173 +708,22 @@ export class OrchestratorEngine {
   ): Promise<OrchestratorAction[]> {
     const actions: OrchestratorAction[] = []
     
+    // PHASE 1 REFACTORING: Try modular action generator first
+    const generator = this.actionGenerators.get(intent.intent)
+    if (generator) {
+      console.log(`✅ [Orchestrator] Using modular action generator for: ${intent.intent}`)
+      return generator.generate(intent, request, canvasContext, {
+        ragContext,
+        modelSelection,
+        availableModels
+      })
+    }
+    
+    // FALLBACK: Handle any intents not covered by modular actions
+    // Note: All major intents (answer_question, write_content, create_structure, etc.)
+    // are now handled by modular action generators above.
+    // This fallback only handles general_chat and unknown intents.
     switch (intent.intent) {
-      case 'answer_question': {
-        // Build context-aware prompt with ALL canvas nodes
-        let enhancedPrompt = `User Question: ${request.message}\n\n`
-        
-        if (canvasContext.connectedNodes.length > 0) {
-          enhancedPrompt += `Available Context from Canvas:\n`
-          
-          canvasContext.connectedNodes.forEach(node => {
-            enhancedPrompt += `\n--- ${node.label} (${node.nodeType}) ---\n`
-            enhancedPrompt += `Summary: ${node.summary}\n`
-            
-            if (node.detailedContext?.structure) {
-              enhancedPrompt += `Structure:\n${node.detailedContext.structure}\n`
-            }
-            
-            // Include content if available
-            if (node.detailedContext?.contentMap) {
-              const contentEntries = Object.entries(node.detailedContext.contentMap)
-              if (contentEntries.length > 0) {
-                enhancedPrompt += `\nContent (${contentEntries.length} sections):\n`
-                contentEntries.slice(0, 5).forEach(([sectionId, content]: [string, any]) => {
-                  if (content && typeof content === 'string' && content.trim()) {
-                    const truncated = content.length > 500 
-                      ? content.substring(0, 500) + '...' 
-                      : content
-                    enhancedPrompt += `\n${truncated}\n`
-                  }
-                })
-              }
-            }
-          })
-        }
-        
-        // Add RAG content if available
-        if (ragContext?.hasRAG && ragContext.ragContent) {
-          enhancedPrompt += `\n\nAdditional Relevant Content (from semantic search):\n${ragContext.ragContent}`
-        }
-        
-        actions.push({
-          type: 'generate_content',
-          payload: {
-            prompt: enhancedPrompt,
-            model: modelSelection.modelId,
-            isAnswer: true
-          },
-          status: 'pending'
-        })
-        break
-      }
-      
-      case 'write_content': {
-        console.log('📝 [generateActions] write_content:', {
-          hasActiveContext: !!request.activeContext,
-          activeContextId: request.activeContext?.id,
-          message: request.message,
-          selectedModel: modelSelection.modelId,
-          modelMode: request.modelMode,
-          fixedModeStrategy: request.fixedModeStrategy,
-          hasStructureItems: !!request.structureItems?.length
-        })
-        
-        let targetSectionId = request.activeContext?.id
-        
-        // If no active context, try to detect section from message
-        if (!targetSectionId && request.structureItems && request.structureItems.length > 0) {
-          const lowerMessage = request.message.toLowerCase()
-          
-          // Helper to find section by name (case-insensitive, fuzzy match)
-          const findSectionByName = (items: any[], searchTerm: string): any => {
-            // Normalize search term: remove numbers, punctuation, convert & to "and"
-            const normalizeText = (text: string) => 
-              text
-                .toLowerCase()
-                .replace(/^\d+\.?\d*\s*/, '') // Remove leading numbers like "1.0 ", "2. "
-                .replace(/&/g, 'and')          // Convert & to "and"
-                .replace(/[^\w\s]/g, ' ')      // Remove punctuation
-                .replace(/\s+/g, ' ')          // Collapse whitespace
-                .trim()
-            
-            const normalizedSearch = normalizeText(searchTerm)
-            
-            for (const item of items) {
-              const normalizedName = normalizeText(item.name || '')
-              
-              // Try exact match first
-              if (normalizedName === normalizedSearch) {
-                return item
-              }
-              
-              // Try partial match (allows "intro" to match "introduction")
-              if (normalizedName.includes(normalizedSearch) || normalizedSearch.includes(normalizedName)) {
-                return item
-              }
-              
-              // Check children recursively
-              if (item.children) {
-                const found = findSectionByName(item.children, searchTerm)
-                if (found) return found
-              }
-            }
-            return null
-          }
-          
-          // ✅ NEW: Handle ordinal/positional references (first scene, second act, etc.)
-          const ordinalPattern = /(?:start with|write|begin with)?\s*(?:the\s+)?(first|second|third|1st|2nd|3rd|opening|initial)\s+(scene|act|sequence|chapter|section|beat)/i
-          const ordinalMatch = request.message.match(ordinalPattern)
-          
-          if (ordinalMatch) {
-            const position = ordinalMatch[1].toLowerCase()
-            const type = ordinalMatch[2].toLowerCase()
-            
-            // Map ordinals to numbers
-            const ordinalMap: Record<string, number> = {
-              'first': 0, '1st': 0, 'opening': 0, 'initial': 0,
-              'second': 1, '2nd': 1,
-              'third': 2, '3rd': 2
-            }
-            
-            const targetIndex = ordinalMap[position] ?? 0
-            
-            // ✅ FIX: StoryStructureItems are a FLAT array (no children field)
-            // Search by name pattern - scenes have "SCENE:" prefix, acts have "Act", etc.
-            const matchingSections = request.structureItems.filter((item: any) => {
-              const itemName = item.name?.toLowerCase() || ''
-              
-              // Match by type keyword in the name
-              if (type === 'scene') {
-                // Scenes typically start with "SCENE:" or contain "scene" at word boundary
-                return itemName.startsWith('scene:') || /\bscene\b/i.test(item.name || '')
-              } else if (type === 'act') {
-                // Acts typically start with "Act " or "ACT "
-                return /^act\s+/i.test(item.name || '')
-              } else if (type === 'sequence') {
-                // Sequences typically start with "Sequence " or contain "sequence"
-                return /^sequence\s+/i.test(item.name || '') || itemName.includes('sequence')
-              } else if (type === 'beat') {
-                // Beats contain the word "beat"
-                return itemName.includes('beat')
-              } else {
-                // Generic fallback: just check if name includes the type
-                return itemName.includes(type)
-              }
-            }).sort((a: any, b: any) => a.order - b.order) // Sort by order to ensure first=first
-            
-            console.log('🔍 [Ordinal Detection] Debug:', {
-              searchType: type,
-              position,
-              targetIndex,
-              totalStructureItems: request.structureItems.length,
-              matchingSectionsCount: matchingSections.length,
-              matchedNames: matchingSections.map((s: any) => s.name).slice(0, 5), // Show first 5
-              allItemNames: request.structureItems.map((s: any) => s.name).slice(0, 10) // Show first 10 items
-            })
-            
-            if (matchingSections[targetIndex]) {
-              targetSectionId = matchingSections[targetIndex].id
-              console.log('🎯 [Ordinal Detection] Found section:', {
-                position,
-                type,
-                targetIndex,
-                foundSection: matchingSections[targetIndex].name,
-                sectionId: targetSectionId
-              })
-            } else {
-              console.warn('⚠️ [Ordinal Detection] No match found at index', targetIndex, 'for type', type)
-            }
-          }
-          
-          // Try to extract section name from message (if ordinal didn't match)
-          if (!targetSectionId) {
-            // Patterns: "add to X", "write in X", "add text to X", "write X"
-            const patterns = [
-              /(?:add|write|put|insert).*(?:to|in|into)\s+(?:the\s+)?(.+?)(?:\s+(?:section|part|chapter|scene|act|sequence))?$/i,
-              /(?:add|write|put|insert)\s+(?:some\s+)?(?:text|content|words).*?(?:to|in|into)\s+(?:the\s+)?(.+?)$/i,
-            ]
-            
-            let sectionName: string | null = null
-            for (const pattern of patterns) {
-              const match = request.message.match(pattern)
-              if (match && match[1]) {
-                sectionName = match[1].trim().toLowerCase()
-                console.log('📝 [Pattern Match] Extracted section name:', {
-                  pattern: pattern.source,
-                  fullMatch: match[0],
-                  captured: match[1],
-                  normalized: sectionName
-                })
-                break
-              }
-            }
-            
-            console.log('🔍 [Section Search] Looking for section:', {
-              sectionName,
-              hasStructureItems: !!request.structureItems,
-              structureItemsCount: request.structureItems?.length || 0,
-              structureItemNames: request.structureItems?.map(s => s.name).slice(0, 5)
-            })
-            
-            if (sectionName) {
-              const foundSection = findSectionByName(request.structureItems, sectionName)
-              if (foundSection) {
-                targetSectionId = foundSection.id
-                console.log('🎯 [Smart Section Detection] Found section:', {
-                  searchTerm: sectionName,
-                  foundSection: foundSection.name,
-                  sectionId: targetSectionId
-                })
-              } else {
-                console.warn('⚠️ [Smart Section Detection] No match found for:', sectionName)
-              }
-            } else {
-              console.warn('⚠️ [Pattern Match] No section name extracted from message:', request.message)
-            }
-          }
-        }
-        
-        if (targetSectionId) {
-          // If we detected a section from the message (not already selected), auto-select it first
-          if (!request.activeContext?.id || request.activeContext.id !== targetSectionId) {
-            actions.push({
-              type: 'select_section',
-              payload: {
-                sectionId: targetSectionId
-              },
-              status: 'pending'
-            })
-            console.log('🎯 [Auto-Select] Selecting section:', targetSectionId)
-          }
-          
-          // Determine which model to use based on mode and strategy
-          let writerModel: any
-          
-          if (request.modelMode === 'fixed' && request.fixedModeStrategy === 'consistent' && validatedFixedModelId) {
-            // CONSISTENT: Use the fixed model for writing too (expensive but uniform)
-            // ONLY if it's a valid model from MODEL_TIERS
-            const fixedModel = MODEL_TIERS.find(m => m.id === validatedFixedModelId)
-            writerModel = {
-              modelId: validatedFixedModelId,
-              provider: fixedModel?.provider || modelSelection.provider,
-              reasoning: `Fixed mode (Consistent): Using ${fixedModel?.displayName || validatedFixedModelId} for all tasks`
-            }
-            console.log('🎯 [Consistent Strategy] Using validated fixed model for writing:', writerModel.modelId)
-          } else {
-            // AUTOMATIC or LOOSE: Intelligently select writer based on scene complexity
-            const activeStructureItem = request.structureItems?.find(item => item.id === targetSectionId)
-            const sectionLevel = activeStructureItem?.level || 3
-            const sectionName = activeStructureItem?.name?.toLowerCase() || ''
-            const sectionWordCount = activeStructureItem?.wordCount || 0
-            
-            // Determine task complexity based on section characteristics
-            let taskType: TaskRequirements['type'] = 'simple-scene'
-            
-            // Level 1 (Acts) or Level 2 (Sequences) = Complex scenes
-            if (sectionLevel <= 2) {
-              taskType = 'complex-scene'
-            }
-            // Keywords indicating complexity
-            else if (sectionName.includes('climax') || 
-                     sectionName.includes('confrontation') ||
-                     sectionName.includes('revelation') ||
-                     sectionName.includes('finale')) {
-              taskType = 'complex-scene'
-            }
-            // High word count target
-            else if (sectionWordCount > 1000) {
-              taskType = 'complex-scene'
-            }
-            // Dialogue-heavy scenes
-            else if (sectionName.includes('dialogue') || 
-                     sectionName.includes('conversation') ||
-                     sectionName.includes('talk')) {
-              taskType = 'dialogue'
-            }
-            // Action scenes
-            else if (sectionName.includes('action') || 
-                     sectionName.includes('fight') ||
-                     sectionName.includes('chase') ||
-                     sectionName.includes('battle')) {
-              taskType = 'action'
-            }
-            
-            // PHASE 2: Use available models passed from orchestrate() or filter MODEL_TIERS
-            const availableProviders = request.availableProviders || ['openai', 'groq', 'anthropic', 'google']
-            const modelsForWriter = availableModels || MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
-            
-            // Select best model for this task from AVAILABLE models only
-            // Note: selectModelForTask does NOT require reasoning (writer models can be smaller/faster)
-            const selectedModel = selectModelForTask(
-              {
-                type: taskType,
-                wordCount: sectionWordCount,
-                contextNeeded: 8000, // Typical scene context
-                priority: 'balanced' // Balance quality, speed, and cost
-              },
-              modelsForWriter // Only models user has API keys for!
-            )
-            
-            writerModel = {
-              modelId: selectedModel?.id || 'llama-3.3-70b-versatile', // Fallback
-              provider: selectedModel?.provider || 'groq',
-              reasoning: `Intelligent delegation: ${taskType} task → ${selectedModel?.displayName || 'Llama 3.3 70B'}`
-            }
-            
-            console.log('💡 [Intelligent Delegation]', {
-              section: activeStructureItem?.name,
-              level: sectionLevel,
-              taskType,
-              selectedModel: writerModel.modelId,
-              reasoning: writerModel.reasoning
-            })
-          }
-          
-          actions.push({
-            type: 'generate_content',
-            payload: {
-              sectionId: targetSectionId,
-              prompt: request.message,
-              model: writerModel.modelId,
-              provider: writerModel.provider
-            },
-            status: 'pending'
-          })
-          console.log('✅ [generateActions] Created write_content action:', {
-            section: targetSectionId,
-            model: writerModel.modelId,
-            provider: writerModel.provider,
-            strategy: request.modelMode === 'fixed' ? request.fixedModeStrategy : 'automatic'
-          })
-        } else {
-          console.warn('⚠️ [generateActions] No section found for write_content! Message:', request.message)
-          // Return a helpful message instead of failing silently
-          actions.push({
-            type: 'message',
-            payload: {
-              content: `I want to add content, but I need you to select a section first. Which section would you like me to write in?`,
-              type: 'result'
-            },
-            status: 'pending'
-          })
-        }
-        break
-      }
-      
-      case 'create_structure': {
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: '🏗️ Generating story structure plan...',
-          type: 'thinking'
-        })
-        
-        // Validate required fields
-        if (!request.documentFormat) {
-          throw new Error('documentFormat is required for create_structure intent')
-        }
-        if (!request.userKeyId) {
-          throw new Error('userKeyId is required for create_structure intent')
-        }
-        
-        // ✅ PROACTIVE CANVAS AWARENESS: Check for existing documents
-        console.log('🔍 [Canvas Awareness] Raw canvasNodes:', request.canvasNodes?.length || 0)
-        
-        const existingDocs = (request.canvasNodes || [])
-          .filter((node: any) => 
-            node.type === 'storyStructureNode' && 
-            node.data?.format &&
-            node.data?.items?.length > 0
-          )
-          .map((node: any) => {
-            const allDataKeys = Object.keys(node.data || {})
-            console.log(`🔍 [Canvas Awareness] Checking node "${node.data?.label}":`)
-            console.log(`  type: ${node.type}`)
-            console.log(`  dataKeys (${allDataKeys.length}):`, allDataKeys.join(', '))
-            console.log(`  itemsCount: ${node.data?.items?.length || 0}`)
-            console.log(`  format: ${node.data?.format}`)
-            console.log(`  hasContentMapKey: ${allDataKeys.includes('contentMap')}`)
-            
-            // ✅ FIX: Check BOTH legacy contentMap AND new document_data for content
-            const contentMapKeys = Object.keys(node.data?.contentMap || {})
-            console.log(`  contentMapKeys (${contentMapKeys.length}):`, contentMapKeys.slice(0, 5).join(', '))
-            
-            const hasLegacyContent = contentMapKeys.length > 0 && 
-              contentMapKeys.some(key => {
-                const content = node.data.contentMap[key]
-                return content && typeof content === 'string' && content.trim().length > 0
-              })
-            
-            // ✅ FIX: Ensure boolean result (not undefined)
-            let hasHierarchicalContent = false
-            if (node.data.document_data?.structure && Array.isArray(node.data.document_data.structure)) {
-              hasHierarchicalContent = node.data.document_data.structure.some((seg: any) => {
-                // Check if segment has content (recursively check children too)
-                const hasDirectContent = seg.content && seg.content.length > 0
-                const hasChildContent = seg.children && Array.isArray(seg.children) && 
-                  seg.children.some((child: any) => child.content && child.content.length > 0)
-                return hasDirectContent || hasChildContent
-              })
-            }
-            
-            // Debug: Log what we found for this node
-            console.log(`🔍 [Canvas Awareness] Content check for "${node.data.label}":`, {
-              hasLegacy: hasLegacyContent,
-              hasHierarchical: hasHierarchicalContent,
-              hasDocData: !!node.data.document_data,
-              hasStructure: !!node.data.document_data?.structure,
-              structureLength: node.data.document_data?.structure?.length || 0,
-              contentMapKeys: contentMapKeys.length,
-              contentMapSample: contentMapKeys.length > 0 ? {
-                key: contentMapKeys[0],
-                hasValue: !!node.data.contentMap[contentMapKeys[0]],
-                valueLength: node.data.contentMap[contentMapKeys[0]]?.length || 0
-              } : null
-            })
-            
-            return {
-              id: node.id,
-              name: node.data.label || node.data.name || 'Untitled',
-              format: node.data.format,
-              hasContent: hasLegacyContent || hasHierarchicalContent // ✅ Now always boolean
-            }
-          })
-        
-        // ✅ LLM-BASED: Use intent analysis to detect if user explicitly referenced a source document
-        // Instead of brittle pattern matching, trust the LLM's reasoning
-        const hasExplicitSource = intent.extractedEntities?.isExplicitSourceReference === true
-        const sourceDocName = intent.extractedEntities?.sourceDocument
-        
-        if (existingDocs.length > 0 && !hasExplicitSource && !request.message.toLowerCase().includes('from scratch')) {
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `📋 I notice you have ${existingDocs.length} other document(s) on the canvas: ${existingDocs.map(d => `"${d.name}" (${d.format})`).join(', ')}`,
-            type: 'thinking'
-          })
-          
-          console.log('🔍 [Canvas Awareness] Existing docs:', existingDocs)
-          
-          // ✅ SIMPLIFIED: Don't check for content (nodes don't have it loaded)
-          // Just ask when creating a DIFFERENT format than what exists
-          const differentFormats = existingDocs.filter(d => d.format !== request.documentFormat)
-          
-          console.log('🔍 [Canvas Awareness] Different format docs:', differentFormats)
-          
-          if (differentFormats.length > 0) {
-            const docNames = differentFormats.map(d => `"${d.name}" (${d.format})`).join(', ')
-            
-            console.log('✅ [Canvas Awareness] Requesting clarification - different formats exist!')
-            
-            // Build options: one for each existing format + "create new"
-            const options = [
-              ...differentFormats.map((doc, idx) => ({
-                id: `use_${doc.id}`,
-                label: `Base it on ${doc.format}`,
-                description: `Use "${doc.name}" as inspiration`
-              })),
-              { 
-                id: 'create_new', 
-                label: 'Create something new', 
-                description: 'Start from scratch' 
-              }
-            ]
-            
-            // Build message with numbered list
-            const optionsList = options.map((opt, idx) => `${idx + 1}. ${opt.label} - ${opt.description}`).join('\n')
-            
-            actions.push({
-              type: 'request_clarification',
-              payload: {
-                originalAction: 'create_structure',
-                message: `I see you already have ${differentFormats.map(d => d.format).join(' and ')} on the canvas (${docNames}).\n\nWould you like me to:\n\n${optionsList}\n\nWhat's your preference?`,
-                options,
-                documentFormat: request.documentFormat,
-                userMessage: request.message,
-                existingDocs: differentFormats
-              },
-              status: 'pending'
-            })
-            
-            this.blackboard.addMessage({
-              role: 'orchestrator',
-              content: '❓ Requesting user clarification before proceeding...',
-              type: 'decision'
-            })
-            
-            console.log('🔙 [Canvas Awareness] Returning early with clarification action')
-            
-            // ✅ CRITICAL: Return early to prevent further action generation
-            return actions
-          } else {
-            console.log('⚠️ [Canvas Awareness] Same format or no conflicts, continuing with generation')
-          }
-        }
-        
-        // Import structured output helper
-        const { getModelsWithStructuredOutput, supportsStructuredOutput } = await import('./modelRouter')
-        
-        // PREFER models with full structured output support
-        let availableModels = MODEL_TIERS.filter(m => 
-          request.availableProviders?.includes(m.provider) && 
-          m.tier === 'frontier' &&
-          m.structuredOutput === 'full' // Prioritize full structured output
-        )
-        
-        // Fallback: If no frontier models with full support, allow json-mode
-        if (availableModels.length === 0) {
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: '⚠️ No frontier models with full structured output, trying json-mode...',
-            type: 'thinking'
-          })
-          
-          availableModels = MODEL_TIERS.filter(m => 
-            request.availableProviders?.includes(m.provider) && 
-            m.tier === 'frontier' &&
-            m.structuredOutput !== 'none'
-          )
-        }
-        
-        // Third fallback: Any frontier model
-        if (availableModels.length === 0) {
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: '⚠️ Falling back to any available frontier model',
-            type: 'thinking'
-          })
-          
-          availableModels = MODEL_TIERS.filter(m => 
-            request.availableProviders?.includes(m.provider) && 
-            m.tier === 'frontier'
-          )
-        }
-        
-        // ✅ FINAL FALLBACK: Accept premium/standard models with reasoning + structured output
-        // This handles cases where user only has premium models (e.g., gpt-4o)
-        if (availableModels.length === 0) {
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: '⚠️ No frontier models - using best available premium/standard model',
-            type: 'thinking'
-          })
-          
-          availableModels = MODEL_TIERS.filter(m => 
-            request.availableProviders?.includes(m.provider) && 
-            m.reasoning && 
-            m.structuredOutput !== 'none'
-          ).sort((a, b) => {
-            // Sort by tier: frontier > premium > standard > fast
-            const tierOrder: Record<string, number> = { frontier: 4, premium: 3, standard: 2, fast: 1 }
-            return (tierOrder[b.tier] || 0) - (tierOrder[a.tier] || 0)
-          })
-        }
-        
-        if (availableModels.length === 0) {
-          throw new Error('No reasoning models with structured output available for structure generation')
-        }
-        
-        const selectedModel = availableModels[0]
-        const structuredSupportLabel = selectedModel.structuredOutput === 'full' 
-          ? '✅ Full structured output' 
-          : selectedModel.structuredOutput === 'json-mode'
-          ? '⚠️ JSON mode (basic)'
-          : '❌ No structured output'
-        
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `🎯 Using ${selectedModel.displayName} (${structuredSupportLabel})`,
-          type: 'decision'
-        })
-        
-        // PHASE 3: Extract content from referenced document (if "based on X")
-        // ✅ LLM-BASED: Use intent analysis to determine if user wants to base new content on existing
-        let enhancedPrompt = request.message
-        
-        if (hasExplicitSource && sourceDocName) {
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `📚 LLM detected explicit source reference: "${sourceDocName}"`,
-            type: 'thinking'
-          })
-          
-          // Find the referenced document using LLM's extracted entity
-          // The LLM should have identified which document the user is referring to
-          const referencedDoc = canvasContext.allNodes.find(n => {
-            const labelMatch = n.label.toLowerCase().includes(sourceDocName.toLowerCase()) ||
-                              sourceDocName.toLowerCase().includes(n.label.toLowerCase())
-            const isStoryNode = n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode'
-            return labelMatch && isStoryNode
-          })
-          
-          if (referencedDoc) {
-            console.log('🔍 [Structure Generation] Found referenced document:', referencedDoc.label)
-            
-            // ✅ NEW: For REPORTS, ask what KIND of report before proceeding
-            if (request.documentFormat === 'report' || request.documentFormat?.startsWith('report_')) {
-              const sourceFormat = referencedDoc.detailedContext?.format
-              
-              // Only ask if we haven't already selected a specific report subtype
-              if (request.documentFormat === 'report' && sourceFormat) {
-                console.log('📋 [Structure Generation] Recommending report types for source:', sourceFormat)
-                
-                // Import helper
-                const { recommendReportType } = await import('@/lib/documentHierarchy')
-                const recommendations = recommendReportType(sourceFormat)
-                
-                this.blackboard.addMessage({
-                  role: 'orchestrator',
-                  content: `📊 I found "${referencedDoc.label}" (${sourceFormat}). I can create several types of reports based on this content.`,
-                  type: 'thinking'
-                })
-                
-                this.blackboard.addMessage({
-                  role: 'orchestrator',
-                  content: `🎯 Recommending: ${recommendations[0].label}`,
-                  type: 'decision'
-                })
-                
-                // Return clarification to ask user which report type
-                return [{
-                  type: 'request_clarification',
-                  payload: {
-                    message: `I can create several types of reports based on the ${sourceFormat}.\n\nWhich would you prefer?`,
-                    options: recommendations.map(rec => ({
-                      id: rec.id,
-                      label: rec.label,
-                      description: rec.description
-                    })),
-                    originalAction: 'create_structure',
-                    documentFormat: request.documentFormat, // Store original format
-                    sourceDocumentId: referencedDoc.nodeId,
-                    sourceDocumentLabel: referencedDoc.label,
-                    sourceDocumentFormat: sourceFormat,
-                    reportTypeRecommendations: recommendations // Store for later use
-                  },
-                  status: 'pending'
-                }]
-              }
-            }
-            
-            // Strategy 1: Try RAG if embeddings exist
-            try {
-              const statusResponse = await fetch(`/api/embeddings/generate?nodeId=${referencedDoc.nodeId}`)
-              if (statusResponse.ok) {
-                const embeddingStatus = await statusResponse.json()
-                
-                if (embeddingStatus.exists && embeddingStatus.queueStatus === 'completed') {
-                  console.log('✅ [Structure Generation] Embeddings found, using RAG')
-                  this.blackboard.addMessage({
-                    role: 'orchestrator',
-                    content: '🔍 Using semantic search to extract relevant content...',
-                    type: 'progress'
-                  })
-                  
-                  // Perform semantic search
-                  const searchResponse = await fetch('/api/embeddings/search', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      query: request.message,
-                      matchThreshold: 0.3,
-                      matchCount: 15,
-                      nodeId: referencedDoc.nodeId,
-                      includeMetadata: true,
-                    })
-                  })
-                  
-                  if (searchResponse.ok) {
-                    const searchResult = await searchResponse.json()
-                    const { buildContextFromResults } = await import('@/lib/embeddings/retrievalService')
-                    const ragContent = buildContextFromResults(searchResult.results, {
-                      includeMetadata: true,
-                      includeSimilarity: false,
-                      maxTotalTokens: 6000
-                    })
-                    
-                    enhancedPrompt = `${request.message}
-
-**Source Material (from "${referencedDoc.label}"):**
-
-${ragContent}
-
-Use this content to inform the ${request.documentFormat} structure and analysis.`
-                    
-                    this.blackboard.addMessage({
-                      role: 'orchestrator',
-                      content: `✅ Retrieved ${searchResult.results.length} relevant sections via semantic search`,
-                      type: 'result'
-                    })
-                  }
-                } else {
-                  console.log('⚠️ [Structure Generation] No embeddings, falling back to summaries')
-                  throw new Error('No embeddings - use summaries')
-                }
-              } else {
-                throw new Error('Embedding status check failed')
-              }
-            } catch (ragError) {
-              // Strategy 2: Fall back to summaries from document_data
-              console.log('📝 [Structure Generation] Using summaries as fallback')
-              this.blackboard.addMessage({
-                role: 'orchestrator',
-                content: '📝 Using document summaries (no embeddings yet)...',
-                type: 'progress'
-              })
-              
-              if (referencedDoc.detailedContext?.documentData?.structure) {
-                const summaries = this.extractAllSummaries(referencedDoc.detailedContext.documentData)
-                
-                if (summaries.length > 0) {
-                  const summaryText = summaries.map(s => `**${s.name}**: ${s.summary}`).join('\n\n')
-                  
-                  enhancedPrompt = `${request.message}
-
-**Source Material Overview (from "${referencedDoc.label}"):**
-
-${summaryText}
-
-Use this content overview to inform the ${request.documentFormat} structure and analysis.`
-                  
-                  this.blackboard.addMessage({
-                    role: 'orchestrator',
-                    content: `✅ Extracted ${summaries.length} section summaries`,
-                    type: 'result'
-                  })
-                } else {
-                  this.blackboard.addMessage({
-                    role: 'orchestrator',
-                    content: '⚠️ Source document has no summaries or content yet',
-                    type: 'warning'
-                  })
-                }
-              }
-            }
-          }
-        }
-        
-        // PHASE 4: Generate structure plan with automatic fallback
-        // ✅ FIX: Use the full availableModels list from request (models user actually has)
-        // Filter to reasoning models with structured output for fallback attempts
-        const allAvailableModels = (request.availableModels || MODEL_TIERS).filter(m => 
-          request.availableProviders?.includes(m.provider) &&
-          m.reasoning &&
-          m.structuredOutput !== 'none'
-        )
-        
-        let plan
-        try {
-          plan = await this.createStructurePlanWithFallback(
-            enhancedPrompt, // Use enhanced prompt with content!
-            request.documentFormat,
-            selectedModel.id,
-            request.userKeyId,
-            allAvailableModels, // Pass ALL models for fallback (not just frontier)
-            3 // Max retries
-          )
-          
-          console.log('✅ [create_structure] Plan generated successfully:', {
-            structureCount: plan.structure.length,
-            tasksCount: plan.tasks.length,
-            totalWordCount: plan.metadata?.totalWordCount
-          })
-        } catch (planError) {
-          console.error('❌ [create_structure] Failed to generate plan:', planError)
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `❌ Failed to generate structure: ${planError instanceof Error ? planError.message : 'Unknown error'}`,
-            type: 'error'
-          })
-          
-          // Return error action instead of throwing
-          actions.push({
-            type: 'message',
-            payload: {
-              content: `I encountered an error while generating the structure: ${planError instanceof Error ? planError.message : 'Unknown error'}. Please try again.`,
-              type: 'error'
-            },
-            status: 'failed'
-          })
-          break
-        }
-        
-        // Return as action
-        actions.push({
-          type: 'generate_structure',
-          payload: {
-            plan,
-            format: request.documentFormat,
-            prompt: request.message
-          },
-          status: 'completed'
-        })
-        
-        console.log('✅ [create_structure] Action pushed to actions array')
-        
-        // 🚀 MULTI-STEP TASK DETECTION: Check if user also wants content written
-        // Phrases like "fill the first chapter", "write content in", "and write", etc.
-        const lowerPrompt = request.message.toLowerCase()
-        const multiStepIndicators = [
-          /fill\s+(?:the\s+)?(first|chapter\s*\d*)/i,
-          /write\s+(?:content\s+in\s+)?(?:the\s+)?(first|chapter\s*\d*)/i,
-          /and\s+write/i,
-          /with\s+text/i,
-          /with\s+content/i
-        ]
-        
-        const isMultiStep = multiStepIndicators.some(pattern => pattern.test(lowerPrompt))
-        
-        if (isMultiStep && plan.structure.length > 0) {
-          // Find the first content-bearing section (skip title pages, working titles, etc.)
-          const firstSection = plan.structure.find(item => 
-            !item.name.toLowerCase().includes('working title') &&
-            !item.name.toLowerCase().includes('title page') &&
-            !item.name.toLowerCase().includes('cover')
-          )
-          
-          if (firstSection) {
-            this.blackboard.addMessage({
-              role: 'orchestrator',
-              content: `🎯 Multi-step task detected: Will also write content for "${firstSection.name}"`,
-              type: 'decision'
-            })
-            
-            console.log('✅ [create_structure] Adding follow-up generate_content action for:', firstSection.name)
-            
-            // Add a generate_content action for the first section
-            actions.push({
-              type: 'generate_content',
-              payload: {
-                sectionId: firstSection.id,
-                sectionName: firstSection.name,
-                prompt: `Write engaging content for "${firstSection.name}" based on the user's request: ${request.message}`,
-                autoStart: true // Flag to indicate this should execute automatically
-              },
-              status: 'pending'
-            })
-          }
-        }
-        
-        break
-      }
-      
-      case 'open_and_write': {
-        // Try to detect the node type from the message
-        const lowerMessage = request.message.toLowerCase()
-        let targetType: string | null = null
-        
-        // Extract node type from message
-        if (lowerMessage.includes('novel')) targetType = 'novel'
-        else if (lowerMessage.includes('screenplay')) targetType = 'screenplay'
-        else if (lowerMessage.includes('report')) targetType = 'report'
-        else if (lowerMessage.includes('podcast')) targetType = 'podcast'
-        
-        // Resolve which specific node to open
-        const targetNode = await resolveNode(request.message, canvasContext, this.blackboard)
-        
-        // Search ALL nodes on canvas (not just connected ones)
-        let candidateNodes = canvasContext.allNodes
-        if (targetType) {
-          // For story-structure nodes, check the format field (novel, screenplay, etc.)
-          // For other nodes, check the nodeType directly
-          candidateNodes = candidateNodes.filter(n => {
-            if (n.nodeType === 'story-structure') {
-              return n.detailedContext?.format?.toLowerCase() === targetType
-            }
-            return n.nodeType.toLowerCase() === targetType
-          })
-        } else if (targetNode) {
-          // Fall back to using the resolved node's type
-          candidateNodes = candidateNodes.filter(n => n.nodeType.toLowerCase() === targetNode.nodeType.toLowerCase())
-        }
-        
-        console.log('📂 [open_and_write] Search results:', {
-          targetType,
-          allNodesCount: canvasContext.allNodes.length,
-          candidatesCount: candidateNodes.length,
-          candidates: candidateNodes.map(n => ({ 
-            label: n.label, 
-            type: n.nodeType, 
-            format: n.detailedContext?.format 
-          }))
-        })
-        
-        if (candidateNodes.length === 0) {
-          // No matching nodes found
-          actions.push({
-            type: 'message',
-            payload: {
-              content: `I couldn't find any ${targetType || 'matching'} nodes. Could you be more specific?`,
-              type: 'error'
-            },
-            status: 'pending'
-          })
-        } else if (candidateNodes.length === 1) {
-          // Single match - proceed with opening
-          actions.push({
-            type: 'open_document',
-            payload: {
-              nodeId: candidateNodes[0].nodeId,
-              sectionId: null
-            },
-            status: 'pending'
-          })
-        } else {
-          // Multiple matches - request clarification with options
-          const options = candidateNodes.map(n => {
-            const wordCount = n.detailedContext?.wordsWritten || 0
-            return {
-              id: n.nodeId,
-              label: n.label,
-              description: `${wordCount.toLocaleString()} words`
-            }
-          })
-          
-          actions.push({
-            type: 'request_clarification',
-            payload: {
-              message: `🤔 I found ${candidateNodes.length} ${targetType || candidateNodes[0].nodeType} node(s). Which one would you like to open?`,
-              originalAction: 'open_and_write',
-              options
-            },
-            status: 'pending'
-          })
-        }
-        break
-      }
-      
-      case 'delete_node': {
-        // Try to detect the node type from the message
-        const lowerMessage = request.message.toLowerCase()
-        let targetType: string | null = null
-        
-        // Extract node type from message
-        if (lowerMessage.includes('novel')) targetType = 'novel'
-        else if (lowerMessage.includes('screenplay')) targetType = 'screenplay'
-        else if (lowerMessage.includes('report')) targetType = 'report'
-        else if (lowerMessage.includes('podcast')) targetType = 'podcast'
-        
-        // Resolve which specific node to delete
-        const targetNode = await resolveNode(request.message, canvasContext, this.blackboard)
-        
-        // Search ALL nodes on canvas (not just connected ones)
-        let candidateNodes = canvasContext.allNodes
-        if (targetType) {
-          // For story-structure nodes, check the format field (novel, screenplay, etc.)
-          // For other nodes, check the nodeType directly
-          candidateNodes = candidateNodes.filter(n => {
-            if (n.nodeType === 'story-structure') {
-              return n.detailedContext?.format?.toLowerCase() === targetType
-            }
-            return n.nodeType.toLowerCase() === targetType
-          })
-        } else if (targetNode) {
-          // Fall back to using the resolved node's type
-          candidateNodes = candidateNodes.filter(n => n.nodeType.toLowerCase() === targetNode.nodeType.toLowerCase())
-        }
-        
-        console.log('🗑️ [delete_node] Search results:', {
-          targetType,
-          allNodesCount: canvasContext.allNodes.length,
-          candidatesCount: candidateNodes.length,
-          candidates: candidateNodes.map(n => ({ 
-            label: n.label, 
-            type: n.nodeType, 
-            format: n.detailedContext?.format 
-          }))
-        })
-        
-        if (candidateNodes.length === 0) {
-          // No matching nodes found
-          actions.push({
-            type: 'message',
-            payload: {
-              content: `I couldn't find any ${targetType || 'matching'} nodes. Could you be more specific?`,
-              type: 'error'
-            },
-            status: 'pending'
-          })
-        } else if (candidateNodes.length === 1) {
-          // Single match - proceed with deletion
-          actions.push({
-            type: 'delete_node',
-            payload: {
-              nodeId: candidateNodes[0].nodeId,
-              nodeName: candidateNodes[0].label
-            },
-            status: 'pending'
-          })
-        } else {
-          // Multiple matches - request clarification with options
-          const options = candidateNodes.map(n => {
-            const wordCount = n.detailedContext?.wordsWritten || 0
-            return {
-              id: n.nodeId,
-              label: n.label,
-              description: `${wordCount.toLocaleString()} words`
-            }
-          })
-          
-          actions.push({
-            type: 'request_clarification',
-            payload: {
-              message: `🤔 I found ${candidateNodes.length} ${targetType || candidateNodes[0].nodeType} node(s). Which one would you like to remove?`,
-              originalAction: 'delete_node',
-              options
-            },
-            status: 'pending'
-          })
-        }
-        break
-      }
-      
-      case 'navigate_section': {
-        // User wants to navigate to a section within the current open document
-        const lowerMessage = request.message.toLowerCase()
-        
-        // Extract section identifier (chapter number, section name, etc.)
-        let targetSectionId: string | null = null
-        let targetSectionName: string | null = null
-        
-        if (request.structureItems && request.structureItems.length > 0) {
-          // Try to match by chapter/section/scene/beat number
-          const numberMatch = lowerMessage.match(/(chapter|section|scene|act|part|sequence|beat)\s+(\d+)/i)
-          if (numberMatch) {
-            const sectionType = numberMatch[1].toLowerCase()
-            const sectionNumber = parseInt(numberMatch[2])
-            
-            console.log('🔍 [navigate_section] Searching for:', { sectionType, sectionNumber })
-            
-            // Find section by number and type
-            const findByNumber = (items: any[], type: string, num: number, count: { value: number }): any => {
-              for (const item of items) {
-                const itemName = item.name?.toLowerCase() || ''
-                // Match by type keyword in name
-                if (itemName.includes(type)) {
-                  count.value++
-                  console.log(`  Checking: "${item.name}" (count: ${count.value}, target: ${num})`)
-                  if (count.value === num) {
-                    return item
-                  }
-                }
-                if (item.children) {
-                  const found = findByNumber(item.children, type, num, count)
-                  if (found) return found
-                }
-              }
-              return null
-            }
-            
-            const counter = { value: 0 }
-            const foundSection = findByNumber(request.structureItems, sectionType, sectionNumber, counter)
-            if (foundSection) {
-              targetSectionId = foundSection.id
-              targetSectionName = foundSection.name
-              console.log('✅ [navigate_section] Found by number:', foundSection.name)
-            }
-          }
-          
-          // If number matching failed, try short forms with optional prefix ("scene 1", "go to scene 1", "open beat 2")
-          if (!targetSectionId) {
-            const shortMatch = lowerMessage.match(/(?:go to |jump to |open |show |navigate to )?(scene|beat|chapter|section)\s+(\d+)/i)
-            if (shortMatch) {
-              const type = shortMatch[1].toLowerCase()
-              const num = parseInt(shortMatch[2])
-              
-              console.log('🔍 [navigate_section] Short form search:', { type, num })
-              
-              const findByType = (items: any[]): any => {
-                let count = 0
-                for (const item of items) {
-                  const itemName = item.name?.toLowerCase() || ''
-                  if (itemName.includes(type)) {
-                    count++
-                    console.log(`  Checking: "${item.name}" (count: ${count}, target: ${num})`)
-                    if (count === num) return item
-                  }
-                  if (item.children) {
-                    const found = findByType(item.children)
-                    if (found) return found
-                  }
-                }
-                return null
-              }
-              
-              const foundSection = findByType(request.structureItems)
-              if (foundSection) {
-                targetSectionId = foundSection.id
-                targetSectionName = foundSection.name
-                console.log('✅ [navigate_section] Found by short form:', foundSection.name)
-              }
-            }
-          }
-          
-          // If number matching failed, try name matching
-          if (!targetSectionId) {
-            const namePattern = /(chapter|section|scene|act|part|sequence|beat)\s+\d+:?\s*(.+?)$/i
-            const nameMatch = lowerMessage.match(namePattern)
-            
-            if (nameMatch && nameMatch[2]) {
-              const searchTerm = nameMatch[2].trim().toLowerCase()
-              
-              // Use same fuzzy matching as write_content
-              const normalizeText = (text: string) => 
-                text
-                  .toLowerCase()
-                  .replace(/^\d+\.?\d*\s*/, '')
-                  .replace(/&/g, 'and')
-                  .replace(/[^\w\s]/g, ' ')
-                  .replace(/\s+/g, ' ')
-                  .trim()
-              
-              const normalizedSearch = normalizeText(searchTerm)
-              
-              const findByName = (items: any[], term: string): any => {
-                for (const item of items) {
-                  const normalizedName = normalizeText(item.name || '')
-                  
-                  if (normalizedName === normalizedSearch || 
-                      normalizedName.includes(normalizedSearch) || 
-                      normalizedSearch.includes(normalizedName)) {
-                    return item
-                  }
-                  if (item.children) {
-                    const found = findByName(item.children, term)
-                    if (found) return found
-                  }
-                }
-                return null
-              }
-              
-              const foundSection = findByName(request.structureItems, searchTerm)
-              if (foundSection) {
-                targetSectionId = foundSection.id
-                targetSectionName = foundSection.name
-              }
-            }
-          }
-        }
-        
-        console.log('🧭 [navigate_section] Search results:', {
-          message: request.message,
-          targetSectionId,
-          targetSectionName,
-          hasStructure: !!request.structureItems?.length
-        })
-        
-        if (targetSectionId) {
-          // Found the section - navigate to it
-          actions.push({
-            type: 'select_section',
-            payload: {
-              sectionId: targetSectionId,
-              sectionName: targetSectionName
-            },
-            status: 'pending'
-          })
-        } else {
-          // Could not find the section
-          actions.push({
-            type: 'message',
-            payload: {
-              content: `I couldn't find that section. Could you be more specific about which section you want to navigate to?`,
-              type: 'error'
-            },
-            status: 'pending'
-          })
-        }
-        break
-      }
-      
       case 'general_chat':
       default: {
         // Similar to answer_question but more conversational
@@ -1830,9 +739,135 @@ Use this content overview to inform the ${request.documentFormat} structure and 
       }
     }
     
+    // 🔍 DEBUG: Log final actions before returning
+    console.log('🔍 [generateActions] Returning actions:', {
+      count: actions.length,
+      types: actions.map(a => a.type),
+      details: actions.map(a => ({
+        type: a.type,
+        sectionId: a.payload?.sectionId,
+        sectionName: a.payload?.sectionName
+      }))
+    })
+    
     return actions
   }
   
+  /**
+   * PHASE 3: LLM-powered task complexity analysis
+   * Replaces hard-coded regex patterns with reasoning
+   */
+  private async analyzeTaskComplexity(
+    userMessage: string,
+    structure: any[],
+    intent: IntentAnalysis,
+    blackboard: Blackboard
+  ): Promise<{
+    requiresMultipleSteps: boolean
+    targetSections: Array<{ id: string; name: string }>
+    reasoning: string
+  }> {
+    const systemPrompt = `You are an intelligent task analyzer. Analyze user requests to determine if they want multiple steps completed.
+
+Context:
+- Primary intent: ${intent.intent}
+- User's request: "${userMessage}"
+- Available structure sections: ${structure.map(s => `"${s.name}"`).join(', ')}
+
+Determine:
+1. Does the user want BOTH structure creation AND content writing?
+2. If so, which section(s) should have content generated?
+
+Examples:
+- "Create a story about X" → Single step (structure only)
+- "Create a story and write the first chapter" → Multi-step (structure + Chapter 1 content)
+- "Write the first two chapters" → Multi-step (structure + Chapters 1 & 2)
+- "Create outline with content in introduction" → Multi-step (structure + Introduction content)
+
+Respond in JSON format:
+{
+  "requiresMultipleSteps": boolean,
+  "targetSectionNames": string[], // Section names to generate content for
+  "reasoning": "Brief explanation of your analysis"
+}`
+
+    try {
+      const response = await fetch('/api/intent/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_prompt: systemPrompt,
+          user_prompt: userMessage,
+          temperature: 0.2 // Low temp for consistent analysis
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Task analysis failed: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      
+      // Parse JSON with better error handling
+      let analysis: any
+      try {
+        // Try to parse content directly
+        if (typeof data.content === 'object') {
+          analysis = data.content
+        } else if (typeof data.content === 'string') {
+          // Extract JSON from markdown code blocks if present
+          let jsonContent = data.content.trim()
+          const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/)
+          if (jsonMatch) {
+            jsonContent = jsonMatch[1].trim()
+          }
+          
+          // Remove any leading/trailing non-JSON content
+          const jsonStart = jsonContent.indexOf('{')
+          const jsonEnd = jsonContent.lastIndexOf('}')
+          if (jsonStart >= 0 && jsonEnd > jsonStart) {
+            jsonContent = jsonContent.substring(jsonStart, jsonEnd + 1)
+          }
+          
+          analysis = JSON.parse(jsonContent)
+        } else {
+          throw new Error('Invalid response format')
+        }
+      } catch (parseError: any) {
+        console.error('❌ [Task Analysis] JSON parse error:', parseError.message)
+        console.error('   Content:', typeof data.content === 'string' ? data.content.substring(0, 500) : data.content)
+        throw new Error(`Failed to parse task analysis: ${parseError.message}`)
+      }
+      
+      // Map section names to actual section objects
+      const targetSections = analysis.targetSectionNames
+        .map((name: string) => {
+          // Normalize and find matching section
+          const normalizedSearchTerm = name.toLowerCase().trim()
+          return structure.find(s => 
+            s.name.toLowerCase().includes(normalizedSearchTerm) ||
+            normalizedSearchTerm.includes(s.name.toLowerCase())
+          )
+        })
+        .filter(Boolean) // Remove null matches
+      
+      return {
+        requiresMultipleSteps: analysis.requiresMultipleSteps,
+        targetSections,
+        reasoning: analysis.reasoning
+      }
+    } catch (error) {
+      console.error('❌ [Task Analysis] Error:', error)
+      
+      // Fallback: Conservative single-step approach
+      return {
+        requiresMultipleSteps: false,
+        targetSections: [],
+        reasoning: 'Analysis failed, defaulting to structure-only mode'
+      }
+    }
+  }
+
   private extractPattern(
     message: string,
     intent: IntentAnalysis,
@@ -1932,7 +967,21 @@ Use this content overview to inform the ${request.documentFormat} structure and 
     const reasoningModels = availableModels
       .filter(m => m.reasoning)
       .sort((a, b) => {
-        // Sort by tier: frontier > premium > standard > fast
+        // ⚡ OPTIMIZED: Sort by speed/reliability first, then tier
+        // Priority: gpt-4o (fast + reliable) > gpt-4o-mini (fastest) > others
+        const speedPriority: Record<string, number> = {
+          'gpt-4o': 100,
+          'gpt-4o-mini': 90,
+          'gpt-4.1': 80,
+          'gpt-5.1': 70,
+          'gpt-5.1-2025-11-13': 60
+        }
+        const aSpeed = speedPriority[a.id] || 0
+        const bSpeed = speedPriority[b.id] || 0
+        
+        if (aSpeed !== bSpeed) return bSpeed - aSpeed
+        
+        // Fallback to tier for unknown models
         const tierOrder: Record<string, number> = { frontier: 4, premium: 3, standard: 2, fast: 1 }
         return (tierOrder[b.tier] || 0) - (tierOrder[a.tier] || 0)
       })
@@ -1940,9 +989,17 @@ Use this content overview to inform the ${request.documentFormat} structure and 
     // ✅ FIX: Only use primaryModelId if it's actually available to the user!
     const isPrimaryAvailable = reasoningModels.some(m => m.id === primaryModelId)
     
-    const modelsToTry = isPrimaryAvailable 
-      ? [primaryModelId, ...reasoningModels.map(m => m.id).filter(id => id !== primaryModelId)]
-      : reasoningModels.map(m => m.id) // Skip primaryModelId if user doesn't have access
+    // ⚡ OPTIMIZED: ALWAYS prioritize fast models first, regardless of primaryModelId
+    const fastModelIds = ['gpt-4o', 'gpt-4o-mini']
+    const isFastModel = fastModelIds.includes(primaryModelId)
+    
+    // Build final list: fast models FIRST, then others by speed priority
+    const modelList = reasoningModels.map(m => m.id) // Already sorted by speed priority above
+    
+    // Remove duplicates while preserving order
+    const modelsToTry = [...new Set(modelList)]
+    
+    console.log(`🎯 [Model Selection] Primary model: ${primaryModelId} (is fast: ${isFastModel}, available: ${isPrimaryAvailable})`)
     
     console.log(`🔄 [Fallback] Primary model: ${primaryModelId} (available: ${isPrimaryAvailable})`)
     console.log(`🔄 [Fallback] Models to try: ${modelsToTry.join(', ')}`)
@@ -2085,7 +1142,26 @@ Generate a complete structure plan with:
 - 3-20 hierarchical structure items with clear parent-child relationships
 - Realistic word count estimates for each section
 - Specific writing tasks (minimum 1)
-- Metadata with total word count, estimated time, and recommended models (REQUIRED)`
+- Metadata with total word count, estimated time, and recommended models (REQUIRED)
+
+CRITICAL - SECTION ID CONSISTENCY:
+Each task's sectionId MUST EXACTLY match an id from the structure array.
+
+EXAMPLES OF CORRECT ID MATCHING:
+✅ Structure: { "id": "chapter2", ... } → Task: { "sectionId": "chapter2" }
+✅ Structure: { "id": "act1_scene1", ... } → Task: { "sectionId": "act1_scene1" }
+✅ Structure: { "id": "scene1", ... } → Task: { "sectionId": "scene1" }
+
+EXAMPLES OF WRONG ID MATCHING (DO NOT DO THIS):
+❌ Structure: { "id": "chapter2", ... } → Task: { "sectionId": "ch2" } (abbreviated!)
+❌ Structure: { "id": "chapter2", ... } → Task: { "sectionId": "chap2" } (abbreviated!)
+❌ Structure: { "id": "act1_seq1", ... } → Task: { "sectionId": "seq1" } (missing parent!)
+
+USE CONSISTENT ID FORMAT:
+- Recommended: "{type}{number}" (e.g., "chapter1", "chapter2", "scene1", "scene2")
+- For nested: "{parent}_{type}{number}" (e.g., "act1_scene1", "act1_scene2")
+- NO abbreviations (not "ch2", not "chap2", use full "chapter2")
+- NO inconsistencies between structure and tasks`
 
     const formatLabel = format.charAt(0).toUpperCase() + format.slice(1).replace(/-/g, ' ')
     const userMessage = `The user wants to create a ${formatLabel}.\n\nUser's creative prompt:\n${userPrompt}\n\nAnalyze this prompt and create a detailed structure plan optimized for the ${formatLabel} format.`
@@ -2102,7 +1178,7 @@ Generate a complete structure plan with:
       model: modelId,
       system_prompt: systemPrompt,
       user_prompt: userMessage,
-      max_completion_tokens: 4000,
+      max_completion_tokens: 2000, // ⚡ OPTIMIZED: Reduced from 4000 for faster generation
       user_key_id: userKeyId,
       stream: false
     }
@@ -2142,20 +1218,78 @@ Generate a complete structure plan with:
       })
     }
     
-    const response = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    })
+    // Add timeout and progress heartbeat for long-running API calls
+    const controller = new AbortController()
+    const timeout = setTimeout(() => {
+      console.error('⏰ [Structure Generation] Request timed out after 60s')
+      controller.abort()
+    }, 60000) // ⚡ Increased to 60s for structure generation (complex task)
     
-    if (!response.ok) {
-      const errorData = await response.json()
+    // Heartbeat: Show "still waiting..." every 5 seconds
+    const heartbeat = setInterval(() => {
       this.blackboard.addMessage({
         role: 'orchestrator',
-        content: `❌ Structure generation failed: ${errorData.error}`,
+        content: '⏳ Still generating structure, please wait...',
+        type: 'progress'
+      })
+    }, 5000)
+    
+    console.log('🚀 [Structure Generation] Starting API call...', {
+      endpoint: '/api/generate',
+      model: modelId,
+      useStructuredOutput,
+      hasResponseFormat: !!requestBody.response_format,
+      hasTools: !!requestBody.tools
+    })
+    
+    let response: Response
+    try {
+      response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeout)
+      clearInterval(heartbeat)
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `❌ Structure generation failed: ${errorData.error}`,
+          type: 'error'
+        })
+        throw new Error(errorData.error || 'Structure generation API call failed')
+      }
+    } catch (error: any) {
+      clearTimeout(timeout)
+      clearInterval(heartbeat)
+      
+      console.error('❌ [Structure Generation] API call failed:', {
+        errorName: error.name,
+        errorMessage: error.message,
+        isAbortError: error.name === 'AbortError',
+        fullError: error
+      })
+      
+      if (error.name === 'AbortError') {
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: '❌ Structure generation timed out after 60 seconds',
+          type: 'error'
+        })
+        throw new Error('Structure generation timed out - trying next model')
+      }
+      
+      // Add more context to the error
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: `❌ Structure generation error: ${error.message}`,
         type: 'error'
       })
-      throw new Error(errorData.error || 'Structure generation API call failed')
+      throw error
     }
     
     this.blackboard.addMessage({
@@ -2306,6 +1440,76 @@ Generate a complete structure plan with:
     })
     
     return plan
+  }
+
+  /**
+   * Validate format conventions (educate user if they mix formats)
+   */
+  private validateFormatConventions(
+    format: string,
+    userMessage: string
+  ): { valid: boolean; mismatch?: string; suggestion?: string } {
+    const normalizedFormat = format.toLowerCase().replace(/-/g, '_')
+    const lowerMessage = userMessage.toLowerCase()
+    
+    // Short story: Should use SCENES, not chapters
+    if (normalizedFormat === 'short_story') {
+      if (lowerMessage.includes('chapter')) {
+        return {
+          valid: false,
+          mismatch: 'chapter',
+          suggestion: 'scene'
+        }
+      }
+    }
+    
+    // Screenplay: Should use ACTS and SCENES, not chapters
+    if (normalizedFormat === 'screenplay') {
+      if (lowerMessage.includes('chapter')) {
+        return {
+          valid: false,
+          mismatch: 'chapter',
+          suggestion: 'act or scene'
+        }
+      }
+    }
+    
+    // Report: Should use SECTIONS, not chapters
+    if (normalizedFormat.startsWith('report')) {
+      if (lowerMessage.includes('chapter')) {
+        return {
+          valid: false,
+          mismatch: 'chapter',
+          suggestion: 'section'
+        }
+      }
+    }
+    
+    // Podcast: Should use EPISODES and SEGMENTS, not chapters
+    if (normalizedFormat === 'podcast') {
+      if (lowerMessage.includes('chapter')) {
+        return {
+          valid: false,
+          mismatch: 'chapter',
+          suggestion: 'episode or segment'
+        }
+      }
+    }
+    
+    // Article/Essay: Should use SECTIONS, not chapters
+    if (normalizedFormat === 'article' || normalizedFormat === 'essay') {
+      if (lowerMessage.includes('chapter')) {
+        return {
+          valid: false,
+          mismatch: 'chapter',
+          suggestion: 'section'
+        }
+      }
+    }
+    
+    // Novel: Chapters are correct, no validation needed
+    
+    return { valid: true }
   }
 
   /**
@@ -2556,8 +1760,13 @@ Which option did the user select? Return ONLY the option ID.`
           type: 'result'
         })
         
-        // Return action to create new structure (add "from scratch" to bypass future clarification)
-        const enhancedPrompt = `${userMessage} from scratch`
+        // 🔧 FIX: Return message action to trigger UI flow
+        // The UI will call onCreateStory, which creates the node FIRST,
+        // then calls triggerOrchestratedGeneration with the proper node ID
+        console.log('✅ [Clarification] User chose create_new, returning message action')
+        console.log('   Format:', documentFormat)
+        console.log('   Message:', userMessage)
+        console.log('   → UI will create node and trigger orchestration with node ID')
         
         return {
           intent: 'create_structure',
@@ -2570,7 +1779,7 @@ Which option did the user select? Return ONLY the option ID.`
               content: `✅ Creating new ${documentFormat} from scratch...`,
               intent: 'create_structure',
               format: documentFormat,
-              prompt: enhancedPrompt
+              prompt: `${userMessage} from scratch` // Will trigger structure generation in triggerOrchestratedGeneration
             },
             status: 'pending'
           }],
@@ -2703,6 +1912,23 @@ export function getOrchestrator(
     }, worldState)) // PHASE 1: Pass WorldState to constructor
   }
   return orchestrators.get(cacheKey)!
+}
+
+// PHASE 3: Multi-Agent Orchestrator Factory
+// Import at runtime to avoid circular dependency
+export function getMultiAgentOrchestrator(
+  userId: string,
+  config?: Partial<OrchestratorConfig>,
+  worldState?: WorldStateManager
+): any { // Return type is MultiAgentOrchestrator, but we avoid import here
+  // Always create new instance for now (agent pool needs fresh state)
+  // TODO: Implement proper caching with state updates
+  const { MultiAgentOrchestrator } = require('../agents/MultiAgentOrchestrator')
+  
+  return new MultiAgentOrchestrator({
+    userId,
+    ...config
+  }, worldState)
 }
 
 export function createOrchestrator(

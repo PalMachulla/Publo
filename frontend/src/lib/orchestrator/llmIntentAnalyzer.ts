@@ -45,6 +45,8 @@ export interface LLMIntentResult extends IntentAnalysis {
     referenceContent?: string
     sourceDocument?: string // Name or ID of source document (e.g., "Screenplay", "Podcast")
     isExplicitSourceReference?: boolean // True if user explicitly said "based on X", "using X"
+    autoGenerateSections?: string[] // Sections to auto-generate after structure creation (e.g., ["scene2", "act1"])
+    documentFormat?: string // Format extracted from message (e.g., "short-story", "novel", "screenplay")
   }
 }
 
@@ -86,6 +88,9 @@ EXISTING vs NEW DOCUMENT (CRITICAL!):
 - "get content to MY podcast" with Podcast node visible → open_and_write (NOT create_structure!)
 - "help me with THE screenplay" with Screenplay node visible → open_and_write (NOT general_chat!)
 - Only use create_structure when creating something BRAND NEW that doesn't exist yet
+- CRITICAL: If user says "Write a REPORT" but canvas shows "Short Story" nodes, they want to create a NEW REPORT (NOT open the short story!)
+  * The document TYPE matters! Report ≠ Short Story ≠ Screenplay
+  * Intent: create_structure (for the NEW document type they requested)
 
 Available intents:
 - write_content: User wants to generate NEW narrative content for a section
@@ -155,25 +160,163 @@ Be context-aware:
 - Conversational follow-ups relate to the previous exchange
 - Document panel open = work WITHIN document, not create new ones!
 
+FOLLOW-UP RESPONSES (CRITICAL):
+- If the orchestrator just asked "Which section would you like me to write in?" and user responds with "first", "second", "the first one", "1", "2", etc.:
+  * Intent: write_content
+  * Extract the section reference (first, second, 1, 2, etc.)
+  * Set targetSegment to the ordinal/numeric reference
+  * The system will resolve this to the actual section ID
+- If orchestrator asked a clarification question about format (e.g., "Did you mean Scene 2?" or "Did you mean Section 2?"), and user responds with "Yes, scene 2 I mean" or "Yes, section 2 I meant":
+  * THIS IS CRITICAL: The user is CONFIRMING they want to CREATE A NEW DOCUMENT
+  * Look at the ORIGINAL request in conversation history (2-3 messages back) to find what they wanted to create
+  * Intent: create_structure (NOT write_content, NOT open_and_write!)
+  * Extract the document format from the ORIGINAL request (e.g., "report", "short story", "screenplay", "novel")
+  * Extract the CORRECTED section type from their response (e.g., "section 2" not "chapter 2", "scene 2" not "chapter 2")
+  * Set autoGenerateSections to the section they want to write (e.g., ["section2"], ["scene2"])
+  * Set documentFormat to the format from the original request (e.g., "report", "short-story", "screenplay")
+  * This is a multi-step request: create structure + generate content
+  * DO NOT confuse this with opening an existing document on the canvas!
+- If orchestrator asked a clarification question, the user's response is answering that question
+- Short responses like "first", "yes", "no", "the second one", "yes scene 2", "yes section 2" are usually follow-ups to orchestrator questions
+- ALWAYS look at conversation history (go back 2-4 messages) to understand what question was asked and what the user is responding to
+- MAINTAIN ORIGINAL CONTEXT: If user originally said "Write a REPORT" and then clarifies "section 2", they still want a REPORT (not a short story from canvas!)
+- DO NOT let canvas nodes distract you from the user's original intent - they want to create what they asked for!
+
+FRUSTRATED FOLLOW-UPS (CRITICAL):
+- If user says "as I said", "like I told you", "I already said", "chapter 2 as I said":
+  * User is frustrated because their request wasn't understood
+  * Re-analyze their PREVIOUS message (look at conversation history)
+  * Keep the same intent type they originally wanted
+  * Extract the section reference they mentioned ("chapter 2", "act 1", etc.)
+  * Intent: write_content (they want to write, not navigate!)
+
+MULTI-STEP REQUESTS (CRITICAL):
+- If user says "create X and write Y" or "write Y straight away/immediately/right away/right now":
+  * Intent: create_structure
+  * This is a COMBINED request: create structure + generate content
+  * Extract which sections to auto-generate (e.g., "chapter 2", "act 1")
+  * Set needsClarification: false (user was explicit)
+  * Example: "Write a story about X and write chapter 2 straight away" → create_structure + auto-generate chapter 2
+
+HELPFUL REASONING (CRITICAL):
+- If user mentions a section that doesn't exist yet (e.g., "chapter 2" but no structure exists):
+  * Don't say "I couldn't find that section" - that's unhelpful!
+  * Reason: "User wants chapter 2, but no structure exists yet. I should create the structure first, then write chapter 2."
+  * Intent: create_structure (with auto-generation for chapter 2)
+  * Be proactive and helpful, not just error-throwing
+
+- If user says "write chapter 2" and document panel is closed:
+  * Reason: "Short story typically has chapters. User wants chapter 2. I should create a short story structure with chapters, then generate chapter 2."
+  * Intent: create_structure
+  * Extract format from context ("short story" → format: "short-story")
+  * Extract target section ("chapter 2")
+
+CONVERSATIONAL TONE:
+- Be helpful and collaborative, not robotic
+- Instead of "Error: section not found" → "Let me create that structure for you"
+- Instead of "I need more information" → "I'd be happy to help! Just to clarify..."
+- Try to figure out what the user wants before asking questions
+
 Return your analysis as JSON with this structure:
 {
   "intent": "write_content" | "answer_question" | "improve_content" | "rewrite_with_coherence" | "modify_structure" | "create_structure" | "navigate_section" | "open_and_write" | "delete_node" | "clarify_intent" | "general_chat",
   "confidence": 0.0-1.0,
-  "reasoning": "Explain your thought process",
-  "suggestedAction": "What the system should do",
+  "reasoning": "Explain your thought process - be helpful and show you understand the user's goal",
+  "suggestedAction": "What the system should do - be specific and proactive",
   "requiresContext": boolean,
   "suggestedModel": "orchestrator" | "writer" | "editor",
   "needsClarification": boolean,
-  "clarifyingQuestion": "Question to ask user if needsClarification is true",
+  "clarifyingQuestion": "Helpful, polite question if needsClarification is true (e.g., 'I'd be happy to help! Just to clarify, did you mean...')",
   "extractedEntities": {
-    "targetSegment": "Which section to act on",
+    "targetSegment": "Which section to act on (e.g., 'chapter 2', 'act 1', 'first scene')",
     "referenceContent": "Content being referenced from conversation",
     "sourceDocument": "When user says 'based on X' or 'using X', extract the name/ID of the source document from canvas context",
-    "isExplicitSourceReference": "Boolean - true if user explicitly mentioned a specific document to base new content on (e.g., 'based on the screenplay', 'using the podcast')"
+    "isExplicitSourceReference": "Boolean - true if user explicitly mentioned a specific document to base new content on (e.g., 'based on the screenplay', 'using the podcast')",
+    "autoGenerateSections": "Array of section references to auto-generate (e.g., ['chapter 2'] when user says 'write chapter 2 straight away')",
+    "documentFormat": "Format extracted from user's message (e.g., 'short story' → 'short-story', 'screenplay' → 'screenplay')"
   }
 }
 
-Be smart, conversational, and helpful. When in doubt, ask!`
+STRUCTURE REASONING (CRITICAL):
+- Short story → typically has SCENES (not chapters!) - brief narrative fiction
+- Novel → typically has chapters or parts (long-form fiction)
+- Screenplay → typically has acts and scenes (Act 1, Scene 1, etc.)
+- Report → typically has sections (Introduction, Background, Conclusion, etc.)
+- Podcast → typically has episodes and segments
+
+EDUCATIONAL CLARIFICATION (CRITICAL):
+When user mentions a section that doesn't match the format conventions:
+- DON'T just create what they asked for
+- DON'T silently change their request
+- DO educate them conversationally about the format
+- DO ask if they meant something else OR if they want a different format
+
+Examples:
+- User: "Write a short story, chapter 2"
+  * Short stories typically use SCENES, not chapters
+  * Intent: clarify_intent
+  * clarifyingQuestion: "I'd love to help! Just to clarify - short stories typically use scenes rather than chapters. Did you mean Scene 2? Or are you planning a longer novel with chapters?"
+  
+- User: "Write a screenplay, chapter 1"
+  * Screenplays use ACTS and SCENES, not chapters
+  * Intent: clarify_intent
+  * clarifyingQuestion: "Great idea! Just so you know, screenplays typically use acts and scenes rather than chapters. Did you mean Act 1, or perhaps Scene 1?"
+
+- User: "Write a novel, scene 5"
+  * Novels typically use CHAPTERS, scenes are optional subdivisions
+  * Intent: clarify_intent
+  * clarifyingQuestion: "Wonderful! Novels typically use chapters as their main structure. Did you mean Chapter 5? Or do you want to write a specific scene within a chapter?"
+
+BE CONVERSATIONAL AND ENCOURAGING:
+- Acknowledge their creative idea ("I'd love to help!", "Great theme!", "Wonderful idea!")
+- Gently educate about format conventions
+- Offer alternatives
+- Let them decide (maybe they DO want chapters in a short story - that's okay!)
+- Be enthusiastic and supportive, not pedantic
+
+DOCUMENT FORMAT CONVENTIONS (from documentHierarchy.ts):
+- Short Story: Scenes (optional) → Paragraph → Sentence
+  * Brief narrative fiction, typically 1,000-7,500 words
+  * NO chapters! Use scenes for section breaks
+  
+- Novel: Part (optional) → Chapter (required) → Scene (optional) → Paragraph → Sentence
+  * Long-form narrative fiction, 60,000-100,000 words
+  * Chapters are the primary structure
+  
+- Screenplay: Act (required) → Sequence (optional) → Scene (required) → Beat (optional)
+  * Script for film/TV, 90-120 pages
+  * Acts and scenes, NOT chapters
+  
+- Report: Executive Summary (optional) → Section (required) → Subsection (optional)
+  * Structured analysis document
+  * Uses numbered sections (1.0, 2.0), NOT chapters
+  
+- Podcast: Season (optional) → Episode (required) → Segment (optional) → Topic
+  * Audio show format
+  * Episodes and segments, NOT chapters
+  
+- Article: Introduction → Section (optional) → Subsection (optional) → Paragraph
+  * Editorial or blog post, 800-2,000 words
+  * Marked by subheadings, NOT chapters
+
+WHEN USER MIXES FORMATS:
+If user says "short story chapter 2" or "screenplay chapter 1":
+1. Recognize the mismatch
+2. Intent: clarify_intent (NOT create_structure!)
+3. Educate them conversationally
+4. Ask what they meant OR if they want a different format
+5. Be encouraging and supportive
+
+HELPFUL AND COLLABORATIVE:
+- Be conversational and friendly
+- Show that you understand the user's goal
+- Gently educate about format conventions
+- Offer to help proactively
+- Don't just say "error" - suggest solutions
+- Be enthusiastic about their creative idea
+- Example: "I'd love to help! Just to clarify, short stories typically use scenes rather than chapters. Did you mean Scene 2? Or are you planning a longer novel?"
+
+Be smart, conversational, educational, and helpful. When in doubt, ask politely and explain why!`
 
 /**
  * Analyze intent using LLM reasoning

@@ -130,7 +130,7 @@ export async function POST(request: Request) {
         const { data: correctKey } = await supabase
           .from('user_api_keys')
           .select('id, encrypted_key, provider, is_active, validation_status, nickname')
-          .eq('user_id', user.id)
+          .eq('user_id', user!.id) // ✅ FIX: Add null assertion (user is checked above)
           .eq('provider', detectedProvider)
           .eq('is_active', true)
           .eq('validation_status', 'valid')
@@ -145,12 +145,12 @@ export async function POST(request: Request) {
           })
           apiKey = decryptAPIKey(correctKey.encrypted_key)
           keyId = correctKey.id
-          keyOwnerId = user.id
-          provider = detectedProvider
+          keyOwnerId = user!.id // ✅ FIX: Add null assertion
+          provider = detectedProvider as LLMProvider // ✅ FIX: Type assertion
         } else {
           return NextResponse.json(
             { 
-              error: `Model ${model} requires ${detectedProvider.toUpperCase()} API key, but you only have ${userKey.provider.toUpperCase()} configured.`,
+              error: `Model ${model} requires ${detectedProvider?.toUpperCase() || 'UNKNOWN'} API key, but you only have ${userKey.provider.toUpperCase()} configured.`,
               provider: detectedProvider,
               details: 'Please add your API key for this provider at /settings/api-keys'
             },

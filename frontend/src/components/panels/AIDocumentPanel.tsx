@@ -45,6 +45,28 @@ export default function AIDocumentPanel({
   onSectionsLoaded,
   onRefreshSections,
 }: AIDocumentPanelProps) {
+  
+  // 🔍 DEBUG: Validate node ID format
+  useEffect(() => {
+    if (storyStructureNodeId) {
+      const isStructureId = storyStructureNodeId.startsWith('structure-')
+      const isValidNodeId = !isStructureId && storyStructureNodeId.includes('-')
+      
+      console.log('🔍 [AIDocumentPanel] Received storyStructureNodeId:', {
+        nodeId: storyStructureNodeId,
+        format: isStructureId ? '❌ WRONG (structure ID)' : isValidNodeId ? '✅ CORRECT (UUID)' : '⚠️ UNKNOWN',
+        isStructureId,
+        isValidNodeId
+      })
+      
+      if (isStructureId) {
+        console.error('❌ [AIDocumentPanel] CRITICAL: Received structure item ID instead of node ID!')
+        console.error('   This will cause Supabase errors!')
+        console.error('   Expected: UUID format (e.g., "abc-123-def-456")')
+        console.error('   Received:', storyStructureNodeId)
+      }
+    }
+  }, [storyStructureNodeId])
   const [activeSectionId, setActiveSectionId] = useState<string | null>(initialSectionId)
   
   // Update active section when initialSectionId changes (e.g., orchestrator opens a specific section)
@@ -159,6 +181,73 @@ export default function AIDocumentPanel({
     }
   }, [onRefreshSections, refreshSections])
 
+  // Track which sections are currently being generated
+  const [generatingSections, setGeneratingSections] = useState<Set<string>>(new Set())
+
+  // ✅ NEW: Listen for generation-started events
+  useEffect(() => {
+    const handleGenerationStarted = (event: Event) => {
+      const customEvent = event as CustomEvent
+      const { nodeId, sectionId, sectionName } = customEvent.detail
+      
+      console.log('🔔 [AIDocumentPanel] Generation started event received:', {
+        nodeId,
+        sectionId,
+        sectionName,
+        currentNodeId: storyStructureNodeId,
+        shouldShow: nodeId === storyStructureNodeId
+      })
+      
+      // Only show progress if the generation is for the currently open document
+      if (nodeId === storyStructureNodeId) {
+        console.log('✍️ [AIDocumentPanel] Marking section as generating:', sectionId)
+        setGeneratingSections(prev => new Set(prev).add(sectionId))
+      }
+    }
+    
+    window.addEventListener('content-generation-started', handleGenerationStarted)
+    
+    return () => {
+      window.removeEventListener('content-generation-started', handleGenerationStarted)
+    }
+  }, [storyStructureNodeId])
+
+  // ✅ NEW: Auto-refresh when content is saved by agents
+  useEffect(() => {
+    const handleContentSaved = (event: Event) => {
+      const customEvent = event as CustomEvent
+      const { nodeId, sectionId, wordCount } = customEvent.detail
+      
+      console.log('🔔 [AIDocumentPanel] Content saved event received:', {
+        nodeId,
+        sectionId,
+        wordCount,
+        currentNodeId: storyStructureNodeId,
+        shouldRefresh: nodeId === storyStructureNodeId
+      })
+      
+      // Only refresh if the saved content is for the currently open document
+      if (nodeId === storyStructureNodeId) {
+        console.log('🔄 [AIDocumentPanel] Auto-refreshing sections...')
+        
+        // Remove from generating set
+        setGeneratingSections(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(sectionId)
+          return newSet
+        })
+        
+        refreshSections()
+      }
+    }
+    
+    window.addEventListener('content-saved', handleContentSaved)
+    
+    return () => {
+      window.removeEventListener('content-saved', handleContentSaved)
+    }
+  }, [storyStructureNodeId, refreshSections])
+
   // Persist sections sidebar collapse state
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -189,7 +278,10 @@ export default function AIDocumentPanel({
   // Track which nodes have been initialized to prevent duplicates
   const initializedNodesRef = useRef<Set<string>>(new Set())
   
-  // ✅ CRITICAL FIX: Track previous sections to prevent infinite loop
+  // ✅ CRITICAL FIX: Track previous hash to prevent infinite loop
+  const prevStructureHashRef = useRef<string>('')
+  
+  // Track previous sections hash for onSectionsLoaded callback
   const prevSectionsRef = useRef<string>('')
   
   // Clear initialization tracking when document closes
@@ -197,55 +289,58 @@ export default function AIDocumentPanel({
     if (!isOpen) {
       console.log('🧹 Document panel closed - clearing initialization tracking')
       initializedNodesRef.current.clear()
+      prevStructureHashRef.current = ''
       prevSectionsRef.current = ''
     }
   }, [isOpen])
 
   // Re-initialize sections when structure items change
   useEffect(() => {
+    if (!isOpen || !storyStructureNodeId || structureItems.length === 0) {
+      return
+    }
+    
+    const nodeKey = storyStructureNodeId
+    
     console.log('📋 [AIDocumentPanel] Section initialization check:', {
       isOpen,
       storyStructureNodeId,
       structureItemsLength: structureItems.length,
       sectionsLength: sections.length,
-      alreadyInitialized: storyStructureNodeId ? initializedNodesRef.current.has(storyStructureNodeId) : false
+      alreadyInitialized: initializedNodesRef.current.has(nodeKey)
     })
     
-    if (isOpen && storyStructureNodeId && structureItems.length > 0) {
-      const nodeKey = storyStructureNodeId
-      
-      // If sections is empty, initialize all sections (but only once per node)
-      if (sections.length === 0) {
-        if (!initializedNodesRef.current.has(nodeKey)) {
-          console.log('🚀 No sections exist, initializing all sections for node:', nodeKey)
-          initializedNodesRef.current.add(nodeKey)
-          initializeSections()
-        } else {
-          console.log('⏭️ Skipping initialization - already attempted for node:', nodeKey)
-          console.log('   If sections are still empty, there may be an RLS or database issue')
-        }
-        return
-      }
-      
-      // Check if structure items have changed (added/removed)
-      const structureItemIds = new Set(structureItems.map(item => item.id))
-      const sectionItemIds = new Set(sections.map(s => s.structure_item_id))
-      
-      const hasNewItems = structureItems.some(item => !sectionItemIds.has(item.id))
-      const hasRemovedItems = sections.some(s => !structureItemIds.has(s.structure_item_id))
-      
-      if (hasNewItems || hasRemovedItems) {
-        console.log('🔄 Structure items changed, re-initializing sections...', {
-          hasNewItems,
-          hasRemovedItems,
-          newItemsCount: hasNewItems ? structureItems.filter(item => !sectionItemIds.has(item.id)).length : 0
-        })
+    // If sections is empty, initialize all sections (but only once per node)
+    if (sections.length === 0) {
+      if (!initializedNodesRef.current.has(nodeKey)) {
+        console.log('🚀 No sections exist, initializing all sections for node:', nodeKey)
+        initializedNodesRef.current.add(nodeKey)
         initializeSections()
       } else {
-        console.log('✅ Sections in sync with structure items (no changes needed)')
+        console.log('⏭️ Skipping initialization - already attempted for node:', nodeKey)
       }
+      return
     }
-  }, [isOpen, storyStructureNodeId, structureItems, sections, initializeSections])
+    
+    // ✅ FIX: Create a stable hash and compare with PREVIOUS hash
+    const structureHash = structureItems.map(item => item.id).sort().join(',')
+    
+    // Only re-initialize if hash changed from LAST TIME (not just different from sections)
+    if (structureHash !== prevStructureHashRef.current && prevStructureHashRef.current !== '') {
+      console.log('🔄 Structure items changed, re-initializing sections...', {
+        oldHash: prevStructureHashRef.current.substring(0, 50),
+        newHash: structureHash.substring(0, 50)
+      })
+      prevStructureHashRef.current = structureHash
+      initializeSections()
+    } else {
+      // Update the hash for next comparison
+      prevStructureHashRef.current = structureHash
+      console.log('✅ Sections in sync with structure items (no changes needed)')
+    }
+    // ✅ FIX: Remove sections from deps - only track structureItems changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, storyStructureNodeId, structureItems])
 
   // Get the active section
   // activeSectionId is a structure_item_id, not a section.id
@@ -409,9 +504,8 @@ export default function AIDocumentPanel({
       const headerTag = '#'.repeat(headerLevel)
       const headerText = item.title ? `${item.title}` : item.name
       
-      // Use HTML heading with ID attribute for reliable anchor targeting
-      // This ensures the ID survives markdown rendering
-      const headingWithId = `<h${headerLevel} id="section-${itemId}" style="scroll-margin-top: 20px;">${headerText}</h${headerLevel}>`
+      // ✅ Use markdown headers with HTML comment for ID (prevents editable HTML)
+      const headingWithId = `<!-- section-id: ${itemId} -->\n${headerTag} ${headerText}`
       aggregatedContent.push(headingWithId)
       aggregatedContent.push('') // Add blank line for proper markdown spacing
     }
@@ -426,11 +520,27 @@ export default function AIDocumentPanel({
       }
       
       const section = sections.find(s => s.structure_item_id === itemId)
+      const isGenerating = generatingSections.has(itemId)
+      
       if (section?.content && section.content.trim()) {
         aggregatedContent.push(section.content)
+      } else if (isGenerating) {
+        // ✅ Show progress indicator for sections currently being generated
+        aggregatedContent.push(`<div class="text-purple-600 italic animate-pulse flex items-center gap-2">
+  <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+  </svg>
+  ✍️ Writing in progress...
+</div>`)
       } else {
-        // Add placeholder for empty sections
-        aggregatedContent.push('*[No content yet - Click here to start writing]*')
+        // Add placeholder for empty sections (non-actionable)
+        const itemSummary = item.summary
+        if (itemSummary) {
+          aggregatedContent.push(`*${itemSummary}*\n\n---\n\n*Awaiting content generation...*`)
+        } else {
+          aggregatedContent.push('*Content will appear here once generated.*')
+        }
       }
       return aggregatedContent.join('\n\n')
     }

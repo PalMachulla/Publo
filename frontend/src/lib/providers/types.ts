@@ -4,6 +4,9 @@
 
 import { NormalizedModel, GenerateRequest, GenerateResponse } from '@/types/api-keys'
 
+// ✅ FIX: Re-export NormalizedModel so it can be imported from this module
+export type { NormalizedModel, GenerateRequest, GenerateResponse }
+
 /**
  * Parameters for text generation
  */

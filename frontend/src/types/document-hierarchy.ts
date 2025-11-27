@@ -67,6 +67,9 @@ export interface FlatDocumentSection {
   summary?: string
   wordCount: number
   status: 'draft' | 'in_progress' | 'completed'
+  // ✅ FIX: Add timestamp fields
+  createdAt?: string
+  updatedAt?: string
   themeColor?: string
 }
 

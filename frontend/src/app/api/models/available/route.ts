@@ -145,15 +145,18 @@ export async function GET(request: Request) {
           const decryptedKey = decryptAPIKey(key.encrypted_key)
           models = await adapter.fetchModels(decryptedKey)
           
-          // Update cache in background
-          supabase
+          // ✅ FIX: Update cache in background (Postgrest doesn't have .catch())
+          const { error: cacheError } = await supabase
             .from('user_api_keys')
             .update({
               models_cache: models as any,
               models_cached_at: new Date().toISOString(),
             })
             .eq('id', key.id)
-            .catch(err => console.error('Failed to update cache:', err))
+          
+          if (cacheError) {
+            console.error('Failed to update cache:', cacheError)
+          }
         }
 
         // Filter by user preferences and chat compatibility

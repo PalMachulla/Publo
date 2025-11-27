@@ -14,7 +14,7 @@ import {
   Button
 } from '@/components/ui'
 import { 
-  getOrchestrator, 
+  getMultiAgentOrchestrator, // PHASE 3: Multi-agent support
   buildCanvasContext, 
   type OrchestratorRequest,
   type OrchestratorAction,
@@ -161,6 +161,21 @@ const templates: Record<StoryFormat, Template[]> = {
     { id: 'business', name: 'Business Report', description: 'Executive summary, findings, recommendations' },
     { id: 'research', name: 'Research Report', description: 'Literature review, methodology, results' },
     { id: 'technical', name: 'Technical Report', description: 'Specifications, analysis, documentation' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
+  'report_script_coverage': [
+    { id: 'standard', name: 'Standard Coverage', description: 'Industry-standard screenplay analysis' },
+    { id: 'detailed', name: 'Detailed Coverage', description: 'In-depth analysis with recommendations' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
+  'report_business': [
+    { id: 'executive', name: 'Executive Report', description: 'High-level strategic analysis' },
+    { id: 'analytical', name: 'Analytical Report', description: 'Data-driven insights and recommendations' },
+    { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
+  ],
+  'report_content_analysis': [
+    { id: 'thematic', name: 'Thematic Analysis', description: 'Focus on themes and patterns' },
+    { id: 'structural', name: 'Structural Analysis', description: 'Analyze content structure and flow' },
     { id: 'blank', name: 'Blank Canvas', description: 'Start from scratch' }
   ],
   'article': [
@@ -636,7 +651,7 @@ export default function OrchestratorPanel({
           const modelsData = await modelsResponse.json()
           if (modelsData.success && modelsData.models && modelsData.models.length > 0) {
             availableModelsToPass = modelsData.models
-            console.log(`✅ [OrchestratorPanel] Loaded ${availableModelsToPass.length} available models (${modelsData.stats.reasoningCount} reasoning, ${modelsData.stats.writingCount} writing)`)
+            console.log(`✅ [OrchestratorPanel] Loaded ${modelsData.models.length} available models (${modelsData.stats.reasoningCount} reasoning, ${modelsData.stats.writingCount} writing)`)
           }
         } else {
           console.warn('⚠️ [OrchestratorPanel] Failed to fetch available models, using static MODEL_TIERS')
@@ -655,14 +670,29 @@ export default function OrchestratorPanel({
         draft.user.apiKeys.orchestratorKeyId = userKeyId
       })
       
-      const response = await getOrchestrator(user.id, { toolRegistry }, worldState).orchestrate({
+      // ✅ CRITICAL: Get structureItems from WorldState if available (more up-to-date than props)
+      const activeDoc = worldState.getActiveDocument()
+      const freshStructureItems = activeDoc.structure?.items || structureItems || []
+      
+      console.log('🔍 [OrchestratorPanel] Structure items source:', {
+        fromWorldState: activeDoc.structure?.items?.length || 0,
+        fromProps: structureItems?.length || 0,
+        using: freshStructureItems.length,
+        currentNodeId: currentStoryStructureNodeId
+      })
+      
+      // PHASE 3: Use multi-agent orchestrator for intelligent task coordination
+      const response = await getMultiAgentOrchestrator(user.id, { 
+        toolRegistry,
+        onMessage: onAddChatMessage // PHASE 3: Real-time message streaming
+      }, worldState).orchestrate({
         message,
         canvasNodes,
         canvasEdges,
         activeContext: activeContext || undefined, // Convert null to undefined
         isDocumentViewOpen,
         documentFormat: formatToUse, // ✅ FIX: Use detected format instead of selectedFormat
-        structureItems,
+        structureItems: freshStructureItems, // ✅ FIX: Use WorldState items if available
         contentMap,
         currentStoryStructureNodeId,
         // Model selection preferences
@@ -672,22 +702,13 @@ export default function OrchestratorPanel({
         // Available providers (from user's API keys)
         availableProviders: availableProviders.length > 0 ? availableProviders : undefined,
         // PHASE 1.2: Pass available models with tier metadata (undefined = fallback to static MODEL_TIERS)
-        availableModels: availableModelsToPass as any, // Intentionally allow undefined for backward compatibility
+        availableModels: availableModelsToPass || undefined as any, // Intentionally allow undefined for backward compatibility
         // User key ID for structure generation
         userKeyId
       })
       
-      // Display detailed thinking steps from blackboard
-      if (onAddChatMessage && response.thinkingSteps && response.thinkingSteps.length > 0) {
-        response.thinkingSteps.forEach(step => {
-          onAddChatMessage(step.content, 'orchestrator', step.type as any)
-        })
-      } else if (onAddChatMessage) {
-        // Fallback to basic reasoning if no thinking steps
-        onAddChatMessage(`⚡ Intent: ${response.intent} (${Math.round(response.confidence * 100)}%)`, 'orchestrator', 'decision')
-        onAddChatMessage(`💭 ${response.reasoning}`, 'orchestrator', 'thinking')
-        onAddChatMessage(`🤖 Model: ${response.modelUsed}`, 'orchestrator', 'model')
-      }
+      // ⚠️ REMOVED: Real-time callback already displays messages - no need to display them again!
+      // thinkingSteps are now streamed in real-time via onMessage callback
       
       // Execute actions generated by the orchestrator
       if (response.actions.length > 0) {
@@ -777,7 +798,7 @@ export default function OrchestratorPanel({
       case 'create_structure':
         // Extract format from user message (screenplay, novel, report, etc.)
         const detectedFormat = detectFormatFromMessage(message)
-        onCreateStory(detectedFormat || selectedFormat, selectedTemplate || undefined, message)
+        await onCreateStory(detectedFormat || selectedFormat, selectedTemplate || undefined, message) // ✅ FIX: Await
         break
         
       case 'general_chat':
@@ -854,14 +875,22 @@ export default function OrchestratorPanel({
         draft.user.apiKeys.orchestratorKeyId = userKeyId
       })
       
-      const orchestratorResponse = await getOrchestrator(user.id, { toolRegistry }, worldState).orchestrate({
+      // ✅ CRITICAL: Get structureItems from WorldState (clarification responses)
+      const activeDocForClarification = worldState.getActiveDocument()
+      const freshStructureItemsForClarification = activeDocForClarification.structure?.items || structureItems || []
+      
+      // PHASE 3: Use multi-agent orchestrator for clarification responses too
+      const orchestratorResponse = await getMultiAgentOrchestrator(user.id, { 
+        toolRegistry,
+        onMessage: onAddChatMessage // PHASE 3: Real-time message streaming
+      }, worldState).orchestrate({
         message: response,
         canvasNodes,
         canvasEdges,
         activeContext: activeContext || undefined,
         isDocumentViewOpen,
         documentFormat: pendingClarification.payload.documentFormat || selectedFormat,
-        structureItems,
+        structureItems: freshStructureItemsForClarification, // ✅ FIX: Use WorldState items
         contentMap,
         currentStoryStructureNodeId,
         modelMode,
@@ -878,12 +907,7 @@ export default function OrchestratorPanel({
         }
       })
       
-      // Display thinking steps
-      if (onAddChatMessage && orchestratorResponse.thinkingSteps && orchestratorResponse.thinkingSteps.length > 0) {
-        orchestratorResponse.thinkingSteps.forEach(step => {
-          onAddChatMessage(step.content, 'orchestrator', step.type as any)
-        })
-      }
+      // ⚠️ REMOVED: Real-time callback already displays messages - no need to display them again!
       
       // Execute actions returned by orchestrator
       for (const action of orchestratorResponse.actions) {
@@ -895,8 +919,8 @@ export default function OrchestratorPanel({
           if (onAddChatMessage) {
             onAddChatMessage(action.payload.content, 'orchestrator', 'result')
           }
-          // Call onCreateStory with the enhanced prompt
-          onCreateStory(format, undefined, prompt)
+          // ✅ FIX: AWAIT onCreateStory to ensure node is saved before continuing
+          await onCreateStory(format, undefined, prompt)
         } else {
           await executeActionDirectly(action)
         }
@@ -1100,7 +1124,7 @@ export default function OrchestratorPanel({
         case 'modify_structure':
           // Handle structure creation/modification
           if (action.payload.action === 'create') {
-            onCreateStory(
+            await onCreateStory( // ✅ FIX: Await
               action.payload.format || selectedFormat,
               selectedTemplate || undefined,
               action.payload.prompt
@@ -1391,7 +1415,7 @@ export default function OrchestratorPanel({
             await onWriteContent(activeContext.id, improvePrompt)
           } else {
             // Fallback
-            onCreateStory(selectedFormat, selectedTemplate || undefined, `Improve: ${message}`)
+            await onCreateStory(selectedFormat, selectedTemplate || undefined, `Improve: ${message}`) // ✅ FIX: Await
           }
           break
         
@@ -1811,9 +1835,9 @@ INSTRUCTION: Use the above ${referencedNode.detailedContext.format} structure an
                     onAddChatMessage(`ℹ️ Note: No written content found, using structure summaries only`)
                   }
                 }
-              } else if (referencedNode.nodeType === 'test' && referencedNode.detailedContext.markdown) {
+              } else if (referencedNode.nodeType === 'test' && (referencedNode.detailedContext as any).markdown) {
                 // Use markdown content from test node
-                const markdown = referencedNode.detailedContext.markdown as string
+                const markdown = (referencedNode.detailedContext as any).markdown as string
                 enhancedPrompt = `${message}
 
 REFERENCE CONTENT:
@@ -1824,7 +1848,7 @@ ${markdown.length > 8000 ? '... (content truncated for length)' : ''}
 Use the above content as inspiration for creating the new ${formatToUse} structure.`
 
                 if (onAddChatMessage) {
-                  onAddChatMessage(`✅ Extracted ${referencedNode.detailedContext.wordCount} words from "${referencedNode.label}"`)
+                  onAddChatMessage(`✅ Extracted ${(referencedNode.detailedContext as any).wordCount || 0} words from "${referencedNode.label}"`)
                 }
               }
             } else if (onAddChatMessage) {
@@ -2099,7 +2123,7 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
               onAddChatMessage(`💬 ${response}`)
             }
           } else {
-            onCreateStory(selectedFormat, selectedTemplate || undefined, message)
+            await onCreateStory(selectedFormat, selectedTemplate || undefined, message) // ✅ FIX: Await
           }
           break
       }

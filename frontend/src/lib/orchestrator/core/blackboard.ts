@@ -81,6 +81,59 @@ export interface BlackboardState {
   
   // Learning Patterns (ReasoningBank-inspired)
   patterns: Map<string, PatternMemory>
+  
+  // PHASE 3: Multi-Agent Coordination
+  agents: Map<string, AgentState>
+  taskQueue: Map<string, AgentTask>
+  messageLog: A2AMessage[]
+}
+
+// PHASE 3: Agent types (imported from agents/types.ts when available)
+export interface AgentState {
+  id: string
+  status: 'idle' | 'busy' | 'waiting' | 'error'
+  currentTask: string | null
+  tasksCompleted: number
+  tasksAssigned: number
+  lastActive: number
+  capabilities?: string[]
+  metadata?: {
+    totalTokensUsed?: number
+    totalCost?: number
+    averageExecutionTime?: number
+  }
+}
+
+export interface AgentTask {
+  id: string
+  type: string
+  payload: any
+  dependencies: string[]
+  assignedTo: string | null
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  result?: any
+  error?: string
+  priority: 'low' | 'normal' | 'high'
+  createdAt: number
+  assignedAt?: number
+  startedAt?: number
+  completedAt?: number
+}
+
+export interface A2AMessage {
+  id: string
+  from: string
+  to: string | string[]
+  timestamp: number
+  type: 'task' | 'result' | 'query' | 'critique' | 'collaborate' | 'status'
+  payload: any
+  sessionId: string
+  conversationId?: string
+  metadata?: {
+    estimatedTime?: number
+    tokens?: number
+    cost?: number
+  }
 }
 
 export interface PatternMemory {
@@ -100,8 +153,10 @@ export interface PatternMemory {
 export class Blackboard {
   private state: BlackboardState
   private subscribers: Map<string, Set<(state: BlackboardState) => void>>
+  private messageCallback?: (message: ConversationMessage) => void // Real-time UI callback
   
-  constructor(userId: string) {
+  constructor(userId: string, messageCallback?: (message: ConversationMessage) => void) {
+    this.messageCallback = messageCallback
     this.state = {
       messages: [],
       canvas: {
@@ -121,7 +176,11 @@ export class Blackboard {
         pendingActions: []
       },
       temporal: new TemporalMemory(userId, 'orchestration'),
-      patterns: new Map()
+      patterns: new Map(),
+      // PHASE 3: Multi-Agent Coordination
+      agents: new Map(),
+      taskQueue: new Map(),
+      messageLog: []
     }
     
     this.subscribers = new Map()
@@ -155,6 +214,12 @@ export class Blackboard {
     })
     
     this.notify('messages')
+    
+    // 🚀 REAL-TIME: Call UI callback immediately if provided
+    if (this.messageCallback) {
+      this.messageCallback(newMessage)
+    }
+    
     return newMessage
   }
   
@@ -383,6 +448,243 @@ export class Blackboard {
   }
   
   // ============================================================
+  // PHASE 3: MULTI-AGENT COORDINATION
+  // ============================================================
+  
+  /**
+   * Orchestrator assigns a task to an agent
+   * Only orchestrator can write to task queue (prevents race conditions)
+   */
+  assignTask(task: AgentTask, agentId: string, orchestratorId: string = 'orchestrator'): void {
+    if (!this.isOrchestrator(orchestratorId)) {
+      throw new Error('Only orchestrator can assign tasks')
+    }
+    
+    const assignedTask: AgentTask = {
+      ...task,
+      assignedTo: agentId,
+      status: 'pending',
+      assignedAt: Date.now()
+    }
+    
+    this.state.taskQueue.set(task.id, assignedTask)
+    
+    // Update agent state
+    const agentState = this.state.agents.get(agentId)
+    if (agentState) {
+      agentState.tasksAssigned++
+      agentState.lastActive = Date.now()
+    }
+    
+    // Log to temporal memory
+    this.state.temporal.addEvent({
+      verb: 'task_assigned',
+      object: task.id,
+      attributes_diff: {
+        agentId,
+        taskType: task.type,
+        priority: task.priority
+      }
+    })
+    
+    this.notify('taskQueue')
+    console.log(`✅ [Blackboard] Task ${task.id} assigned to agent ${agentId}`)
+  }
+  
+  /**
+   * Agent reads assigned task (read-only)
+   */
+  getTaskForAgent(agentId: string): AgentTask | null {
+    return Array.from(this.state.taskQueue.values())
+      .find(task => task.assignedTo === agentId && task.status === 'pending') || null
+  }
+  
+  /**
+   * Get task by ID
+   */
+  getTask(taskId: string): AgentTask | undefined {
+    return this.state.taskQueue.get(taskId)
+  }
+  
+  /**
+   * Get all tasks (optionally filter by status)
+   */
+  getTasks(status?: AgentTask['status']): AgentTask[] {
+    const tasks = Array.from(this.state.taskQueue.values())
+    return status ? tasks.filter(t => t.status === status) : tasks
+  }
+  
+  /**
+   * Agent reports result back to orchestrator
+   */
+  reportResult(agentId: string, result: A2AMessage): void {
+    const taskId = result.payload.taskId
+    const task = this.state.taskQueue.get(taskId)
+    
+    if (!task) {
+      console.error(`❌ [Blackboard] Task ${taskId} not found`)
+      return
+    }
+    
+    // Update task status
+    task.status = result.payload.status === 'success' ? 'completed' : 'failed'
+    task.result = result.payload.result
+    task.error = result.payload.error
+    task.completedAt = Date.now()
+    
+    // Update agent state
+    const agentState = this.state.agents.get(agentId)
+    if (agentState) {
+      agentState.tasksCompleted++
+      agentState.currentTask = null
+      agentState.status = 'idle'
+      agentState.lastActive = Date.now()
+      
+      // Update metadata
+      if (result.payload.tokensUsed) {
+        agentState.metadata = agentState.metadata || {}
+        agentState.metadata.totalTokensUsed = (agentState.metadata.totalTokensUsed || 0) + result.payload.tokensUsed
+      }
+    }
+    
+    // Log message
+    this.state.messageLog.push(result)
+    
+    // Log to temporal memory
+    this.state.temporal.addEvent({
+      verb: 'task_completed',
+      object: taskId,
+      attributes_diff: {
+        agentId,
+        status: task.status,
+        executionTime: result.payload.executionTime
+      }
+    })
+    
+    this.notify('taskQueue')
+    this.notify('agents')
+    
+    console.log(`✅ [Blackboard] Task ${taskId} completed by agent ${agentId} (status: ${task.status})`)
+  }
+  
+  /**
+   * Register an agent in the blackboard
+   */
+  registerAgent(agentState: AgentState): void {
+    this.state.agents.set(agentState.id, agentState)
+    
+    this.state.temporal.addEvent({
+      verb: 'agent_registered',
+      object: agentState.id,
+      attributes_diff: {
+        capabilities: agentState.capabilities
+      }
+    })
+    
+    this.notify('agents')
+    console.log(`✅ [Blackboard] Agent registered: ${agentState.id}`)
+  }
+  
+  /**
+   * Update agent state
+   */
+  updateAgentState(agentId: string, updates: Partial<AgentState>): void {
+    const current = this.state.agents.get(agentId)
+    
+    if (!current) {
+      console.warn(`⚠️ [Blackboard] Agent ${agentId} not found, cannot update state`)
+      return
+    }
+    
+    this.state.agents.set(agentId, { ...current, ...updates })
+    this.notify('agents')
+  }
+  
+  /**
+   * Get agent state by ID
+   */
+  getAgentState(agentId: string): AgentState | undefined {
+    return this.state.agents.get(agentId)
+  }
+  
+  /**
+   * Get all registered agents
+   */
+  getAllAgents(): AgentState[] {
+    return Array.from(this.state.agents.values())
+  }
+  
+  /**
+   * Get agents by capability
+   */
+  getAgentsByCapability(capability: string): AgentState[] {
+    return this.getAllAgents().filter(agent =>
+      agent.capabilities?.includes(capability)
+    )
+  }
+  
+  /**
+   * Get idle agents (available for work)
+   */
+  getIdleAgents(): AgentState[] {
+    return this.getAllAgents().filter(agent => agent.status === 'idle')
+  }
+  
+  /**
+   * Log A2A message (for observability)
+   */
+  logMessage(message: A2AMessage): void {
+    this.state.messageLog.push(message)
+    
+    // Keep only last 1000 messages (prevent memory leak)
+    if (this.state.messageLog.length > 1000) {
+      this.state.messageLog = this.state.messageLog.slice(-1000)
+    }
+  }
+  
+  /**
+   * Get message log (optionally filter by type)
+   */
+  getMessageLog(type?: A2AMessage['type']): A2AMessage[] {
+    return type 
+      ? this.state.messageLog.filter(m => m.type === type)
+      : this.state.messageLog
+  }
+  
+  /**
+   * Check if caller is orchestrator (for authorization)
+   */
+  private isOrchestrator(callerId: string): boolean {
+    return callerId === 'orchestrator'
+  }
+  
+  /**
+   * Get execution statistics
+   */
+  getExecutionStats(): {
+    totalTasks: number
+    completedTasks: number
+    failedTasks: number
+    pendingTasks: number
+    totalAgents: number
+    idleAgents: number
+    busyAgents: number
+  } {
+    const tasks = this.getTasks()
+    const agents = this.getAllAgents()
+    
+    return {
+      totalTasks: tasks.length,
+      completedTasks: tasks.filter(t => t.status === 'completed').length,
+      failedTasks: tasks.filter(t => t.status === 'failed').length,
+      pendingTasks: tasks.filter(t => t.status === 'pending').length,
+      totalAgents: agents.length,
+      idleAgents: agents.filter(a => a.status === 'idle').length,
+      busyAgents: agents.filter(a => a.status === 'busy').length
+    }
+  }
+  
+  // ============================================================
   // UTILITIES
   // ============================================================
   
@@ -415,7 +717,11 @@ export class Blackboard {
         pendingActions: []
       },
       temporal: new TemporalMemory(userId, 'orchestration'),
-      patterns: new Map()
+      patterns: new Map(),
+      // PHASE 3: Multi-Agent Coordination
+      agents: new Map(),
+      taskQueue: new Map(),
+      messageLog: []
     }
     
     this.notify('all')

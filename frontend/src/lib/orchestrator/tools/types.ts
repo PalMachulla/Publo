@@ -6,6 +6,8 @@
  */
 
 import type { WorldStateManager } from '../core/worldState'
+import type { Blackboard } from '../core/blackboard'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ============================================================
 // CORE TOOL INTERFACES
@@ -21,6 +23,10 @@ export interface ToolContext {
   userId: string
   /** Optional user API key ID for external services */
   userKeyId?: string
+  /** PHASE 3: Blackboard for agent coordination and message logging */
+  blackboard: Blackboard
+  /** ✅ FIX: Authenticated Supabase client (to avoid RLS issues) */
+  supabaseClient?: SupabaseClient
 }
 
 /**
@@ -80,7 +86,7 @@ export interface Tool<TInput = any, TOutput = any> {
   parameters: ToolParameter[]
   
   /** Category for organization */
-  category: 'content' | 'structure' | 'navigation' | 'analysis' | 'system'
+  category: 'content' | 'structure' | 'navigation' | 'analysis' | 'system' | 'persistence'
   
   /** Whether this tool requires user confirmation */
   requiresConfirmation: boolean
@@ -158,9 +164,13 @@ export interface ToolRegistry {
  */
 export interface WriteContentInput {
   sectionId: string
+  sectionName?: string // ✅ FIX: Add optional sectionName
   prompt: string
   model?: string
   streamingEnabled?: boolean
+  useCluster?: boolean // For writer-critic mode
+  storyStructureNodeId?: string // Node ID for content generation
+  format?: string // Document format (novel, screenplay, etc.)
 }
 
 export interface WriteContentOutput {
