@@ -100,6 +100,12 @@ export class CreateStructureAction extends BaseAction {
       availableModels?: TieredModel[]
     }
   ): Promise<OrchestratorAction[]> {
+    console.log('🚀 [CreateStructureAction] STARTING generate() method')
+    console.log('   Intent:', intent.intent)
+    console.log('   Message:', request.message)
+    console.log('   Format:', request.documentFormat)
+    console.log('   Extracted entities:', intent.extractedEntities)
+    
     // Check if LLM suggested a specific template
     const suggestedTemplate = intent.extractedEntities?.suggestedTemplate
     const templateInfo = suggestedTemplate && request.documentFormat
@@ -109,7 +115,10 @@ export class CreateStructureAction extends BaseAction {
     console.log('🏗️ [CreateStructureAction] Processing structure request:', {
       format: request.documentFormat,
       message: request.message,
-      suggestedTemplate: templateInfo ? `${templateInfo.name} (${templateInfo.id})` : 'none'
+      suggestedTemplate: templateInfo ? `${templateInfo.name} (${templateInfo.id})` : 'none',
+      suggestedTemplateRaw: suggestedTemplate, // ✅ DEBUG: Show raw value
+      hasSuggestedTemplate: !!suggestedTemplate, // ✅ DEBUG: Boolean check
+      intentExtractedEntities: intent.extractedEntities // ✅ DEBUG: Full entities
     })
     
     const actions: OrchestratorAction[] = []
@@ -132,6 +141,71 @@ export class CreateStructureAction extends BaseAction {
           'error'
         )
       ]
+    }
+    
+    // ============================================================
+    // STEP 1.5: Check if template selection is needed
+    // ============================================================
+    
+    // If user's request is vague (no template keyword), show template options
+    // Example: "Create a podcast" (vague) → show options
+    //          "Create a podcast interview" (specific) → use interview template
+    console.log('🔍 [STEP 1.5] Template selection check:', {
+      hasSuggestedTemplate: !!suggestedTemplate,
+      suggestedTemplate,
+      hasDocumentFormat: !!request.documentFormat,
+      documentFormat: request.documentFormat,
+      willCheckTemplates: !suggestedTemplate && request.documentFormat
+    })
+    
+    if (!suggestedTemplate && request.documentFormat) {
+      console.log('✅ [STEP 1.5] Fetching available templates for format:', request.documentFormat)
+      const { getTemplatesForFormat } = await import('../../schemas/templateRegistry')
+      const availableTemplates = getTemplatesForFormat(request.documentFormat)
+      
+      console.log('📋 [STEP 1.5] Available templates:', {
+        count: availableTemplates.length,
+        templates: availableTemplates.map((t: any) => ({ id: t.id, name: t.name }))
+      })
+      
+      if (availableTemplates.length > 0) {
+        console.log('🎨 [CreateStructureAction] No template specified, showing options:', {
+          format: request.documentFormat,
+          availableTemplates: availableTemplates.map((t: any) => t.id)
+        })
+        
+        // Return request_clarification with template options
+        return [
+          {
+            type: 'request_clarification',
+            status: 'pending',
+            payload: {
+              question: `What type of ${request.documentFormat} would you like to create?`,
+              context: 'Select a template structure:',
+              options: availableTemplates.map((template: any) => ({
+                id: template.id,
+                label: template.name,
+                description: template.description
+              })),
+              originalIntent: 'create_structure',
+              originalPayload: {
+                format: request.documentFormat,
+                prompt: request.message,
+                userKeyId: request.userKeyId
+              },
+              message: `I'd be happy to help you create a ${request.documentFormat}! What structure would you like?`
+            }
+          }
+        ]
+      } else {
+        console.log('⚠️ [STEP 1.5] No available templates for format:', request.documentFormat)
+      }
+    } else {
+      console.log('⏭️ [STEP 1.5] Skipping template selection:', {
+        reason: suggestedTemplate ? 'Template already suggested by LLM' : 'No document format',
+        suggestedTemplate,
+        documentFormat: request.documentFormat
+      })
     }
     
     // ============================================================
@@ -303,10 +377,15 @@ export class CreateStructureAction extends BaseAction {
     // STEP 5: Add generate_structure action
     // ============================================================
     
+    // ✅ CRITICAL: Include ALL required fields in payload
+    // UI handler (OrchestratorPanel.tsx) expects: plan, format, prompt, userKeyId
     actions.push({
       type: 'generate_structure',
       payload: {
-        plan: structurePlan // UI expects payload.plan with the full structure plan
+        plan: structurePlan,       // ✅ Structure plan with sections
+        format: request.documentFormat,  // ✅ Document format (podcast, novel, etc.)
+        prompt: request.message,   // ✅ User's original prompt
+        userKeyId: request.userKeyId // ✅ User's API key (for future use)
       },
       status: 'pending'
     })

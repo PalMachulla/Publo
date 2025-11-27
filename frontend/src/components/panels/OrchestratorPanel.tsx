@@ -226,6 +226,9 @@ interface ReasoningMessage {
   content: string
   type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
   role?: 'user' | 'orchestrator'
+  // ✅ NEW: Support inline options for clarification
+  options?: Array<{id: string, title: string, description?: string}>
+  onOptionSelect?: (optionId: string, optionTitle: string) => void
 }
 
 // Helper function to detect format from user message
@@ -347,7 +350,47 @@ export default function OrchestratorPanel({
   const chatInputRef = useRef<HTMLTextAreaElement>(null) // Chat input ref
   
   // Use CANVAS-LEVEL chat history (persistent across all generations)
-  const reasoningMessages: ReasoningMessage[] = canvasChatHistory
+  // ✅ Transform messages to add inline options for clarifications
+  const reasoningMessages: ReasoningMessage[] = canvasChatHistory.map((msg, index) => {
+    // Add options to the last 'decision' message if there's a pending clarification
+    const isLastMessage = index === canvasChatHistory.length - 1
+    const isDecisionMessage = msg.type === 'decision'
+    
+    if (isLastMessage && isDecisionMessage && pendingClarification) {
+      return {
+        ...msg,
+        options: pendingClarification.options.map(opt => ({
+          id: opt.id,
+          title: opt.label,
+          description: opt.description
+        })),
+        onOptionSelect: async (optionId: string, optionTitle: string) => {
+          console.log('✅ [Clarification] Option selected:', { optionId, optionTitle })
+          
+          // Store clarification for processing
+          const clarification = pendingClarification
+          setPendingClarification(null)
+          
+          // Handle based on option selected
+          if (optionId === 'create_new') {
+            // User wants to create new - show template selection
+            setPendingCreation({
+              format: clarification.originalPayload.format as StoryFormat,
+              userMessage: clarification.originalPayload.userMessage
+            })
+          } else if (optionId === 'use_existing') {
+            // User wants to use existing - send to orchestrator
+            handleSendMessage_NEW('Open the existing document')
+          } else {
+            // Generic option selection - respond with option text
+            handleSendMessage_NEW(optionTitle)
+          }
+        }
+      }
+    }
+    
+    return msg
+  })
   
   // Build external content map for connected story structure nodes
   // This injects Supabase content that's not in the node's local state
@@ -1098,6 +1141,17 @@ export default function OrchestratorPanel({
         case 'request_clarification':
           // Handle clarification requests with ChatOptionsSelector
           console.log('🤔 [Orchestrator] Clarification requested:', action.payload)
+          
+          // ✅ Add clarification question as a chat message (in the flow)
+          if (onAddChatMessage) {
+            onAddChatMessage(
+              action.payload.question || 'Please select an option',
+              'orchestrator',
+              'decision'
+            )
+          }
+          
+          // Store pending clarification for input handling
           setPendingClarification({
             question: action.payload.question,
             context: action.payload.context,
@@ -1157,27 +1211,10 @@ export default function OrchestratorPanel({
           }
           break
           
-        case 'request_clarification':
-          // ✅ NEW: Display in chat stream with clickable options (not pop-up modal)
-          // Store pending clarification for when user responds
-          setPendingClarification({
-            question: action.payload.question || 'Please select an option',
-            context: action.payload.context,
-            options: action.payload.options,
-            originalIntent: action.payload.originalIntent,
-            originalPayload: action.payload.originalPayload
-          })
-          
-          // Add message to chat
-          if (onAddChatMessage) {
-            onAddChatMessage(action.payload.message, 'orchestrator', 'result')
-          }
-          break
-          
         case 'generate_structure':
           // Handle structure generation - create the story node on canvas
-          if (action.payload.plan && onCreateStory) {
-            const format = action.payload.format || 'novel'
+          if (action.payload.plan && action.payload.format && onCreateStory) {
+            const format = action.payload.format
             const prompt = action.payload.prompt || ''
             const plan = action.payload.plan
             
@@ -1197,7 +1234,10 @@ export default function OrchestratorPanel({
           } else {
             console.error('❌ generate_structure action missing required data:', action.payload)
             if (onAddChatMessage) {
-              onAddChatMessage('❌ Failed to create structure: Missing plan data', 'orchestrator', 'error')
+              const missing = []
+              if (!action.payload.plan) missing.push('plan')
+              if (!action.payload.format) missing.push('format')
+              onAddChatMessage(`❌ Failed to create structure: Missing ${missing.join(', ')}`, 'orchestrator', 'error')
             }
           }
           break
@@ -2465,54 +2505,7 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
           </div>
         )}
         
-        {/* ✅ Clarification UI - inline with chat (minimal design) */}
-        {pendingClarification && (
-          <div className="mb-3">
-            {/* Context (if provided) - as a subtle info message */}
-            {pendingClarification.context && (
-              <div className="mb-2 p-2 text-xs text-gray-600 bg-gray-50 rounded-lg border border-gray-200">
-                {pendingClarification.context}
-              </div>
-            )}
-            
-            {/* Question as a subtle header */}
-            <div className="mb-2 text-sm font-medium text-gray-700">
-              {pendingClarification.question}
-            </div>
-            
-            {/* ChatOptionsSelector - sleek inline pills */}
-            <ChatOptionsSelector
-              options={pendingClarification.options.map(opt => ({
-                id: opt.id,
-                title: opt.label,
-                description: opt.description
-              }))}
-              onSelect={(optionId, optionTitle) => {
-                console.log('✅ [Clarification] Option selected:', { optionId, optionTitle })
-                
-                // Store clarification for processing
-                const clarification = pendingClarification
-                setPendingClarification(null)
-                
-                // Handle based on option selected
-                if (optionId === 'create_new') {
-                  // User wants to create new - show template selection
-                  setPendingCreation({
-                    format: clarification.originalPayload.format as StoryFormat,
-                    userMessage: clarification.originalPayload.userMessage
-                  })
-                } else if (optionId === 'use_existing') {
-                  // User wants to use existing - send to orchestrator
-                  handleSendMessage_NEW('Open the existing document')
-                } else {
-                  // Something else - send option title back
-                  handleSendMessage_NEW(optionTitle)
-                }
-              }}
-              showNumberHint={true}
-            />
-          </div>
-        )}
+        {/* ✅ Clarification options now appear inline in chat messages above */}
         
         {/* Confirmation UI - shown when waiting for user confirmation */}
         {pendingConfirmation && (

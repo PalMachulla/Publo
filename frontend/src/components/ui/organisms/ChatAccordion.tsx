@@ -8,6 +8,7 @@
 import React, { useState, useEffect } from 'react'
 import { ChatMessage } from '../molecules/ChatMessage'
 import { StatusMessage } from '../molecules/StatusMessage'
+import { ChatOptionsSelector, type ChatOption } from '../molecules/ChatOptionsSelector'
 import type { MessageType } from '../atoms/MessageIcon'
 
 export interface ChatMessageData {
@@ -16,6 +17,9 @@ export interface ChatMessageData {
   content: string
   type: 'user' | 'thinking' | 'decision' | 'progress' | 'task' | 'result' | 'error' | 'warning' | 'model'
   timestamp: string
+  // ✅ NEW: Support inline options for clarification messages
+  options?: ChatOption[]
+  onOptionSelect?: (optionId: string, optionTitle: string) => void
 }
 
 export interface ChatAccordionProps {
@@ -114,16 +118,27 @@ export function ChatAccordion({
         }
         
         return (
-          <StatusMessage
-            key={groupIndex}
-            type={group.type as MessageType}
-            content={group.messages.map(m => m.content)}
-            timestamp={group.timestamp}
-            isActive={group.isLast && isStreaming}
-            isCollapsed={isCollapsed}
-            isLastMessage={group.isLast}
-            onToggleCollapse={toggleCollapse}
-          />
+          <div key={groupIndex}>
+            <StatusMessage
+              type={group.type as MessageType}
+              content={group.messages.map(m => m.content)}
+              timestamp={group.timestamp}
+              isActive={group.isLast && isStreaming}
+              isCollapsed={isCollapsed}
+              isLastMessage={group.isLast}
+              onToggleCollapse={toggleCollapse}
+            />
+            {/* ✅ NEW: Render inline options if present (for clarification messages) */}
+            {firstMsg.options && firstMsg.options.length > 0 && firstMsg.onOptionSelect && !isCollapsed && (
+              <div className="mt-2 ml-2">
+                <ChatOptionsSelector
+                  options={firstMsg.options}
+                  onSelect={firstMsg.onOptionSelect}
+                  showNumberHint={true}
+                />
+              </div>
+            )}
+          </div>
         )
       })}
     </div>

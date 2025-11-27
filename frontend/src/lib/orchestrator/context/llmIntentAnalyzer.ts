@@ -247,53 +247,78 @@ ${buildFormatDescriptionsForLLM()}
 ${buildTemplateDescriptionsForLLM()}
 
 TEMPLATE MATCHING (CRITICAL):
-When user mentions template keywords, ALWAYS set suggestedTemplate in extractedEntities!
+When user mentions SPECIFIC template keywords, set suggestedTemplate in extractedEntities!
+
+**IMPORTANT: Only suggest templates for EXPLICIT keywords, NOT for format names alone!**
 
 **Matching Rules:**
-1. **Explicit Keywords:** If user mentions template name or keywords, match it
-   - "podcast interview" → suggestedTemplate: "interview"
-   - "hero's journey novel" → suggestedTemplate: "heros-journey"
-   - "feature film" → suggestedTemplate: "feature"
-   - "how-to article" → suggestedTemplate: "how-to"
-   - "three act structure" → suggestedTemplate: "three-act"
-   - "save the cat" → suggestedTemplate: "save-the-cat"
+1. **Explicit Template Keywords (✅ SUGGEST):**
+   - "podcast interview" → suggestedTemplate: "interview" ✅
+   - "hero's journey novel" → suggestedTemplate: "heros-journey" ✅
+   - "feature film screenplay" → suggestedTemplate: "feature" ✅
+   - "how-to article" → suggestedTemplate: "how-to" ✅
+   - "three act structure" → suggestedTemplate: "three-act" ✅
+   - "save the cat screenplay" → suggestedTemplate: "save-the-cat" ✅
+   - "interview format" → suggestedTemplate: "interview" ✅
 
-2. **Partial Keywords:** Match even if not exact
-   - "interview podcast" → "interview"
-   - "hero journey" → "heros-journey"
-   - "feature screenplay" → "feature"
+2. **Partial Keywords (✅ SUGGEST if clear match):**
+   - "interview podcast" → "interview" ✅
+   - "hero journey" → "heros-journey" ✅
+   - "feature screenplay" → "feature" ✅ (only if "feature" is mentioned!)
 
-3. **Vague Requests:** Leave suggestedTemplate undefined
-   - "Create a podcast" → suggestedTemplate: undefined (show options)
-   - "Write a novel" → suggestedTemplate: undefined (show options)
-   - "Make a report" → suggestedTemplate: undefined (show options)
+3. **Format Names ONLY (❌ DO NOT SUGGEST):**
+   - "Create a podcast" → suggestedTemplate: undefined ❌ (NO template keyword!)
+   - "Write a novel" → suggestedTemplate: undefined ❌ (NO template keyword!)
+   - "Make a report" → suggestedTemplate: undefined ❌ (NO template keyword!)
+   - "Create a screenplay" → suggestedTemplate: undefined ❌ (NO template keyword!)
+   - "Write a short story" → suggestedTemplate: undefined ❌ (NO template keyword!)
+   - **CRITICAL:** Format name ≠ Template keyword! Only suggest when user mentions SPECIFIC template!
 
-4. **Be Confident:** If keywords match 70%+, suggest the template
-   - Don't be shy! Better to suggest than to always ask
+4. **Be CAUTIOUS, not aggressive:**
+   - ONLY suggest when user explicitly mentions a template type
+   - If user only mentions the format (podcast, novel, screenplay), leave undefined
+   - Better to show options than to guess wrong!
 
 **Examples:**
 
-✅ GOOD Template Matching:
+✅ GOOD Template Matching (Explicit keywords):
 User: "Create a podcast interview about tech"
-→ suggestedTemplate: "interview" (matched "interview")
+→ suggestedTemplate: "interview" ✅ (matched "interview")
 → needsClarification: false
 
 User: "Write a hero's journey novel about dragons"
-→ suggestedTemplate: "heros-journey" (matched "hero's journey")
+→ suggestedTemplate: "heros-journey" ✅ (matched "hero's journey")
 → needsClarification: false
 
 User: "Make a feature film screenplay"
-→ suggestedTemplate: "feature" (matched "feature film")
+→ suggestedTemplate: "feature" ✅ (matched "feature film")
 → needsClarification: false
 
-❌ BAD Template Matching:
-User: "Create a podcast interview"
-→ suggestedTemplate: undefined ❌ (should be "interview"!)
-→ needsClarification: true ❌ (don't ask, just match!)
+✅ GOOD Template Matching (Vague - no template):
+User: "Create a podcast"
+→ suggestedTemplate: undefined ✅ (no template keyword, just format)
+→ needsClarification: false ✅ (show options in UI)
 
 User: "Write a novel"
-→ suggestedTemplate: "three-act" ❌ (too vague, leave undefined)
-→ needsClarification: false ✅ (show options, don't ask)
+→ suggestedTemplate: undefined ✅ (no template keyword, just format)
+→ needsClarification: false ✅ (show options in UI)
+
+User: "Create a screenplay"
+→ suggestedTemplate: undefined ✅ (no template keyword, just format)
+→ needsClarification: false ✅ (show options in UI)
+
+❌ BAD Template Matching:
+User: "Create a podcast"
+→ suggestedTemplate: "interview" ❌ (NO! User didn't mention "interview")
+→ This is WRONG - don't suggest templates for format names alone!
+
+User: "Write a screenplay"
+→ suggestedTemplate: "feature" ❌ (NO! User didn't mention "feature")
+→ This is WRONG - don't assume screenplay = feature film!
+
+User: "Write a novel"
+→ suggestedTemplate: "three-act" ❌ (NO! User didn't mention "three act")
+→ This is WRONG - don't suggest templates when only format is mentioned!
 
 **When to Show Options vs Ask:**
 - User is specific (keywords match) → Set suggestedTemplate, skip UI
