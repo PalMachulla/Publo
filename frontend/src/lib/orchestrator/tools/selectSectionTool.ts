@@ -57,7 +57,8 @@ export class SelectSectionTool extends BaseTool<SelectSectionInput, SelectSectio
 
     return this.success({
       sectionId,
-      sectionName: sectionName || section.title || section.name || 'Untitled Section',
+      // ✅ FIX: section doesn't have 'title' property, only 'name'
+      sectionName: sectionName || section.name || 'Untitled Section',
       level: section.level || 1
     })
   }

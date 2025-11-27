@@ -136,7 +136,17 @@ export class WriteContentTool extends BaseTool<WriteContentInput, WriteContentOu
 
       // ✅ FIX: Get structure and content context from WorldState FIRST
       const activeDoc = worldState.getActiveDocument()
-      const structureItems = activeDoc.structure?.items || []
+      // ✅ FIX: Type assertion to include all StoryStructureItem properties
+      const structureItems = (activeDoc.structure?.items || []) as Array<{
+        id: string
+        name: string
+        level: number
+        parentId: string | null
+        order: number
+        wordCount?: number
+        summary?: string // Include summary property
+        title?: string // Include title property
+      }>
       const contentMap = activeDoc.content ? Object.fromEntries(activeDoc.content) : {}
       
       // ✅ DEBUG: Log all available section IDs

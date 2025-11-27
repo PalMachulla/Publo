@@ -74,6 +74,11 @@ export class CriticAgent implements Agent {
       
       console.log(`🎭 [CriticAgent ${this.id}] Reviewing content for section "${section?.name || 'Unknown'}"`)
       
+      // ✅ FIX: Add null check for content
+      if (!content) {
+        throw new Error('No content provided for review')
+      }
+      
       // Build review prompt
       const prompt = this.buildReviewPrompt(content, constraints, context.dependencies)
       const systemPrompt = this.getSystemPrompt(constraints)

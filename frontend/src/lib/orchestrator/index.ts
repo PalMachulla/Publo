@@ -29,6 +29,10 @@ export {
   type OrchestratorAction
 } from './core/orchestratorEngine'
 
+// ✅ FIX: Import functions for local use, then re-export
+import { getBlackboard as _getBlackboard } from './core/blackboard'
+import { getMultiAgentOrchestrator as _getMultiAgentOrchestrator } from './core/orchestratorEngine'
+
 export {
   Blackboard,
   getBlackboard,
@@ -102,14 +106,16 @@ export {
 
 /**
  * Quick start: Create and orchestrate in one call
- * @deprecated Consider using getMultiAgentOrchestrator() directly for Phase 3 multi-agent features
+ * @deprecated Consider using MultiAgentOrchestrator directly for Phase 3 multi-agent features
  */
 export async function orchestrate(
   userId: string,
   request: import('./core/orchestratorEngine').OrchestratorRequest,
   config?: Partial<import('./core/orchestratorEngine').OrchestratorConfig>
 ) {
-  const orchestrator = getMultiAgentOrchestrator(userId, config)
+  // ✅ FIX: Import and instantiate MultiAgentOrchestrator
+  const { MultiAgentOrchestrator } = await import('./agents/MultiAgentOrchestrator')
+  const orchestrator = new MultiAgentOrchestrator({ userId, ...config })
   return await orchestrator.orchestrate(request)
 }
 
@@ -117,7 +123,7 @@ export async function orchestrate(
  * Get conversation history for a user
  */
 export function getConversationHistory(userId: string, count: number = 10) {
-  const blackboard = getBlackboard(userId)
+  const blackboard = _getBlackboard(userId) // Use imported version
   return blackboard.getRecentMessages(count)
 }
 
@@ -125,7 +131,7 @@ export function getConversationHistory(userId: string, count: number = 10) {
  * Clear conversation history for a user
  */
 export function clearConversation(userId: string) {
-  const orchestrator = getMultiAgentOrchestrator(userId)
+  const orchestrator = _getMultiAgentOrchestrator(userId) // Use imported version
   orchestrator.reset()
 }
 
@@ -138,7 +144,7 @@ export async function learnPattern(
   action: string,
   namespace: string = 'general'
 ) {
-  const blackboard = getBlackboard(userId)
+  const blackboard = _getBlackboard(userId) // Use imported version
   await blackboard.storePattern(pattern, action, namespace)
 }
 
@@ -150,7 +156,7 @@ export async function queryPatterns(
   query: string,
   namespace?: string
 ) {
-  const blackboard = getBlackboard(userId)
+  const blackboard = _getBlackboard(userId) // Use imported version
   return await blackboard.queryPatterns(query, namespace)
 }
 

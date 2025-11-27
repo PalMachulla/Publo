@@ -65,11 +65,11 @@ export class WriterCriticCluster {
     // ✅ NEW: Post progress to Blackboard for orchestrator chat
     const sectionName = (task.payload as any).context?.section?.name || 'section'
     if (context.blackboard) {
-      context.blackboard.postMessage({
-        type: 'progress',
-        agentId: this.writer.id,
+      // ✅ FIX: Use addMessage instead of postMessage
+      context.blackboard.addMessage({
+        role: 'orchestrator',
         content: `✍️ Writing "${sectionName}" (initial draft)...`,
-        timestamp: Date.now()
+        type: 'progress'
       })
     }
     
@@ -100,11 +100,10 @@ export class WriterCriticCluster {
       
       // ✅ NEW: Post progress to Blackboard
       if (context.blackboard) {
-        context.blackboard.postMessage({
-          type: 'progress',
-          agentId: this.critic.id,
+        context.blackboard.addMessage({
+          role: 'orchestrator',
           content: `🎭 Reviewing "${sectionName}" (${this.countWords(content)} words)...`,
-          timestamp: Date.now()
+          type: 'progress'
         })
       }
       
@@ -143,18 +142,16 @@ export class WriterCriticCluster {
       // ✅ NEW: Post review result to Blackboard
       if (context.blackboard) {
         if (critique.approved) {
-          context.blackboard.postMessage({
-            type: 'progress',
-            agentId: this.critic.id,
+          context.blackboard.addMessage({
+            role: 'orchestrator',
             content: `✅ "${sectionName}" approved (quality: ${critique.score}/10)`,
-            timestamp: Date.now()
+            type: 'progress'
           })
         } else {
-          context.blackboard.postMessage({
-            type: 'progress',
-            agentId: this.critic.id,
+          context.blackboard.addMessage({
+            role: 'orchestrator',
             content: `⚠️ "${sectionName}" needs revision (score: ${critique.score}/10) - ${critique.issues.length} issues found`,
-            timestamp: Date.now()
+            type: 'progress'
           })
         }
       }
@@ -177,11 +174,10 @@ export class WriterCriticCluster {
       
       // ✅ NEW: Post revision progress to Blackboard
       if (context.blackboard) {
-        context.blackboard.postMessage({
-          type: 'progress',
-          agentId: this.writer.id,
+        context.blackboard.addMessage({
+          role: 'orchestrator',
           content: `✍️ Revising "${sectionName}" (iteration ${iteration}/${this.maxIterations})...`,
-          timestamp: Date.now()
+          type: 'progress'
         })
       }
       

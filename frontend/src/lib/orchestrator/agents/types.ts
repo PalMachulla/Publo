@@ -63,6 +63,10 @@ export interface TaskPayload extends A2APayload {
       id: string
       name: string
       description?: string
+      // ✅ FIX: Add fields used by WriteContentTool
+      summary?: string          // Section summary for context
+      title?: string            // Section title
+      level?: number            // Hierarchy level
     }
     outline?: any               // Structure from dependencies
     constraints?: {
@@ -72,6 +76,12 @@ export interface TaskPayload extends A2APayload {
       targetAudience?: string
     }
     previousCritique?: any      // For revision iterations
+    // ✅ FIX: Add fields used by WriterCriticCluster
+    iteration?: number          // Current iteration number
+    content?: string            // Content being revised
+    previousContent?: string    // Previous content for comparison
+    competitiveRound?: number   // For competitive mode (best-of-N)
+    initialContent?: string     // Initial content for competitive mode
   }
 }
 

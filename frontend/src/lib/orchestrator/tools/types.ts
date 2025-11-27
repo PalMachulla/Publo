@@ -164,9 +164,13 @@ export interface ToolRegistry {
  */
 export interface WriteContentInput {
   sectionId: string
+  sectionName?: string // ✅ FIX: Add optional sectionName
   prompt: string
   model?: string
   streamingEnabled?: boolean
+  useCluster?: boolean // For writer-critic mode
+  storyStructureNodeId?: string // Node ID for content generation
+  format?: string // Document format (novel, screenplay, etc.)
 }
 
 export interface WriteContentOutput {

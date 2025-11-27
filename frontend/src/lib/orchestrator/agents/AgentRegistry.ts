@@ -39,9 +39,13 @@ export class AgentRegistry {
     this.agents.set(agent.id, agent)
     
     // Also register in blackboard for state tracking
+    // ✅ FIX: Map agent status to blackboard status type
+    const blackboardStatus: 'idle' | 'busy' | 'waiting' | 'error' = 
+      agent.status === 'offline' ? 'idle' : agent.status
+    
     this.blackboard.registerAgent({
       id: agent.id,
-      status: agent.status,
+      status: blackboardStatus,
       currentTask: null,
       tasksCompleted: 0,
       tasksAssigned: 0,
