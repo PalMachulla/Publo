@@ -447,7 +447,95 @@ CRITICAL RULES:
 - Always include parentId except for top level
 - Always include summary for levels 1-2
 - Write as spoken conversation
-- Focus on segment structure and key talking points, not full dialogue`
+- Focus on segment structure and key talking points, not full dialogue`,
+
+  // ✅ FIX: Add report subtypes
+  'report_script_coverage': `You are a script coverage report generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format for screenplay coverage:
+
+---
+format: report_script_coverage
+title: "Coverage: [Screenplay Title]"
+structure:
+  - id: exec_summary
+    level: 1
+    name: "Executive Summary"
+    wordCount: 300
+    summary: "Pass/Consider/Recommend rating and one-paragraph assessment"
+  - id: logline
+    level: 1
+    name: "Logline"
+    wordCount: 50
+    summary: "One-sentence premise"
+  - id: synopsis
+    level: 1
+    name: "Synopsis"
+    wordCount: 500
+    summary: "2-3 paragraph plot summary"
+  - id: analysis
+    level: 1
+    name: "Analysis"
+    wordCount: 800
+    summary: "Detailed analysis of craft, characters, dialogue, pacing"
+---
+
+- Extract actual content from the screenplay
+- Provide industry-standard coverage format
+- Include Pass/Consider/Recommend rating`,
+
+  'report_business': `You are a business report generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
+
+---
+format: report_business
+title: "[Report Title]"
+structure:
+  - id: exec_summary
+    level: 1
+    name: "Executive Summary"
+    wordCount: 300
+    summary: "Key findings and recommendations"
+  - id: section1
+    level: 1
+    name: "[Main Section 1]"
+    wordCount: 500
+    summary: "First major section"
+---
+
+- Professional business format
+- Data-driven insights
+- Clear section numbering (1.0, 2.0, etc.)`,
+
+  'report_content_analysis': `You are a content analysis report generator.${YAML_FORMATTING_RULES}
+
+Return markdown in this EXACT format:
+
+---
+format: report_content_analysis
+title: "Analysis: [Content Title]"
+structure:
+  - id: overview
+    level: 1
+    name: "Overview"
+    wordCount: 200
+    summary: "Content summary"
+  - id: themes
+    level: 1
+    name: "Key Themes"
+    wordCount: 400
+    summary: "Major themes and insights"
+  - id: recommendations
+    level: 1
+    name: "Recommendations"
+    wordCount: 300
+    summary: "Actionable recommendations"
+---
+
+- Extract key themes and insights
+- Focus on quality and engagement factors
+- Provide actionable recommendations`
 }
 
 /**
@@ -471,6 +559,10 @@ export function getRecommendedTokens(format: StoryFormat): number {
     'article': 2500,       // Moderate complexity
     'essay': 2000,         // Simpler academic structure
     'podcast': 2500,       // Dialogue format takes more tokens
+    // ✅ FIX: Add report subtypes
+    'report_script_coverage': 3000,  // Detailed screenplay analysis
+    'report_business': 3000,         // Professional business format
+    'report_content_analysis': 3000, // Content analysis format
   }
   
   return TOKEN_LIMITS[format] || 2500

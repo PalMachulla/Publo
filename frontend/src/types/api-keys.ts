@@ -97,6 +97,12 @@ export interface GenerateRequest {
   top_p?: number
   mode?: 'orchestrator' | 'writer' | 'legacy' // NEW: Generation mode
   stream?: boolean // NEW: Enable streaming responses (SSE)
+  // Structured output support (for structure generation)
+  response_format?: { type: string; json_schema?: any } // OpenAI/Groq structured outputs
+  tools?: any[] // Anthropic tool use
+  tool_choice?: any // Anthropic tool choice
+  use_function_calling?: boolean // Google function calling
+  max_completion_tokens?: number // Alternative to max_tokens for some providers
 }
 
 /**

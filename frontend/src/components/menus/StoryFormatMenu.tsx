@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-
-export type StoryFormat = 'novel' | 'report' | 'short-story' | 'article' | 'screenplay' | 'essay' | 'podcast'
+import { StoryFormat } from '@/types/nodes' // ✅ FIX: Use canonical type definition
 
 interface StoryFormatOption {
   type: StoryFormat
