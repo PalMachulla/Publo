@@ -33,6 +33,9 @@ import { getDocumentHierarchy, DOCUMENT_HIERARCHY } from '@/lib/documentHierarch
 import type { WorldStateManager } from './worldState'
 // PHASE 2: Tool System - Executable tools
 import type { ToolRegistry } from '../tools'
+// PHASE 1 REFACTORING: Modular action generators
+import { BaseAction } from '../actions/base/BaseAction'
+import { AnswerQuestionAction } from '../actions/content/AnswerQuestionAction'
 
 // ============================================================
 // TYPES
@@ -138,6 +141,7 @@ export class OrchestratorEngine {
   private config: Omit<Required<OrchestratorConfig>, 'toolRegistry' | 'onMessage'> & { toolRegistry?: ToolRegistry; onMessage?: OrchestratorConfig['onMessage'] }
   protected worldState?: WorldStateManager // PHASE 1: Optional for gradual migration (protected for child classes)
   private toolRegistry?: ToolRegistry // PHASE 2: Optional tool system
+  private actionGenerators: Map<UserIntent, BaseAction> // PHASE 1 REFACTORING: Modular action generators
   
   constructor(config: OrchestratorConfig, worldState?: WorldStateManager) {
     // PHASE 3: Pass real-time message callback to Blackboard
@@ -158,6 +162,12 @@ export class OrchestratorEngine {
       ...(config.onMessage && { onMessage: config.onMessage }) // PHASE 3: Real-time message callback (optional)
     }
     
+    // PHASE 1 REFACTORING: Initialize modular action generators
+    this.actionGenerators = new Map([
+      ['answer_question', new AnswerQuestionAction()],
+      // More actions will be added as they're extracted
+    ])
+    
     console.log('🎯 [Orchestrator] Initialized', {
       userId: config.userId,
       priority: this.config.modelPriority,
@@ -165,7 +175,8 @@ export class OrchestratorEngine {
       learning: this.config.enablePatternLearning,
       hasWorldState: !!worldState, // PHASE 1: Log if using WorldState
       hasToolRegistry: !!config.toolRegistry, // PHASE 2: Log if using tools
-      toolCount: config.toolRegistry?.getAll().length || 0
+      toolCount: config.toolRegistry?.getAll().length || 0,
+      actionGeneratorsCount: this.actionGenerators.size // PHASE 1 REFACTORING: Log action generators
     })
   }
   
@@ -687,8 +698,22 @@ export class OrchestratorEngine {
   ): Promise<OrchestratorAction[]> {
     const actions: OrchestratorAction[] = []
     
+    // PHASE 1 REFACTORING: Try modular action generator first
+    const generator = this.actionGenerators.get(intent.intent)
+    if (generator) {
+      console.log(`✅ [Orchestrator] Using modular action generator for: ${intent.intent}`)
+      return generator.generate(intent, request, canvasContext, {
+        ragContext,
+        modelSelection,
+        availableModels
+      })
+    }
+    
+    // FALLBACK: Existing switch statement for not-yet-extracted actions
     switch (intent.intent) {
       case 'answer_question': {
+        // OLD CODE - now handled by AnswerQuestionAction
+        // Keeping as fallback during migration
         // Build context-aware prompt with ALL canvas nodes
         let enhancedPrompt = `User Question: ${request.message}\n\n`
         
