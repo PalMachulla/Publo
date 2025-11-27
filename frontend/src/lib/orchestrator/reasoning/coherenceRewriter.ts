@@ -5,7 +5,7 @@
  * across multiple sections of a story.
  */
 
-import { analyzeDependencies, type StorySection, type DependencyAnalysis } from './dependencyAnalyzer'
+import { analyzeDependencies, type StorySection, type DependencyAnalysis } from '../context/dependencyAnalyzer'
 
 export interface CoherenceRewritePlan {
   steps: RewriteStep[]

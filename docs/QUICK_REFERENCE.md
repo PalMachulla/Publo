@@ -8,11 +8,13 @@
 
 | File | Purpose | Lines |
 |------|---------|-------|
-| `orchestratorEngine.ts` | Main coordinator | 1,942 |
-| `llmIntentAnalyzer.ts` | Intent detection (LLM) | ~200 |
-| `blackboard.ts` | Agent communication | ~400 |
-| `worldState.ts` | Application state | ~150 |
-| `MultiAgentOrchestrator.ts` | Agent coordination | ~910 |
+| `core/orchestratorEngine.ts` | Main coordinator | 1,942 |
+| `context/intentRouter.ts` | Hybrid intent analysis | ~450 |
+| `context/llmIntentAnalyzer.ts` | LLM intent reasoning | ~500 |
+| `context/contextProvider.ts` | Canvas context | ~350 |
+| `core/blackboard.ts` | Agent communication | ~400 |
+| `core/worldState.ts` | Application state | ~150 |
+| `agents/MultiAgentOrchestrator.ts` | Agent coordination | ~910 |
 
 ---
 

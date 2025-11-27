@@ -17,7 +17,7 @@
  */
 
 import { Node, Edge } from 'reactflow'
-import { TemporalMemory, EventDelta } from '../temporalMemory'
+import { TemporalMemory, EventDelta } from '../context/temporalMemory'
 
 // ============================================================
 // TYPES

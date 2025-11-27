@@ -13,7 +13,7 @@
  */
 
 import { Node, Edge } from 'reactflow'
-import { Blackboard } from './blackboard'
+import { Blackboard } from '../core/blackboard'
 import { DocumentManager } from '@/lib/document/DocumentManager'
 import type { DocumentData } from '@/types/document-hierarchy'
 

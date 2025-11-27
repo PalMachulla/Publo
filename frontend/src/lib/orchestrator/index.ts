@@ -51,7 +51,7 @@ export {
   formatCanvasContextForLLM,
   type NodeContext,
   type CanvasContext
-} from './core/contextProvider'
+} from './context/contextProvider'
 
 export {
   selectModel,
@@ -73,14 +73,14 @@ export {
   type UserIntent,
   type IntentAnalysis,
   type IntentContext
-} from './intentRouter'
+} from './context/intentRouter'
 
 // Capabilities exports (for direct access)
 export {
   enhanceContextWithRAG,
   buildRAGEnhancedPrompt,
   type RAGEnhancedContext
-} from './ragIntegration'
+} from './context/ragIntegration'
 
 // Temporal memory exports
 export {
@@ -89,7 +89,7 @@ export {
   type EventDelta,
   type TimelineSnapshot,
   type RouterScore
-} from './temporalMemory'
+} from './context/temporalMemory'
 
 // Tool system exports (PHASE 2)
 export {

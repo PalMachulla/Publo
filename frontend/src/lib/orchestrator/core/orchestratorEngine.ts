@@ -13,7 +13,7 @@
  */
 
 import { Blackboard } from './blackboard'
-import { buildCanvasContext, resolveNode, formatCanvasContextForLLM, type CanvasContext } from './contextProvider'
+import { buildCanvasContext, resolveNode, formatCanvasContextForLLM, type CanvasContext } from '../context/contextProvider'
 import { 
   selectModel, 
   assessTaskComplexity, 
@@ -25,8 +25,8 @@ import {
   type TaskRequirements,
   type TieredModel
 } from './modelRouter'
-import { analyzeIntent, type IntentAnalysis, type UserIntent } from '../intentRouter'
-import { enhanceContextWithRAG } from '../ragIntegration'
+import { analyzeIntent, type IntentAnalysis, type UserIntent } from '../context/intentRouter'
+import { enhanceContextWithRAG } from '../context/ragIntegration'
 import { Node, Edge } from 'reactflow'
 import { getDocumentHierarchy, DOCUMENT_HIERARCHY } from '@/lib/documentHierarchy'
 // PHASE 1: WorldState - Unified state management

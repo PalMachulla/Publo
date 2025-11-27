@@ -27,9 +27,9 @@
  */
 
 import { BaseAction } from '../base/BaseAction'
-import type { IntentAnalysis } from '../../intentRouter'
+import type { IntentAnalysis } from '../../context/intentRouter'
 import type { OrchestratorRequest, OrchestratorAction } from '../../core/orchestratorEngine'
-import type { CanvasContext } from '../../core/contextProvider'
+import type { CanvasContext } from '../../context/contextProvider'
 
 export class NavigateSectionAction extends BaseAction {
   /**

@@ -84,12 +84,22 @@ The Publo Orchestrator is a multi-agent AI system that coordinates document crea
 
 ```
 frontend/src/lib/orchestrator/
-├── core/
+├── core/                           # Core orchestration
 │   ├── orchestratorEngine.ts      # Main coordinator (1,942 lines)
 │   ├── blackboard.ts               # Agent communication hub
 │   ├── worldState.ts               # Application state manager
-│   ├── contextProvider.ts          # Canvas context provider
 │   └── modelRouter.ts              # Intelligent model selection
+│
+├── context/                        # 🆕 Context Engineering
+│   ├── intentRouter.ts            # Hybrid intent analysis (fast patterns + LLM)
+│   ├── llmIntentAnalyzer.ts       # LLM-based intent reasoning
+│   ├── contextProvider.ts         # Canvas context provider
+│   ├── ragIntegration.ts          # Semantic search integration
+│   ├── dependencyAnalyzer.ts      # Section dependency analysis
+│   └── temporalMemory.ts          # Conversation memory
+│
+├── reasoning/                      # 🆕 High-level Reasoning
+│   └── coherenceRewriter.ts       # Multi-section coherence planning
 │
 ├── actions/                        # Modular action generators
 │   ├── base/

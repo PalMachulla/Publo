@@ -14,7 +14,7 @@
  */
 
 import { buildContextFromResults, type RetrievalResult } from '@/lib/embeddings/retrievalService'
-import { CanvasContext, NodeContext, resolveNode } from './core/contextProvider'
+import { CanvasContext, NodeContext, resolveNode } from './contextProvider'
 // Deprecated imports (functionality moved to core/contextProvider):
 // import { findReferencedNode } from './canvasContextProvider.deprecated'
 // import { resolveNodeWithLLM } from './llmNodeResolver.deprecated'

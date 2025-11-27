@@ -1433,7 +1433,7 @@ export default function OrchestratorPanel({
           }
           
           // Import the coherence rewriter dynamically
-          const { createCoherenceRewritePlan, executeRewriteStep } = await import('@/lib/orchestrator/coherenceRewriter')
+          const { createCoherenceRewritePlan, executeRewriteStep } = await import('@/lib/orchestrator/reasoning/coherenceRewriter')
           
           // Get all sections and their content for dependency analysis
           // TODO: Pass from props - for now, use placeholder
