@@ -406,11 +406,6 @@ export default function OrchestratorPanel({
   // Use CANVAS-LEVEL chat history (persistent across all generations)
   const reasoningMessages: ReasoningMessage[] = canvasChatHistory
   
-  // Detect if streaming (last message is from model and being updated)
-  const isStreaming = reasoningMessages.length > 0 && 
-    reasoningMessages[reasoningMessages.length - 1].role === 'orchestrator' &&
-    reasoningMessages[reasoningMessages.length - 1].content.startsWith('🤖 Model')
-  
   // Build external content map for connected story structure nodes
   // This injects Supabase content that's not in the node's local state
   const externalContentMap: Record<string, { contentMap: Record<string, string> }> = {}
@@ -514,6 +509,9 @@ export default function OrchestratorPanel({
       }
     }
   }, [worldState, toolRegistry])
+  
+  // Detect if streaming - check WorldState for orchestrator processing status
+  const isStreaming = worldState.isOrchestratorProcessing()
   
   // Track canvas state to detect changes
   const [lastCanvasState, setLastCanvasState] = useState<string>('')
@@ -2563,16 +2561,32 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
                     </svg>
                   ) :
                   group.type === 'thinking' ? (
-                    <svg className="w-3.5 h-3.5 text-purple-600 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
+                    isLastMessage && isStreaming ? (
+                      // ACTIVE: Spinning while thinking
+                      <svg className="w-3.5 h-3.5 text-purple-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      // COMPLETE: Static lightbulb when done
+                      <svg className="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                    )
                   ) :
                   group.type === 'progress' ? (
-                    <svg className="w-3.5 h-3.5 text-indigo-600 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
+                    isLastMessage && isStreaming ? (
+                      // ACTIVE: Spinning while in progress
+                      <svg className="w-3.5 h-3.5 text-indigo-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      // COMPLETE: Static checkmark when done
+                      <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )
                   ) :
                   group.type === 'decision' ? (
                     <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

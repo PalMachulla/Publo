@@ -196,6 +196,16 @@ export class OrchestratorEngine {
   async orchestrate(request: OrchestratorRequest): Promise<OrchestratorResponse> {
     const startTime = Date.now()
     
+    // Update WorldState: Orchestrator is starting to think
+    this.worldState?.update(draft => {
+      draft.orchestrator.status = 'thinking'
+      draft.orchestrator.currentTask = {
+        type: 'analyze_intent',
+        startedAt: Date.now(),
+        description: 'Analyzing user request'
+      }
+    })
+    
     // NEW: Handle clarification responses (user responding to request_clarification)
     if (request.clarificationContext) {
       return await this.handleClarificationResponse(request)
@@ -295,6 +305,21 @@ export class OrchestratorEngine {
       documentFormat: request.documentFormat,
       useLLM: true,
       canvasContext: formatCanvasContextForLLM(canvasContext)
+    })
+    
+    // Update WorldState: Intent analyzed, now deciding
+    this.worldState?.update(draft => {
+      draft.orchestrator.status = 'deciding'
+      draft.orchestrator.lastIntent = {
+        intent: intentAnalysis.intent,
+        confidence: intentAnalysis.confidence,
+        timestamp: Date.now()
+      }
+      draft.orchestrator.currentTask = {
+        type: 'generate_structure',
+        startedAt: Date.now(),
+        description: `Preparing ${intentAnalysis.intent} action`
+      }
     })
     
     // Step 6: Enhance with RAG if enabled (AFTER intent analysis)
@@ -450,6 +475,15 @@ export class OrchestratorEngine {
       modelUsed: modelSelection.modelId,
       taskComplexity,
       elapsedMs: Date.now() - startTime
+    })
+    
+    // Update WorldState: Orchestrator is done
+    this.worldState?.update(draft => {
+      draft.orchestrator.status = 'idle'
+      draft.orchestrator.currentTask = {
+        type: null,
+        startedAt: null
+      }
     })
     
     console.log('✅ [Orchestrator] Completed', {

@@ -35,6 +35,26 @@ export interface WorldState {
     selectedSectionId: string | null
   }
   
+  // Orchestrator Layer - What the orchestrator is currently doing (its "gesticulation")
+  orchestrator: {
+    // Current processing state
+    status: 'idle' | 'thinking' | 'deciding' | 'executing' | 'waiting_for_user'
+    
+    // Current task details
+    currentTask: {
+      type: 'analyze_intent' | 'generate_structure' | 'generate_content' | 'execute_actions' | null
+      startedAt: number | null
+      description?: string
+    }
+    
+    // Last detected intent
+    lastIntent: {
+      intent: string
+      confidence: number
+      timestamp: number
+    } | null
+  }
+  
   // UI Layer - Current UI state
   ui: {
     documentPanelOpen: boolean
@@ -323,6 +343,14 @@ export class WorldStateManager {
         content: new Map(partial.activeDocument?.content || []),
         selectedSectionId: partial.activeDocument?.selectedSectionId || null
       },
+      orchestrator: {
+        status: partial.orchestrator?.status || 'idle',
+        currentTask: partial.orchestrator?.currentTask || {
+          type: null,
+          startedAt: null
+        },
+        lastIntent: partial.orchestrator?.lastIntent || null
+      },
       ui: {
         documentPanelOpen: partial.ui?.documentPanelOpen || false,
         orchestratorPanelOpen: partial.ui?.orchestratorPanelOpen !== undefined 
@@ -378,6 +406,38 @@ export class WorldStateManager {
   }
   
   // ============================================================
+  // ORCHESTRATOR STATE METHODS
+  // ============================================================
+  
+  /**
+   * Get current orchestrator status
+   */
+  getOrchestratorStatus(): 'idle' | 'thinking' | 'deciding' | 'executing' | 'waiting_for_user' {
+    return this.state.orchestrator.status
+  }
+  
+  /**
+   * Check if orchestrator is currently processing
+   */
+  isOrchestratorProcessing(): boolean {
+    return this.state.orchestrator.status !== 'idle' && this.state.orchestrator.status !== 'waiting_for_user'
+  }
+  
+  /**
+   * Get current task details
+   */
+  getCurrentTask() {
+    return this.state.orchestrator.currentTask
+  }
+  
+  /**
+   * Get last detected intent
+   */
+  getLastIntent() {
+    return this.state.orchestrator.lastIntent
+  }
+  
+  // ============================================================
   // DEBUG HELPERS
   // ============================================================
   
@@ -392,6 +452,7 @@ export class WorldStateManager {
       activeDocumentId: this.state.activeDocument.nodeId,
       selectedSectionId: this.state.activeDocument.selectedSectionId,
       documentPanelOpen: this.state.ui.documentPanelOpen,
+      orchestratorStatus: this.state.orchestrator.status,
       userId: this.state.user.id,
       isDirty: this.state.meta.isDirty
     })
@@ -508,6 +569,14 @@ export function buildWorldStateFromReactFlow(
       selectedNodeId: null
     },
     activeDocument,
+    orchestrator: {
+      status: 'idle',
+      currentTask: {
+        type: null,
+        startedAt: null
+      },
+      lastIntent: null
+    },
     ui: {
       documentPanelOpen: additionalContext?.isDocumentPanelOpen || false,
       orchestratorPanelOpen: true,
