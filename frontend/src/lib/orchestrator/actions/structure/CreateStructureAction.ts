@@ -274,11 +274,7 @@ export class CreateStructureAction extends BaseAction {
     actions.push({
       type: 'generate_structure',
       payload: {
-        format: request.documentFormat,
-        structure: structurePlan.structure,
-        tasks: structurePlan.tasks,
-        reasoning: structurePlan.reasoning,
-        metadata: structurePlan.metadata
+        plan: structurePlan // UI expects payload.plan with the full structure plan
       },
       status: 'pending'
     })
