@@ -38,6 +38,7 @@ import { BaseAction } from '../actions/base/BaseAction'
 import { AnswerQuestionAction } from '../actions/content/AnswerQuestionAction'
 import { DeleteNodeAction } from '../actions/navigation/DeleteNodeAction'
 import { OpenDocumentAction } from '../actions/navigation/OpenDocumentAction'
+import { NavigateSectionAction } from '../actions/navigation/NavigateSectionAction'
 
 // ============================================================
 // TYPES
@@ -169,6 +170,7 @@ export class OrchestratorEngine {
       ['answer_question', new AnswerQuestionAction()],
       ['delete_node', new DeleteNodeAction(this.blackboard)],
       ['open_and_write', new OpenDocumentAction(this.blackboard)],
+      ['navigate_section', new NavigateSectionAction()],
       // More actions will be added as they're extracted
     ])
     
