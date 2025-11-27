@@ -112,10 +112,18 @@ export class CreateStructureAction extends BaseAction {
     // ============================================================
     
     if (!request.documentFormat) {
-      throw new Error('documentFormat is required for create_structure intent')
+      return [
+        this.message('Unable to create structure: document format not specified', 'error')
+      ]
     }
+    
     if (!request.userKeyId) {
-      throw new Error('userKeyId is required for create_structure intent')
+      return [
+        this.message(
+          'Unable to create structure: No API keys configured. Please add an API key in Settings to use AI features.',
+          'error'
+        )
+      ]
     }
     
     // ============================================================
