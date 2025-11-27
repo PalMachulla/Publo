@@ -36,6 +36,7 @@ import type { ToolRegistry } from '../tools'
 // PHASE 1 REFACTORING: Modular action generators
 import { BaseAction } from '../actions/base/BaseAction'
 import { AnswerQuestionAction } from '../actions/content/AnswerQuestionAction'
+import { DeleteNodeAction } from '../actions/navigation/DeleteNodeAction'
 
 // ============================================================
 // TYPES
@@ -165,6 +166,7 @@ export class OrchestratorEngine {
     // PHASE 1 REFACTORING: Initialize modular action generators
     this.actionGenerators = new Map([
       ['answer_question', new AnswerQuestionAction()],
+      ['delete_node', new DeleteNodeAction(this.blackboard)],
       // More actions will be added as they're extracted
     ])
     
