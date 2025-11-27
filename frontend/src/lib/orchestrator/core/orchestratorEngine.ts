@@ -787,120 +787,6 @@ export class OrchestratorEngine {
     return actions
   }
   
-  /**
-   * PHASE 3: LLM-powered task complexity analysis
-   * Replaces hard-coded regex patterns with reasoning
-   */
-  private async analyzeTaskComplexity(
-    userMessage: string,
-    structure: any[],
-    intent: IntentAnalysis,
-    blackboard: Blackboard
-  ): Promise<{
-    requiresMultipleSteps: boolean
-    targetSections: Array<{ id: string; name: string }>
-    reasoning: string
-  }> {
-    const systemPrompt = `You are an intelligent task analyzer. Analyze user requests to determine if they want multiple steps completed.
-
-Context:
-- Primary intent: ${intent.intent}
-- User's request: "${userMessage}"
-- Available structure sections: ${structure.map(s => `"${s.name}"`).join(', ')}
-
-Determine:
-1. Does the user want BOTH structure creation AND content writing?
-2. If so, which section(s) should have content generated?
-
-Examples:
-- "Create a story about X" → Single step (structure only)
-- "Create a story and write the first chapter" → Multi-step (structure + Chapter 1 content)
-- "Write the first two chapters" → Multi-step (structure + Chapters 1 & 2)
-- "Create outline with content in introduction" → Multi-step (structure + Introduction content)
-
-Respond in JSON format:
-{
-  "requiresMultipleSteps": boolean,
-  "targetSectionNames": string[], // Section names to generate content for
-  "reasoning": "Brief explanation of your analysis"
-}`
-
-    try {
-      const response = await fetch('/api/intent/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_prompt: systemPrompt,
-          user_prompt: userMessage,
-          temperature: 0.2 // Low temp for consistent analysis
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error(`Task analysis failed: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      
-      // Parse JSON with better error handling
-      let analysis: any
-      try {
-        // Try to parse content directly
-        if (typeof data.content === 'object') {
-          analysis = data.content
-        } else if (typeof data.content === 'string') {
-          // Extract JSON from markdown code blocks if present
-          let jsonContent = data.content.trim()
-          const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/)
-          if (jsonMatch) {
-            jsonContent = jsonMatch[1].trim()
-          }
-          
-          // Remove any leading/trailing non-JSON content
-          const jsonStart = jsonContent.indexOf('{')
-          const jsonEnd = jsonContent.lastIndexOf('}')
-          if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            jsonContent = jsonContent.substring(jsonStart, jsonEnd + 1)
-          }
-          
-          analysis = JSON.parse(jsonContent)
-        } else {
-          throw new Error('Invalid response format')
-        }
-      } catch (parseError: any) {
-        console.error('❌ [Task Analysis] JSON parse error:', parseError.message)
-        console.error('   Content:', typeof data.content === 'string' ? data.content.substring(0, 500) : data.content)
-        throw new Error(`Failed to parse task analysis: ${parseError.message}`)
-      }
-      
-      // Map section names to actual section objects
-      const targetSections = analysis.targetSectionNames
-        .map((name: string) => {
-          // Normalize and find matching section
-          const normalizedSearchTerm = name.toLowerCase().trim()
-          return structure.find(s => 
-            s.name.toLowerCase().includes(normalizedSearchTerm) ||
-            normalizedSearchTerm.includes(s.name.toLowerCase())
-          )
-        })
-        .filter(Boolean) // Remove null matches
-      
-      return {
-        requiresMultipleSteps: analysis.requiresMultipleSteps,
-        targetSections,
-        reasoning: analysis.reasoning
-      }
-    } catch (error) {
-      console.error('❌ [Task Analysis] Error:', error)
-      
-      // Fallback: Conservative single-step approach
-      return {
-        requiresMultipleSteps: false,
-        targetSections: [],
-        reasoning: 'Analysis failed, defaulting to structure-only mode'
-      }
-    }
-  }
 
   private extractPattern(
     message: string,
@@ -941,46 +827,6 @@ Respond in JSON format:
     return null
   }
   
-  /**
-   * Extract all summaries from a hierarchical document structure
-   */
-  private extractAllSummaries(documentData: any): Array<{name: string; summary: string}> {
-    const summaries: Array<{name: string; summary: string}> = []
-    
-    function traverse(segments: any[], depth: number = 0) {
-      for (const seg of segments) {
-        if (seg.summary && seg.summary.trim().length > 0) {
-          // Include the segment's name and summary
-          const name = seg.title || seg.name || `Section ${seg.order || ''}`
-          summaries.push({ 
-            name: name,
-            summary: seg.summary 
-          })
-        }
-        
-        // Recursively traverse children
-        if (seg.children && Array.isArray(seg.children) && seg.children.length > 0) {
-          traverse(seg.children, depth + 1)
-        }
-      }
-    }
-    
-    if (documentData?.structure && Array.isArray(documentData.structure)) {
-      traverse(documentData.structure)
-    }
-    
-    return summaries
-  }
-  
-  private buildRAGEnhancedPrompt(ragContext: any, canvasContext: CanvasContext): string {
-    let prompt = formatCanvasContextForLLM(canvasContext)
-    
-    if (ragContext.hasRAG && ragContext.ragContent) {
-      prompt += `\n\nRelevant Content (from semantic search):\n${ragContext.ragContent}`
-    }
-    
-    return prompt
-  }
 
   /**
    * PHASE 3: Retry wrapper for createStructurePlan with automatic fallback
@@ -1659,6 +1505,27 @@ Which option did the user select? Return ONLY the option ID.`
       const data = await response.json()
       const selectedOptionId = data.content.trim()
       
+      // ✅ FIX: Validate clarificationContext.options exists
+      if (!clarificationContext.options || !Array.isArray(clarificationContext.options)) {
+        console.error('❌ [Clarification] options is undefined or not an array:', clarificationContext)
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `❌ Error: Clarification context is invalid`,
+          type: 'error'
+        })
+        
+        return {
+          intent: 'general_chat',
+          confidence: 0.3,
+          reasoning: 'Invalid clarification context',
+          modelUsed: 'none',
+          actions: [],
+          canvasChanged: false,
+          requiresUserInput: true,
+          estimatedCost: 0
+        }
+      }
+      
       // Find the selected option
       const selectedOption = clarificationContext.options.find(opt => opt.id === selectedOptionId)
       
@@ -1747,9 +1614,95 @@ Which option did the user select? Return ONLY the option ID.`
   ): Promise<OrchestratorResponse> {
     
     if (originalAction === 'create_structure') {
-      const { documentFormat, userMessage, existingDocs, reportTypeRecommendations, sourceDocumentLabel, sourceDocumentFormat } = payload
+      const { documentFormat, userMessage, existingDocs, reportTypeRecommendations, sourceDocumentLabel, sourceDocumentFormat, format, prompt, userKeyId } = payload
       
-      // ✅ NEW: Handle report type selection
+      // ✅ NEW: Handle template selection (all template IDs from templateRegistry)
+      // Complete list of all template IDs across all formats
+      const templateIds = [
+        // Novels
+        'three-act', 'heros-journey', 'freytag', 'save-the-cat', 'blank',
+        // Short Stories
+        'classic', 'flash-fiction', 'twist-ending',
+        // Reports
+        'business', 'research', 'technical',
+        // Script Coverage
+        'standard', 'detailed',
+        // Podcast Report
+        'executive', 'analytical',
+        // Story Analysis
+        'thematic', 'structural',
+        // Articles/Blog
+        'how-to', 'listicle', 'opinion', 'feature',
+        // Screenplays
+        'tv-pilot', 'short-film',  // ✅ Added 'tv-pilot'
+        // Essays
+        'argumentative', 'narrative', 'compare-contrast',
+        // Podcasts
+        'interview', 'co-hosted', 'storytelling'
+      ]
+      
+      if (templateIds.includes(selectedOption.id)) {
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `✅ Generating ${documentFormat} structure with ${selectedOption.label} template...`,
+          type: 'result'
+        })
+        
+        // Use CreateStructureAction to generate the structure with the selected template
+        const createStructureAction = this.actionGenerators.get('create_structure')
+        if (!createStructureAction) {
+          throw new Error('CreateStructureAction not found in action generators')
+        }
+        
+        // Build intent with suggested template
+        const intentWithTemplate = {
+          intent: 'create_structure' as const,
+          confidence: 0.95,
+          reasoning: `User selected ${selectedOption.label} template`,
+          suggestedAction: `Generate structure with ${selectedOption.label} template`,
+          requiresContext: false,
+          suggestedModel: 'orchestrator' as const,
+          extractedEntities: {
+            suggestedTemplate: selectedOption.id // ✅ Pass template ID to action generator
+          }
+        }
+        
+        // Build canvas context from nodes and edges
+        const canvasContext = buildCanvasContext(
+          'context', // orchestrator node ID
+          request.canvasNodes || [],
+          request.canvasEdges || []
+        )
+        
+        // Call action generator to create generate_structure action with plan
+        const actions = await createStructureAction.generate(
+          intentWithTemplate,
+          {
+            ...request,
+            documentFormat: format || documentFormat,
+            message: prompt || userMessage,
+            userKeyId: userKeyId
+          },
+          canvasContext,
+          {
+            modelSelection: request.fixedModelId ? { modelId: request.fixedModelId, displayName: request.fixedModelId } : undefined,
+            availableModels: request.availableModels
+          }
+        )
+        
+        return {
+          intent: 'create_structure',
+          confidence: 0.95,
+          reasoning: `Generated structure with ${selectedOption.label} template`,
+          modelUsed: 'gpt-4o',
+          actions,
+          canvasChanged: false,
+          requiresUserInput: false,
+          estimatedCost: 0.01
+        }
+      }
+      
+      // ✅ Handle report type selection
       if (reportTypeRecommendations && sourceDocumentLabel) {
         const selectedReportType = reportTypeRecommendations.find((r: any) => r.id === selectedOption.id)
         
