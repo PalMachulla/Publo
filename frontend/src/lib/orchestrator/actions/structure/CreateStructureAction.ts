@@ -181,8 +181,8 @@ export class CreateStructureAction extends BaseAction {
     const existingDocs = (request.canvasNodes || [])
       .filter((node: any) => 
         node.type === 'storyStructureNode' && 
-        node.data?.format &&
-        node.data?.items?.length > 0
+        node.data?.format
+        // Note: Don't require items.length > 0 - even empty documents should trigger clarification
       )
       .map((node: any) => {
         // Check for content in both legacy contentMap and new document_data
