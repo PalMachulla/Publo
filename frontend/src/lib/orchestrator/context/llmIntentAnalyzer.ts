@@ -12,6 +12,7 @@
 import type { IntentAnalysis, UserIntent } from './intentRouter'
 import { buildFormatDescriptionsForLLM } from '../schemas/documentHierarchy'
 import { buildTemplateDescriptionsForLLM } from '../schemas/templateRegistry'
+import { enhanceIntentWithTemplateMatch, extractFormatFromIntent } from './templateMatcher'
 
 export interface ConversationMessage {
   role: 'user' | 'assistant'
@@ -245,6 +246,60 @@ ${buildFormatDescriptionsForLLM()}
 
 ${buildTemplateDescriptionsForLLM()}
 
+TEMPLATE MATCHING (CRITICAL):
+When user mentions template keywords, ALWAYS set suggestedTemplate in extractedEntities!
+
+**Matching Rules:**
+1. **Explicit Keywords:** If user mentions template name or keywords, match it
+   - "podcast interview" → suggestedTemplate: "interview"
+   - "hero's journey novel" → suggestedTemplate: "heros-journey"
+   - "feature film" → suggestedTemplate: "feature"
+   - "how-to article" → suggestedTemplate: "how-to"
+   - "three act structure" → suggestedTemplate: "three-act"
+   - "save the cat" → suggestedTemplate: "save-the-cat"
+
+2. **Partial Keywords:** Match even if not exact
+   - "interview podcast" → "interview"
+   - "hero journey" → "heros-journey"
+   - "feature screenplay" → "feature"
+
+3. **Vague Requests:** Leave suggestedTemplate undefined
+   - "Create a podcast" → suggestedTemplate: undefined (show options)
+   - "Write a novel" → suggestedTemplate: undefined (show options)
+   - "Make a report" → suggestedTemplate: undefined (show options)
+
+4. **Be Confident:** If keywords match 70%+, suggest the template
+   - Don't be shy! Better to suggest than to always ask
+
+**Examples:**
+
+✅ GOOD Template Matching:
+User: "Create a podcast interview about tech"
+→ suggestedTemplate: "interview" (matched "interview")
+→ needsClarification: false
+
+User: "Write a hero's journey novel about dragons"
+→ suggestedTemplate: "heros-journey" (matched "hero's journey")
+→ needsClarification: false
+
+User: "Make a feature film screenplay"
+→ suggestedTemplate: "feature" (matched "feature film")
+→ needsClarification: false
+
+❌ BAD Template Matching:
+User: "Create a podcast interview"
+→ suggestedTemplate: undefined ❌ (should be "interview"!)
+→ needsClarification: true ❌ (don't ask, just match!)
+
+User: "Write a novel"
+→ suggestedTemplate: "three-act" ❌ (too vague, leave undefined)
+→ needsClarification: false ✅ (show options, don't ask)
+
+**When to Show Options vs Ask:**
+- User is specific (keywords match) → Set suggestedTemplate, skip UI
+- User is vague (no keywords) → Leave suggestedTemplate undefined, show TemplateSelector
+- User is confused (format mismatch) → Set needsClarification: true, ask question
+
 EDUCATIONAL CLARIFICATION (CRITICAL):
 When user mentions a section that doesn't match the format conventions:
 - DON'T just create what they asked for
@@ -292,7 +347,29 @@ HELPFUL AND COLLABORATIVE:
 - Be enthusiastic about their creative idea
 - Example: "I'd love to help! Just to clarify, short stories typically use scenes rather than chapters. Did you mean Scene 2? Or are you planning a longer novel?"
 
-Be smart, conversational, educational, and helpful. When in doubt, ask politely and explain why!`
+CLARIFICATION RULES (CRITICAL):
+Only set needsClarification: true when:
+1. Intent is truly ambiguous (confidence < 0.6)
+2. Multiple valid interpretations exist
+3. User safety is at risk (e.g., deleting wrong node)
+4. Format mismatch (e.g., "short story chapter 2")
+
+DO NOT set needsClarification: true for:
+1. Template selection (set suggestedTemplate or leave undefined)
+2. Vague format requests (leave suggestedTemplate undefined, show options)
+3. Missing details (be helpful, make best guess)
+
+Examples:
+❌ BAD: needsClarification: true, clarifyingQuestion: "What template?"
+✅ GOOD: needsClarification: false, suggestedTemplate: undefined (show TemplateSelector)
+
+❌ BAD: needsClarification: true, clarifyingQuestion: "What format?"
+✅ GOOD: intent: create_structure, documentFormat: "novel" (best guess)
+
+✅ GOOD: needsClarification: true, clarifyingQuestion: "I found 3 novels. Which one?"
+✅ GOOD: needsClarification: true, clarifyingQuestion: "Short stories use scenes. Did you mean Scene 2?"
+
+Be smart, conversational, educational, and helpful. When in doubt, be proactive and suggest options rather than asking!`
 
 /**
  * Analyze intent using LLM reasoning
@@ -370,10 +447,19 @@ Return ONLY valid JSON with your analysis. Do not include markdown formatting. J
       intent: analysis.intent,
       confidence: analysis.confidence,
       reasoning: analysis.reasoning,
-      needsClarification: analysis.needsClarification
+      needsClarification: analysis.needsClarification,
+      suggestedTemplate: analysis.extractedEntities?.suggestedTemplate
     })
 
-    return analysis
+    // PHASE 2: Enhance with template matching (fallback if LLM missed keywords)
+    const format = extractFormatFromIntent(analysis)
+    const enhancedAnalysis = enhanceIntentWithTemplateMatch(
+      analysis,
+      context.currentMessage,
+      format
+    )
+
+    return enhancedAnalysis
 
   } catch (error) {
     console.error('[LLM Intent] Error:', error)
