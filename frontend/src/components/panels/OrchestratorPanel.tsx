@@ -531,9 +531,40 @@ export default function OrchestratorPanel({
     
     // ✅ NEW: Check if there's a pending clarification
     if (pendingClarification) {
-      // User is responding to a clarification request (e.g., "#1", "1", "option 1")
-      await handleClarificationResponse(message)
-      return
+      // User is responding to a clarification request by typing a number
+      // Try to match the number to an option
+      const numberMatch = message.match(/^\s*(\d+)\s*$/)
+      if (numberMatch) {
+        const optionIndex = parseInt(numberMatch[1]) - 1
+        if (optionIndex >= 0 && optionIndex < pendingClarification.options.length) {
+          const selectedOption = pendingClarification.options[optionIndex]
+          console.log('✅ [Clarification] Number matched to option:', selectedOption)
+          
+          // Clear input and clarification
+          setChatMessage('')
+          const clarification = pendingClarification
+          setPendingClarification(null)
+          
+          // Handle based on option ID
+          if (selectedOption.id === 'create_new') {
+            setPendingCreation({
+              format: clarification.originalPayload.format as StoryFormat,
+              userMessage: clarification.originalPayload.userMessage
+            })
+          } else if (selectedOption.id === 'use_existing') {
+            await handleSendMessage_NEW('Open the existing document')
+          } else {
+            await handleSendMessage_NEW(selectedOption.label)
+          }
+          return
+        }
+      }
+      
+      // If not a number match, treat as a text response
+      console.log('📝 [Clarification] Text response (not a number):', message)
+      setChatMessage('')
+      setPendingClarification(null)
+      // Continue with normal orchestration below
     }
     
     // ✅ FIX: Don't add user message here - orchestrator will add it automatically
