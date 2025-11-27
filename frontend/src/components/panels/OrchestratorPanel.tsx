@@ -2465,19 +2465,23 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
           </div>
         )}
         
-        {/* ✅ Clarification UI - shown when waiting for user to select an option */}
+        {/* ✅ Clarification UI - inline with chat (minimal design) */}
         {pendingClarification && (
-          <div className="mb-4 p-4 border-2 rounded-lg bg-purple-50 border-purple-300">
-            {/* Context (if provided) */}
+          <div className="mb-3">
+            {/* Context (if provided) - as a subtle info message */}
             {pendingClarification.context && (
-              <div className="mb-3 text-xs text-gray-700 whitespace-pre-wrap">
+              <div className="mb-2 p-2 text-xs text-gray-600 bg-gray-50 rounded-lg border border-gray-200">
                 {pendingClarification.context}
               </div>
             )}
             
-            {/* ChatOptionsSelector for clarification */}
+            {/* Question as a subtle header */}
+            <div className="mb-2 text-sm font-medium text-gray-700">
+              {pendingClarification.question}
+            </div>
+            
+            {/* ChatOptionsSelector - sleek inline pills */}
             <ChatOptionsSelector
-              title={pendingClarification.question}
               options={pendingClarification.options.map(opt => ({
                 id: opt.id,
                 title: opt.label,
