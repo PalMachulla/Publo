@@ -288,7 +288,17 @@ docker-compose down -v
 docker-compose up -d --build
 ```
 
-## 📚 API Documentation
+## 📚 Documentation
+
+### **Orchestrator System**
+- **Architecture:** [`docs/ORCHESTRATOR_ARCHITECTURE.md`](docs/ORCHESTRATOR_ARCHITECTURE.md) - Complete system overview
+- **Roadmap:** [`docs/ORCHESTRATOR_ROADMAP.md`](docs/ORCHESTRATOR_ROADMAP.md) - Future improvements
+- **Quick Reference:** [`docs/QUICK_REFERENCE.md`](docs/QUICK_REFERENCE.md) - Developer guide
+- **Historical Docs:** [`docs/archive/`](docs/archive/) - Phase documentation, bug fixes
+
+### **Database**
+- **Migrations:** [`db/migrations/`](db/migrations/) - SQL migration scripts
+- **Schema:** See Supabase Studio or `DATABASE_STRUCTURE.md`
 
 ### Backend Endpoints
 
