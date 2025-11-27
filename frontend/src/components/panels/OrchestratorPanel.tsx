@@ -11,7 +11,8 @@ import {
   Badge,
   RadioGroup,
   RadioItem,
-  Button
+  Button,
+  ChatAccordion
 } from '@/components/ui'
 import { 
   getMultiAgentOrchestrator, // PHASE 3: Multi-agent support
@@ -393,7 +394,6 @@ export default function OrchestratorPanel({
   
   // Chat state (local input only, history is canvas-level)
   const [chatMessage, setChatMessage] = useState('')
-  const [collapsedMessages, setCollapsedMessages] = useState<Set<string>>(new Set())
   
   // LLM reasoning mode toggle
   const [useLLMReasoning, setUseLLMReasoning] = useState(true) // true = always LLM (recommended for GPT-5.1), false = pattern + LLM fallback
@@ -2141,26 +2141,7 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
     }
   }, [reasoningMessages])
 
-  // Auto-collapse thinking/decision/error messages when new messages arrive
-  useEffect(() => {
-    if (reasoningMessages.length === 0) return
-
-    // Find all thinking/decision/error messages except the last one
-    const thinkingMessages = reasoningMessages.filter(msg => 
-      ['thinking', 'decision', 'error'].includes(msg.type)
-    )
-
-    if (thinkingMessages.length > 1) {
-      // Auto-collapse all thinking messages except the most recent one
-      setCollapsedMessages(prev => {
-        const next = new Set(prev)
-        thinkingMessages.slice(0, -1).forEach(msg => {
-          next.add(msg.id)
-        })
-        return next
-      })
-    }
-  }, [reasoningMessages])
+  // Auto-collapse is now handled by ChatAccordion component
 
   // Clear context when document view is closed
   useEffect(() => {
@@ -2441,243 +2422,10 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
                 <p className="text-xs mt-1">Watch the orchestrator think through your story structure</p>
               </div>
             ) : (
-              // GROUP consecutive messages from same sender/type/time
-              (() => {
-                const groupedMessages: Array<{
-                  role: string | undefined
-                  type: string
-                  timestamp: string
-                  messages: typeof reasoningMessages
-                  isLast: boolean
-                }> = []
-                
-                reasoningMessages.forEach((msg, i) => {
-                  const prevGroup = groupedMessages[groupedMessages.length - 1]
-                  const isSameGroup = prevGroup &&
-                    prevGroup.role === msg.role &&
-                    prevGroup.type === msg.type &&
-                    Math.abs(new Date(prevGroup.timestamp).getTime() - new Date(msg.timestamp).getTime()) < 5000 // Within 5 seconds
-                  
-                  if (isSameGroup) {
-                    prevGroup.messages.push(msg)
-                    prevGroup.isLast = i === reasoningMessages.length - 1
-                  } else {
-                    groupedMessages.push({
-                      role: msg.role,
-                      type: msg.type,
-                      timestamp: msg.timestamp,
-                      messages: [msg],
-                      isLast: i === reasoningMessages.length - 1
-                    })
-                  }
-                })
-                
-                return groupedMessages.map((group, groupIndex) => {
-                  const firstMsg = group.messages[0]
-                  
-                  const isUserMessage = group.role === 'user'
-                  const isOrchestratorMessage = group.role === 'orchestrator' && group.type === 'user'
-                  const isStatusMessage = ['thinking', 'decision', 'task', 'result', 'error'].includes(group.type)
-                  const isModelMessage = firstMsg.content.startsWith('🤖 Model reasoning:')
-                  const isLastMessage = group.isLast
-                
-                // CHAT MESSAGE: Simple, clean conversation
-                if (isUserMessage || (isOrchestratorMessage && !isStatusMessage)) {
-                  return (
-                    <div key={groupIndex} className={`p-3 rounded ${isUserMessage ? 'bg-gray-100' : 'bg-white border border-gray-200'}`}>
-                      <div className="flex items-start gap-2">
-                        <div className="flex-shrink-0 mt-0.5">
-                          {isUserMessage ? (
-                            <svg className="w-3.5 h-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                          ) : (
-                            <svg className="w-3.5 h-3.5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                            </svg>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-600">
-                              {isUserMessage ? 'PUBLO' : 'ORCHESTRATOR'}
-                            </span>
-                            <span className="text-[10px] text-gray-400">
-                              {new Date(group.timestamp).toLocaleTimeString('en-US', { 
-                                hour: '2-digit', 
-                                minute: '2-digit'
-                              })}
-                            </span>
-                          </div>
-                          {/* Render all messages in group as a list */}
-                          {group.messages.length === 1 ? (
-                            <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
-                              {group.messages[0].content}
-                            </p>
-                          ) : (
-                            <div className="text-sm text-gray-800 space-y-0.5">
-                              {group.messages.map((msg, msgIdx) => (
-                                <p key={msgIdx} className="whitespace-pre-wrap break-words">
-                                  {msg.content}
-                                </p>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                }
-                
-                // STATUS MESSAGE: Collapsible accordion with colored tint
-                const messageId = firstMsg.id
-                const isCollapsed = collapsedMessages.has(messageId) && !isLastMessage
-                
-                const toggleCollapse = () => {
-                  setCollapsedMessages(prev => {
-                    const next = new Set(prev)
-                    if (next.has(messageId)) {
-                      next.delete(messageId)
-                    } else {
-                      next.add(messageId)
-                    }
-                    return next
-                  })
-                }
-                
-                const bgColor = 
-                  isModelMessage ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-l-4 border-indigo-500' :
-                  group.type === 'thinking' ? 'bg-purple-50 border-l-4 border-purple-400' :
-                  group.type === 'progress' ? 'bg-indigo-50 border-l-4 border-indigo-400' :
-                  group.type === 'decision' ? 'bg-blue-50 border-l-4 border-blue-400' :
-                  group.type === 'task' ? 'bg-yellow-50 border-l-4 border-yellow-400' :
-                  group.type === 'result' ? 'bg-green-50 border-l-4 border-green-400' :
-                  group.type === 'warning' ? 'bg-orange-50 border-l-4 border-orange-400' : // PHASE 3: Warning messages (retry/fallback)
-                  'bg-red-50 border-l-4 border-red-400'
-                
-                const icon = isModelMessage ? (
-                    <svg className="w-3.5 h-3.5 text-indigo-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                    </svg>
-                  ) :
-                  group.type === 'thinking' ? (
-                    isLastMessage && isStreaming ? (
-                      // ACTIVE: Spinning while thinking
-                      <svg className="w-3.5 h-3.5 text-purple-600 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : (
-                      // COMPLETE: Static lightbulb when done
-                      <svg className="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                      </svg>
-                    )
-                  ) :
-                  group.type === 'progress' ? (
-                    isLastMessage && isStreaming ? (
-                      // ACTIVE: Spinning while in progress
-                      <svg className="w-3.5 h-3.5 text-indigo-600 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : (
-                      // COMPLETE: Static checkmark when done
-                      <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    )
-                  ) :
-                  group.type === 'decision' ? (
-                    <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                    </svg>
-                  ) :
-                  group.type === 'task' ? (
-                    <svg className="w-3.5 h-3.5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  ) :
-                  group.type === 'result' ? (
-                    <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  ) :
-                  group.type === 'warning' ? (
-                    <svg className="w-3.5 h-3.5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  ) :
-                  (
-                    <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  )
-                
-                const label = isModelMessage ? 'MODEL' : group.type.toUpperCase()
-                
-                return (
-                  <div key={groupIndex} className={`rounded ${bgColor} overflow-hidden ${isLastMessage && isStreaming ? 'animate-pulse' : ''}`}>
-                    {/* Collapsible header */}
-                    <button
-                      onClick={toggleCollapse}
-                      className="w-full p-2 flex items-center justify-between hover:opacity-80 transition-opacity"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="flex-shrink-0">
-                          {icon}
-                        </div>
-                        <span className="text-[10px] font-medium uppercase tracking-wide text-gray-600">
-                          {label}
-                        </span>
-                        <span className="text-[10px] text-gray-400">
-                          {new Date(group.timestamp).toLocaleTimeString('en-US', { 
-                            hour: '2-digit', 
-                            minute: '2-digit'
-                          })}
-                        </span>
-                      </div>
-                      {!isLastMessage && (
-                        <svg 
-                          className={`w-4 h-4 text-gray-400 transition-transform ${isCollapsed ? '' : 'rotate-180'}`} 
-                          fill="none" 
-                          stroke="currentColor" 
-                          viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      )}
-                    </button>
-                    
-                    {/* Collapsible content */}
-                    {!isCollapsed && (
-                      <div className="px-3 pb-3">
-                        {/* Render all messages in group */}
-                        {group.messages.length === 1 ? (
-                          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
-                            {group.messages[0].content}
-                            {isLastMessage && isStreaming && (
-                              <span className="inline-block ml-1 w-1.5 h-4 bg-indigo-600 animate-pulse" />
-                            )}
-                          </p>
-                        ) : (
-                          <div className="text-sm text-gray-800 space-y-0.5">
-                            {group.messages.map((msg, msgIdx) => (
-                              <p key={msgIdx} className="whitespace-pre-wrap break-words">
-                                {msg.content}
-                                {msgIdx === group.messages.length - 1 && isLastMessage && isStreaming && (
-                                  <span className="inline-block ml-1 w-1.5 h-4 bg-indigo-600 animate-pulse" />
-                                )}
-                              </p>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-                })
-              })()
+              <ChatAccordion 
+                messages={reasoningMessages}
+                isStreaming={isStreaming}
+              />
             )}
           {/* Scroll target */}
           <div ref={reasoningEndRef} />

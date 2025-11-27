@@ -34,6 +34,15 @@ export {
 export { Badge } from './atoms/Badge'
 export type { BadgeProps } from './atoms/Badge'
 
+export { MessageIcon } from './atoms/MessageIcon'
+export type { MessageIconProps, MessageType } from './atoms/MessageIcon'
+
+export { MessageBadge } from './atoms/MessageBadge'
+export type { MessageBadgeProps } from './atoms/MessageBadge'
+
+export { MessageTimestamp } from './atoms/MessageTimestamp'
+export type { MessageTimestampProps } from './atoms/MessageTimestamp'
+
 export { 
   Card, 
   CardHeader, 
@@ -55,4 +64,17 @@ export { ToggleGroup, ToggleGroupItem } from './molecules/ToggleGroup'
 
 export { CollapsibleSection } from './molecules/CollapsibleSection'
 export type { CollapsibleSectionProps } from './molecules/CollapsibleSection'
+
+export { AccordionHeader } from './molecules/AccordionHeader'
+export type { AccordionHeaderProps } from './molecules/AccordionHeader'
+
+export { StatusMessage } from './molecules/StatusMessage'
+export type { StatusMessageProps } from './molecules/StatusMessage'
+
+export { ChatMessage } from './molecules/ChatMessage'
+export type { ChatMessageProps } from './molecules/ChatMessage'
+
+// Organisms
+export { ChatAccordion } from './organisms/ChatAccordion'
+export type { ChatAccordionProps, ChatMessageData } from './organisms/ChatAccordion'
 
