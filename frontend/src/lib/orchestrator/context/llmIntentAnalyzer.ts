@@ -562,6 +562,12 @@ export function shouldUseLLMAnalysis(message: string, hasConversationHistory: bo
   // Conversational flow
   const needsContext = hasConversationHistory && (hasPronouns || hasFollowUp || isAmbiguous)
   
-  return needsContext || hasPronouns || (isAmbiguous && hasConversationHistory)
+  // ✅ ALWAYS use LLM for structure creation requests
+  // Reason: User might say "build a story", "make an interview", "hero's journey novel"
+  // Pattern matching is too brittle for creative requests
+  const isStructureRequest = /\b(create|make|build|generate|write|start)\b.*\b(story|novel|screenplay|podcast|interview|article|report|essay|blog|guide)\b/i.test(message) ||
+                             /\b(novel|screenplay|podcast|interview|article|report|essay|blog|guide)\b.*\b(about|on|for)\b/i.test(message)
+  
+  return needsContext || hasPronouns || (isAmbiguous && hasConversationHistory) || isStructureRequest
 }
 
