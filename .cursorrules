@@ -1,0 +1,456 @@
+# Publo AI Assistant Rules
+
+## 🎯 Project Context
+
+This is **Publo**, a creative writing platform with an intelligent orchestrator system that coordinates multi-agent AI content generation.
+
+**Key Technologies:**
+- Next.js 14 (App Router)
+- TypeScript (strict mode)
+- Supabase (database + auth)
+- React Flow (canvas)
+- Tailwind CSS
+- OpenAI, Anthropic, Groq, Google AI
+
+**Architecture:**
+- Multi-agent orchestration system
+- LLM-based intent analysis
+- Modular action generators
+- Two-phase orchestration (structure → content)
+- WorldState management
+- Blackboard communication
+
+---
+
+## 📚 Required Reading Before ANY Changes
+
+**ALWAYS review these documents before making changes:**
+
+1. **Architecture Overview:**
+   - `docs/ORCHESTRATOR_ARCHITECTURE.md` - System architecture
+   - `docs/ARCHITECTURE_DIAGRAM.md` - Data flow diagrams
+   - `docs/QUICK_REFERENCE.md` - File locations and quick commands
+
+2. **Development Guidelines:**
+   - `docs/orchestrator/ORCHESTRATOR_DEVELOPMENT_CHECKLIST.md` - **CRITICAL: Use this checklist for ALL orchestrator changes**
+
+3. **Security:**
+   - Follow security principles in memories (Zod validation, sanitization, no dangerouslySetInnerHTML)
+
+---
+
+## 🚨 Critical Rules (NEVER BREAK THESE)
+
+### 1. Action Payload Completeness
+**ALWAYS include ALL required fields in action payloads:**
+
+```typescript
+// ❌ BAD - Missing fields
+{
+  type: 'generate_structure',
+  payload: {
+    plan: structurePlan  // Missing format, prompt!
+  }
+}
+
+// ✅ GOOD - Complete payload
+{
+  type: 'generate_structure',
+  payload: {
+    plan: structurePlan,
+    format: request.documentFormat,  // ✅
+    prompt: request.message,          // ✅
+    userKeyId: request.userKeyId      // ✅ If needed
+  }
+}
+```
+
+**Before creating any action, ask:**
+- What does the UI handler expect?
+- What context does the tool need?
+- What will the user see if this field is missing?
+
+---
+
+### 2. NO Silent Defaults
+**NEVER use `|| 'default'` to hide missing data:**
+
+```typescript
+// ❌ BAD - Silent incorrect default
+const format = action.payload.format || 'novel'
+// Problem: User asks for podcast → gets novel!
+
+// ✅ GOOD - Explicit validation
+const format = action.payload.format
+if (!format) {
+  console.error('❌ Missing format in action payload')
+  return
+}
+```
+
+**If data is missing, FAIL LOUDLY with clear error messages.**
+
+---
+
+### 3. LLM Reasoning Over Pattern Matching
+**ALWAYS use LLM reasoning for creative/varied user input:**
+
+```typescript
+// ❌ BAD - Brittle patterns
+const structurePatterns = [
+  /create (a |an )?(novel|screenplay)/i
+]
+// Misses: "Build a story", "Make an interview"
+
+// ✅ GOOD - Force LLM analysis
+const isStructureRequest = /\b(create|make|build).*\b(story|novel)/i
+return needsContext || hasPronouns || isStructureRequest
+```
+
+**Pattern matching is ONLY for unambiguous commands. For structure creation, ALWAYS use LLM.**
+
+---
+
+### 4. Complete UI Integration
+**When creating an action, ALWAYS add the handler:**
+
+```typescript
+// 1. Create action generator ✅
+class MyNewAction extends BaseAction { ... }
+
+// 2. Register in orchestratorEngine.ts ✅
+this.actionGenerators.set('my_intent', new MyNewAction())
+
+// 3. Add handler in OrchestratorPanel.tsx ✅
+case 'my_action_type':
+  // Validate, execute, feedback
+  break
+```
+
+**Search for action type in OrchestratorPanel.tsx to verify handler exists.**
+
+---
+
+### 5. Null Safety
+**ALWAYS check for null/undefined before accessing properties:**
+
+```typescript
+// ❌ BAD - Assumes data exists
+const name = worldState.getSelectedSection().name
+
+// ✅ GOOD - Validates first
+const section = worldState.getSelectedSection()
+if (!section) {
+  console.log('No section selected')
+  return
+}
+const name = section.name
+```
+
+---
+
+## 🔄 Development Workflow
+
+### Before Making Changes
+
+1. **Read the checklist:**
+   ```bash
+   # Open and review:
+   docs/orchestrator/ORCHESTRATOR_DEVELOPMENT_CHECKLIST.md
+   ```
+
+2. **Understand the flow:**
+   - User Input → OrchestratorPanel
+   - → MultiAgentOrchestrator → OrchestratorEngine
+   - → Intent Analysis (LLM) → Action Generator
+   - → Action Payload → UI Handler → Tool/Agent
+
+3. **Check existing patterns:**
+   - Look at similar features
+   - Follow established conventions
+   - Don't reinvent the wheel
+
+### During Development
+
+1. **Use the checklist sections:**
+   - [ ] Intent Analysis Layer
+   - [ ] Action Generation Layer
+   - [ ] UI Integration Layer
+   - [ ] WorldState Integration
+   - [ ] Testing Checklist
+
+2. **Log everything:**
+   ```typescript
+   console.log('🎯 [MyFeature] Starting...')
+   console.log('📦 [MyFeature] Payload:', payload)
+   console.error('❌ [MyFeature] Error:', error)
+   ```
+
+3. **Test variations:**
+   - Not just one example
+   - Test edge cases
+   - Test error cases
+   - Test weird inputs
+
+### After Development
+
+1. **Run checks:**
+   ```bash
+   cd frontend
+   npm run build          # Check for errors
+   npx tsc --noEmit      # Type check
+   ```
+
+2. **Test manually:**
+   - Happy path
+   - Edge cases
+   - Error cases
+   - UI verification
+
+3. **Document:**
+   - JSDoc comments
+   - Update architecture docs if needed
+   - Clear commit message
+
+---
+
+## 📁 File Structure Guide
+
+### When to Create Files
+
+**Intent Analysis:**
+```
+frontend/src/lib/orchestrator/context/
+├── intentRouter.ts          - Add intent type here
+├── llmIntentAnalyzer.ts     - Add LLM examples here
+└── templateMatcher.ts       - Add template matching here
+```
+
+**Action Generators:**
+```
+frontend/src/lib/orchestrator/actions/
+├── base/BaseAction.ts       - Extend this
+├── content/                 - Content-related actions
+├── structure/               - Structure-related actions
+└── navigation/              - Navigation actions
+```
+
+**UI Integration:**
+```
+frontend/src/components/
+├── panels/OrchestratorPanel.tsx  - Add action handlers here
+└── ui/
+    ├── atoms/               - Single UI elements
+    ├── molecules/           - Composed UI elements
+    └── organisms/           - Complex UI sections
+```
+
+---
+
+## 🧪 Testing Requirements
+
+### Manual Testing (Minimum)
+
+**For Every Feature:**
+1. Happy path (normal use)
+2. Empty canvas
+3. Multiple documents
+4. No active document
+5. Missing API keys
+6. Network failure
+
+**For Structure Creation:**
+```
+Test these variations:
+✅ "Create a podcast"
+✅ "Build a story about podcasts"
+✅ "Make me an interview format"
+✅ "Let's do a hero's journey novel"
+✅ "I want to write about dragons"
+```
+
+**For Follow-up Responses:**
+```
+Test these variations:
+✅ "1" (number)
+✅ "first" (ordinal)
+✅ "the first one" (natural language)
+✅ "yes" (confirmation)
+```
+
+---
+
+## 🎨 Code Style
+
+### TypeScript
+- ✅ Strict mode enabled
+- ✅ No `any` types (use proper interfaces)
+- ✅ Explicit return types
+- ✅ Null checks everywhere
+
+### Naming Conventions
+- `camelCase` - variables, functions
+- `PascalCase` - classes, types, components
+- `UPPER_CASE` - constants
+- `kebab-case` - file names
+
+### Comments
+```typescript
+// ❌ BAD - States the obvious
+const name = user.name  // Get user name
+
+// ✅ GOOD - Explains why
+const name = user.name  // Fallback to email if name not set
+
+// ✅ GOOD - JSDoc for public functions
+/**
+ * Generate actions for create_structure intent
+ * 
+ * @param intent - Analyzed user intent
+ * @param request - Original request
+ * @returns Array of actions
+ */
+```
+
+---
+
+## 🔒 Security Rules
+
+**From project memories - ALWAYS follow:**
+
+1. **All data is untrusted** - Validate with Zod schemas
+2. **Never use dangerouslySetInnerHTML** unless sanitized with DOMPurify
+3. **No direct DOM manipulation** - Avoid innerHTML, eval, Function
+4. **Sanitize all URLs** - Only allow https:, mailto:, tel:
+5. **Validate all inputs** - Use type, maxLength, pattern attributes
+6. **Use Zod for API validation** - All Supabase responses
+7. **External links** - Always use rel="noopener noreferrer"
+8. **No tokens in localStorage** - Use Supabase secure sessions
+9. **TypeScript strict mode** - All props, state, functions typed
+10. **Function components + hooks only** - No legacy APIs
+
+---
+
+## 🐛 Common Mistakes to Avoid
+
+### 1. Missing Payload Fields
+- Always include format, prompt, sectionId, etc.
+- Check what UI handler expects
+
+### 2. Silent Defaults
+- Never use `|| 'default'`
+- Validate explicitly, fail loudly
+
+### 3. Pattern Matching
+- Don't rely on regex for creative input
+- Use LLM reasoning for structure creation
+
+### 4. Forgetting UI Handler
+- Create action generator ✅
+- Add handler in OrchestratorPanel ✅
+
+### 5. No Null Checks
+- Always validate before accessing properties
+- WorldState, Blackboard, Canvas context
+
+### 6. Incomplete Testing
+- Test variations, not just one example
+- Test edge cases and errors
+
+### 7. Poor Error Messages
+- User-friendly, not technical
+- Tell user what to do next
+
+---
+
+## 📋 Quick Commands
+
+```bash
+# Development
+cd frontend && npm run dev
+
+# Type checking
+cd frontend && npx tsc --noEmit
+
+# Build
+cd frontend && npm run build
+
+# Git workflow
+git checkout -b feature/my-feature
+git add -A
+git commit -m "feat: Add my feature"
+git push origin feature/my-feature
+```
+
+---
+
+## 💡 AI Assistant Guidelines
+
+### When Helping with Code
+
+1. **Always reference the checklist:**
+   - "Let me check the development checklist..."
+   - "According to the checklist, we need to..."
+
+2. **Validate completeness:**
+   - Check action payload has ALL fields
+   - Check UI handler exists
+   - Check null safety
+
+3. **Suggest testing:**
+   - Provide test variations
+   - Remind about edge cases
+   - Suggest error scenarios
+
+4. **Explain reasoning:**
+   - Why LLM over patterns
+   - Why explicit validation
+   - Why this architecture
+
+### When User Makes Mistakes
+
+1. **Reference the checklist:**
+   - "The checklist warns against this..."
+   - "Let's check the 'Common Pitfalls' section..."
+
+2. **Show correct pattern:**
+   - Bad example (with ❌)
+   - Good example (with ✅)
+   - Explain why
+
+3. **Prevent future mistakes:**
+   - Update checklist if needed
+   - Add to "Common Pitfalls"
+   - Document the learning
+
+---
+
+## 🎯 Success Criteria
+
+**Before marking any feature as "done":**
+
+- [ ] Checklist reviewed and followed
+- [ ] Action payload complete
+- [ ] UI handler exists and validates
+- [ ] Null checks everywhere
+- [ ] TypeScript compiles
+- [ ] Manually tested (variations + edge cases)
+- [ ] Documentation updated
+- [ ] Commit message clear
+
+---
+
+## 📞 When in Doubt
+
+1. ✅ Check `docs/orchestrator/ORCHESTRATOR_DEVELOPMENT_CHECKLIST.md`
+2. ✅ Check `docs/ORCHESTRATOR_ARCHITECTURE.md`
+3. ✅ Look at similar existing features
+4. ✅ Ask for code review
+5. ✅ Test thoroughly
+
+**Remember:** It's better to ask than to introduce bugs! 🎯
+
+---
+
+**This file ensures consistency and quality across all orchestrator development!** 🚀
+
