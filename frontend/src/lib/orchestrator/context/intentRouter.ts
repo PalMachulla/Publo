@@ -9,6 +9,8 @@
  */
 
 import { analyzeLLMIntent, shouldUseLLMAnalysis, type ConversationMessage } from './llmIntentAnalyzer'
+import { IntentPipeline } from './intent/pipeline/IntentPipeline'
+import { intentContextToPipelineContext, pipelineAnalysisToIntentAnalysis } from './intent/utils/adapter'
 
 export type UserIntent = 
   | 'write_content'        // User wants to write/expand content for a specific section
@@ -54,13 +56,50 @@ export interface IntentContext {
   documentFormat?: string // Novel, Report, Screenplay, etc.
   useLLM?: boolean // Force LLM analysis (for testing or complex cases)
   canvasContext?: string // CANVAS VISIBILITY: Formatted canvas context for LLM
+  availableModels?: any[] // Available models from user's API keys (for model router)
 }
 
 /**
  * Analyzes user message and determines intent
  * HYBRID: Pattern matching for obvious cases, LLM for complex cases
+ * 
+ * Feature flag: USE_NEW_INTENT_PIPELINE
+ * When enabled, uses the new 4-stage pipeline instead of the hybrid approach.
  */
 export async function analyzeIntent(context: IntentContext): Promise<IntentAnalysis> {
+  // Feature flag: Use new pipeline if enabled
+  const USE_NEW_INTENT_PIPELINE = process.env.NEXT_PUBLIC_USE_NEW_INTENT_PIPELINE === 'true'
+  
+  if (USE_NEW_INTENT_PIPELINE) {
+    console.log('🚀 [Intent] Using new intent pipeline...')
+    try {
+      // Convert IntentContext to PipelineContext
+      // Note: We need worldState and blackboard for full context, but we can build from IntentContext
+      const pipelineContext = intentContextToPipelineContext(context)
+      
+      // Create pipeline instance
+      const pipeline = new IntentPipeline()
+      
+      // ✅ NEW: Update pipeline with available models from user's API keys
+      if (context.availableModels && context.availableModels.length > 0) {
+        console.log('📦 [Intent] Updating pipeline with', context.availableModels.length, 'available models')
+        pipeline.updateAvailableModels(context.availableModels)
+      } else {
+        console.warn('⚠️ [Intent] No available models provided - pipeline will use API defaults')
+      }
+      
+      // Analyze through pipeline
+      const pipelineResult = await pipeline.analyze(context.message, pipelineContext)
+      
+      // Convert back to IntentAnalysis format
+      return pipelineAnalysisToIntentAnalysis(pipelineResult)
+    } catch (error) {
+      console.error('❌ [Intent] New pipeline failed, falling back to legacy system:', error)
+      // Fall through to legacy system
+    }
+  }
+  
+  // LEGACY SYSTEM (original hybrid approach)
   const { message, hasActiveSegment, activeSegmentName, conversationHistory = [] } = context
   const lowerMessage = message.toLowerCase().trim()
   

@@ -55,12 +55,66 @@ export interface WorldState {
     } | null
   }
   
-  // UI Layer - Current UI state
+  // Conversation Layer - Chat history for orchestrator context and UI display
+  conversation: {
+    messages: Array<{
+      id: string
+      timestamp: string
+      content: string
+      type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
+      role: 'user' | 'orchestrator'
+      // Support inline options for clarifications
+      options?: Array<{
+        id: string
+        title: string
+        description?: string
+      }>
+      onOptionSelect?: (optionId: string, optionTitle: string) => void
+    }>
+    lastMessageId: string | null
+    unreadCount: number
+  }
+  
+  // UI Layer - Current UI state (enhanced with orchestrator-driven toggles)
   ui: {
     documentPanelOpen: boolean
     orchestratorPanelOpen: boolean
     lastUserAction: string | null
     timestamp: number
+    
+    // Orchestrator-driven UI states
+    pendingClarification: {
+      question: string
+      context?: string
+      options: Array<{id: string, label: string, description: string}>
+      originalIntent: string
+      originalPayload: any
+    } | null
+    
+    pendingConfirmation: {
+      actionId: string
+      actionType: string
+      actionPayload: any
+      message: string
+      confirmationType: 'destructive' | 'permission' | 'info'
+      options?: Array<{id: string, label: string, description: string}>
+      expiresAt: number
+    } | null
+    
+    pendingCreation: {
+      format: string
+      userMessage: string
+      referenceNode?: any
+      enhancedPrompt?: string
+    } | null
+    
+    activeContext: {
+      id: string
+      name: string
+    } | null
+    
+    isReasoningOpen: boolean
+    isModelDropdownOpen: boolean
   }
   
   // User Context - User preferences and capabilities
@@ -293,6 +347,174 @@ export class WorldStateManager {
   }
   
   // ============================================================
+  // CONVERSATION METHODS
+  // ============================================================
+  
+  /**
+   * Add a message to conversation history
+   */
+  addMessage(message: {
+    content: string
+    role: 'user' | 'orchestrator'
+    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
+    options?: Array<{id: string, title: string, description?: string}>
+    onOptionSelect?: (optionId: string, optionTitle: string) => void
+  }): string {
+    const msgId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const msg = {
+      id: msgId,
+      timestamp: new Date().toISOString(),
+      content: message.content,
+      type: message.type,
+      role: message.role,
+      ...(message.options && { options: message.options }),
+      ...(message.onOptionSelect && { onOptionSelect: message.onOptionSelect })
+    }
+    
+    this.state.conversation.messages.push(msg)
+    this.state.conversation.lastMessageId = msgId
+    this.state.conversation.unreadCount += 1
+    
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.state.meta.isDirty = true
+    this.notifyObservers()
+    
+    return msgId
+  }
+  
+  /**
+   * Clear conversation history
+   */
+  clearConversation(): void {
+    this.state.conversation.messages = []
+    this.state.conversation.lastMessageId = null
+    this.state.conversation.unreadCount = 0
+    
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.state.meta.isDirty = true
+    this.notifyObservers()
+  }
+  
+  /**
+   * Get conversation messages (for UI rendering)
+   */
+  getConversationMessages(): WorldState['conversation']['messages'] {
+    return [...this.state.conversation.messages]
+  }
+  
+  /**
+   * Mark conversation as read
+   */
+  markConversationRead(): void {
+    this.state.conversation.unreadCount = 0
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.notifyObservers()
+  }
+  
+  // ============================================================
+  // UI STATE METHODS (Orchestrator-driven)
+  // ============================================================
+  
+  /**
+   * Set pending clarification (for inline options)
+   */
+  setPendingClarification(clarification: {
+    question: string
+    context?: string
+    options: Array<{id: string, label: string, description: string}>
+    originalIntent: string
+    originalPayload: any
+  } | null): void {
+    this.state.ui.pendingClarification = clarification
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.notifyObservers()
+  }
+  
+  /**
+   * Set pending confirmation (for 2-step actions)
+   */
+  setPendingConfirmation(confirmation: {
+    actionId: string
+    actionType: string
+    actionPayload: any
+    message: string
+    confirmationType: 'destructive' | 'permission' | 'info'
+    options?: Array<{id: string, label: string, description: string}>
+    expiresAt: number
+  } | null): void {
+    this.state.ui.pendingConfirmation = confirmation
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.notifyObservers()
+  }
+  
+  /**
+   * Set pending creation (for template selection)
+   */
+  setPendingCreation(creation: {
+    format: string
+    userMessage: string
+    referenceNode?: any
+    enhancedPrompt?: string
+  } | null): void {
+    this.state.ui.pendingCreation = creation
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.notifyObservers()
+  }
+  
+  /**
+   * Set active context (selected section/segment)
+   */
+  setActiveContext(context: {id: string, name: string} | null): void {
+    this.state.ui.activeContext = context
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.notifyObservers()
+  }
+  
+  /**
+   * Toggle document panel
+   */
+  toggleDocumentPanel(): void {
+    this.state.ui.documentPanelOpen = !this.state.ui.documentPanelOpen
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.notifyObservers()
+  }
+  
+  /**
+   * Toggle reasoning panel
+   */
+  toggleReasoningPanel(): void {
+    this.state.ui.isReasoningOpen = !this.state.ui.isReasoningOpen
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.notifyObservers()
+  }
+  
+  /**
+   * Toggle model dropdown
+   */
+  toggleModelDropdown(): void {
+    this.state.ui.isModelDropdownOpen = !this.state.ui.isModelDropdownOpen
+    this.state.meta.version += 1
+    this.state.meta.lastUpdated = Date.now()
+    this.notifyObservers()
+  }
+  
+  /**
+   * Get UI state (for React components)
+   */
+  getUIState(): Readonly<WorldState['ui']> {
+    return Object.freeze({ ...this.state.ui })
+  }
+  
+  // ============================================================
   // OBSERVABLE PATTERN
   // ============================================================
   
@@ -351,13 +573,27 @@ export class WorldStateManager {
         },
         lastIntent: partial.orchestrator?.lastIntent || null
       },
+      conversation: {
+        messages: partial.conversation?.messages || [],
+        lastMessageId: partial.conversation?.lastMessageId || null,
+        unreadCount: partial.conversation?.unreadCount || 0
+      },
       ui: {
         documentPanelOpen: partial.ui?.documentPanelOpen || false,
         orchestratorPanelOpen: partial.ui?.orchestratorPanelOpen !== undefined 
           ? partial.ui.orchestratorPanelOpen 
           : true,
         lastUserAction: partial.ui?.lastUserAction || null,
-        timestamp: partial.ui?.timestamp || Date.now()
+        timestamp: partial.ui?.timestamp || Date.now(),
+        // Orchestrator-driven UI states
+        pendingClarification: partial.ui?.pendingClarification || null,
+        pendingConfirmation: partial.ui?.pendingConfirmation || null,
+        pendingCreation: partial.ui?.pendingCreation || null,
+        activeContext: partial.ui?.activeContext || null,
+        isReasoningOpen: partial.ui?.isReasoningOpen !== undefined 
+          ? partial.ui.isReasoningOpen 
+          : true,
+        isModelDropdownOpen: partial.ui?.isModelDropdownOpen || false
       },
       user: {
         id: partial.user?.id || '',
@@ -472,6 +708,14 @@ export class WorldStateManager {
         ...this.state.activeDocument,
         content: Array.from(this.state.activeDocument.content.entries())
       },
+      conversation: {
+        ...this.state.conversation,
+        // Note: onOptionSelect functions are not serializable
+        messages: this.state.conversation.messages.map(msg => ({
+          ...msg,
+          onOptionSelect: undefined // Remove function for serialization
+        }))
+      },
       ui: this.state.ui,
       user: this.state.user,
       meta: this.state.meta
@@ -577,11 +821,23 @@ export function buildWorldStateFromReactFlow(
       },
       lastIntent: null
     },
+    conversation: {
+      messages: [],
+      lastMessageId: null,
+      unreadCount: 0
+    },
     ui: {
       documentPanelOpen: additionalContext?.isDocumentPanelOpen || false,
       orchestratorPanelOpen: true,
       lastUserAction: null,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      // Orchestrator-driven UI states
+      pendingClarification: null,
+      pendingConfirmation: null,
+      pendingCreation: null,
+      activeContext: null,
+      isReasoningOpen: true,
+      isModelDropdownOpen: false
     },
     user: {
       id: userId,

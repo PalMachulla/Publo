@@ -151,9 +151,19 @@ export class OrchestratorEngine {
   constructor(config: OrchestratorConfig, worldState?: WorldStateManager) {
     // PHASE 3: Pass real-time message callback to Blackboard
     const messageCallback = config.onMessage ? (msg: any) => {
+      // Call the UI callback
       config.onMessage!(msg.content, msg.role, msg.type)
+
+      // Also update WorldState conversation if available
+      if (worldState) {
+        worldState.addMessage({
+          content: msg.content,
+          type: msg.type || 'result',
+          role: msg.role || 'orchestrator'
+        })
+      }
     } : undefined
-    
+
     this.blackboard = new Blackboard(config.userId, messageCallback)
     this.worldState = worldState // PHASE 1: Store WorldState if provided
     this.toolRegistry = config.toolRegistry // PHASE 2: Store ToolRegistry if provided
@@ -289,7 +299,14 @@ export class OrchestratorEngine {
     // Step 5: Analyze intent (MOVED UP - need to know intent before RAG)
     const conversationHistory = this.blackboard.getRecentMessages(10)
     
+    // Get available providers and models (needed for both intent analysis and later model selection)
+    const availableProviders = request.availableProviders || ['openai', 'groq', 'anthropic', 'google']
+    const modelsToUse: TieredModel[] = request.availableModels && request.availableModels.length > 0
+      ? request.availableModels
+      : MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
+    
     // First pass: Quick intent analysis without RAG
+    // Pass available models to intent pipeline
     const intentAnalysis = await analyzeIntent({
       message: request.message,
       hasActiveSegment: !!request.activeContext,
@@ -304,7 +321,8 @@ export class OrchestratorEngine {
       isDocumentViewOpen: request.isDocumentViewOpen,
       documentFormat: request.documentFormat,
       useLLM: true,
-      canvasContext: formatCanvasContextForLLM(canvasContext)
+      canvasContext: formatCanvasContextForLLM(canvasContext),
+      availableModels: modelsToUse // ✅ NEW: Pass available models to intent pipeline
     })
     
     // Update WorldState: Intent analyzed, now deciding
@@ -347,16 +365,6 @@ export class OrchestratorEngine {
       request.message.length + (ragContext?.ragContent?.length || 0),
       intentAnalysis.intent === 'rewrite_with_coherence'
     )
-    
-    // Use user's available providers (from API keys) or fallback to common ones
-    const availableProviders = request.availableProviders || ['openai', 'groq', 'anthropic', 'google']
-    
-    // PHASE 1.2: Determine which models to use
-    // Prefer availableModels from /api/models/available (actual models user has access to)
-    // Fallback to MODEL_TIERS filtered by provider ONLY if we have no models at all
-    const modelsToUse: TieredModel[] = request.availableModels && request.availableModels.length > 0
-      ? request.availableModels
-      : MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
     
     console.log(`🎯 [Orchestrator] Using ${request.availableModels && request.availableModels.length > 0 ? 'dynamic' : 'static'} model list: ${modelsToUse.length} models available`)
     
@@ -1017,11 +1025,18 @@ export class OrchestratorEngine {
 
 ${formatInstructions}${reportWarning}
 
+CRITICAL: You MUST analyze the user's creative prompt and create a structure that specifically addresses their theme/topic. Do NOT generate generic templates - customize each scene/section description to directly relate to the user's specific request.
+
+For example:
+- If user wants "motherhood", create scenes about maternal experiences, family dynamics, etc.
+- If user wants "space exploration", create scenes about astronauts, alien worlds, etc.
+- If user wants "detective mystery", create scenes about investigations, clues, suspects, etc.
+
 Generate a complete structure plan with:
-- Concise reasoning (max 1000 characters)
-- 3-20 hierarchical structure items with clear parent-child relationships
+- Concise reasoning (max 1000 characters) explaining how the structure serves the user's theme
+- 3-20 hierarchical structure items with theme-specific descriptions (NOT generic templates)
 - Realistic word count estimates for each section
-- Specific writing tasks (minimum 1)
+- Specific writing tasks (minimum 1) tailored to the user's theme
 - Metadata with total word count, estimated time, and recommended models (REQUIRED)
 
 CRITICAL - SECTION ID CONSISTENCY:
@@ -1044,7 +1059,7 @@ USE CONSISTENT ID FORMAT:
 - NO inconsistencies between structure and tasks`
 
     const formatLabel = format.charAt(0).toUpperCase() + format.slice(1).replace(/-/g, ' ')
-    const userMessage = `The user wants to create a ${formatLabel}.\n\nUser's creative prompt:\n${userPrompt}\n\nAnalyze this prompt and create a detailed structure plan optimized for the ${formatLabel} format.`
+    const userMessage = `The user wants to create a ${formatLabel}.\n\nUser's creative prompt:\n${userPrompt}\n\nIMPORTANT: You MUST analyze the user's creative prompt and create a structure plan where EVERY scene/section description directly relates to and incorporates their specific theme/topic. Do NOT use generic template descriptions. Make each scene description specific to the user's request about "${userPrompt.replace(/create a screenplay about/i, '').trim()}".`
     
     this.blackboard.addMessage({
       role: 'orchestrator',

@@ -380,34 +380,63 @@ OUTPUT FORMAT (JSON only, no markdown):
 
 If no clear reference exists, return nodeId: null with low confidence.`
 
+    // Build the request in the format expected by /api/intent/analyze
+    const systemPrompt = `You are a node resolution assistant. Your job is to identify which canvas node the user is referring to.
+
+Available nodes:
+${availableNodes.map(n => `- ${n.label} (${n.nodeType})`).join('\n')}
+
+${recentConversation.length > 0 ? `Recent conversation:\n${recentConversation.slice(-3).map(m => `${m.role}: ${m.content}`).join('\n')}` : ''}
+
+OUTPUT FORMAT (JSON only, no markdown):
+{
+  "nodeId": "node-id-here or null",
+  "nodeName": "Node Label or null",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of why this node was chosen"
+}
+
+If no clear reference exists, return nodeId: null with low confidence.`
+
+    const userPrompt = prompt
+
     const response = await fetch('/api/intent/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: prompt,
-        context: {
-          canvasNodes: availableNodes,
-          conversationHistory: recentConversation
-        }
+        system_prompt: systemPrompt,
+        user_prompt: userPrompt,
+        conversation_history: recentConversation,
+        temperature: 0.1
       })
     })
 
     if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      console.error('[LLM Node Resolver] API error:', errorData)
       return null
     }
 
     const result = await response.json()
     
     // Parse the LLM's response
+    // The API returns { content: "..." } where content is the LLM's response
     let resolution: any
     try {
-      const jsonMatch = result.analysis?.match(/\{[\s\S]*\}/)
+      let content = result.content || result.analysis || ''
+      
+      // Remove markdown code blocks if present
+      content = content.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '')
+      
+      // Extract JSON object if wrapped in text
+      const jsonMatch = content.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         resolution = JSON.parse(jsonMatch[0])
       } else {
-        resolution = JSON.parse(result.analysis)
+        resolution = JSON.parse(content)
       }
-    } catch {
+    } catch (parseError) {
+      console.error('[LLM Node Resolver] Failed to parse response:', parseError)
       return null
     }
 

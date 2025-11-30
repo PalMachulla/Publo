@@ -99,7 +99,7 @@ export default function MarkdownEditor({
 
   return (
     <div
-      onClick={() => setIsEditing(true)}
+      onDoubleClick={() => setIsEditing(true)}
       className={`cursor-text min-h-full ${className}`}
     >
       {content ? (

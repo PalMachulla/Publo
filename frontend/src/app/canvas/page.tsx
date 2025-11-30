@@ -1031,6 +1031,13 @@ export default function CanvasPage() {
           newStructureNode.data.items || [],
           (newStructureNode.data.format as 'novel' | 'screenplay' | 'report') || 'novel'
         )
+
+        console.log('📄 [handleCreateStory] DocumentManager created:', {
+          format: newStructureNode.data.format,
+          structureItemsCount: newStructureNode.data.items?.length || 0,
+          documentDataSize: JSON.stringify(docManager.getData()).length,
+          documentDataKeys: Object.keys(docManager.getData())
+        })
         
         // ✅ NEW: Use server-side API to create node (uses admin client, bypasses RLS INSERT policy)
         const createNodeResponse = await fetch('/api/node/create', {

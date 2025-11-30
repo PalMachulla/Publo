@@ -104,20 +104,40 @@ export class CreateStructureAction extends BaseAction {
     console.log('   Intent:', intent.intent)
     console.log('   Message:', request.message)
     console.log('   Format:', request.documentFormat)
+    console.log('   ClarificationContext:', !!request.clarificationContext)
     console.log('   Extracted entities:', intent.extractedEntities)
     
-    // Check if LLM suggested a specific template
-    const suggestedTemplate = intent.extractedEntities?.suggestedTemplate
-    const templateInfo = suggestedTemplate && request.documentFormat
-      ? getTemplateById(request.documentFormat, suggestedTemplate)
+    // Check if user selected a template from clarification
+    let selectedTemplate = intent.extractedEntities?.suggestedTemplate
+    console.log('🎯 [CreateStructureAction] Template sources:', {
+      fromIntent: intent.extractedEntities?.suggestedTemplate,
+      hasClarification: !!request.clarificationContext,
+      clarificationPayload: request.clarificationContext?.payload || null
+    })
+
+    if (request.clarificationContext) {
+      // User selected a template from clarification options
+      const clarification = request.clarificationContext
+      const selectedOption = clarification.options?.find(opt => opt.id === clarification.payload?.selectedOptionId)
+      if (selectedOption) {
+        selectedTemplate = selectedOption.id
+        console.log('✅ [CreateStructureAction] User selected template from clarification:', selectedTemplate)
+      } else {
+        console.log('⚠️ [CreateStructureAction] Clarification context but no matching option found')
+      }
+    }
+
+    const templateInfo = selectedTemplate && request.documentFormat
+      ? getTemplateById(request.documentFormat, selectedTemplate)
       : null
-    
+
     console.log('🏗️ [CreateStructureAction] Processing structure request:', {
       format: request.documentFormat,
       message: request.message,
-      suggestedTemplate: templateInfo ? `${templateInfo.name} (${templateInfo.id})` : 'none',
-      suggestedTemplateRaw: suggestedTemplate, // ✅ DEBUG: Show raw value
-      hasSuggestedTemplate: !!suggestedTemplate, // ✅ DEBUG: Boolean check
+      selectedTemplate: templateInfo ? `${templateInfo.name} (${templateInfo.id})` : 'none',
+      selectedTemplateRaw: selectedTemplate, // ✅ DEBUG: Show raw value
+      hasSelectedTemplate: !!selectedTemplate, // ✅ DEBUG: Boolean check
+      clarificationContext: request.clarificationContext, // ✅ DEBUG: Check clarification
       intentExtractedEntities: intent.extractedEntities // ✅ DEBUG: Full entities
     })
     
@@ -151,23 +171,24 @@ export class CreateStructureAction extends BaseAction {
     // Example: "Create a podcast" (vague) → show options
     //          "Create a podcast interview" (specific) → use interview template
     console.log('🔍 [STEP 1.5] Template selection check:', {
-      hasSuggestedTemplate: !!suggestedTemplate,
-      suggestedTemplate,
+      hasSelectedTemplate: !!selectedTemplate,
+      selectedTemplate,
       hasDocumentFormat: !!request.documentFormat,
       documentFormat: request.documentFormat,
-      willCheckTemplates: !suggestedTemplate && request.documentFormat
+      willCheckTemplates: !selectedTemplate && request.documentFormat
     })
     
-    if (!suggestedTemplate && request.documentFormat) {
-      console.log('✅ [STEP 1.5] Fetching available templates for format:', request.documentFormat)
+    if (!selectedTemplate && request.documentFormat) {
+      console.log('✅ [STEP 1.5] No template selected, checking for available templates for format:', request.documentFormat)
       const { getTemplatesForFormat } = await import('../../schemas/templateRegistry')
       const availableTemplates = getTemplatesForFormat(request.documentFormat)
-      
+
       console.log('📋 [STEP 1.5] Available templates:', {
         count: availableTemplates.length,
-        templates: availableTemplates.map((t: any) => ({ id: t.id, name: t.name }))
+        templates: availableTemplates.map((t: any) => ({ id: t.id, name: t.name })),
+        willShowOptions: availableTemplates.length > 0
       })
-      
+
       if (availableTemplates.length > 0) {
         console.log('🎨 [CreateStructureAction] No template specified, showing options:', {
           format: request.documentFormat,
@@ -202,8 +223,8 @@ export class CreateStructureAction extends BaseAction {
       }
     } else {
       console.log('⏭️ [STEP 1.5] Skipping template selection:', {
-        reason: suggestedTemplate ? 'Template already suggested by LLM' : 'No document format',
-        suggestedTemplate,
+        reason: selectedTemplate ? 'Template already selected' : 'No document format',
+        selectedTemplate,
         documentFormat: request.documentFormat
       })
     }
@@ -399,14 +420,16 @@ export class CreateStructureAction extends BaseAction {
     // ============================================================
     // STEP 6: Analyze task complexity
     // ============================================================
-    
-    const taskAnalysis = await this.orchestratorEngine.analyzeTaskComplexity(
-      request.message,
-      structurePlan.structure,
-      intent,
-      blackboard
-    )
-    
+
+    // TODO: Implement proper task complexity analysis
+    // For now, assume single-step (structure only)
+    const taskAnalysis = {
+      isMultiStep: false,
+      targetSections: [] as Array<{id: string, name: string}>,
+      complexity: 'simple',
+      reasoning: 'Simple structure-only task'
+    }
+
     console.log('🔍 [Task Analysis]', taskAnalysis)
     
     // ============================================================

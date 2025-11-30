@@ -505,7 +505,7 @@ export default function AIDocumentPanel({
       const headerText = item.title ? `${item.title}` : item.name
       
       // ✅ Use markdown headers with HTML comment for ID (prevents editable HTML)
-      const headingWithId = `<!-- section-id: ${itemId} -->\n${headerTag} ${headerText}`
+      const headingWithId = `<span id="section-${itemId}"></span>\n<!-- section-id: ${itemId} -->\n${headerTag} ${headerText}`
       aggregatedContent.push(headingWithId)
       aggregatedContent.push('') // Add blank line for proper markdown spacing
     }

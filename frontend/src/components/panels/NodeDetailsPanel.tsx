@@ -76,7 +76,7 @@ interface NodeDetailsPanelProps {
     type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
     role?: 'user' | 'orchestrator'
   }>
-  onAddChatMessage?: (message: string) => void
+  onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => void
   onClearChat?: () => void
   onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
   isDocumentViewOpen?: boolean // NEW: Document panel visibility state

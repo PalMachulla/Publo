@@ -36,6 +36,7 @@ import { createDefaultToolRegistry } from '@/lib/orchestrator/tools'
 // Deprecated: findReferencedNode moved to core/contextProvider (now using resolveNode)
 // import { findReferencedNode } from '@/lib/orchestrator/canvasContextProvider.deprecated'
 import { Edge } from 'reactflow'
+import { useWorldState } from '@/hooks/useWorldState'
 
 // Helper: Get canonical model details for filtering and display
 const getCanonicalModel = (modelId: string) => {
@@ -138,6 +139,8 @@ interface CreateStoryPanelProps {
   currentStoryStructureNodeId?: string | null // CANVAS CONTENT: ID of currently loaded story structure
   onSelectNode?: (nodeId: string, sectionId?: string) => void // HELPFUL MODE: Select and open a specific canvas node, optionally auto-select a section
   onDeleteNode?: (nodeId: string) => Promise<void> // DELETE: Delete a canvas node
+  // ✅ NEW: Optional WorldStateManager for unified state management
+  worldState?: WorldStateManager
 }
 
 // ✅ REFACTORED: Templates now imported from schema (single source of truth)
@@ -286,10 +289,145 @@ export default function OrchestratorPanel({
   canvasEdges = [],
   currentStoryStructureNodeId = null,
   onSelectNode,
-  onDeleteNode
+  onDeleteNode,
+  worldState // ✅ NEW: Optional WorldStateManager
 }: CreateStoryPanelProps) {
   const router = useRouter()
   const supabase = createClient()
+  
+  // ✅ Build WorldStateManager from ReactFlow state (if not provided as prop)
+  // Use ref to persist WorldState across re-mounts and preserve conversation messages
+  const worldStateRef = useRef<WorldStateManager | null>(null)
+  const [effectiveWorldState, setEffectiveWorldState] = useState<WorldStateManager | null>(() => {
+    // If worldState prop is provided, use it immediately
+    if (worldState) {
+      worldStateRef.current = worldState
+      return worldState
+    }
+    // Check if we already have a persisted WorldState
+    if (worldStateRef.current) {
+      return worldStateRef.current
+    }
+    // Otherwise, build from ReactFlow state
+    const newWorldState = buildWorldStateFromReactFlow(
+      canvasNodes,
+      canvasEdges,
+      '',
+      {
+        activeDocumentNodeId: currentStoryStructureNodeId,
+        selectedSectionId: activeContext?.id || null,
+        isDocumentPanelOpen: isDocumentViewOpen,
+        availableProviders: [],
+        availableModels: [],
+        modelPreferences: {
+          modelMode: 'automatic',
+          fixedModelId: null,
+          fixedModeStrategy: 'loose'
+        }
+      }
+    )
+    worldStateRef.current = newWorldState
+    return newWorldState
+  })
+
+  // Update WorldState when canvas or context changes, but preserve conversation
+  useEffect(() => {
+    if (worldState) {
+      // If worldState prop provided, use it directly
+      worldStateRef.current = worldState
+      setEffectiveWorldState(worldState)
+    } else {
+      // Update existing WorldState with new canvas data
+      setEffectiveWorldState(prevState => {
+        let stateToUpdate = prevState
+
+        if (!stateToUpdate) {
+          // Create new if none exists
+          stateToUpdate = buildWorldStateFromReactFlow(
+            canvasNodes,
+            canvasEdges,
+            '',
+            {
+              activeDocumentNodeId: currentStoryStructureNodeId,
+              selectedSectionId: activeContext?.id || null,
+              isDocumentPanelOpen: isDocumentViewOpen,
+              availableProviders: [],
+              availableModels: [],
+              modelPreferences: {
+                modelMode: 'automatic',
+                fixedModelId: null,
+                fixedModeStrategy: 'loose'
+              }
+            }
+          )
+          worldStateRef.current = stateToUpdate
+        }
+
+        // Update existing WorldState
+        stateToUpdate.update(draft => {
+            // Update canvas
+            draft.canvas.nodes.clear()
+            canvasNodes.forEach(node => {
+              draft.canvas.nodes.set(node.id, {
+                id: node.id,
+                type: node.type || 'default',
+                label: node.data?.label || node.data?.name || 'Untitled',
+                format: node.data?.format,
+                position: node.position,
+                data: node.data,
+                summary: node.data?.summary,
+                wordCount: node.data?.document_data?.totalWordCount || node.data?.wordCount,
+                hasContent: !!node.data?.document_data || !!node.data?.contentMap,
+                structure: node.data?.document_data?.structure || node.data?.items
+              })
+            })
+
+            draft.canvas.edges.clear()
+            canvasEdges.forEach(edge => {
+              draft.canvas.edges.set(edge.id, {
+                id: edge.id,
+                source: edge.source,
+                target: edge.target,
+                type: edge.type,
+                data: edge.data
+              })
+            })
+
+            // Update active document
+            if (currentStoryStructureNodeId) {
+              const activeNode = draft.canvas.nodes.get(currentStoryStructureNodeId)
+              if (activeNode) {
+                draft.activeDocument = {
+                  nodeId: activeNode.id,
+                  format: activeNode.format || null,
+                  structure: activeNode.structure ? {
+                    items: Array.isArray(activeNode.structure) ? activeNode.structure : [],
+                    hierarchy: activeNode.format || 'unknown'
+                  } : null,
+                  content: new Map(), // Content will be loaded separately
+                  selectedSectionId: activeContext?.id || null
+                }
+              }
+            } else {
+              draft.activeDocument = {
+                nodeId: null,
+                format: null,
+                structure: null,
+                content: new Map(),
+                selectedSectionId: null
+              }
+            }
+
+            // Update selected section
+            draft.activeDocument.selectedSectionId = activeContext?.id || null
+          })
+          return stateToUpdate
+      })
+    }
+  }, [worldState])
+  
+  // ✅ NEW: Subscribe to WorldState (from prop or built)
+  const worldStateData = useWorldState(effectiveWorldState || undefined)
   
   // Debug: Log received props on mount and when they change
   useEffect(() => {
@@ -297,9 +435,11 @@ export default function OrchestratorPanel({
       canvasNodesCount: canvasNodes.length,
       canvasEdgesCount: canvasEdges.length,
       canvasNodesList: canvasNodes.map(n => ({ id: n.id, type: n.type, label: n.data?.label })),
-      canvasEdgesList: canvasEdges.map(e => ({ source: e.source, target: e.target }))
+      canvasEdgesList: canvasEdges.map(e => ({ source: e.source, target: e.target })),
+      hasWorldState: !!worldState,
+      worldStateVersion: worldStateData?.meta.version
     })
-  }, [canvasNodes, canvasEdges])
+  }, [canvasNodes, canvasEdges, worldState, worldStateData])
   const [configuredModel, setConfiguredModel] = useState<{
     orchestrator: string | null
     writerCount: number
@@ -312,24 +452,14 @@ export default function OrchestratorPanel({
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false) // Prevent double-clicks
   
-  // Pending creation state - for interactive template selection
-  const [pendingCreation, setPendingCreation] = useState<{
-    format: StoryFormat
-    userMessage: string
-    referenceNode?: any
-    enhancedPrompt?: string
-  } | null>(null)
-  
   // Model selector state (Cursor-style dropdown at bottom)
-  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
   const [modelMode, setModelMode] = useState<'automatic' | 'fixed'>('automatic') // Default to Auto
   const [fixedModeStrategy, setFixedModeStrategy] = useState<'consistent' | 'loose'>('loose') // Default to Loose (cost-effective)
   const [currentlyUsedModels, setCurrentlyUsedModels] = useState<{intent: string, writer: string}>({intent: '', writer: ''})
   
-  // Confirmation state - for 2-step execution flow
+  // ✅ UI State: Use WorldState if available, otherwise local state (backward compatible)
+  const worldStateUI = worldStateData?.ui
   const [pendingConfirmation, setPendingConfirmation] = useState<ConfirmationRequest | null>(null)
-  
-  // ✅ NEW: Clarification state - for inline chat options (not modal)
   const [pendingClarification, setPendingClarification] = useState<{
     question: string
     context?: string
@@ -337,60 +467,102 @@ export default function OrchestratorPanel({
     originalIntent: string
     originalPayload: any
   } | null>(null)
+  const [pendingCreation, setPendingCreation] = useState<{
+    format: StoryFormat
+    userMessage: string
+    referenceNode?: any
+    enhancedPrompt?: string
+  } | null>(null)
+  
+  // ✅ Local state fallbacks (used when WorldState not available)
+  const [localIsReasoningOpen, setLocalIsReasoningOpen] = useState(true)
+  const [localIsModelDropdownOpen, setLocalIsModelDropdownOpen] = useState(false)
+  
+  // ✅ Get UI state from WorldState or fallback to props/local state
+  const currentPendingClarification = worldStateUI?.pendingClarification || pendingClarification
+  const currentPendingCreation = worldStateUI?.pendingCreation || pendingCreation
+  const currentActiveContext = worldStateUI?.activeContext || activeContext
+  const currentIsDocumentViewOpen = worldStateUI?.documentPanelOpen ?? isDocumentViewOpen
+  const currentIsReasoningOpen = worldStateUI?.isReasoningOpen ?? localIsReasoningOpen
+  const currentIsModelDropdownOpen = worldStateUI?.isModelDropdownOpen ?? localIsModelDropdownOpen
   
   // Chat state (local input only, history is canvas-level)
   const [chatMessage, setChatMessage] = useState('')
   
   // LLM reasoning mode toggle
   const [useLLMReasoning, setUseLLMReasoning] = useState(true) // true = always LLM (recommended for GPT-5.1), false = pattern + LLM fallback
-  
-  // Reasoning chat state
-  const [isReasoningOpen, setIsReasoningOpen] = useState(true) // Open by default to see streaming
   const reasoningEndRef = useRef<HTMLDivElement>(null) // Auto-scroll target
   const chatInputRef = useRef<HTMLTextAreaElement>(null) // Chat input ref
   
-  // Use CANVAS-LEVEL chat history (persistent across all generations)
-  // ✅ Transform messages to add inline options for clarifications
-  const reasoningMessages: ReasoningMessage[] = canvasChatHistory.map((msg, index) => {
-    // Add options to the last 'decision' message if there's a pending clarification
-    const isLastMessage = index === canvasChatHistory.length - 1
-    const isDecisionMessage = msg.type === 'decision'
+  // ✅ Use WorldState conversation if available, otherwise fallback to canvasChatHistory
+  const reasoningMessages: ReasoningMessage[] = useMemo(() => {
+    // Ensure canvasChatHistory is available in scope
+    const chatHistory = canvasChatHistory || []
+    const worldStateMessages = worldStateData?.conversation.messages || []
+    const fallbackMessages = chatHistory
+    console.log('[OrchestratorPanel] Message sources:', {
+      worldStateMessages: worldStateMessages.length,
+      canvasChatHistory: fallbackMessages.length,
+      using: worldStateMessages.length > 0 ? 'worldState' : 'canvasChatHistory'
+    })
+    // Get messages from WorldState or fallback to props
+    const messages = worldStateMessages.length > 0 ? worldStateMessages : fallbackMessages
     
-    if (isLastMessage && isDecisionMessage && pendingClarification) {
-      return {
-        ...msg,
-        options: pendingClarification.options.map(opt => ({
-          id: opt.id,
-          title: opt.label,
-          description: opt.description
-        })),
-        onOptionSelect: async (optionId: string, optionTitle: string) => {
-          console.log('✅ [Clarification] Option selected:', { optionId, optionTitle })
-          
-          // Store clarification for processing
-          const clarification = pendingClarification
-          setPendingClarification(null)
-          
-          // Handle based on option selected
-          if (optionId === 'create_new') {
-            // User wants to create new - show template selection
-            setPendingCreation({
-              format: clarification.originalPayload.format as StoryFormat,
-              userMessage: clarification.originalPayload.userMessage
-            })
-          } else if (optionId === 'use_existing') {
-            // User wants to use existing - send to orchestrator
-            handleSendMessage_NEW('Open the existing document')
-          } else {
-            // Generic option selection - respond with option text
-            handleSendMessage_NEW(optionTitle)
+    // Get pending clarification from WorldState or local state
+    const currentPendingClarification = worldStateData?.ui.pendingClarification || pendingClarification
+    
+    return messages.map((msg, index) => {
+      // Add options to the last 'decision' message if there's a pending clarification
+      const isLastMessage = index === messages.length - 1
+      const isDecisionMessage = msg.type === 'decision'
+      
+      if (isLastMessage && isDecisionMessage && currentPendingClarification) {
+        return {
+          ...msg,
+          options: currentPendingClarification.options.map(opt => ({
+            id: opt.id,
+            title: opt.label,
+            description: opt.description
+          })),
+          onOptionSelect: async (optionId: string, optionTitle: string) => {
+            console.log('✅ [Clarification] Option selected:', { optionId, optionTitle })
+            
+            // Store clarification for processing
+            const clarification = currentPendingClarification
+            
+            // Clear clarification (WorldState or local state)
+            if (effectiveWorldState) {
+              effectiveWorldState.setPendingClarification(null)
+            } else {
+              setPendingClarification(null)
+            }
+            
+            // Handle based on option selected
+            if (optionId === 'create_new') {
+              // User wants to create new - show template selection
+              const creationState = {
+                format: clarification.originalPayload.format as StoryFormat,
+                userMessage: clarification.originalPayload.userMessage
+              }
+              if (effectiveWorldState) {
+                effectiveWorldState.setPendingCreation(creationState)
+              } else {
+                setPendingCreation(creationState)
+              }
+            } else if (optionId === 'use_existing') {
+              // User wants to use existing - send to orchestrator
+              handleSendMessage_NEW('Open the existing document')
+            } else {
+              // Generic option selection - respond with option text
+              handleSendMessage_NEW(optionTitle)
+            }
           }
         }
       }
-    }
-    
-    return msg
-  })
+      
+      return msg
+    })
+  }, [worldStateData, pendingClarification, worldState])
   
   // Build external content map for connected story structure nodes
   // This injects Supabase content that's not in the node's local state
@@ -444,29 +616,7 @@ export default function OrchestratorPanel({
     [canvasNodes, canvasEdges, currentStoryStructureNodeId, activeContext?.id, isDocumentViewOpen, modelMode, configuredModel.orchestrator]
   )
   
-  const worldState = useMemo(() => {
-    console.log('🔧 [WorldState] Rebuilding (canvasStateKey changed)')
-    // We don't have user.id yet (fetched async), so we'll pass empty string
-    // and update it in the orchestrate call
-    return buildWorldStateFromReactFlow(
-      canvasNodes,
-      canvasEdges,
-      '', // userId will be set when orchestrate is called
-      {
-        activeDocumentNodeId: currentStoryStructureNodeId,
-        selectedSectionId: activeContext?.id || null,
-        isDocumentPanelOpen: isDocumentViewOpen,
-        availableProviders: [], // Will be populated from API keys
-        availableModels: [], // Will be populated from /api/models/available
-        modelPreferences: {
-          modelMode,
-          fixedModelId: configuredModel.orchestrator,
-          fixedModeStrategy
-        },
-        orchestratorKeyId: undefined // Will be set from activeKeyId
-      }
-    )
-  }, [canvasStateKey]) // FIX: Only depend on stable key, not raw arrays
+  // Note: effectiveWorldState is already declared above (before useWorldState hook)
   
   // ============================================================
   // PHASE 2: BUILD TOOL REGISTRY
@@ -479,25 +629,25 @@ export default function OrchestratorPanel({
   
   // Debug: Log WorldState on changes (reduced logging to prevent spam)
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === 'development' && effectiveWorldState) {
       // Only log on meaningful changes, not every rebuild
-      const state = worldState.getState()
+      const state = effectiveWorldState.getState()
       if (state.meta.version === 1) { // Only log initial build
         console.log('🗺️ [WorldState] Initial build:', {
           version: state.meta.version,
-          canvasNodes: worldState.getAllNodes().length,
-          canvasEdges: worldState.getAllEdges().length,
-          activeDocId: worldState.getActiveDocument().nodeId,
-          selectedSectionId: worldState.getActiveSectionId(),
-          documentPanelOpen: worldState.isDocumentPanelOpen(),
+          canvasNodes: effectiveWorldState.getAllNodes().length,
+          canvasEdges: effectiveWorldState.getAllEdges().length,
+          activeDocId: effectiveWorldState.getActiveDocument().nodeId,
+          selectedSectionId: effectiveWorldState.getActiveSectionId(),
+          documentPanelOpen: effectiveWorldState.isDocumentPanelOpen(),
           toolsAvailable: toolRegistry.getAll().length // PHASE 2: Log tool count
         })
       }
     }
-  }, [worldState, toolRegistry])
+  }, [effectiveWorldState, toolRegistry])
   
   // Detect if streaming - check WorldState for orchestrator processing status
-  const isStreaming = worldState.isOrchestratorProcessing()
+  const isStreaming = effectiveWorldState?.isOrchestratorProcessing() || false
   
   // Track canvas state to detect changes
   const [lastCanvasState, setLastCanvasState] = useState<string>('')
@@ -648,7 +798,12 @@ export default function OrchestratorPanel({
       // ✅ FIX: Detect format from user's message BEFORE calling orchestrator
       const detectedFormat = detectFormatFromMessage(message)
       const formatToUse = detectedFormat || selectedFormat
-      
+
+      // Update selectedFormat to match detected format for UI consistency
+      if (detectedFormat && detectedFormat !== selectedFormat) {
+        setSelectedFormat(detectedFormat)
+      }
+
       console.log('📋 [OrchestratorPanel] Format detection:', {
         detected: detectedFormat,
         selected: selectedFormat,
@@ -677,29 +832,32 @@ export default function OrchestratorPanel({
       
       // Call the new orchestrator with WorldState
       // PHASE 1: Update WorldState with user.id before passing
-      worldState.update(draft => {
-        draft.user.id = user.id
-        draft.user.availableProviders = availableProviders
-        draft.user.availableModels = availableModelsToPass || []
-        draft.user.apiKeys.orchestratorKeyId = userKeyId
-      })
-      
-      // ✅ CRITICAL: Get structureItems from WorldState if available (more up-to-date than props)
-      const activeDoc = worldState.getActiveDocument()
-      const freshStructureItems = activeDoc.structure?.items || structureItems || []
+      let freshStructureItems = structureItems || []
+      if (effectiveWorldState) {
+        effectiveWorldState.update(draft => {
+          draft.user.id = user.id
+          draft.user.availableProviders = availableProviders
+          draft.user.availableModels = availableModelsToPass || []
+          draft.user.apiKeys.orchestratorKeyId = userKeyId
+        })
+        
+        // ✅ CRITICAL: Get structureItems from WorldState if available (more up-to-date than props)
+        const activeDoc = effectiveWorldState.getActiveDocument()
+        freshStructureItems = activeDoc.structure?.items || structureItems || []
+      }
       
       console.log('🔍 [OrchestratorPanel] Structure items source:', {
-        fromWorldState: activeDoc.structure?.items?.length || 0,
+        fromWorldState: effectiveWorldState ? effectiveWorldState.getActiveDocument().structure?.items?.length || 0 : 0,
         fromProps: structureItems?.length || 0,
         using: freshStructureItems.length,
         currentNodeId: currentStoryStructureNodeId
       })
       
       // PHASE 3: Use multi-agent orchestrator for intelligent task coordination
-      const response = await getMultiAgentOrchestrator(user.id, { 
+      const response = await getMultiAgentOrchestrator(user.id, {
         toolRegistry,
         onMessage: onAddChatMessage // PHASE 3: Real-time message streaming
-      }, worldState).orchestrate({
+      }, effectiveWorldState || undefined).orchestrate({
         message,
         canvasNodes,
         canvasEdges,
@@ -791,77 +949,7 @@ export default function OrchestratorPanel({
     }
   }
   
-  // Helper: Execute action based on intent (uses OLD implementation logic)
-  const handleSendMessage_OLD_ExecuteOnly = async (message: string, intent: UserIntent) => {
-    // Execute the action using the OLD handler's proven logic
-    // But with context awareness from the NEW orchestrator
-    
-    switch (intent) {
-      case 'answer_question': {
-        // Build a context-aware prompt that includes ALL canvas nodes
-        let enhancedPrompt = `User Question: ${message}\n\n`
-        
-        // Add canvas context (structure and summaries from ALL connected nodes)
-        if (canvasContext.connectedNodes.length > 0) {
-          enhancedPrompt += `Available Context from Canvas:\n`
-          canvasContext.connectedNodes.forEach(node => {
-            enhancedPrompt += `\n--- ${node.label} (${node.nodeType}) ---\n`
-            enhancedPrompt += `Summary: ${node.summary}\n`
-            
-            if (node.detailedContext?.structure) {
-              enhancedPrompt += `Structure:\n${node.detailedContext.structure}\n`
-            }
-            
-            // If there's actual content, include it
-            if (node.detailedContext?.contentMap && currentStoryStructureNodeId === node.nodeId) {
-              const contentEntries = Object.entries(node.detailedContext.contentMap)
-              if (contentEntries.length > 0) {
-                enhancedPrompt += `\nContent (${contentEntries.length} sections):\n`
-                contentEntries.slice(0, 5).forEach(([sectionId, content]: [string, any]) => {
-                  if (content && content.trim()) {
-                    const truncated = content.length > 500 ? content.substring(0, 500) + '...' : content
-                    enhancedPrompt += `\n${truncated}\n`
-                  }
-                })
-              }
-            }
-          })
-        }
-        
-        // Call the answer handler with enhanced prompt
-        if (onAnswerQuestion) {
-          const answer = await onAnswerQuestion(enhancedPrompt)
-          if (onAddChatMessage) {
-            onAddChatMessage(`📖 ${answer}`, 'orchestrator', 'result')
-          }
-        }
-        break
-      }
-        
-      case 'write_content':
-        if (activeContext && onWriteContent) {
-          await onWriteContent(activeContext.id, message)
-        }
-        break
-        
-      case 'create_structure':
-        // Extract format from user message (screenplay, novel, report, etc.)
-        const detectedFormat = detectFormatFromMessage(message)
-        await onCreateStory(detectedFormat || selectedFormat, selectedTemplate || undefined, message) // ✅ FIX: Await
-        break
-        
-      case 'general_chat':
-      default:
-        // For general chat, also use enhanced context
-        if (onAnswerQuestion) {
-          const answer = await onAnswerQuestion(message)
-          if (onAddChatMessage) {
-            onAddChatMessage(`💬 ${answer}`, 'orchestrator', 'result')
-          }
-        }
-        break
-    }
-  }
+
   
   // Helper: Create a confirmation request
   const createConfirmationRequest = (
@@ -915,21 +1003,26 @@ export default function OrchestratorPanel({
     // Send back to orchestrator WITH clarification context
     try {
       // PHASE 1: Update WorldState before clarification response
-      worldState.update(draft => {
-        draft.user.id = user.id
-        draft.user.availableProviders = availableProviders
-        draft.user.apiKeys.orchestratorKeyId = userKeyId
-      })
-      
-      // ✅ CRITICAL: Get structureItems from WorldState (clarification responses)
-      const activeDocForClarification = worldState.getActiveDocument()
-      const freshStructureItemsForClarification = activeDocForClarification.structure?.items || structureItems || []
+      if (effectiveWorldState) {
+        effectiveWorldState.update(draft => {
+          draft.user.id = user.id
+          draft.user.availableProviders = availableProviders
+          draft.user.apiKeys.orchestratorKeyId = userKeyId
+        })
+        
+        // ✅ CRITICAL: Get structureItems from WorldState (clarification responses)
+        const activeDocForClarification = effectiveWorldState.getActiveDocument()
+        var freshStructureItemsForClarification = activeDocForClarification.structure?.items || structureItems || []
+      } else {
+        // Fallback if WorldState not available
+        var freshStructureItemsForClarification = structureItems || []
+      }
       
       // PHASE 3: Use multi-agent orchestrator for clarification responses too
-      const orchestratorResponse = await getMultiAgentOrchestrator(user.id, { 
+      const orchestratorResponse = await getMultiAgentOrchestrator(user.id, {
         toolRegistry,
         onMessage: onAddChatMessage // PHASE 3: Real-time message streaming
-      }, worldState).orchestrate({
+      }, effectiveWorldState || undefined).orchestrate({
         message: response,
         canvasNodes,
         canvasEdges,
@@ -1217,14 +1310,15 @@ export default function OrchestratorPanel({
             const format = action.payload.format
             const prompt = action.payload.prompt || ''
             const plan = action.payload.plan
-            
+
             console.log('📝 [generate_structure] Creating story node:', {
               format,
+              expectedTitle: format === 'screenplay' ? 'Screenplay' : format === 'novel' ? 'Novel' : format,
               planStructureCount: plan.structure?.length,
-              prompt,
-              planStructure: plan.structure
+              prompt: prompt.substring(0, 50) + '...',
+              planStructure: plan.structure?.slice(0, 2) // First 2 items only
             })
-            
+
             // Call onCreateStory with the format, template, prompt, AND the plan
             await onCreateStory(format, undefined, prompt, plan)
             
@@ -1253,949 +1347,21 @@ export default function OrchestratorPanel({
     }
   }
   
-  // ============================================================
-  // OLD ORCHESTRATOR (BACKUP - TO BE REMOVED)
-  // ============================================================
   
-  const handleSendMessage_OLD = async (message: string) => {
-    // Check if user is responding to template selection
-    if (pendingCreation) {
-      // Parse conversational template selection
-      const lowerMessage = message.toLowerCase()
-      const availableTemplates = getTemplatesForFormat(pendingCreation.format)
-      
-      // Try to match user response to a template
-      for (const template of availableTemplates) {
-        const templateNameLower = template.name.toLowerCase()
-        const templateWords = templateNameLower.split(' ')
-        
-        // Match: "the interview one", "interview format", "interview", "the first one", etc.
-        if (
-          lowerMessage.includes(templateNameLower) ||
-          templateWords.some(word => lowerMessage.includes(word)) ||
-          (lowerMessage.includes('first') && availableTemplates[0] && template.id === availableTemplates[0].id) ||
-          (lowerMessage.includes('blank') && template.id === 'blank')
-        ) {
-          if (onAddChatMessage) {
-            onAddChatMessage(message, 'user')
-          }
-          setChatMessage('') // Clear input immediately
-          await handleTemplateSelection(template.id, template.name)
-          return
-        }
-      }
-      
-      // Didn't match any template - ask for clarification
-      if (onAddChatMessage) {
-        onAddChatMessage(message, 'user')
-        onAddChatMessage(`🤔 I didn't quite catch which template you want. Could you click one of the options below or be more specific?`, 'orchestrator', 'result')
-      }
-      setChatMessage('') // Clear input immediately
-      return
-    }
-    
-    // Add user message to chat history
-    if (onAddChatMessage) {
-      onAddChatMessage(message, 'user')  // Actual user input
-    }
-    
-    // Clear input immediately after adding to chat (better UX)
-    setChatMessage('')
-    
-    // Prepare conversation history for context resolution (used by findReferencedNode)
-    const conversationForContext = reasoningMessages
-      .filter(m => m.role === 'user' || m.role === 'orchestrator')
-      .slice(-5)
-      .map(m => ({ role: m.role || 'orchestrator', content: m.content }))
-    
-    // Show canvas context ONLY if it changed (new nodes, new sections, etc.)
-    if (onAddChatMessage && canvasContext.connectedNodes.length > 0 && currentCanvasState !== lastCanvasState) {
-      onAddChatMessage(`👁️ Canvas visibility: ${canvasContext.connectedNodes.length} node(s) connected`)
-      canvasContext.connectedNodes.forEach(ctx => {
-        onAddChatMessage(`   • ${ctx.label}: ${ctx.summary}`)
-      })
-      setLastCanvasState(currentCanvasState)
-    }
-    
-    // STEP 0.5: Enhance context with RAG (semantic search) if available
-    let ragEnhancedContext
-    if (canvasContext.connectedNodes.length > 0) {
-      if (onAddChatMessage) {
-        onAddChatMessage(`🔍 Checking for semantic search availability...`, 'orchestrator', 'thinking')
-      }
-      
-      try {
-        ragEnhancedContext = await enhanceContextWithRAG(message, canvasContext, undefined, conversationForContext)
-        
-        if (ragEnhancedContext.hasRAG) {
-          if (onAddChatMessage) {
-            onAddChatMessage(`✅ Semantic search active: Found ${ragEnhancedContext.ragStats?.resultsFound || 0} relevant chunks from "${ragEnhancedContext.referencedNode?.label}"`, 'orchestrator', 'result')
-            onAddChatMessage(`   📊 Average relevance: ${Math.round((ragEnhancedContext.ragStats?.averageSimilarity || 0) * 100)}%`, 'orchestrator', 'result')
-          }
-        } else if (ragEnhancedContext.fallbackReason) {
-          if (onAddChatMessage) {
-            onAddChatMessage(`⚠️ Semantic search unavailable: ${ragEnhancedContext.fallbackReason}`, 'orchestrator', 'error')
-          }
-        }
-      } catch (error) {
-        console.error('RAG enhancement error:', error)
-        if (onAddChatMessage) {
-          onAddChatMessage(`⚠️ Could not use semantic search, continuing with standard context`, 'orchestrator', 'error')
-        }
-      }
-    }
-    
-    // STEP 1: Analyze user intent using Hybrid IntentRouter
-    if (onAddChatMessage) {
-      onAddChatMessage(`⏳ Analyzing your request...`, 'orchestrator', 'thinking')
-    }
-    
-    const intentAnalysis = await analyzeIntent({
-      message,
-      hasActiveSegment: !!activeContext,
-      activeSegmentName: activeContext?.name,
-      activeSegmentId: activeContext?.id,
-      activeSegmentHasContent: false, // TODO: Track if segment has content
-      conversationHistory: canvasChatHistory
-        .filter(msg => msg.role === 'user' || (msg.role === 'orchestrator' && msg.type === 'user'))
-        .slice(-10) // Increased from 5 to 10 for better context
-        .map(msg => ({
-          role: (msg.role === 'orchestrator' ? 'assistant' : msg.role) || 'user',
-          content: msg.content,
-          timestamp: msg.timestamp
-        })),
-      documentStructure: structureItems, // Pass current document structure
-      isDocumentViewOpen: isDocumentViewOpen, // CRITICAL: Tell intent analyzer about document state
-      documentFormat: selectedFormat, // Novel, Report, etc.
-      useLLM: useLLMReasoning, // NEW: Force LLM reasoning if toggle is on
-      canvasContext: ragEnhancedContext?.hasRAG 
-        ? buildRAGEnhancedPrompt('', ragEnhancedContext, canvasContext)
-        : formatCanvasContextForLLM(canvasContext) // NEW: RAG-enhanced or standard canvas visibility!
-    })
-    
-    // Log intent analysis to reasoning chat
-    if (onAddChatMessage) {
-      const method = intentAnalysis.usedLLM ? '⚙️ LLM Reasoning' : '⚡ Pattern Matching'
-      onAddChatMessage(`${method}: ${explainIntent(intentAnalysis)} (Confidence: ${Math.round(intentAnalysis.confidence * 100)}%)`, 'orchestrator', 'decision')
-      onAddChatMessage(`💭 ${intentAnalysis.reasoning}`, 'orchestrator', 'thinking')
-    }
-    
-    // STEP 1.5: Handle clarifying questions
-    if (intentAnalysis.needsClarification && intentAnalysis.clarifyingQuestion) {
-      if (onAddChatMessage) {
-        onAddChatMessage(`❓ ${intentAnalysis.clarifyingQuestion}`)
-      }
-      return
-    }
-    
-    // STEP 2: Validate intent can be executed
-    const validation = validateIntent(intentAnalysis, !!activeContext)
-    
-    if (!validation.canExecute) {
-      if (onAddChatMessage) {
-        onAddChatMessage(`❌ Cannot execute: ${validation.errorMessage}`)
-        if (validation.suggestion) {
-          onAddChatMessage(`💡 ${validation.suggestion}`)
-        }
-      }
-      return
-    }
-    
-    // STEP 3: Route to appropriate action based on intent
-    try {
-      switch (intentAnalysis.intent) {
-        case 'write_content':
-          // Write content to selected segment
-          if (onAddChatMessage) {
-            onAddChatMessage(`📝 Delegating to writer model: ${intentAnalysis.suggestedModel}`, 'orchestrator', 'thinking')
-          }
-          
-          // Smart Section Detection: Find target section from message if none selected
-          let writeTargetId = activeContext?.id
-          
-          if (!writeTargetId) {
-            // Try to get structure from props or canvas context
-            const availableStructure = structureItems.length > 0 ? structureItems : 
-                                      (canvasContext.connectedNodes.find(n => n.nodeType === 'story-structure')?.detailedContext?.allSections || [])
-            
-            console.log('[write_content] Section detection:', {
-              hasActiveContext: !!activeContext,
-              structureItemsCount: structureItems.length,
-              canvasContextNodes: canvasContext.connectedNodes.length,
-              availableStructureCount: availableStructure.length,
-              message: message.substring(0, 50)
-            })
-            
-            if (availableStructure.length > 0) {
-              const lowerMessage = message.toLowerCase()
-              const matchedSection = availableStructure.find((item: any) => {
-                const name = item.name.toLowerCase()
-                // Match full name or key parts
-                return lowerMessage.includes(name) || 
-                       // Match partial names like "welfare" for "Animal Welfare Consideration"
-                       name.split(' ').some((word: string) => word.length > 4 && lowerMessage.includes(word))
-              })
-              
-              if (matchedSection) {
-                writeTargetId = matchedSection.id
-                if (onAddChatMessage) {
-                  onAddChatMessage(`🎯 Auto-selecting section: "${matchedSection.name}"`, 'orchestrator', 'result')
-                }
-                // Auto-select the section visually
-                if (currentStoryStructureNodeId && onSelectNode) {
-                  onSelectNode(currentStoryStructureNodeId, writeTargetId)
-                }
-              } else {
-                console.log('[write_content] No section matched. Available sections:', availableStructure.map((s: any) => s.name))
-              }
-            }
-          }
-          
-          if (writeTargetId && onWriteContent) {
-            await onWriteContent(writeTargetId, message)
-          } else {
-            if (onAddChatMessage) {
-              onAddChatMessage(`⚠️ Cannot execute: Action "write_content" requires a selected segment`, 'orchestrator', 'error')
-              onAddChatMessage(`💡 Please click on a section in the document view to select it first`, 'orchestrator', 'result')
-            }
-          }
-          break
-        
-        case 'improve_content':
-          // Improve existing content in selected segment
-          if (onAddChatMessage) {
-            onAddChatMessage(`✨ Delegating to editor model: ${intentAnalysis.suggestedModel}`)
-          }
-          
-          if (activeContext && onWriteContent) {
-            const improvePrompt = `Improve the following content:\n\n${message}`
-            await onWriteContent(activeContext.id, improvePrompt)
-          } else {
-            // Fallback
-            await onCreateStory(selectedFormat, selectedTemplate || undefined, `Improve: ${message}`) // ✅ FIX: Await
-          }
-          break
-        
-        case 'rewrite_with_coherence':
-          // Ghostwriter-level coherent rewriting across multiple sections
-          if (onAddChatMessage) {
-            onAddChatMessage(`🎭 Activating ghostwriter mode - analyzing story dependencies...`)
-          }
-          
-          if (!activeContext) {
-            if (onAddChatMessage) {
-              onAddChatMessage(`⚠️ Please select a section to rewrite first.`)
-            }
-            break
-          }
-          
-          // Import the coherence rewriter dynamically
-          const { createCoherenceRewritePlan, executeRewriteStep } = await import('@/lib/orchestrator/reasoning/coherenceRewriter')
-          
-          // Get all sections and their content for dependency analysis
-          // TODO: Pass from props - for now, use placeholder
-          const allSections = structureItems || []
-          const existingContent: Record<string, string> = contentMap || {}
-          
-          // Create the rewrite plan
-          if (onAddChatMessage) {
-            onAddChatMessage(`🔍 Analyzing which sections will be affected...`)
-          }
-          
-          try {
-            const plan = await createCoherenceRewritePlan({
-              targetSectionId: activeContext.id,
-              userRequest: message,
-              allSections: allSections.map(item => ({
-                id: item.id,
-                name: item.name,
-                level: item.level,
-                order: item.order,
-                content: existingContent[item.id],
-                parentId: item.parentId
-              })),
-              existingContent,
-              storyFormat: selectedFormat
-            })
-            
-            // Show the plan to the user
-            if (onAddChatMessage) {
-              onAddChatMessage(plan.reasoning)
-              onAddChatMessage(`\n⏱️ This will take approximately ${plan.estimatedTime}`)
-              onAddChatMessage(`\n🚀 Starting ${plan.totalSteps}-step rewrite process...`)
-            }
-            
-            // Execute each step sequentially
-            for (const step of plan.steps) {
-              if (onAddChatMessage) {
-                onAddChatMessage(`\n📝 Step ${step.stepNumber}/${plan.totalSteps}: ${step.action.toUpperCase()} "${step.sectionName}"`)
-                onAddChatMessage(`   ${step.reason}`)
-              }
-              
-              const result = await executeRewriteStep(step, {
-                targetSectionId: activeContext.id,
-                userRequest: message,
-                allSections: allSections.map(item => ({
-                  id: item.id,
-                  name: item.name,
-                  level: item.level,
-                  order: item.order,
-                  content: existingContent[item.id],
-                  parentId: item.parentId
-                })),
-                existingContent,
-                storyFormat: selectedFormat
-              })
-              
-              if (result.success && result.content) {
-                // Update the content map with new content
-                existingContent[step.sectionId] = result.content
-                
-                // Save to database if onWriteContent is available
-                if (onWriteContent) {
-                  await onWriteContent(step.sectionId, result.content)
-                }
-                
-                if (onAddChatMessage) {
-                  onAddChatMessage(`   ✅ Completed - ${result.content.split(/\s+/).length} words`)
-                }
-              } else {
-                if (onAddChatMessage) {
-                  onAddChatMessage(`   ❌ Failed: ${result.error}`)
-                }
-                // Continue with remaining steps even if one fails
-              }
-            }
-            
-            // Final success message
-            if (onAddChatMessage) {
-              onAddChatMessage(`\n🎉 Ghostwriter rewrite complete! All ${plan.totalSteps} sections updated with narrative coherence maintained.`)
-            }
-            
-          } catch (planError: any) {
-            console.error('❌ Coherence rewrite failed:', planError)
-            if (onAddChatMessage) {
-              onAddChatMessage(`❌ Ghostwriter mode failed: ${planError.message}`)
-            }
-          }
-          break
-        
-        case 'answer_question':
-          // Answer question using orchestrator model with canvas context (STREAMING)
-          if (onAddChatMessage) {
-            onAddChatMessage(`💬 Answering with orchestrator model...`, 'orchestrator', 'thinking')
-          }
-          
-          // Build context-aware prompt
-          let questionPrompt = message
-          
-          // Add canvas context if available
-          if (canvasContext.connectedNodes.length > 0) {
-            let contextSummary = ''
-            let totalContentChars = 0
-            
-            // Build detailed context from each node
-            canvasContext.connectedNodes.forEach(node => {
-              contextSummary += `\n--- ${node.label} (${node.nodeType}) ---\n`
-              contextSummary += `Summary: ${node.summary}\n`
-              
-              // If it's a story structure node with actual content, include it!
-              if (node.nodeType === 'story-structure' && node.detailedContext?.contentMap) {
-                const contentMap = node.detailedContext.contentMap as Record<string, string>
-                const contentEntries = Object.entries(contentMap)
-                
-                if (contentEntries.length > 0) {
-                  contextSummary += `\nContent (${contentEntries.length} sections):\n`
-                  
-                  // Include content from sections (limit to prevent overwhelming the context)
-                  contentEntries.slice(0, 10).forEach(([sectionId, content]) => {
-                    if (content && content.trim()) {
-                      const sectionInfo = node.detailedContext?.allSections?.find((s: any) => s.id === sectionId)
-                      const sectionName = sectionInfo?.name || sectionId
-                      
-                      // Truncate very long sections to keep context manageable
-                      const truncatedContent = content.length > 1000 
-                        ? content.substring(0, 1000) + '...' 
-                        : content
-                      
-                      contextSummary += `\n## ${sectionName}\n${truncatedContent}\n`
-                      totalContentChars += truncatedContent.length
-                    }
-                  })
-                  
-                  if (contentEntries.length > 10) {
-                    contextSummary += `\n(... ${contentEntries.length - 10} more sections available)\n`
-                  }
-                }
-              }
-              
-              // Include structure information
-              if (node.detailedContext?.structure) {
-                contextSummary += `\nStructure:\n${node.detailedContext.structure}\n`
-              }
-              
-              contextSummary += '\n'
-            })
-            
-            questionPrompt = `User Question: ${message}\n\nAvailable Context from Canvas:${contextSummary}`
-            
-            // Add RAG-enhanced content if available (this would supplement the above)
-            if (ragEnhancedContext?.hasRAG && ragEnhancedContext.ragContent) {
-              questionPrompt += `\n\nAdditional Relevant Content (from semantic search):\n${ragEnhancedContext.ragContent}`
-            } else if (ragEnhancedContext?.fallbackReason?.includes('No relevant content found') && ragEnhancedContext.referencedNode) {
-              // RAG found no relevant chunks - fetch all content from database as fallback
-              if (onAddChatMessage) {
-                onAddChatMessage(`📚 Fetching document content (no semantically relevant chunks found)...`, 'orchestrator', 'thinking')
-              }
-              
-              try {
-                const nodeId = ragEnhancedContext.referencedNode.nodeId
-                const { data: allSections, error } = await supabase
-                  .from('document_sections')
-                  .select('id, content, structure_item_id')
-                  .eq('story_structure_node_id', nodeId)
-                  .limit(15) // Get first 15 sections
-                
-                if (!error && allSections && allSections.length > 0) {
-                  let fallbackContent = '\n\nDocument Content (all sections):\n'
-                  let totalChars = 0
-                  
-                  allSections.forEach(section => {
-                    if (section.content && section.content.trim()) {
-                      const truncated = section.content.length > 800 
-                        ? section.content.substring(0, 800) + '...' 
-                        : section.content
-                      fallbackContent += `\n---\n${truncated}\n`
-                      totalChars += truncated.length
-                    }
-                  })
-                  
-                  questionPrompt += fallbackContent
-                  
-                  if (onAddChatMessage) {
-                    onAddChatMessage(`📄 Retrieved ${allSections.length} sections (~${Math.round(totalChars/5)} words)`, 'orchestrator', 'result')
-                  }
-                }
-              } catch (fetchError) {
-                console.error('Failed to fetch fallback content:', fetchError)
-              }
-            }
-            
-            if (onAddChatMessage) {
-              onAddChatMessage(`📚 Using context from ${canvasContext.connectedNodes.length} connected node(s)`, 'orchestrator', 'result')
-              if (totalContentChars > 0) {
-                const wordCount = Math.round(totalContentChars / 5)
-                onAddChatMessage(`📄 Including ~${wordCount} words of actual content`, 'orchestrator', 'result')
-              }
-              if (ragEnhancedContext?.hasRAG) {
-                onAddChatMessage(`🎯 Enhanced with ${ragEnhancedContext.ragStats?.resultsFound || 0} relevant chunks`, 'orchestrator', 'result')
-              }
-            }
-          }
-          
-          // Call API with streaming support
-          try {
-            const response = await fetch('/api/content/answer', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                question: questionPrompt,
-                context: {
-                  storyStructureNodeId: currentStoryStructureNodeId,
-                  structureItems: structureItems,
-                  contentMap: contentMap,
-                  activeContext
-                }
-              })
-            })
-            
-            if (!response.ok) {
-              throw new Error(`Failed to answer question: ${response.statusText}`)
-            }
-            
-            // Handle streaming response
-            const reader = response.body?.getReader()
-            const decoder = new TextDecoder()
-            let streamedText = ''
-            
-            if (reader) {
-              while (true) {
-                const { done, value } = await reader.read()
-                if (done) break
-                
-                const chunk = decoder.decode(value, { stream: true })
-                streamedText += chunk
-                
-                // Log progress (we'll add a proper streaming UI update later)
-                console.log('📖 Streaming...', streamedText.length, 'chars')
-              }
-              
-              // After streaming is complete, add the full message
-              if (onAddChatMessage && streamedText) {
-                onAddChatMessage(`📖 ${streamedText}`, 'orchestrator', 'result')
-              }
-            }
-          } catch (error) {
-            console.error('Failed to answer question:', error)
-            if (onAddChatMessage) {
-              onAddChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
-            }
-          }
-          break
-        
-        case 'create_structure':
-          // Create new story structure (Allowed even if document panel is open)
-          
-          // 🎯 DETECT FORMAT FIRST (before building prompts)
-          const detectedFormat = detectFormatFromMessage(message)
-          const formatToUse = detectedFormat || selectedFormat
-          
-          // CANVAS INTELLIGENCE: Check if user is referencing connected nodes
-          let enhancedPrompt = message
-          const referencePhrases = [
-            'our screenplay', 'the screenplay', 'that screenplay',
-            'our story', 'our other story', 'that story', 'our stories', 'the stories', 'these stories',
-            'the document', 'that document', 'our documents', 'the documents',
-            'the characters', 'characters in', 'characters from',
-            'based on', 'base this on', 'based upon', 'base it on', 'using the', 'using our',
-            'from the', 'from our', 'adapt', 'stories we have', 'documents we have',
-          ]
-          
-          // Detect plural references (user wants ALL stories, not just one)
-          const pluralPhrases = [
-            'our stories', 'the stories', 'these stories', 'all stories', 'all the stories',
-            'our documents', 'the documents', 'these documents', 'all documents',
-            'stories we have', 'documents we have', 'everything we have'
-          ]
-          const wantsAllStories = pluralPhrases.some(phrase => message.toLowerCase().includes(phrase))
-          
-          const hasReference = referencePhrases.some(phrase => message.toLowerCase().includes(phrase)) || 
-                              (canvasContext.connectedNodes.length > 0 && 
-                               (message.toLowerCase().includes('interview') || 
-                                message.toLowerCase().includes('characters')))
-          
-          if (hasReference && canvasContext.connectedNodes.length > 0) {
-            if (wantsAllStories) {
-              // User wants content from ALL story nodes!
-              if (onAddChatMessage) {
-                onAddChatMessage(`📚 Reading content from ${canvasContext.connectedNodes.filter(n => n.nodeType === 'story-structure').length} connected stories...`, 'orchestrator', 'thinking')
-              }
-              
-              const allStoryContent: string[] = []
-              let totalWords = 0
-              
-              for (const node of canvasContext.connectedNodes) {
-                if (node.nodeType === 'story-structure' && node.detailedContext) {
-                  const contentMap = node.detailedContext.contentMap as Record<string, string> || {}
-                  const allSections = node.detailedContext.allSections || []
-                  const hasContent = Object.keys(contentMap).length > 0
-                  
-                  if (hasContent) {
-                    const storyContent = Object.entries(contentMap)
-                      .map(([sectionId, content]) => {
-                        const section = allSections.find((s: any) => s.id === sectionId)
-                        return `### ${section?.name || 'Section'}\n${content}`
-                      })
-                      .join('\n\n')
-                    
-                    allStoryContent.push(`## ${node.label} (${node.detailedContext.format})\n\n${storyContent.substring(0, 5000)}`)
-                    totalWords += node.detailedContext.wordsWritten || 0
-                  } else {
-                    // Include structure even if no content
-                    const structureDetails = allSections
-                      .map((s: any) => `${'  '.repeat(s.level - 1)}- ${s.name}${s.summary ? ': ' + s.summary : ''}`)
-                      .join('\n')
-                    allStoryContent.push(`## ${node.label} (${node.detailedContext.format})\n\nStructure:\n${structureDetails}`)
-                  }
-                }
-              }
-              
-              if (allStoryContent.length > 0) {
-                enhancedPrompt = `${message}
-
-REFERENCE CONTENT FROM ALL CONNECTED STORIES:
-
-${allStoryContent.join('\n\n---\n\n')}
-
-INSTRUCTION: Use the above stories as inspiration for creating the new podcast structure. Extract characters, themes, plot points, and narrative elements from ALL the stories above. ${message.toLowerCase().includes('interview') || message.toLowerCase().includes('character') ? 'Identify all named characters across these stories, their roles, personalities, and characteristics. Build the podcast around interviewing or featuring these characters.' : ''}`
-
-                if (onAddChatMessage) {
-                  onAddChatMessage(`✅ Extracted content from ${allStoryContent.length} story nodes (~${totalWords} words total)`, 'orchestrator', 'result')
-                }
-              }
-            } else {
-              // TODO: Refactor to use orchestrator's resolveNode from core/contextProvider
-              // For now, use simple fallback
-              const referencedNode = canvasContext.connectedNodes.find(n => n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode')
-            
-            if (referencedNode && referencedNode.detailedContext) {
-              if (onAddChatMessage) {
-                onAddChatMessage(`📖 Reading content from "${referencedNode.label}"...`)
-              }
-              
-              // Extract detailed content based on node type
-              if (referencedNode.nodeType === 'story-structure') {
-                const contentMap = referencedNode.detailedContext.contentMap as Record<string, string> || {}
-                const allSections = referencedNode.detailedContext.allSections || []
-                
-                // Try to extract written content first
-                const hasWrittenContent = Object.keys(contentMap).length > 0
-                
-                if (hasWrittenContent) {
-                  // Extract full story content
-                  const allContent = Object.entries(contentMap)
-                    .map(([sectionId, content]) => {
-                      const section = allSections.find((s: any) => s.id === sectionId)
-                      return `## ${section?.name || 'Section'}\n${content}`
-                    })
-                    .join('\n\n')
-                  
-                  // Enhance prompt with actual content
-                  enhancedPrompt = `${message}
-
-REFERENCE CONTENT FROM "${referencedNode.label}" (${referencedNode.detailedContext.format}):
-
-STRUCTURE:
-${referencedNode.detailedContext.structure}
-
-FULL CONTENT:
-${allContent.substring(0, 8000)}
-
-${allContent.length > 8000 ? '... (content truncated for length)' : ''}
-
-INSTRUCTION: Use the above ${referencedNode.detailedContext.format} content as inspiration for creating the new ${formatToUse} structure. 
-
-${message.toLowerCase().includes('interview') || message.toLowerCase().includes('character') ? 
-`FOCUS ON CHARACTERS: The user wants to feature the characters from this content. Carefully read through the content above and identify all named characters, their roles, personalities, and key characteristics. Build the ${formatToUse} structure around interviewing or featuring these specific characters.` : 
-`Extract characters, themes, plot points, and narrative elements to adapt them for the ${formatToUse} format.`}`
-
-                  if (onAddChatMessage) {
-                    onAddChatMessage(`✅ Extracted ${Object.keys(contentMap).length} sections (${referencedNode.detailedContext.wordsWritten} words) from "${referencedNode.label}"`)
-                    onAddChatMessage(`🎯 Creating new ${formatToUse} inspired by this content...`)
-                  }
-                } else {
-                  // Use structure summaries if no written content yet
-                  const structureDetails = allSections
-                    .map((s: any) => `${'  '.repeat(s.level - 1)}- ${s.name}${s.summary ? ': ' + s.summary : ''}`)
-                    .join('\n')
-                  
-                  enhancedPrompt = `${message}
-
-REFERENCE STRUCTURE FROM "${referencedNode.label}" (${referencedNode.detailedContext.format}):
-
-${structureDetails}
-
-INSTRUCTION: Use the above ${referencedNode.detailedContext.format} structure and summaries as inspiration for creating the new ${formatToUse} structure.`
-
-                  if (onAddChatMessage) {
-                    onAddChatMessage(`✅ Using structure from "${referencedNode.label}" (${allSections.length} sections)`)
-                    onAddChatMessage(`ℹ️ Note: No written content found, using structure summaries only`)
-                  }
-                }
-              } else if (referencedNode.nodeType === 'test' && (referencedNode.detailedContext as any).markdown) {
-                // Use markdown content from test node
-                const markdown = (referencedNode.detailedContext as any).markdown as string
-                enhancedPrompt = `${message}
-
-REFERENCE CONTENT:
-${markdown.substring(0, 8000)}
-
-${markdown.length > 8000 ? '... (content truncated for length)' : ''}
-
-Use the above content as inspiration for creating the new ${formatToUse} structure.`
-
-                if (onAddChatMessage) {
-                  onAddChatMessage(`✅ Extracted ${(referencedNode.detailedContext as any).wordCount || 0} words from "${referencedNode.label}"`)
-                }
-              }
-            } else if (onAddChatMessage) {
-              onAddChatMessage(`⚠️ Found node "${referencedNode?.label}" but couldn't extract content. Proceeding with user prompt only.`)
-            }
-            } // Close the else block for single-node extraction
-          }
-          
-          // Store pending creation and ask for template choice (formatToUse already detected at top)
-          setPendingCreation({
-            format: formatToUse,
-            userMessage: message,
-            // TODO: Refactor to use orchestrator's resolveNode
-            referenceNode: hasReference ? canvasContext.connectedNodes.find(n => n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode') : undefined,
-            enhancedPrompt: enhancedPrompt
-          })
-          
-          // Show template options to user
-          const formatLabel = storyFormats.find(f => f.type === formatToUse)?.label || formatToUse
-          const availableTemplates = getTemplatesForFormat(formatToUse)
-          
-          if (onAddChatMessage) {
-            onAddChatMessage(`📝 Great! Let's create a ${formatLabel}. What style would you like?`, 'orchestrator', 'result')
-          }
-          
-          // Template options will be shown in the UI below chat
-          break
-        
-        case 'modify_structure':
-          // Modify existing structure (add/remove sections within current document)
-          if (!isDocumentViewOpen) {
-            if (onAddChatMessage) {
-              onAddChatMessage(`⚠️ Cannot modify structure without an open document. Open a document first.`)
-            }
-            break
-          }
-          
-          if (onAddChatMessage) {
-            onAddChatMessage(`🔧 Modifying document structure...`)
-          }
-          
-          // Smart Section Detection: Find target section from message if none selected
-          let modTargetId = activeContext?.id
-          
-          if (!modTargetId && structureItems.length > 0) {
-            const lowerMessage = message.toLowerCase()
-            const matchedSection = structureItems.find(item => {
-              const name = item.name.toLowerCase()
-              return lowerMessage.includes(name) || 
-                     (name.includes('sequence') && lowerMessage.includes('sequence') && lowerMessage.includes(item.name.split(' ').pop()?.toLowerCase() || ''))
-            })
-            
-            if (matchedSection) {
-              modTargetId = matchedSection.id
-              if (onAddChatMessage) {
-                onAddChatMessage(`🎯 Identified target section: "${matchedSection.name}"`, 'orchestrator', 'thinking')
-              }
-              // Auto-select the section visually
-              if (currentStoryStructureNodeId && onSelectNode) {
-                onSelectNode(currentStoryStructureNodeId, modTargetId)
-              }
-            }
-          }
-          
-          // For now, treat structure modification as content generation for the target section
-          // TODO: Implement proper structure modification (add/remove/reorder sections)
-          if (modTargetId && onWriteContent) {
-            // User wants to add content to a specific section (like "add to summary")
-            await onWriteContent(modTargetId, message)
-          } else {
-            if (onAddChatMessage) {
-              onAddChatMessage(`⚠️ Structure modification requires a target section. Please click on a section or mention its name (e.g. "Sequence 2").`)
-            }
-          }
-          break
-        
-        case 'clarify_intent':
-          // This should be handled above, but just in case
-          if (onAddChatMessage) {
-            onAddChatMessage(`❓ I need more information. Could you clarify what you'd like me to do?`)
-          }
-          break
-        
-        case 'open_and_write':
-          // HELPFUL MODE: User wants to write in an existing canvas node
-          // Auto-open the document for them!
-          if (onAddChatMessage) {
-            onAddChatMessage(`📂 Finding the document to open...`, 'orchestrator', 'thinking')
-          }
-          
-          // TODO: Refactor to use orchestrator's resolveNode
-          // For now, use simple fallback
-          const nodeToOpen = canvasContext.connectedNodes.find(n => n.nodeType === 'story-structure' || n.nodeType === 'storyStructureNode')
-          
-          if (!nodeToOpen) {
-            // No clear node reference - ask for clarification
-            if (onAddChatMessage) {
-              if (canvasContext.connectedNodes.length > 0) {
-                const nodeList = canvasContext.connectedNodes.map(n => `• ${n.label}`).join('\n')
-                onAddChatMessage(`❓ Which document would you like to work on?\n\n${nodeList}`, 'orchestrator', 'result')
-              } else {
-                onAddChatMessage(`⚠️ I don't see any documents connected to the orchestrator. Please connect a story node first.`, 'orchestrator', 'error')
-              }
-            }
-            break
-          }
-          
-          // Found a node - open it!
-          if (onAddChatMessage) {
-            onAddChatMessage(`✅ Opening "${nodeToOpen.label}" (${nodeToOpen.detailedContext?.format || 'document'}) for editing...`, 'orchestrator', 'result')
-          }
-          
-          // Try to detect if user mentioned a specific section
-          let targetSectionId: string | undefined
-          if (nodeToOpen.detailedContext?.allSections) {
-            const lowerMessage = message.toLowerCase()
-            const sections = nodeToOpen.detailedContext.allSections as Array<{id: string, name: string, level: number}>
-            
-            // Find section that matches user's message
-            const mentionedSection = sections.find((section: {id: string, name: string}) => {
-              const lowerSectionName = section.name.toLowerCase()
-              
-              // Bidirectional matching: message contains section name OR section name contains message keywords
-              if (lowerMessage.includes(lowerSectionName) || lowerSectionName.includes(lowerMessage.trim())) {
-                return true
-              }
-              
-              // Pattern matching for common references
-              // "scene 1" → "Scene 1 – Opening Image"
-              const sceneMatch = lowerMessage.match(/scene\s+(\d+)/i)
-              if (sceneMatch && lowerSectionName.includes(`scene ${sceneMatch[1]}`)) {
-                return true
-              }
-              
-              // "act 1" → "Act I" or "Act 1"
-              const actMatch = lowerMessage.match(/act\s+(\d+|i{1,3}|iv|v)/i)
-              if (actMatch && (lowerSectionName.includes(`act ${actMatch[1]}`) || lowerSectionName.includes('act i'))) {
-                return true
-              }
-              
-              // "sequence 2" → "Sequence 2"
-              const seqMatch = lowerMessage.match(/sequence\s+(\d+)/i)
-              if (seqMatch && lowerSectionName.includes(`sequence ${seqMatch[1]}`)) {
-                return true
-              }
-              
-              // Common section keywords
-              return (lowerMessage.includes('intro') && lowerSectionName.includes('intro')) ||
-                     (lowerMessage.includes('background') && lowerSectionName.includes('background')) ||
-                     (lowerMessage.includes('conclusion') && lowerSectionName.includes('conclusion')) ||
-                     (lowerMessage.includes('opening') && lowerSectionName.includes('opening'))
-            })
-            
-            if (mentionedSection) {
-              targetSectionId = mentionedSection.id
-              if (onAddChatMessage) {
-                onAddChatMessage(`🎯 Auto-selecting "${mentionedSection.name}" section...`, 'orchestrator', 'result')
-              }
-            } else {
-              // No section mentioned - default to Introduction (or first section)
-              const defaultSection = sections.find((s: any) => 
-                s.name.toLowerCase().includes('intro') || 
-                s.name.toLowerCase().includes('opening') ||
-                s.level === 1 // First top-level section
-              ) || sections[0] // Fallback to first section
-              
-              if (defaultSection) {
-                targetSectionId = defaultSection.id
-                if (onAddChatMessage) {
-                  onAddChatMessage(`📄 Opening to "${defaultSection.name}" (default section)...`, 'orchestrator', 'result')
-                }
-              }
-            }
-          }
-          
-          // Trigger document load (keeps orchestrator panel visible!)
-          if (onSelectNode && nodeToOpen.nodeId) {
-            console.log('🚀 [open_and_write] Calling onSelectNode:', {
-              nodeId: nodeToOpen.nodeId,
-              nodeName: nodeToOpen.label,
-              targetSectionId,
-              hasDetailedContext: !!nodeToOpen.detailedContext,
-              format: nodeToOpen.detailedContext?.format,
-              totalSections: nodeToOpen.detailedContext?.totalSections
-            })
-            onSelectNode(nodeToOpen.nodeId, targetSectionId)
-          }
-          
-          // Open the document view if it's not already open
-          if (!isDocumentViewOpen && onToggleDocumentView) {
-            onToggleDocumentView()
-          }
-          
-          // Guide the user
-          setTimeout(() => {
-            if (onAddChatMessage) {
-              const sectionCount = nodeToOpen.detailedContext?.allSections?.length || 0
-              if (targetSectionId) {
-                onAddChatMessage(`📂 Document loaded and section selected!`, 'orchestrator', 'result')
-                onAddChatMessage(`💡 Ready to write! Tell me what you'd like to add.`, 'orchestrator', 'result')
-              } else {
-                onAddChatMessage(`📂 Document loaded with ${sectionCount} section(s)!`, 'orchestrator', 'result')
-                onAddChatMessage(`💡 **Next step**: Click on any section in the document view to select it, then tell me what you'd like to write!`, 'orchestrator', 'result')
-              }
-            }
-          }, 300)
-          break
-        
-        case 'general_chat':
-        default:
-          // General conversation - but still provide canvas context!
-          if (onAddChatMessage) {
-            onAddChatMessage(`💭 Responding conversationally...`, 'orchestrator', 'thinking')
-          }
-          
-          if (onAnswerQuestion) {
-            // Build context-aware prompt just like answer_question
-            let chatPrompt = message
-            
-            if (canvasContext.connectedNodes.length > 0) {
-              let contextSummary = ''
-              let totalContentChars = 0
-              
-              // Extract content from canvas nodes
-              canvasContext.connectedNodes.forEach(node => {
-                contextSummary += `\n--- ${node.label} (${node.nodeType}) ---\n`
-                contextSummary += `Summary: ${node.summary}\n`
-                
-                // Include actual content if available
-                if (node.nodeType === 'story-structure' && node.detailedContext?.contentMap) {
-                  const contentMap = node.detailedContext.contentMap as Record<string, string>
-                  const contentEntries = Object.entries(contentMap)
-                  
-                  if (contentEntries.length > 0) {
-                    contextSummary += `\nContent (${contentEntries.length} sections):\n`
-                    
-                    contentEntries.slice(0, 10).forEach(([sectionId, content]) => {
-                      if (content && content.trim()) {
-                        const sectionInfo = node.detailedContext?.allSections?.find((s: any) => s.id === sectionId)
-                        const sectionName = sectionInfo?.name || sectionId
-                        const truncatedContent = content.length > 1000 ? content.substring(0, 1000) + '...' : content
-                        contextSummary += `\n## ${sectionName}\n${truncatedContent}\n`
-                        totalContentChars += truncatedContent.length
-                      }
-                    })
-                    
-                    if (contentEntries.length > 10) {
-                      contextSummary += `\n(... ${contentEntries.length - 10} more sections available)\n`
-                    }
-                  }
-                }
-                
-                contextSummary += '\n'
-              })
-              
-              chatPrompt = `User Message: ${message}\n\nAvailable Context from Canvas:${contextSummary}`
-              
-              // Add RAG content if available
-              if (ragEnhancedContext?.hasRAG && ragEnhancedContext.ragContent) {
-                chatPrompt += `\n\nAdditional Relevant Content (from semantic search):\n${ragEnhancedContext.ragContent}`
-              }
-              
-              if (onAddChatMessage && totalContentChars > 0) {
-                const wordCount = Math.round(totalContentChars / 5)
-                onAddChatMessage(`📚 Using context from ${canvasContext.connectedNodes.length} connected node(s)`)
-                onAddChatMessage(`📄 Including ~${wordCount} words of actual content`)
-              }
-            }
-            
-            const response = await onAnswerQuestion(chatPrompt)
-            if (onAddChatMessage) {
-              onAddChatMessage(`💬 ${response}`)
-            }
-          } else {
-            await onCreateStory(selectedFormat, selectedTemplate || undefined, message) // ✅ FIX: Await
-          }
-          break
-      }
-    } catch (error) {
-      console.error('❌ Error executing intent:', error)
-      if (onAddChatMessage) {
-        onAddChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      }
-    }
-  }
+ 
 
   // Auto-open reasoning panel when messages appear or update
   useEffect(() => {
     if (reasoningMessages.length > 0) {
-      setIsReasoningOpen(true)
+      if (worldState) {
+        // Use WorldState if available
+        if (worldState && !worldStateData?.ui.isReasoningOpen) {
+          worldState.toggleReasoningPanel()
+        }
+      } else {
+        // Fallback to local state
+        setLocalIsReasoningOpen(true)
+      }
       console.log('[CreateStoryPanel] Auto-opening reasoning panel, messages:', reasoningMessages.length)
     }
   }, [reasoningMessages])
@@ -2220,6 +1386,7 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         console.log('[CreateStoryPanel] Page became visible, refreshing configuration...')
+        console.log('[CreateStoryPanel] WorldState conversation messages before refresh:', effectiveWorldState?.getState().conversation.messages.length || 0)
         fetchConfiguredModels()
       }
     }
@@ -2610,7 +1777,13 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
             {/* Right: Model Selector Button */}
             <div className="relative">
               <button
-                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                onClick={() => {
+                  if (effectiveWorldState) {
+                    effectiveWorldState.toggleModelDropdown()
+                  } else {
+                    setLocalIsModelDropdownOpen(!localIsModelDropdownOpen)
+                  }
+                }}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
               >
                 {modelMode === 'automatic' ? (
@@ -2628,13 +1801,13 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
                     <span className="max-w-[100px] truncate">{configuredModel.orchestrator || 'Fixed'}</span>
                   </>
                 )}
-                <svg className={`w-3 h-3 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-3 h-3 transition-transform ${currentIsModelDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
             
             {/* Dropdown Menu */}
-            {isModelDropdownOpen && (
+            {currentIsModelDropdownOpen && (
               <div className="absolute bottom-full left-0 mb-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
                 {/* Mode Toggle */}
                 <div className="p-3 border-b border-gray-200 bg-gray-50">
@@ -2779,7 +1952,11 @@ Use the above content as inspiration for creating the new ${formatToUse} structu
                                     }
                                     
                                     await fetchConfiguredModels()
-                                    setIsModelDropdownOpen(false)
+                                    if (effectiveWorldState) {
+                                      effectiveWorldState.toggleModelDropdown()
+                                    } else {
+                                      setLocalIsModelDropdownOpen(false)
+                                    }
                                   }
                                 } catch (err) {
                                   console.error('Failed to switch model', err)

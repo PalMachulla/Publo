@@ -214,25 +214,46 @@ export class WriteContentAction extends BaseAction {
       // ============================================================
       
       if (!messageTargetSectionId) {
-        const patterns = [
-          /(?:add|write|put|insert).*(?:to|in|into)\s+(?:the\s+)?(.+?)(?:\s+(?:section|part|chapter|scene|act|sequence))?$/i,
-          /(?:add|write|put|insert)\s+(?:some\s+)?(?:text|content|words).*?(?:to|in|into)\s+(?:the\s+)?(.+?)$/i,
-        ]
-        
-        let sectionName: string | null = null
-        for (const pattern of patterns) {
-          const match = request.message.match(pattern)
-          if (match && match[1]) {
-            sectionName = match[1].trim().toLowerCase()
-            break
+        // First, check if intent analysis extracted a targetSegment
+        if (intent.extractedEntities?.targetSegment) {
+          const targetSegment = intent.extractedEntities.targetSegment
+          console.log(`🔍 [TargetSegment] Using extracted targetSegment: "${targetSegment}"`)
+          
+          const foundSection = findSectionByName(request.structureItems, targetSegment)
+          if (foundSection) {
+            messageTargetSectionId = foundSection.id
+            console.log('✅ [TargetSegment Match] Found:', foundSection.name)
+          } else {
+            console.log(`⚠️ [TargetSegment] Could not find section matching "${targetSegment}"`)
           }
         }
         
-        if (sectionName) {
-          const foundSection = findSectionByName(request.structureItems, sectionName)
-          if (foundSection) {
-            messageTargetSectionId = foundSection.id
-            console.log('✅ [Name Detection] Found:', foundSection.name)
+        // Fallback to pattern matching if targetSegment didn't work
+        if (!messageTargetSectionId) {
+          const patterns = [
+            /(?:write|add|put|insert).*(?:the\s+)?(.+?)\s+section/i,
+            /(?:write|add|put|insert).*(?:in|to|into)\s+(?:the\s+)?(.+?)(?:\s+(?:section|part|chapter|scene|act|sequence))?$/i,
+            /(?:write|add|put|insert)\s+(?:some\s+)?(?:text|content|words).*?(?:to|in|into)\s+(?:the\s+)?(.+?)$/i,
+          ]
+          
+          let sectionName: string | null = null
+          for (const pattern of patterns) {
+            const match = request.message.match(pattern)
+            if (match && match[1]) {
+              sectionName = match[1].trim()
+              // Remove common trailing words
+              sectionName = sectionName.replace(/\s+(section|part|chapter|scene|act|sequence|of the report|of the document)$/i, '').trim()
+              break
+            }
+          }
+          
+          if (sectionName) {
+            console.log(`🔍 [Pattern Match] Extracted section name: "${sectionName}"`)
+            const foundSection = findSectionByName(request.structureItems, sectionName)
+            if (foundSection) {
+              messageTargetSectionId = foundSection.id
+              console.log('✅ [Name Detection] Found:', foundSection.name)
+            }
           }
         }
       }
