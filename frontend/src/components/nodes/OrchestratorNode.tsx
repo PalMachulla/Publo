@@ -1,14 +1,66 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { CreateStoryNodeData } from '@/types/nodes'
+import { useCanvas } from '@/contexts/CanvasContext'
+import { useWorldState } from '@/hooks/useWorldState'
 
 function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
   const { isOrchestrating = false, orchestratorProgress = 0, loadingText = '' } = data
   
-  // Determine if this is AI inference based on loading text
-  const isInferring = loadingText.toLowerCase().includes('inference')
+  // ✅ Connect to worldState via CanvasContext
+  const { worldState } = useCanvas()
+  const worldStateData = useWorldState(worldState || undefined)
+  
+  // Extract latest message type for visual representation
+  const latestMessage = useMemo(() => {
+    const messages = worldStateData?.conversation.messages || []
+    return messages[messages.length - 1] || null
+  }, [worldStateData])
+  
+  // Determine visual state from latest message type
+  const visualState = useMemo(() => {
+    // If no worldState message, fallback to data prop
+    if (!latestMessage) {
+      const isInferring = loadingText.toLowerCase().includes('inference')
+      return {
+        displayText: loadingText || 'ORCHESTRATOR',
+        isActive: isOrchestrating,
+        color: isInferring ? '#ec4899' : '#fbbf24',
+        shouldAnimate: isOrchestrating
+      }
+    }
+    
+    const messageType = latestMessage.type
+    
+    // Map message types to display text and colors
+    const typeMap: Record<string, { text: string; color: string }> = {
+      'thinking': { text: 'THINKING', color: '#ec4899' }, // pink
+      'decision': { text: 'DECISION', color: '#3b82f6' }, // blue
+      'task': { text: 'TASK', color: '#10b981' }, // green
+      'progress': { text: 'PROGRESS', color: '#fbbf24' }, // yellow
+      'error': { text: 'ERROR', color: '#ef4444' }, // red
+      'result': { text: '\u00A0', color: '#9ca3af' }, // non-breaking space, gray
+      'user': { text: 'ORCHESTRATOR', color: '#fbbf24' },
+      'model': { text: 'ORCHESTRATOR', color: '#fbbf24' }
+    }
+    
+    const typeInfo = typeMap[messageType] || { text: 'ORCHESTRATOR', color: '#fbbf24' }
+    const isResult = messageType === 'result'
+    
+    return {
+      displayText: typeInfo.text,
+      isActive: !isResult, // No animation for result
+      color: typeInfo.color,
+      shouldAnimate: !isResult // Only animate if not result
+    }
+  }, [latestMessage, loadingText, isOrchestrating])
+  
+  // Use visual state from worldState if available, fallback to data prop
+  const displayText = visualState.displayText
+  const shouldAnimate = visualState.shouldAnimate
+  const spinnerColor = visualState.color
   
   return (
     <div className="relative">
@@ -76,14 +128,14 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
             stroke="none"
           />
           
-          {/* Animated spinner ring - pink during AI inference, yellow during other orchestration */}
-          {isOrchestrating && (
+          {/* Animated spinner ring - only show when shouldAnimate is true */}
+          {shouldAnimate && (
             <circle
               cx="90"
               cy="90"
               r="80"
               fill="none"
-              stroke={isInferring ? "#ec4899" : "#fbbf24"}
+              stroke={spinnerColor}
               strokeWidth="2"
               strokeLinecap="round"
               strokeDasharray={`${Math.PI * 75 * 0.75} ${Math.PI * 75 * 1.25}`}
@@ -121,9 +173,9 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
             </svg>
           </div>
           
-          {/* Loading text below logo - always uppercase */}
+          {/* Loading text below logo - shows message type or &nbsp; for result */}
           <div className="text-[9px] text-gray-600 font-light text-center px-4 uppercase bg-gray-100 rounded-full p-1">
-            {loadingText || 'Orchestrator'}
+            {displayText}
           </div>
         </div>
       </div>

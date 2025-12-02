@@ -46,6 +46,8 @@ export interface IntentAnalysis {
     sourceDocument?: string // Name or ID of source document (e.g., "Screenplay", "Podcast")
     isExplicitSourceReference?: boolean // True if user explicitly said "based on X", "using X"
     suggestedTemplate?: string // Template ID matched from keywords (e.g., "interview", "heros-journey", "feature")
+    documentFormat?: string // Format extracted from message (e.g., "short-story", "novel", "screenplay")
+    autoGenerateSections?: string[] // Sections to auto-generate after structure creation (e.g., ["chapter2", "act1"])
   }
   // Pipeline-specific metrics (optional, stripped by adapter)
   pipelineMetrics?: any

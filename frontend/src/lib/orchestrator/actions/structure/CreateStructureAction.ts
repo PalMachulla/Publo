@@ -201,11 +201,28 @@ export class CreateStructureAction extends BaseAction {
     // STEP 1: Validate required fields
     // ============================================================
     
-    if (!request.documentFormat) {
+    // ✅ FIX: For create_structure, prioritize format from intent extraction
+    // This handles "Write a screenplay based upon the novel" correctly
+    // When user wants to create a NEW document, the format from their message takes priority
+    // over the active document's format (which might be the source document they're referencing)
+    let effectiveFormat = request.documentFormat
+    if (intent.extractedEntities?.documentFormat) {
+      effectiveFormat = intent.extractedEntities.documentFormat
+      console.log('🎯 [CreateStructureAction] Using format from intent extraction:', {
+        extractedFormat: intent.extractedEntities.documentFormat,
+        requestFormat: request.documentFormat,
+        reason: 'Creating new document - user message format takes priority over active document'
+      })
+    }
+    
+    if (!effectiveFormat) {
       return [
         this.message('Unable to create structure: document format not specified', 'error')
       ]
     }
+    
+    // Update request.documentFormat to use the effective format
+    request.documentFormat = effectiveFormat
     
     if (!request.userKeyId) {
       return [
@@ -248,10 +265,10 @@ export class CreateStructureAction extends BaseAction {
       willCheckTemplates: !selectedTemplate && request.documentFormat
     })
     
-    if (!selectedTemplate && request.documentFormat) {
-      console.log('✅ [STEP 1.5] No template selected, checking for available templates for format:', request.documentFormat)
+    if (!selectedTemplate && effectiveFormat) {
+      console.log('✅ [STEP 1.5] No template selected, checking for available templates for format:', effectiveFormat)
       const { getTemplatesForFormat } = await import('../../schemas/templateRegistry')
-      const availableTemplates = getTemplatesForFormat(request.documentFormat)
+      const availableTemplates = getTemplatesForFormat(effectiveFormat)
 
       console.log('📋 [STEP 1.5] Available templates:', {
         count: availableTemplates.length,
@@ -261,17 +278,19 @@ export class CreateStructureAction extends BaseAction {
 
       if (availableTemplates.length > 0) {
         console.log('🎨 [CreateStructureAction] No template specified, showing options:', {
-          format: request.documentFormat,
+          format: effectiveFormat,
           availableTemplates: availableTemplates.map((t: any) => t.id)
         })
         
         // Return request_clarification with template options
+        // ✅ FIX: Use effectiveFormat (from intent extraction) instead of request.documentFormat
+        // This ensures the clarification question asks about the correct format (e.g., "screenplay" not "novel")
         return [
           {
             type: 'request_clarification',
             status: 'pending',
             payload: {
-              question: `What type of ${request.documentFormat} would you like to create?`,
+              question: `What type of ${effectiveFormat} would you like to create?`,
               context: 'Select a template structure:',
               options: availableTemplates.map((template: any) => ({
                 id: template.id,
@@ -280,11 +299,11 @@ export class CreateStructureAction extends BaseAction {
               })),
               originalIntent: 'create_structure',
               originalPayload: {
-                format: request.documentFormat,
+                format: effectiveFormat,
                 prompt: request.message,
                 userKeyId: request.userKeyId
               },
-              message: `I'd be happy to help you create a ${request.documentFormat}! What structure would you like?`
+              message: `I'd be happy to help you create a ${effectiveFormat}! What structure would you like?`
             }
           }
         ]

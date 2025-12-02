@@ -362,51 +362,57 @@ export default function OrchestratorPanel({
     // Get pending clarification from WorldState or local state
     const currentPendingClarification = worldStateData?.ui.pendingClarification || pendingClarification
     
+    // Find the most recent decision message that matches the clarification question
+    // This ensures we only attach options to the relevant decision message, not old ones
+    let targetDecisionIndex = -1
+    if (currentPendingClarification) {
+      const clarificationQuestion = currentPendingClarification.question
+      // Search backwards from the end to find the most recent matching decision message
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i]
+        if (msg.type === 'decision') {
+          // Match if content matches the question (allowing for truncation)
+          const contentMatches = msg.content === clarificationQuestion || 
+                                 msg.content.startsWith(clarificationQuestion.substring(0, 20)) ||
+                                 clarificationQuestion.startsWith(msg.content.substring(0, 20))
+          if (contentMatches) {
+            targetDecisionIndex = i
+            break
+          }
+        }
+      }
+    }
+    
     return messages.map((msg, index) => {
-      // Add options to the last 'decision' message if there's a pending clarification
       const isLastMessage = index === messages.length - 1
       const isDecisionMessage = msg.type === 'decision'
+      const isTargetDecision = index === targetDecisionIndex
       
-      if (isLastMessage && isDecisionMessage && currentPendingClarification) {
+      // Add options ONLY to the target decision message that matches the clarification
+      // This prevents attaching options to old decision messages
+      if (isDecisionMessage && isTargetDecision && currentPendingClarification) {
+        // Use options from message if available, otherwise use pending clarification
+        const optionsSource = msg.options || currentPendingClarification?.options || []
+        
         return {
           ...msg,
-          options: currentPendingClarification.options.map(opt => ({
+          options: optionsSource.map((opt: any) => ({
             id: opt.id,
-            title: opt.label,
+            title: opt.title || opt.label,
             description: opt.description
           })),
           onOptionSelect: async (optionId: string, optionTitle: string) => {
             console.log('✅ [Clarification] Option selected:', { optionId, optionTitle })
             
-            // Store clarification for processing
-            const clarification = currentPendingClarification
+            // ✅ FIX: UI should NOT interpret option IDs - orchestrator handles all logic
+            // Just pass the option to orchestrator and let it decide what to do
             
-            // Clear clarification (WorldState or local state)
-            if (effectiveWorldState) {
-              effectiveWorldState.setPendingClarification(null)
-            } else {
-              setPendingClarification(null)
-            }
+            // Clear clarification state (will be cleared after orchestrator processes it)
+            // Don't clear here - let orchestrator handle it to prevent race conditions
             
-            // Handle based on option selected
-            if (optionId === 'create_new') {
-              // User wants to create new - show template selection
-              const creationState = {
-                format: clarification.originalPayload.format as StoryFormat,
-                userMessage: clarification.originalPayload.userMessage
-              }
-              if (effectiveWorldState) {
-                effectiveWorldState.setPendingCreation(creationState)
-              } else {
-                setPendingCreation(creationState)
-              }
-            } else if (optionId === 'use_existing') {
-              // User wants to use existing - send to orchestrator
-              handleSendMessage_NEW('Open the existing document')
-            } else {
-              // Generic option selection - respond with option text
-              handleSendMessage_NEW(optionTitle)
-            }
+            // ✅ Call orchestrator with option - orchestrator interprets and builds action
+            // Use optionTitle as the response (orchestrator can match by label or ID)
+            await handleClarificationResponse(optionTitle)
           }
         }
       }
@@ -571,43 +577,16 @@ export default function OrchestratorPanel({
       return
     }
     
-    // ✅ NEW: Check if there's a pending clarification
+    // ✅ FIX: Check if there's a pending clarification
+    // If so, pass to orchestrator - orchestrator handles ALL interpretation (numbers, text, etc.)
     if (pendingClarification) {
-      // User is responding to a clarification request by typing a number
-      // 🔍 INVESTIGATE: Number-to-option matching is in UI layer
-      // The UI parses "1", "2", etc. and maps to clarification options.
-      // Consider: Should orchestrator handle this input parsing?
-      // The orchestrator could accept structured responses (option IDs) instead of free text.
-      // Try to match the number to an option
-      const numberMatch = message.match(/^\s*(\d+)\s*$/)
-      if (numberMatch) {
-        const optionIndex = parseInt(numberMatch[1]) - 1
-        if (optionIndex >= 0 && optionIndex < pendingClarification.options.length) {
-          const selectedOption = pendingClarification.options[optionIndex]
-          console.log('✅ [Clarification] Number matched to option:', selectedOption)
-          
-          // Clear input and clarification
-          setChatMessage('')
-          const clarification = pendingClarification
-          setPendingClarification(null)
-          
-          // Handle based on option ID
-          if (selectedOption.id === 'create_new') {
-            setPendingCreation({
-              format: clarification.originalPayload.format as StoryFormat,
-              userMessage: clarification.originalPayload.userMessage
-            })
-          } else if (selectedOption.id === 'use_existing') {
-            await handleSendMessage_NEW('Open the existing document')
-          } else {
-            await handleSendMessage_NEW(selectedOption.label)
-          }
-          return
-        }
-      }
-      
-      // If not a number match, treat as a text response to clarification
-      console.log('📝 [Clarification] Text response (not a number), calling handleClarificationResponse:', message)
+      console.log('📝 [Clarification] User response detected, passing to orchestrator:', message)
+      // ✅ Orchestrator handles:
+      // - Number matching ("1", "2", etc.)
+      // - Exact label matching ("TV Pilot")
+      // - Partial matching ("pilot" matches "TV Pilot")
+      // - Natural language interpretation ("the first one", "go with podcast")
+      // - Option ID interpretation (create_new, use_existing, template IDs, etc.)
       await handleClarificationResponse(message)
       return // ✅ CRITICAL: Don't continue with normal orchestration - clarification response handles it
     }
@@ -855,38 +834,23 @@ export default function OrchestratorPanel({
     return Date.now() > confirmation.expiresAt
   }
   
-  // ✅ REFACTORED: Handle clarification response by sending back to orchestrator for LLM reasoning
   // ============================================================
-  // CLARIFICATION RESPONSE HANDLING
+  // CLARIFICATION RESPONSE HANDLING (UI LAYER - DELEGATES TO ORCHESTRATOR)
   // ============================================================
   // 
-  // This function processes user responses to clarification questions.
-  // Instead of calling the full orchestrate() method (which re-analyzes intent
-  // and rebuilds context), we use the dedicated continueClarification() method.
-  // 
-  // Benefits:
-  // - More efficient: Skips intent analysis (we already know originalAction)
-  // - Faster: No canvas context rebuilding (uses existing context)
-  // - Clearer: Explicit method for clarification responses
-  // - Better separation: Logic stays in orchestrator, UI just calls the method
+  // ✅ ARCHITECTURE: UI Layer only delegates to orchestrator
+  // - Orchestrator reads clarification from WorldState
+  // - Orchestrator reads all context from WorldState
+  // - Orchestrator processes response and returns actions
+  // - UI executes actions
   // 
   // Flow:
-  // 1. User responds to clarification (e.g., "1", "TV Pilot", "the first one")
-  // 2. UI calls orchestrator.continueClarification() with response and context
-  // 3. Orchestrator interprets response and builds appropriate actions
-  // 4. UI executes the returned actions
-  // 
-  // See: orchestratorEngine.ts continueClarification() method
+  // 1. User clicks option or types response
+  // 2. UI calls orchestrator.handleClarificationOption(response)
+  // 3. Orchestrator reads from WorldState, processes, returns actions
+  // 4. UI executes actions
   const handleClarificationResponse = async (response: string) => {
-    if (!pendingClarification) {
-      console.warn('No pending clarification')
-      return
-    }
-    
-    console.log('📥 [Clarification] Received response:', response)
-    console.log('📥 [Clarification] Pending:', pendingClarification)
-    
-    // ✅ FIX: Don't add user response here - orchestrator will add it automatically
+    // ✅ UI LAYER: Just clear input and delegate to orchestrator
     setChatMessage('')
     
     // Get user ID for orchestration
@@ -896,105 +860,45 @@ export default function OrchestratorPanel({
       return
     }
     
-    // Get available providers
-    const availableProviders = Array.from(new Set(availableOrchestrators.map(m => m.provider)))
-    const userKeyId = availableOrchestrators.length > 0 ? availableOrchestrators[0].keyId : undefined
-    
-    // ✅ FIX: Fetch available models (same as handleSendMessage_NEW)
-    // Try to get from WorldState first, then fetch if needed
-    let availableModelsToPass: any[] | undefined = undefined
-    if (effectiveWorldState) {
-      const worldStateModels = effectiveWorldState.getState().user.availableModels
-      if (worldStateModels && worldStateModels.length > 0) {
-        availableModelsToPass = worldStateModels
-        console.log(`✅ [Clarification] Using ${availableModelsToPass.length} models from WorldState`)
-      }
-    }
-    
-    // If not in WorldState, fetch from API
-    if (!availableModelsToPass || availableModelsToPass.length === 0) {
-      try {
-        console.log('🔍 [Clarification] Fetching available models from API...')
-        const modelsResponse = await fetch('/api/models/available')
-        if (modelsResponse.ok) {
-          const modelsData = await modelsResponse.json()
-          if (modelsData.success && modelsData.models && modelsData.models.length > 0) {
-            availableModelsToPass = modelsData.models
-            console.log(`✅ [Clarification] Loaded ${modelsData.models.length} available models from API`)
-          }
-        } else {
-          console.warn('⚠️ [Clarification] Failed to fetch available models from API')
-        }
-      } catch (error) {
-        console.warn('⚠️ [Clarification] Error fetching available models:', error)
-      }
-    }
-    
-    // Send back to orchestrator WITH clarification context
     try {
-      // PHASE 1: Update WorldState before clarification response
-      if (effectiveWorldState) {
-        effectiveWorldState.update(draft => {
-          draft.user.id = user.id
-          draft.user.availableProviders = availableProviders
-          draft.user.availableModels = availableModelsToPass || []
-          draft.user.apiKeys.orchestratorKeyId = userKeyId
-        })
-        
-        // ✅ CRITICAL: Get structureItems from WorldState (clarification responses)
-        const activeDocForClarification = effectiveWorldState.getActiveDocument()
-        var freshStructureItemsForClarification = activeDocForClarification.structure?.items || structureItems || []
-      } else {
-        // Fallback if WorldState not available
-        var freshStructureItemsForClarification = structureItems || []
-      }
-      
-      // ✅ NEW: Use dedicated continueClarification method instead of full orchestrate()
-      // This is more efficient because it skips intent analysis and context rebuilding
+      // ✅ UI LAYER: Get orchestrator instance
       const orchestrator = getMultiAgentOrchestrator(user.id, {
         toolRegistry,
-        onMessage: onAddChatMessage // PHASE 3: Real-time message streaming
+        onMessage: onAddChatMessage
       }, effectiveWorldState || undefined)
       
-      const orchestratorResponse = await orchestrator.continueClarification(
-        response, // User's clarification response
-        {
-          originalAction: pendingClarification.originalIntent,
-          question: pendingClarification.question,
-          options: pendingClarification.options,
-          payload: pendingClarification.originalPayload
-        },
-        {
-          canvasNodes,
-          canvasEdges,
-          structureItems: freshStructureItemsForClarification,
-          contentMap,
-          currentStoryStructureNodeId,
-          documentFormat: pendingClarification.originalPayload?.format || selectedFormat,
-          availableModels: availableModelsToPass,
-          availableProviders: availableProviders.length > 0 ? availableProviders : undefined,
-          userKeyId
-        }
-      )
+      // ✅ UI LAYER: Call orchestrator - orchestrator handles ALL logic
+      // Orchestrator will:
+      // - Read clarification from WorldState
+      // - Read canvas context from WorldState
+      // - Read models/providers from WorldState
+      // - Process the response
+      // - Clear clarification from WorldState when done
+      // - Return actions
+      const orchestratorResponse = await orchestrator.handleClarificationOption(response, {
+        // Optional: Pass canvas props if WorldState not available (fallback)
+        canvasNodes,
+        canvasEdges,
+        structureItems,
+        contentMap,
+        currentStoryStructureNodeId,
+        documentFormat: selectedFormat
+      })
       
       console.log('✅ [Clarification] Orchestrator response received:', {
         actionsCount: orchestratorResponse.actions.length,
         actionTypes: orchestratorResponse.actions.map((a: OrchestratorAction) => a.type)
       })
       
-      // ⚠️ REMOVED: Real-time callback already displays messages - no need to display them again!
-      
-      // Execute actions returned by orchestrator
+      // ✅ UI LAYER: Execute actions returned by orchestrator
       for (const action of orchestratorResponse.actions) {
         console.log('▶️ [Clarification] Executing action:', action.type, action.payload)
         
-        // Handle message actions specially for create_structure
         if (action.type === 'message' && action.payload.intent === 'create_structure') {
-          const { format, prompt, referenceDoc } = action.payload
+          const { format, prompt } = action.payload
           if (onAddChatMessage) {
             onAddChatMessage(action.payload.content, 'orchestrator', 'result')
           }
-          // ✅ FIX: AWAIT onCreateStory to ensure node is saved before continuing
           await onCreateStory(format, undefined, prompt)
         } else {
           await executeActionDirectly(action)
@@ -1005,26 +909,11 @@ export default function OrchestratorPanel({
         onAddChatMessage(`✅ Actions completed!`, 'orchestrator', 'result')
       }
       
-      // ✅ CRITICAL: Only clear pending clarification if we successfully processed it
-      // Check if we got actions that indicate successful processing (not another clarification request)
-      const hasNonClarificationActions = orchestratorResponse.actions.some(
-        (a: OrchestratorAction) => a.type !== 'request_clarification'
-      )
-      
-      if (hasNonClarificationActions) {
-        setPendingClarification(null)
-        console.log('✅ [Clarification] Cleared pending clarification after successful processing')
-      } else {
-        console.warn('⚠️ [Clarification] Keeping pending clarification - got another clarification request')
-      }
-      
     } catch (error) {
       console.error('❌ [Clarification] Error:', error)
       if (onAddChatMessage) {
-        onAddChatMessage(`❌ Error processing clarification: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
+        onAddChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
       }
-      // Don't clear pending clarification on error - let user try again
-      console.warn('⚠️ [Clarification] Keeping pending clarification due to error')
     }
   }
   
@@ -1180,24 +1069,63 @@ export default function OrchestratorPanel({
         case 'request_clarification':
           // Handle clarification requests with ChatOptionsSelector
           console.log('🤔 [Orchestrator] Clarification requested:', action.payload)
+          console.log('🔍 [Clarification] Payload structure:', {
+            hasQuestion: !!action.payload.question,
+            hasMessage: !!action.payload.message,
+            hasOptions: !!action.payload.options,
+            optionsCount: action.payload.options?.length || 0,
+            options: action.payload.options
+          })
           
-          // ✅ Add clarification question as a chat message (in the flow)
-          if (onAddChatMessage) {
-            onAddChatMessage(
-              action.payload.question || 'Please select an option',
-              'orchestrator',
-              'decision'
-            )
+          // Store pending clarification FIRST (before adding message)
+          const questionText = action.payload.question || action.payload.message || 'Please select an option'
+          const clarificationData = {
+            question: questionText,
+            context: action.payload.context,
+            options: action.payload.options || [],
+            originalIntent: action.payload.originalIntent || action.payload.originalAction || 'create_structure',
+            originalPayload: action.payload.originalPayload || action.payload
           }
           
-          // Store pending clarification for input handling
-          setPendingClarification({
-            question: action.payload.question,
-            context: action.payload.context,
-            options: action.payload.options,
-            originalIntent: action.payload.originalIntent,
-            originalPayload: action.payload.originalPayload
+          console.log('💾 [Clarification] Storing clarification data:', {
+            question: clarificationData.question,
+            optionsCount: clarificationData.options.length,
+            options: clarificationData.options,
+            hasWorldState: !!effectiveWorldState
           })
+          
+          // Store clarification in WorldState or local state
+          if (effectiveWorldState) {
+            effectiveWorldState.setPendingClarification(clarificationData)
+            console.log('✅ [Clarification] Stored in WorldState')
+            
+            // ✅ Add message directly to WorldState with options included
+            // This ensures the message has the right type and options are available immediately
+            effectiveWorldState.addMessage({
+              content: questionText,
+              role: 'orchestrator',
+              type: 'decision',
+              options: clarificationData.options.map((opt: {id: string, label: string, description?: string}) => ({
+                id: opt.id,
+                title: opt.label,
+                description: opt.description
+              }))
+            })
+            console.log('✅ [Clarification] Message added to WorldState with options')
+          } else {
+            setPendingClarification(clarificationData)
+            console.log('✅ [Clarification] Stored in local state')
+            
+            // Fallback: Use onAddChatMessage if WorldState not available
+            if (onAddChatMessage) {
+              onAddChatMessage(
+                questionText,
+                'orchestrator',
+                'decision'
+              )
+              console.log('✅ [Clarification] Message added via onAddChatMessage')
+            }
+          }
           break
           
         case 'open_document':

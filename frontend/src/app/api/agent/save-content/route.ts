@@ -213,17 +213,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const wordCount = content.trim().split(/\s+/).length
+    // ✅ FIX: Calculate word count for the section that was just generated
+    // This is the word count that should be returned in metadata for progress messages
+    const sectionWordCount = content.trim().split(/\s+/).length
 
     console.log('✅ [API /api/agent/save-content] Content saved successfully:', {
       sectionId,
-      wordCount,
-      totalWordCount: updatedData.totalWordCount
+      sectionWordCount,  // Words in this specific section
+      totalWordCount: updatedData.totalWordCount  // Total words in entire document
     })
 
     return NextResponse.json({
       success: true,
-      wordCount: updatedData.totalWordCount
+      wordCount: sectionWordCount  // ✅ FIX: Return section word count for metadata, not document total
     })
 
   } catch (error) {

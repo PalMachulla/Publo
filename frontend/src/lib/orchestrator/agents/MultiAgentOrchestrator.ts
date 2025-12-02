@@ -462,6 +462,20 @@ Respond in JSON format:
     // ✅ Track node IDs from open_document actions for dependent generate_content actions
     const nodeIdByActionType = new Map<string, string>()
     
+    // ✅ FIX: Check if select_section was already executed by base orchestrator
+    // If generate_content depends on select_section but select_section isn't in the queue,
+    // it means it was already auto-executed by the base orchestrator
+    const hasSelectSectionDependency = sequencedActions.some(a => 
+      a.type === 'generate_content' && a.dependsOn?.includes('select_section')
+    )
+    const hasSelectSectionInQueue = sequencedActions.some(a => a.type === 'select_section')
+    
+    if (hasSelectSectionDependency && !hasSelectSectionInQueue) {
+      // select_section was already executed by base orchestrator, mark it as complete
+      completedActionTypes.add('select_section')
+      console.log('✅ [ActionSequencer] select_section was already executed by base orchestrator')
+    }
+    
     // Execute actions in dependency order
     const executeQueue = [...sequencedActions]
     const executed = new Set<string>()
@@ -474,6 +488,25 @@ Respond in JSON format:
     
     while (executeQueue.length > 0) {
       let progressMade = false
+      
+      // ✅ FIX: Sort actions to process dependencies first
+      // Actions with no dependencies come first, then actions with satisfied dependencies
+      executeQueue.sort((a, b) => {
+        const aHasDeps = a.dependsOn && a.dependsOn.length > 0
+        const bHasDeps = b.dependsOn && b.dependsOn.length > 0
+        
+        if (!aHasDeps && bHasDeps) return -1 // a comes first (no deps)
+        if (aHasDeps && !bHasDeps) return 1  // b comes first (no deps)
+        
+        // Both have deps or both don't - check if deps are satisfied
+        const aDepsSatisfied = !aHasDeps || a.dependsOn!.every(dep => completedActionTypes.has(dep))
+        const bDepsSatisfied = !bHasDeps || b.dependsOn!.every(dep => completedActionTypes.has(dep))
+        
+        if (aDepsSatisfied && !bDepsSatisfied) return -1 // a comes first (deps satisfied)
+        if (!aDepsSatisfied && bDepsSatisfied) return 1  // b comes first (deps satisfied)
+        
+        return 0 // Keep original order
+      })
       
       for (let i = executeQueue.length - 1; i >= 0; i--) {
         const action = executeQueue[i]

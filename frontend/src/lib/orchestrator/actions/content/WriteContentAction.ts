@@ -210,8 +210,23 @@ export class WriteContentAction extends BaseAction {
       }
       
       // ============================================================
-      // STEP 4: Try name-based pattern matching
+      // STEP 4: Try name-based pattern matching (with multi-section support)
       // ============================================================
+      
+      /**
+       * MULTI-SECTION HANDLING:
+       * 
+       * When the user requests multiple sections (e.g., "write the next chapter, and chapter 5"),
+       * the intent analysis extracts them as a comma-separated string in targetSegment.
+       * 
+       * This step:
+       * 1. Checks if targetSegment contains multiple sections (comma-separated)
+       * 2. Parses each section reference (handles "next chapter", "chapter 5", etc.)
+       * 3. Generates multiple generate_content actions (one per section)
+       * 4. Returns early with all actions - MultiAgentOrchestrator will decide execution strategy
+       * 
+       * If only one section is found, falls through to single-section logic below.
+       */
       
       if (!messageTargetSectionId) {
         // First, check if intent analysis extracted a targetSegment
@@ -219,12 +234,195 @@ export class WriteContentAction extends BaseAction {
           const targetSegment = intent.extractedEntities.targetSegment
           console.log(`🔍 [TargetSegment] Using extracted targetSegment: "${targetSegment}"`)
           
-          const foundSection = findSectionByName(request.structureItems, targetSegment)
-          if (foundSection) {
-            messageTargetSectionId = foundSection.id
-            console.log('✅ [TargetSegment Match] Found:', foundSection.name)
+          // ✅ MULTI-SECTION: Check if targetSegment contains multiple sections (comma-separated)
+          // Examples: "chapter 1, chapter 2, chapter 3" or "next chapter, chapter 5"
+          const segmentParts = targetSegment.split(',').map(s => s.trim()).filter(s => s.length > 0)
+          
+          if (segmentParts.length > 1) {
+            // MULTIPLE SECTIONS DETECTED - Process each one separately
+            console.log(`📝 [Multi-Section] Detected ${segmentParts.length} sections:`, segmentParts)
+            
+            const foundSections: Array<{ id: string; name: string }> = []
+            
+            // Process each section reference
+            for (const segmentPart of segmentParts) {
+              let section: any = null
+              
+              // ✅ HANDLE "NEXT CHAPTER" / "NEXT SECTION" LOGIC
+              // When user says "next chapter", we need to find the current chapter and get the next sequential one
+              if (/next\s+(chapter|section|scene|act)/i.test(segmentPart)) {
+                console.log(`🔍 [Next Section] Detected "next" reference: "${segmentPart}"`)
+                
+                // Find the current section (from active context)
+                const currentSection = request.activeContext?.id 
+                  ? request.structureItems?.find((item: any) => item.id === request.activeContext?.id)
+                  : null
+                
+                if (currentSection) {
+                  // Determine what type of section we're looking for (chapter, scene, act, etc.)
+                  const sectionType = segmentPart.match(/(chapter|section|scene|act)/i)?.[1]?.toLowerCase() || 'chapter'
+                  
+                  // Find all sections of this type, sorted by order
+                  const allSectionsOfType = request.structureItems
+                    ?.filter((item: any) => {
+                      const itemName = (item.name || '').toLowerCase()
+                      return itemName.includes(sectionType)
+                    })
+                    .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+                  
+                  if (allSectionsOfType && allSectionsOfType.length > 0) {
+                    // Find current section's index in the sorted list
+                    const currentIndex = allSectionsOfType.findIndex((s: any) => s.id === currentSection.id)
+                    
+                    if (currentIndex >= 0 && currentIndex < allSectionsOfType.length - 1) {
+                      // Found the next section
+                      section = allSectionsOfType[currentIndex + 1]
+                      console.log(`✅ [Next Section] Found: ${section.name} (after ${currentSection.name})`)
+                    } else {
+                      console.log(`⚠️ [Next Section] Current section not found or is last in sequence`)
+                    }
+                  } else {
+                    console.log(`⚠️ [Next Section] No ${sectionType} sections found in structure`)
+                  }
+                } else {
+                  console.log(`⚠️ [Next Section] No active context to determine "next" from`)
+                }
+              } else {
+                // ✅ REGULAR SECTION LOOKUP: Try to find section by name/number
+                // This handles patterns like "chapter 5", "act 2", "scene 3", etc.
+                section = findSectionByName(request.structureItems, segmentPart)
+                if (section) {
+                  console.log(`✅ [TargetSegment Match] Found: ${section.name}`)
+                }
+              }
+              
+              // Add found section to our list
+              if (section) {
+                foundSections.push({ id: section.id, name: section.name })
+              } else {
+                console.log(`⚠️ [TargetSegment] Could not find section matching "${segmentPart}"`)
+              }
+            }
+            
+            // ✅ GENERATE ACTIONS FOR ALL FOUND SECTIONS
+            // MultiAgentOrchestrator will analyze these actions and decide:
+            // - Sequential: Execute one after another (safe, slower)
+            // - Parallel: Execute simultaneously using DAG (fast, efficient for independent sections)
+            // - Cluster: Writer-Critic collaboration (best quality, slower)
+            if (foundSections.length > 0) {
+              const allActions: OrchestratorAction[] = []
+              
+              console.log(`📝 [Multi-Section] Generating actions for ${foundSections.length} sections:`, 
+                foundSections.map(s => s.name).join(', '))
+              
+              // Generate one generate_content action per section
+              for (const { id: sectionId, name: sectionName } of foundSections) {
+                // Get section metadata for model selection
+                const activeStructureItem = request.structureItems?.find((item: any) => item.id === sectionId)
+                const sectionLevel = activeStructureItem?.level || 3
+                const sectionNameLower = activeStructureItem?.name?.toLowerCase() || ''
+                const sectionWordCount = activeStructureItem?.wordCount || 0
+                
+                // Determine task complexity (same logic as single section)
+                // This helps select the right model for each section
+                let taskType: TaskRequirements['type'] = 'simple-scene'
+                if (sectionLevel <= 2) {
+                  taskType = 'complex-scene'
+                } else if (sectionNameLower.includes('climax') || sectionNameLower.includes('confrontation') || 
+                           sectionNameLower.includes('revelation') || sectionNameLower.includes('finale')) {
+                  taskType = 'complex-scene'
+                } else if (sectionWordCount > 1000) {
+                  taskType = 'complex-scene'
+                } else if (sectionNameLower.includes('dialogue') || sectionNameLower.includes('conversation') || 
+                           sectionNameLower.includes('talk')) {
+                  taskType = 'dialogue'
+                } else if (sectionNameLower.includes('action') || sectionNameLower.includes('fight') || 
+                           sectionNameLower.includes('chase') || sectionNameLower.includes('battle')) {
+                  taskType = 'action'
+                }
+                
+                // Select model for this specific section
+                const availableProviders = request.availableProviders || ['openai', 'groq', 'anthropic', 'google']
+                const modelsForWriter = additionalContext?.availableModels || MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
+                
+                const selectedModel = selectModelForTask(
+                  {
+                    type: taskType,
+                    wordCount: sectionWordCount,
+                    contextNeeded: 8000,
+                    priority: 'balanced'
+                  },
+                  modelsForWriter
+                )
+                
+                const writerModel = {
+                  modelId: selectedModel?.id || 'llama-3.3-70b-versatile',
+                  provider: selectedModel?.provider || 'groq',
+                  reasoning: `Intelligent delegation: ${taskType} task → ${selectedModel?.displayName || 'Llama 3.3 70B'}`
+                }
+                
+                // ✅ DEPENDENCY HANDLING:
+                // For multiple sections, we only need ONE select_section action (for the first section)
+                // Subsequent sections don't need navigation - they're independent content generation tasks
+                const needsSelection = !request.activeContext?.id || request.activeContext.id !== sectionId
+                const isFirstSection = allActions.length === 0
+                
+                if (needsSelection && isFirstSection) {
+                  // Only add select_section for the first section that needs navigation
+                  allActions.push({
+                    type: 'select_section',
+                    payload: {
+                      sectionId: sectionId,
+                      sectionName: sectionName
+                    },
+                    status: 'pending',
+                    autoExecute: true,
+                    requiresUserInput: false
+                  })
+                  console.log(`📍 [Multi-Section] Added select_section for first section: ${sectionName}`)
+                }
+                
+                // Generate content action for this section
+                // Note: Only the first action depends on select_section (if navigation was needed)
+                // Other actions are independent and can be executed in parallel
+                allActions.push({
+                  type: 'generate_content',
+                  payload: {
+                    sectionId: sectionId,
+                    sectionName: sectionName,
+                    prompt: request.message,
+                    model: writerModel.modelId,
+                    provider: writerModel.provider
+                  },
+                  status: 'pending',
+                  dependsOn: needsSelection && isFirstSection ? ['select_section'] : undefined,
+                  autoExecute: true,
+                  requiresUserInput: false
+                })
+              }
+              
+              console.log(`✅ [WriteContentAction] Created ${allActions.length} actions for ${foundSections.length} sections`)
+              console.log(`   Sections: ${foundSections.map(s => s.name).join(', ')}`)
+              console.log(`   📊 MultiAgentOrchestrator will analyze and decide execution strategy:`)
+              console.log(`      - Sequential: Safe, one-by-one execution`)
+              console.log(`      - Parallel: Fast, simultaneous execution (likely for ${foundSections.length} independent sections)`)
+              console.log(`      - Cluster: High-quality iterative refinement`)
+              
+              // Return early - MultiAgentOrchestrator will handle execution strategy
+              return allActions
+            } else {
+              // No sections found - fall through to single-section logic below
+              console.log(`⚠️ [Multi-Section] No sections found, falling back to single-section logic`)
+            }
           } else {
-            console.log(`⚠️ [TargetSegment] Could not find section matching "${targetSegment}"`)
+            // ✅ SINGLE SECTION: Use existing logic (backward compatible)
+            const foundSection = findSectionByName(request.structureItems, targetSegment)
+            if (foundSection) {
+              messageTargetSectionId = foundSection.id
+              console.log('✅ [TargetSegment Match] Found:', foundSection.name)
+            } else {
+              console.log(`⚠️ [TargetSegment] Could not find section matching "${targetSegment}"`)
+            }
           }
         }
         

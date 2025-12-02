@@ -19,11 +19,11 @@ export function buildPipelineContext(
   canvasNodes?: Node[],
   canvasContext?: string
 ): PipelineContext {
-  // Get document panel state
-  const documentPanelOpen = worldState.get('ui.documentPanelOpen') || false
+  // ✅ FIX: Use proper WorldStateManager methods instead of worldState.get()
+  const documentPanelOpen = worldState.isDocumentPanelOpen()
   
-  // Get active document info
-  const activeDocument = worldState.get('activeDocument')
+  // ✅ FIX: Use getActiveDocument() instead of worldState.get()
+  const activeDocument = worldState.getActiveDocument()
   const selectedSectionId = activeDocument?.selectedSectionId
   
   // Build active segment if document is open and section is selected
@@ -62,8 +62,9 @@ export function buildPipelineContext(
       timestamp: msg.timestamp
     }))
   } else {
-    // Fallback to worldState conversation
-    const worldStateMessages = worldState.get('conversation.messages') || []
+    // ✅ FIX: Use getState() instead of worldState.get()
+    const state = worldState.getState()
+    const worldStateMessages = state.conversation.messages || []
     conversationHistory = worldStateMessages
       .filter(msg => msg.role === 'user' || msg.role === 'orchestrator')
       .map(msg => ({
@@ -126,8 +127,9 @@ function determineConversationState(
   worldState: WorldStateManager,
   blackboard?: Blackboard
 ): PipelineContext['conversationState'] {
-  // Check for pending clarification
-  const pendingClarification = worldState.get('ui.pendingClarification')
+  // ✅ FIX: Use getState() instead of worldState.get()
+  const state = worldState.getState()
+  const pendingClarification = state.ui.pendingClarification
   if (pendingClarification) {
     return {
       type: 'awaiting_clarification',

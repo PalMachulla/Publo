@@ -736,6 +736,114 @@ export class OrchestratorEngine {
     return result
   }
   
+  /**
+   * Handle clarification option selection (UI-facing method)
+   * 
+   * This method is called by the UI when a user clicks a clarification option.
+   * The orchestrator reads all context from WorldState and processes the response.
+   * 
+   * Architecture:
+   * - UI Layer: Displays options, receives clicks, calls this method
+   * - Logic Layer (this method): Reads from WorldState, processes, returns actions
+   * 
+   * @param response - User's response (option label, ID, or natural language)
+   * @param request - Optional request context (will be read from WorldState if not provided)
+   * @returns OrchestratorResponse with actions ready for execution
+   */
+  async handleClarificationOption(
+    response: string,
+    request: Partial<OrchestratorRequest> = {}
+  ): Promise<OrchestratorResponse> {
+    // ✅ LOGIC LAYER: Read clarification from WorldState (single source of truth)
+    if (!this.worldState) {
+      throw new Error('WorldState required for clarification handling')
+    }
+    
+    const state = this.worldState.getState()
+    const pendingClarification = state.ui.pendingClarification
+    
+    if (!pendingClarification) {
+      this.blackboard.addMessage({
+        role: 'orchestrator',
+        content: '⚠️ No pending clarification found',
+        type: 'error'
+      })
+      return {
+        intent: 'general_chat',
+        confidence: 0.1,
+        reasoning: 'No clarification context available',
+        modelUsed: 'none',
+        actions: [],
+        canvasChanged: false,
+        requiresUserInput: true,
+        estimatedCost: 0
+      }
+    }
+    
+    // ✅ LOGIC LAYER: Read all context from WorldState using existing helper methods
+    // Build minimal request - helpers will read from WorldState
+    // Note: Provide defaults for required fields - helpers will override from WorldState
+    const minimalRequest: OrchestratorRequest = {
+      message: response,
+      canvasNodes: request.canvasNodes || [],
+      canvasEdges: request.canvasEdges || [],
+      structureItems: request.structureItems,
+      contentMap: request.contentMap,
+      currentStoryStructureNodeId: request.currentStoryStructureNodeId,
+      documentFormat: request.documentFormat,
+      availableModels: request.availableModels,
+      availableProviders: request.availableProviders,
+      userKeyId: request.userKeyId
+    }
+    
+    // ✅ LOGIC LAYER: Use existing helper methods that read from WorldState
+    const canvasNodes = this.getCanvasNodes(minimalRequest)
+    const canvasEdges = this.getCanvasEdges(minimalRequest)
+    const structureItems = this.getStructureItems(minimalRequest)
+    const contentMap = this.getContentMap(minimalRequest)
+    const currentStoryStructureNodeId = minimalRequest.currentStoryStructureNodeId || state.activeDocument.nodeId
+    const documentFormat = this.getDocumentFormat(minimalRequest)
+    const availableModels = this.getAvailableModels(minimalRequest)
+    const availableProviders = this.getAvailableProviders(minimalRequest)
+    const userKeyId = minimalRequest.userKeyId || state.user.apiKeys.orchestratorKeyId
+    
+    // ✅ LOGIC LAYER: Process clarification using existing continueClarification method
+    const result = await this.continueClarification(
+      response,
+      {
+        originalAction: pendingClarification.originalIntent,
+        question: pendingClarification.question,
+        options: pendingClarification.options,
+        payload: pendingClarification.originalPayload
+      },
+      {
+        canvasNodes,
+        canvasEdges,
+        structureItems,
+        contentMap,
+        currentStoryStructureNodeId,
+        documentFormat,
+        availableModels,
+        availableProviders,
+        userKeyId
+      }
+    )
+    
+    // ✅ LOGIC LAYER: Clear clarification from WorldState after successful processing
+    // Only clear if we got non-clarification actions (not another clarification request)
+    const hasNonClarificationActions = result.actions.some(
+      a => a.type !== 'request_clarification'
+    )
+    
+    if (hasNonClarificationActions) {
+      this.worldState.update(draft => {
+        draft.ui.pendingClarification = null
+      })
+    }
+    
+    return result
+  }
+  
   // ============================================================
   // CONTINUE CONFIRMATION: Streamlined Confirmation Processing
   // ============================================================
@@ -1061,7 +1169,7 @@ export class OrchestratorEngine {
         data: n.data
       }))
     }
-    return request.canvasNodes
+    return request.canvasNodes || []
   }
   
   private getCanvasEdges(request: OrchestratorRequest): Edge[] {
@@ -1074,7 +1182,7 @@ export class OrchestratorEngine {
         data: e.data
       }))
     }
-    return request.canvasEdges
+    return request.canvasEdges || []
   }
   
   private getActiveContext(request: OrchestratorRequest): {id: string, name: string} | undefined {
@@ -1250,6 +1358,14 @@ export class OrchestratorEngine {
         continue
       }
       
+      // ✅ FIX: generate_content actions should NOT be auto-executed by base orchestrator
+      // They need to be handled by MultiAgentOrchestrator's executeActionsWithAgents method
+      // Even if they have autoExecute: true, they should be passed to MultiAgentOrchestrator
+      if (action.type === 'generate_content') {
+        uiRequiredActions.push(action) // Send to MultiAgentOrchestrator via remainingActions
+        continue
+      }
+      
       // Actions with autoExecute: true and no dependencies can execute immediately
       if (action.autoExecute === true && (!action.dependsOn || action.dependsOn.length === 0)) {
         autoExecutableActions.push(action)
@@ -1356,9 +1472,10 @@ export class OrchestratorEngine {
         break
         
       case 'generate_content':
-        // Content generation should be handled by MultiAgentOrchestrator
-        // If we're in base OrchestratorEngine, we can't execute this
-        // It will be handled by MultiAgentOrchestrator's executeActionsWithAgents
+        // ✅ FIX: This should never be reached - generate_content actions are excluded
+        // from auto-execution in processActionDependencies and sent to MultiAgentOrchestrator
+        // If we reach here, it's a bug in the logic above
+        console.warn(`⚠️ [ActionSequencer] generate_content should not be executed here - this indicates a bug`)
         console.log(`✍️ [ActionSequencer] Content generation will be handled by agent system`)
         break
         
@@ -2486,10 +2603,32 @@ Which option did the user select? Return ONLY the option ID.`
       }
       
       if (selectedOption.id === 'create_new') {
+        // ✅ FIX: Get format from payload OR request (which reads from WorldState)
+        // The request.documentFormat comes from getDocumentFormat() which reads from WorldState
+        const effectiveFormat = documentFormat || format || request.documentFormat
+        
+        if (!effectiveFormat) {
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `⚠️ Unable to determine document format. Please specify the format.`,
+            type: 'error'
+          })
+          return {
+            intent: 'create_structure',
+            confidence: 0.5,
+            reasoning: 'Format not specified in clarification',
+            modelUsed: 'none',
+            actions: [],
+            canvasChanged: false,
+            requiresUserInput: true,
+            estimatedCost: 0
+          }
+        }
+        
         // User wants to create something new (ignore existing docs)
         this.blackboard.addMessage({
           role: 'orchestrator',
-          content: `✅ Creating new ${documentFormat} from scratch...`,
+          content: `✅ Creating new ${effectiveFormat} from scratch...`,
           type: 'result'
         })
         
@@ -2497,21 +2636,21 @@ Which option did the user select? Return ONLY the option ID.`
         // The UI will call onCreateStory, which creates the node FIRST,
         // then calls triggerOrchestratedGeneration with the proper node ID
         console.log('✅ [Clarification] User chose create_new, returning message action')
-        console.log('   Format:', documentFormat)
+        console.log('   Format:', effectiveFormat)
         console.log('   Message:', userMessage)
         console.log('   → UI will create node and trigger orchestration with node ID')
         
         return {
           intent: 'create_structure',
           confidence: 0.95,
-          reasoning: `User chose to create new ${documentFormat} from scratch`,
+          reasoning: `User chose to create new ${effectiveFormat} from scratch`,
           modelUsed: 'none',
           actions: [{
             type: 'message',
             payload: {
-              content: `✅ Creating new ${documentFormat} from scratch...`,
+              content: `✅ Creating new ${effectiveFormat} from scratch...`,
               intent: 'create_structure',
-              format: documentFormat,
+              format: effectiveFormat, // ✅ Use effectiveFormat instead of documentFormat
               prompt: `${userMessage} from scratch` // Will trigger structure generation in triggerOrchestratedGeneration
             },
             status: 'pending'
@@ -2519,6 +2658,90 @@ Which option did the user select? Return ONLY the option ID.`
           canvasChanged: false, // Canvas change will happen when UI executes onCreateStory
           requiresUserInput: false,
           estimatedCost: 0
+        }
+      } else if (selectedOption.id === 'use_existing') {
+        // ✅ NEW: User wants to use an existing document
+        // Return open_and_write intent to open one of the existing documents
+        this.blackboard.addMessage({
+          role: 'orchestrator',
+          content: `✅ Opening existing document...`,
+          type: 'result'
+        })
+        
+        // If there's only one existing doc, open it directly
+        // Otherwise, return a clarification to ask which one
+        if (existingDocs && existingDocs.length === 1) {
+          const docToOpen = existingDocs[0]
+          return {
+            intent: 'open_and_write',
+            confidence: 0.95,
+            reasoning: `User chose to use existing ${docToOpen.format}`,
+            modelUsed: 'none',
+            actions: [{
+              type: 'open_document',
+              payload: {
+                nodeId: docToOpen.id,
+                sectionId: null
+              },
+              status: 'pending'
+            }],
+            canvasChanged: false,
+            requiresUserInput: false,
+            estimatedCost: 0
+          }
+        } else if (existingDocs && existingDocs.length > 1) {
+          // Multiple docs - ask which one
+          return {
+            intent: 'open_and_write',
+            confidence: 0.95,
+            reasoning: 'User wants to use existing document, but multiple exist',
+            modelUsed: 'none',
+            actions: [{
+              type: 'request_clarification',
+              payload: {
+                question: 'Which document would you like to open?',
+                context: existingDocs.map((d: any) => `• ${d.label} (${d.format})`).join('\n'),
+                options: existingDocs.map((d: any) => ({
+                  id: d.id,
+                  label: d.label,
+                  description: `${d.format} document`
+                })),
+                originalIntent: 'open_and_write',
+                originalPayload: {}
+              },
+              status: 'pending'
+            }],
+            canvasChanged: false,
+            requiresUserInput: true,
+            estimatedCost: 0
+          }
+        } else {
+          // No existing docs found (shouldn't happen, but handle gracefully)
+          this.blackboard.addMessage({
+            role: 'orchestrator',
+            content: `⚠️ No existing documents found. Creating new ${documentFormat} instead...`,
+            type: 'error'
+          })
+          
+          return {
+            intent: 'create_structure',
+            confidence: 0.95,
+            reasoning: 'User chose use_existing but no docs found, creating new instead',
+            modelUsed: 'none',
+            actions: [{
+              type: 'message',
+              payload: {
+                content: `✅ Creating new ${documentFormat}...`,
+                intent: 'create_structure',
+                format: documentFormat,
+                prompt: userMessage
+              },
+              status: 'pending'
+            }],
+            canvasChanged: false,
+            requiresUserInput: false,
+            estimatedCost: 0
+          }
         }
       } else {
         // User wants to base it on an existing doc
