@@ -33,5 +33,33 @@ FRUSTRATED FOLLOW-UPS (CRITICAL):
   * Re-analyze their PREVIOUS message (look at conversation history)
   * Keep the same intent type they originally wanted
   * Extract the section reference they mentioned ("chapter 2", "act 1", etc.)
-  * Intent: write_content (they want to write, not navigate!)`
+  * Intent: write_content (they want to write, not navigate!)
+
+CORRECTION DETECTION (CRITICAL - NEW!):
+- If user says "I wanted you to [X], not [Y]" or "I meant [X], not [Y]" or "No, I wanted [X]" or "That's wrong, I wanted [X]" or "Actually, I wanted [X]":
+  * User is CORRECTING a previous misclassification
+  * Look at the PREVIOUS orchestrator action (2-3 messages back) to see what was done wrong
+  * Extract what the user ACTUALLY wanted (X) vs what was done (Y)
+  * Intent: Use the CORRECTED intent (X), not the wrong one (Y)
+  * Confidence: High (user explicitly corrected)
+  * Extract entities from the correction message
+  * This correction will be stored for future learning
+  
+- Examples:
+  * "I wanted you to open the novel, not create a new one" → 
+    - Previous: create_structure (WRONG)
+    - Corrected: open_and_write (CORRECT)
+    - Pattern: "open the [document]" when canvas has matching node → open_and_write (NOT create_structure!)
+  
+  * "I meant write content, not navigate" →
+    - Previous: navigate_section (WRONG)
+    - Corrected: write_content (CORRECT)
+    - Pattern: "write [section]" when document is open → write_content (NOT navigate_section)
+
+- When correction is detected:
+  * Intent: Use the CORRECTED intent
+  * Confidence: 0.95 (high - user explicitly corrected)
+  * Extract entities from the correction message
+  * Store this as a correction pattern for future learning
+  * Apply the correction immediately in this analysis`
 

@@ -46,6 +46,10 @@ CRITICAL CONTEXT RULES:
   * "get content to MY podcast" + Podcast exists → open_and_write (HELPFUL: open existing node)
   * "help me with THE screenplay" + Screenplay exists → open_and_write (HELPFUL: open existing node)
   * "craft/write in that node" → open_and_write (HELPFUL MODE: open existing node for writing)
+  * "write [sections] in [our/the/my] [document]" + Document exists → open_and_write (CRITICAL: check canvas first!)
+    * Example: "write the three first chapters in our novel" + Novel exists → open_and_write with targetSegment: "chapter 1, chapter 2, chapter 3"
+    * Example: "write chapter 2 in the screenplay" + Screenplay exists → open_and_write with targetSegment: "chapter 2"
+    * ALWAYS check canvas context for matching document before assuming create_structure!
   * "create a novel" + NO Novel on canvas → create_structure (new document node)
   * "write about X" + NO matching node → create_structure (needs new document first)
 
@@ -64,7 +68,15 @@ Guidelines:
 - If user says "remove", "delete", "get rid of" a node/document → delete_node (requiresContext: false - operates on canvas nodes)
   * IMPORTANT: Even if there are MULTIPLE matching nodes, still use delete_node intent (the system will handle asking which one)
   * Do NOT use clarify_intent for deletion - always use delete_node and let the system handle ambiguity
-- CRITICAL: "MY podcast" / "THE screenplay" when canvas shows matching node → open_and_write (NOT create_structure!)
+- CRITICAL: "MY podcast" / "THE screenplay" / "OUR novel" when canvas shows matching node → open_and_write (NOT create_structure!)
+- CRITICAL: "write [sections] in [our/the/my] [document]" → Check canvas FIRST!
+  * Pattern: "write [X] in [our/the/my] [Y]" where Y is a document type
+  * If canvas shows matching document → open_and_write (extract sections into targetSegment)
+  * If canvas shows NO matching document → create_structure (but this is unusual - user said "our" which implies it exists)
+  * Examples:
+    * "write the three first chapters in our novel" → open_and_write, targetSegment: "chapter 1, chapter 2, chapter 3"
+    * "write chapter 2 in the screenplay" → open_and_write, targetSegment: "chapter 2"
+    * "write the first act in my novel" → open_and_write, targetSegment: "act 1"
 - If user references previous chat ("add it", "put that") → check conversation history
 - If ambiguous or unclear → clarify_intent (ask a question)
 
@@ -143,6 +155,12 @@ CRITICAL - Section Name Extraction:
   * "Write chapter 2" → targetSegment: "chapter 2"
   * "Write episode 3" (podcast) → targetSegment: "episode 3"
   * "Write scene 5" (screenplay) → targetSegment: "scene 5"
+- MULTIPLE SECTIONS: When user mentions multiple sections, extract ALL of them
+  * "write the three first chapters" → targetSegment: "chapter 1, chapter 2, chapter 3" OR extract as: ["chapter 1", "chapter 2", "chapter 3"]
+  * "write chapters 1, 2, and 3" → targetSegment: "chapter 1, chapter 2, chapter 3"
+  * "write the first two scenes" → targetSegment: "scene 1, scene 2"
+  * "write the three first chapters in our novel" → targetSegment: "chapter 1, chapter 2, chapter 3" (and intent: open_and_write)
+  * For multiple sections, you can use comma-separated format or array format in targetSegment
 - The system will fuzzy-match this to the actual section in the document structure
 - Be precise - extract the exact section name/identifier the user mentioned
 

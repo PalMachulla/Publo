@@ -28,9 +28,10 @@
  * - modelSelection: Selected LLM model
  * - availableModels: Models user has API keys for
  * - orchestratorEngine methods:
- *   * validateFormatConventions()
  *   * createStructurePlanWithFallback()
  *   * analyzeTaskComplexity()
+ * 
+ * NOTE: Format validation is now handled by the intent system (validation rules)
  * 
  * Source: orchestratorEngine.ts lines 1175-1701
  * 
@@ -43,6 +44,7 @@ import type { OrchestratorRequest, OrchestratorAction } from '../../core/orchest
 import type { CanvasContext } from '../../context/contextProvider'
 import type { TieredModel } from '../../core/modelRouter'
 import { getTemplateById } from '../../schemas/templateRegistry'
+import { getFormatLabel } from '../../schemas/formatMetadata'
 
 /**
  * CreateStructureAction
@@ -107,6 +109,35 @@ export class CreateStructureAction extends BaseAction {
     console.log('   ClarificationContext:', !!request.clarificationContext)
     console.log('   Extracted entities:', intent.extractedEntities)
     
+    // ============================================================
+    // TEMPLATE SELECTION LOGIC
+    // ============================================================
+    // 
+    // Template selection happens in TWO scenarios:
+    // 
+    // 1. EXPLICIT KEYWORDS (High Confidence):
+    //    - User mentions specific template keywords (e.g., "podcast interview", "hero's journey novel")
+    //    - Intent analysis extracts suggestedTemplate from message
+    //    - Example: "Create a podcast interview" → suggestedTemplate: "interview"
+    //    - Result: Proceed directly with structure generation (no clarification needed)
+    // 
+    // 2. VAGUE REQUEST (Low Confidence):
+    //    - User only mentions format (e.g., "Create a podcast", "Write a novel")
+    //    - Intent analysis leaves suggestedTemplate undefined
+    //    - Result: Return request_clarification with template options (user selects from UI)
+    // 
+    // 3. CLARIFICATION RESPONSE:
+    //    - User selected a template from clarification options
+    //    - clarificationContext.payload.selectedOptionId contains the selected template ID
+    //    - Result: Use selected template and proceed with structure generation
+    // 
+    // This logic ensures:
+    // - High confidence (explicit keywords) → auto-proceed
+    // - Low confidence (vague request) → ask user to choose
+    // - User choice (clarification) → proceed with their selection
+    // 
+    // See: OrchestratorPanel.tsx for UI handling of request_clarification actions
+    
     // Check if user selected a template from clarification
     let selectedTemplate = intent.extractedEntities?.suggestedTemplate
     console.log('🎯 [CreateStructureAction] Template sources:', {
@@ -118,12 +149,34 @@ export class CreateStructureAction extends BaseAction {
     if (request.clarificationContext) {
       // User selected a template from clarification options
       const clarification = request.clarificationContext
-      const selectedOption = clarification.options?.find(opt => opt.id === clarification.payload?.selectedOptionId)
+      const selectedOptionId = clarification.payload?.selectedOptionId
+      
+      // Try multiple ways to find the selected option
+      let selectedOption = selectedOptionId 
+        ? clarification.options?.find(opt => opt.id === selectedOptionId)
+        : null
+      
+      // Fallback: check if the option ID is directly in the payload
+      if (!selectedOption && selectedOptionId) {
+        selectedOption = clarification.options?.find(opt => 
+          opt.id === selectedOptionId || 
+          opt.label.toLowerCase() === selectedOptionId.toLowerCase()
+        )
+      }
+      
       if (selectedOption) {
         selectedTemplate = selectedOption.id
-        console.log('✅ [CreateStructureAction] User selected template from clarification:', selectedTemplate)
+        console.log('✅ [CreateStructureAction] User selected template from clarification:', {
+          templateId: selectedTemplate,
+          templateLabel: selectedOption.label,
+          selectedOptionId: selectedOptionId
+        })
       } else {
-        console.log('⚠️ [CreateStructureAction] Clarification context but no matching option found')
+        console.warn('⚠️ [CreateStructureAction] Clarification context but no matching option found:', {
+          selectedOptionId,
+          availableOptions: clarification.options?.map(o => o.id),
+          payload: clarification.payload
+        })
       }
     }
 
@@ -166,10 +219,27 @@ export class CreateStructureAction extends BaseAction {
     // ============================================================
     // STEP 1.5: Check if template selection is needed
     // ============================================================
+    // 
+    // This step determines whether to proceed with structure generation or request clarification.
+    // 
+    // Decision Logic:
+    // - If selectedTemplate exists → User was explicit (e.g., "podcast interview")
+    //   → Skip to structure generation (high confidence, no clarification needed)
+    // 
+    // - If selectedTemplate is undefined AND format has templates → User was vague (e.g., "podcast")
+    //   → Return request_clarification with template options (user needs to choose)
+    // 
+    // - If selectedTemplate is undefined AND format has NO templates → No template needed
+    //   → Skip to structure generation (format doesn't require template selection)
+    // 
+    // Examples:
+    // - "Create a podcast interview" → selectedTemplate: "interview" → Proceed ✅
+    // - "Create a podcast" → selectedTemplate: undefined → Show options ✅
+    // - "Write a novel" → selectedTemplate: undefined → Show options (if templates exist) ✅
+    // 
+    // Note: This logic is in the orchestrator layer (not UI) to maintain architectural separation.
+    // The UI only displays the request_clarification action, it doesn't make the decision.
     
-    // If user's request is vague (no template keyword), show template options
-    // Example: "Create a podcast" (vague) → show options
-    //          "Create a podcast interview" (specific) → use interview template
     console.log('🔍 [STEP 1.5] Template selection check:', {
       hasSelectedTemplate: !!selectedTemplate,
       selectedTemplate,
@@ -220,6 +290,8 @@ export class CreateStructureAction extends BaseAction {
         ]
       } else {
         console.log('⚠️ [STEP 1.5] No available templates for format:', request.documentFormat)
+        // Format has no templates → proceed without template selection
+        // This is expected for formats that don't require template selection
       }
     } else {
       console.log('⏭️ [STEP 1.5] Skipping template selection:', {
@@ -227,39 +299,29 @@ export class CreateStructureAction extends BaseAction {
         selectedTemplate,
         documentFormat: request.documentFormat
       })
+      // Template already selected (from explicit keywords or clarification) → proceed to structure generation
     }
     
     // ============================================================
-    // STEP 2: Validate format conventions (educate user)
+    // STEP 2: Format validation (moved to intent system)
     // ============================================================
+    // 
+    // At this point, we have one of three scenarios:
+    // 1. selectedTemplate exists → Proceed with structure generation using the template
+    // 2. selectedTemplate is undefined AND format has no templates → Proceed without template
+    // 3. selectedTemplate is undefined AND format has templates → Already returned request_clarification above
+    // 
+    // The rest of this function handles structure generation for scenarios 1 and 2.
     
-    const formatValidation = this.orchestratorEngine.validateFormatConventions(
-      request.documentFormat,
-      request.message
-    )
+    // NOTE: Format validation is now handled by the intent system's validation rules
+    // (see frontend/src/lib/orchestrator/context/intent/stages/4-validation/rules.ts)
+    // The intent system will detect format mismatches and ask for clarification if needed.
+    // No need to validate here - the intent analysis already did it.
     
-    console.log('🔍 [Format Validation]', {
+    console.log('✅ [Format Validation] Format validation handled by intent system:', {
       format: request.documentFormat,
-      message: request.message,
-      validation: formatValidation
+      message: request.message
     })
-    
-    if (!formatValidation.valid && formatValidation.mismatch && formatValidation.suggestion) {
-      // Educational clarification
-      const formatLabel = request.documentFormat.replace(/-/g, ' ')
-      const clarificationMessage = `I'd love to help with your ${formatLabel}! Just to clarify - ${formatLabel}s typically use ${formatValidation.suggestion}s rather than ${formatValidation.mismatch}s. Did you mean ${formatValidation.suggestion.charAt(0).toUpperCase() + formatValidation.suggestion.slice(1)} 2? Or are you planning a different format (like a novel)?`
-      
-      // Add to blackboard for conversation history
-      blackboard.addMessage({
-        role: 'orchestrator',
-        content: clarificationMessage,
-        type: 'result'
-      })
-      
-      return [
-        this.message(clarificationMessage, 'info')
-      ]
-    }
     
     blackboard.addMessage({
       role: 'orchestrator',
@@ -316,7 +378,8 @@ export class CreateStructureAction extends BaseAction {
         .map(doc => `• ${doc.label} (${doc.format}, ${doc.itemsCount} sections, ${doc.wordsWritten} words${doc.hasContent ? ', has content' : ', empty'})`)
         .join('\n')
       
-      const formatLabel = request.documentFormat.charAt(0).toUpperCase() + request.documentFormat.slice(1).replace(/-/g, ' ')
+      // Use centralized format label helper
+      const formatLabel = getFormatLabel(request.documentFormat)
       
       // Return request_clarification action with structured options
       return [
@@ -418,23 +481,85 @@ export class CreateStructureAction extends BaseAction {
     })
     
     // ============================================================
-    // STEP 6: Analyze task complexity
+    // STEP 6: Analyze task complexity and check for auto-generation
     // ============================================================
-
-    // TODO: Implement proper task complexity analysis
-    // For now, assume single-step (structure only)
+    
+    // Check if user wants to auto-generate specific sections (e.g., "write act1 & 2")
+    // Parse from targetSegment or message for multiple sections
+    const targetSegment = intent.extractedEntities?.targetSegment
+    const userMessage = request.message.toLowerCase()
+    
+    // Parse targetSegment for multiple sections (e.g., "act1 & 2" or "act 1 and act 2")
+    let sectionsToGenerate: string[] = []
+    if (targetSegment) {
+      // Try to parse "act1 & 2" or "act 1 and act 2" patterns
+      const andPattern = /(?:and|&)\s*(act|chapter|scene|episode|section)\s*(\d+)/i
+      const match = targetSegment.match(andPattern)
+      if (match) {
+        const firstSection = targetSegment.split(/\s*(?:and|&)\s*/i)[0]?.trim()
+        const secondSection = `${match[1]} ${match[2]}`
+        if (firstSection) sectionsToGenerate.push(firstSection)
+        sectionsToGenerate.push(secondSection)
+      } else {
+        sectionsToGenerate.push(targetSegment)
+      }
+    } else if (userMessage.includes('write') && (userMessage.includes('act') || userMessage.includes('chapter'))) {
+      // Fallback: Parse from message directly (e.g., "write act1 & 2")
+      const actPattern = /(?:write|write out)\s+(act|chapter|scene|episode|section)\s*(\d+)(?:\s*(?:and|&)\s*(act|chapter|scene|episode|section)\s*(\d+))?/i
+      const messageMatch = userMessage.match(actPattern)
+      if (messageMatch) {
+        sectionsToGenerate.push(`${messageMatch[1]} ${messageMatch[2]}`)
+        if (messageMatch[3] && messageMatch[4]) {
+          sectionsToGenerate.push(`${messageMatch[3]} ${messageMatch[4]}`)
+        }
+      }
+    }
+    
     const taskAnalysis = {
-      isMultiStep: false,
+      isMultiStep: sectionsToGenerate.length > 0,
       targetSections: [] as Array<{id: string, name: string}>,
-      complexity: 'simple',
-      reasoning: 'Simple structure-only task'
+      complexity: sectionsToGenerate.length > 0 ? 'moderate' : 'simple',
+      reasoning: sectionsToGenerate.length > 0 
+        ? `User wants to generate content for: ${sectionsToGenerate.join(', ')}`
+        : 'Simple structure-only task'
     }
 
-    console.log('🔍 [Task Analysis]', taskAnalysis)
+    console.log('🔍 [Task Analysis]', {
+      ...taskAnalysis,
+      targetSegment,
+      sectionsToGenerate,
+      userMessage
+    })
     
     // ============================================================
     // STEP 7: Add content generation actions if multi-step
     // ============================================================
+    
+    if (taskAnalysis.isMultiStep && sectionsToGenerate.length > 0 && structurePlan?.structure) {
+      // Find matching sections in the generated structure
+      const structureItems = structurePlan.structure as Array<{id: string, name: string, level: number}>
+      
+      for (const sectionRef of sectionsToGenerate) {
+        // Try to find matching section by name (fuzzy match)
+        const normalizedRef = sectionRef.toLowerCase().trim()
+        const matchingSection = structureItems.find(item => {
+          const normalizedName = item.name.toLowerCase()
+          // Check if section name contains the reference (e.g., "Act 1" matches "act1")
+          return normalizedName.includes(normalizedRef) || 
+                 normalizedRef.includes(normalizedName) ||
+                 normalizedName.replace(/\s+/g, '').includes(normalizedRef.replace(/\s+/g, ''))
+        })
+        
+        if (matchingSection) {
+          taskAnalysis.targetSections.push({
+            id: matchingSection.id,
+            name: matchingSection.name
+          })
+        } else {
+          console.warn(`⚠️ [CreateStructureAction] Could not find section matching "${sectionRef}" in structure`)
+        }
+      }
+    }
     
     if (taskAnalysis.isMultiStep && taskAnalysis.targetSections.length > 0) {
       blackboard.addMessage({

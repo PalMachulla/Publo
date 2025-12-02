@@ -33,6 +33,9 @@ import { getStory, saveCanvas, updateStory, createStory, deleteStory } from '@/l
 import { getCanvasShares, shareCanvas, removeCanvasShare } from '@/lib/canvas-sharing'
 import { NodeType, StoryFormat, StoryStructureNodeData } from '@/types/nodes'
 import { MODEL_TIERS } from '@/lib/orchestrator/core/modelRouter'
+import { getFormatLabel } from '@/lib/orchestrator/schemas/formatMetadata'
+import type { WorldStateManager } from '@/lib/orchestrator/core/worldState'
+import { buildWorldStateFromReactFlow } from '@/lib/orchestrator/core/worldState'
 
 // Node types for React Flow
 const nodeTypes = {
@@ -82,14 +85,10 @@ export default function CanvasPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   
-  // Canvas-level chat history (persistent across all generations)
-  const [canvasChatHistory, setCanvasChatHistory] = useState<Array<{
-    id: string
-    timestamp: string
-    content: string
-    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
-    role?: 'user' | 'orchestrator'
-  }>>([])
+  // ✅ MIGRATION: WorldState instance for unified conversation management
+  // Use ref to persist across re-renders and preserve conversation messages
+  const worldStateRef = useRef<WorldStateManager | null>(null)
+  const [worldStateInstance, setWorldStateInstance] = useState<WorldStateManager | null>(null)
 
   // Wrapper to prevent context node deletion and handle cluster node dragging
   const handleNodesChange = useCallback((changes: any) => {
@@ -189,6 +188,67 @@ export default function CanvasPage() {
   const [currentStoryDraftId, setCurrentStoryDraftId] = useState<string | null>(null)
   const [initialDocumentContent, setInitialDocumentContent] = useState('')
   const [currentStoryStructureNodeId, setCurrentStoryStructureNodeId] = useState<string | null>(null)
+  
+  // ✅ MIGRATION: Initialize WorldState when user and nodes are available
+  // (Moved here to access currentStoryStructureNodeId and isAIDocPanelOpen)
+  useEffect(() => {
+    if (user && nodes.length > 0 && !worldStateRef.current) {
+      const ws = buildWorldStateFromReactFlow(
+        nodes,
+        edges,
+        user.id,
+        {
+          activeDocumentNodeId: currentStoryStructureNodeId,
+          isDocumentPanelOpen: isAIDocPanelOpen,
+          availableProviders: [],
+          availableModels: [],
+          modelPreferences: {
+            modelMode: 'automatic',
+            fixedModelId: null,
+            fixedModeStrategy: 'loose'
+          }
+        }
+      )
+      worldStateRef.current = ws
+      setWorldStateInstance(ws)
+      console.log('✅ [Canvas] WorldState initialized for conversation management')
+    }
+  }, [user, nodes.length > 0, currentStoryStructureNodeId, isAIDocPanelOpen]) // Initialize when user, nodes, and context are ready
+  
+  // Update WorldState when canvas state changes (but preserve conversation)
+  useEffect(() => {
+    if (worldStateRef.current && nodes.length > 0) {
+      // Rebuild WorldState with updated canvas state, preserving conversation
+      const conversationMessages = worldStateRef.current.getState().conversation.messages
+      const ws = buildWorldStateFromReactFlow(
+        nodes,
+        edges,
+        user?.id || '',
+        {
+          activeDocumentNodeId: currentStoryStructureNodeId,
+          isDocumentPanelOpen: isAIDocPanelOpen,
+          availableProviders: [],
+          availableModels: [],
+          modelPreferences: {
+            modelMode: 'automatic',
+            fixedModelId: null,
+            fixedModeStrategy: 'loose'
+          }
+        }
+      )
+      // Restore conversation messages
+      conversationMessages.forEach(msg => {
+        ws.addMessage({
+          content: msg.content,
+          type: msg.type,
+          role: msg.role
+        })
+      })
+      worldStateRef.current = ws
+      setWorldStateInstance(ws)
+    }
+  }, [nodes, edges, currentStoryStructureNodeId, isAIDocPanelOpen, user?.id])
+  
   const [currentStructureItems, setCurrentStructureItems] = useState<any[]>([])
   const [currentStructureFormat, setCurrentStructureFormat] = useState<StoryFormat | undefined>(undefined)
   const [currentContentMap, setCurrentContentMap] = useState<Record<string, string>>({})
@@ -359,8 +419,10 @@ export default function CanvasPage() {
       console.log('Loading story:', storyId, '(previously loaded:', lastLoadedStoryIdRef.current, ')')
       
       // Clear chat history when switching canvases (fresh start for each canvas)
-      setCanvasChatHistory([])
-      console.log('🗑️ Chat history cleared for new canvas')
+      if (worldStateRef.current) {
+        worldStateRef.current.clearConversation()
+        console.log('🗑️ Chat history cleared for new canvas (via WorldState)')
+      }
       
       // Set loading flags before loading
       setIsLoadingCanvas(true)
@@ -934,20 +996,8 @@ export default function CanvasPage() {
       format: structureId.startsWith('structure-') ? '❌ WRONG' : '✅ CORRECT'
     })
     
-    // Get formatted title based on format (including report subtypes)
-    const formatLabels: Record<string, string> = {
-      'novel': 'Novel',
-      'report': 'Report',
-      'report_script_coverage': 'Script Coverage Report',
-      'report_business': 'Business Report',
-      'report_content_analysis': 'Content Analysis Report',
-      'short-story': 'Short Story',
-      'article': 'Article',
-      'screenplay': 'Screenplay',
-      'essay': 'Essay',
-      'podcast': 'Podcast'
-    }
-    const title = formatLabels[format] || 'Document'
+    // Get formatted title based on format (using centralized format metadata)
+    const title = getFormatLabel(format) || 'Document'
     
     // If plan is provided, convert it to items array
     const initialItems = plan?.structure?.map((item: any, index: number) => ({
@@ -1133,17 +1183,28 @@ export default function CanvasPage() {
         await saveAndFinalize()
         console.log('✅ Node saved to database successfully')
         
+        // ✅ FIX: Update WorldState immediately with the plan
+        // Note: WorldState will be updated in triggerOrchestratedGeneration
+        const structureItems = plan.structure || []
+        
         // ✅ CRITICAL FIX: Check if content generation was requested in the plan
         // The plan has a 'tasks' array that indicates if content should be generated
         if (plan.tasks && plan.tasks.length > 0 && (aiPromptNode || hasChatPrompt)) {
-          console.log('🎯 [handleCreateStory] Plan has tasks, triggering content generation')
+          console.log('🎯 [handleCreateStory] Plan has tasks, triggering content generation only (structure already exists)')
           console.log('   Tasks:', plan.tasks.map((t: any) => ({ id: t.id, type: t.type, sectionId: t.sectionId })))
           
-          // Don't exit early - continue to trigger orchestration for content generation
-          // Fall through to the orchestration logic below
+          // ✅ FIX: Call triggerOrchestratedGeneration with plan to skip structure generation
+          triggerOrchestratedGeneration(structureId, format, aiPromptNode || null, 'context', userPromptDirect, plan)
+          return // Exit early - structure is done, only content generation needed
         } else {
-          console.log('ℹ️ [handleCreateStory] No tasks in plan, structure-only creation')
-          return // Exit early - no content generation needed
+          console.log('ℹ️ [handleCreateStory] No tasks in plan, structure-only creation - opening document panel')
+          // ✅ FIX: Open document panel immediately since structure is ready
+          setCurrentStoryStructureNodeId(structureId)
+          setCurrentStructureItems(structureItems)
+          setCurrentStructureFormat(format)
+          setCurrentContentMap({})
+          setIsAIDocPanelOpen(true)
+          return // Exit early - no orchestration needed
         }
       } catch (err) {
         console.error('❌ Failed to save new structure node:', err)
@@ -1199,7 +1260,8 @@ export default function CanvasPage() {
     format: StoryFormat,
     aiPromptNode: Node | null, // Now optional
     orchestratorNodeId: string,
-    userPromptDirect?: string // Direct chat prompt (bypasses node data)
+    userPromptDirect?: string, // Direct chat prompt (bypasses node data)
+    existingPlan?: any // ✅ NEW: Optional plan if structure already generated
   ) => {
     console.log('═══════════════════════════════════════════════')
     console.log('🎬 ORCHESTRATION STARTED')
@@ -1213,56 +1275,132 @@ export default function CanvasPage() {
     console.log('Format:', format)
     console.log('Has AI Prompt Node:', !!aiPromptNode)
     console.log('Orchestrator ID:', orchestratorNodeId)
+    console.log('Has Existing Plan:', !!existingPlan)
     console.log('═══════════════════════════════════════════════')
     console.log('⚠️ CRITICAL: This ID will be passed to agents for content saving')
     console.log('⚠️ If agents fail with "Node not found", verify this ID matches UPSERT ID')
     console.log('═══════════════════════════════════════════════')
     
-    // Check authentication
-    if (!user) {
-      isInferencingRef.current = false
-      alert('❌ You must be logged in to generate content.')
-      setNodes((nds) =>
-        nds.map((n) => {
-          if (n.id === structureNodeId) {
-            return { ...n, data: { ...n.data, isLoading: false } }
-          } else if (n.id === orchestratorNodeId) {
-            return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
-          }
-          return n
+    // ✅ FIX: Create WorldState early (needed for both existing plan and new generation paths)
+    const { buildWorldStateFromReactFlow } = await import('@/lib/orchestrator/core/worldState')
+    const worldState = buildWorldStateFromReactFlow(
+      nodes,
+      edges,
+      user?.id || '',
+      {
+        activeDocumentNodeId: structureNodeId,
+        availableProviders: [],
+        modelPreferences: {
+          modelMode: 'automatic',
+          fixedModelId: null
+        }
+      }
+    )
+    
+    // ✅ FIX: If plan already exists, skip structure generation
+    if (existingPlan) {
+        console.log('✅ [triggerOrchestratedGeneration] Plan already provided, skipping structure generation')
+        const structureItems = existingPlan.structure || []
+        const plan = existingPlan // Use existing plan directly
+        
+        // Update WorldState with existing structure
+        worldState.setActiveDocument(structureNodeId, format, structureItems)
+        console.log('✅ [triggerOrchestratedGeneration] WorldState updated with existing structure')
+        
+        // Update node with structure items
+        setNodes((nds) => {
+          return nds.map((n) => {
+            if (n.id === structureNodeId) {
+              return {
+                ...n,
+                data: {
+                  ...n.data,
+                  items: structureItems,
+                  isLoading: false,
+                  document_data: {
+                    ...(n.data.document_data || {}),
+                    structure: structureItems
+                  }
+                }
+              }
+            }
+            return n
+          })
         })
-      )
-      return
-    }
+        
+        // Save canvas with updated structure
+        hasUnsavedChangesRef.current = true
+        try {
+          await handleSave()
+          console.log('✅ [triggerOrchestratedGeneration] Canvas saved with existing structure')
+        } catch (saveError) {
+          console.error('❌ [triggerOrchestratedGeneration] Failed to save canvas:', saveError)
+        }
+        
+        // Check if content generation is needed
+        if (plan.tasks && plan.tasks.length > 0) {
+          console.log('🎯 [triggerOrchestratedGeneration] Plan has tasks, proceeding with content generation only')
+          // Jump directly to content generation section (skip structure generation below)
+          // We'll use the existing plan and structureItems
+          // Note: We'll need to set up userPrompt and other variables for content generation
+        } else {
+          console.log('ℹ️ [triggerOrchestratedGeneration] No tasks in plan, opening document panel')
+          // Open document panel and exit
+          setCurrentStoryStructureNodeId(structureNodeId)
+          setCurrentStructureItems(structureItems)
+          setCurrentStructureFormat(format)
+          setCurrentContentMap({})
+          setIsAIDocPanelOpen(true)
+          return // Exit early - structure done, no content needed
+        }
+      }
     
-    // Determine user prompt source (priority: direct > AI Prompt node)
-    let userPrompt = ''
-    
-    if (userPromptDirect) {
-      // Priority 1: Direct chat input
-      userPrompt = userPromptDirect
-      console.log('✅ Using direct chat prompt:', userPrompt)
-    } else if (aiPromptNode) {
-      // Priority 2: AI Prompt node
-      const isActive = (aiPromptNode.data as any).isActive !== false
-      userPrompt = (aiPromptNode.data as any).userPrompt || ''
-      
-      if (isActive && !userPrompt.trim()) {
-        alert('Please enter a prompt in the AI Prompt node first, or set it to Passive mode.')
+    // ✅ FIX: Wrap everything in try/catch (both existingPlan and new generation paths)
+    try {
+      // Check authentication
+      if (!user) {
+        isInferencingRef.current = false
+        alert('❌ You must be logged in to generate content.')
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id === structureNodeId) {
+              return { ...n, data: { ...n.data, isLoading: false } }
+            } else if (n.id === orchestratorNodeId) {
+              return { ...n, data: { ...n.data, isOrchestrating: false, loadingText: '' } }
+            }
+            return n
+          })
+        )
         return
       }
-      console.log('✅ Using AI Prompt node:', userPrompt)
-    } else {
-      alert('Please use the chat input in the panel or connect an AI Prompt node.')
-      return
-    }
-    
-    if (!userPrompt.trim()) {
-      alert('Please enter a prompt first.')
-      return
-    }
-    
-    try {
+      
+      // Determine user prompt source (priority: direct > AI Prompt node)
+      let userPrompt = ''
+      
+      if (userPromptDirect) {
+        // Priority 1: Direct chat input
+        userPrompt = userPromptDirect
+        console.log('✅ Using direct chat prompt:', userPrompt)
+      } else if (aiPromptNode) {
+        // Priority 2: AI Prompt node
+        const isActive = (aiPromptNode.data as any).isActive !== false
+        userPrompt = (aiPromptNode.data as any).userPrompt || ''
+        
+        if (isActive && !userPrompt.trim()) {
+          alert('Please enter a prompt in the AI Prompt node first, or set it to Passive mode.')
+          return
+        }
+        console.log('✅ Using AI Prompt node:', userPrompt)
+      } else if (!existingPlan) {
+        alert('Please use the chat input in the panel or connect an AI Prompt node.')
+        return
+      }
+      
+      if (!userPrompt.trim() && !existingPlan) {
+        alert('Please enter a prompt first.')
+        return
+      }
+      
       // Set inference flag
       isInferencingRef.current = true
       
@@ -1336,7 +1474,7 @@ export default function CanvasPage() {
         type: 'thinking' | 'decision' | 'task' | 'result' | 'error'
       }> = []
       
-      // Reasoning callback to update CANVAS-LEVEL chat history
+      // Reasoning callback to update WorldState conversation
       const onReasoning = (message: string, type: any) => {
         const msg = {
           id: `reasoning_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -1347,8 +1485,14 @@ export default function CanvasPage() {
         }
         reasoningMessages.push(msg)
         
-        // Append to canvas-level chat history (persistent)
-        setCanvasChatHistory(prev => [...prev, msg])
+        // ✅ MIGRATION: Update WorldState instead of canvasChatHistory
+        if (worldStateRef.current) {
+          worldStateRef.current.addMessage({
+            content: message,
+            type: type,
+            role: 'orchestrator'
+          })
+        }
         
         // Also update orchestrator node for backward compatibility
         setNodes((nds) =>
@@ -1407,16 +1551,17 @@ export default function CanvasPage() {
           // Update the message content with accumulated reasoning
           currentModelMessage.content = `🤖 Model reasoning:\n${modelReasoningBuffer}`
           
-          // Update canvas-level chat history (persistent)
-          setCanvasChatHistory(prev => {
-            const existingIndex = prev.findIndex(m => m.id === currentModelMessage!.id)
-            if (existingIndex >= 0) {
-              const updated = [...prev]
-              updated[existingIndex] = { ...currentModelMessage!, role: 'orchestrator' as const }
-              return updated
-            }
-            return [...prev, { ...currentModelMessage!, role: 'orchestrator' as const }]
-          })
+          // ✅ MIGRATION: Update WorldState instead of canvasChatHistory
+          if (worldStateRef.current) {
+            // For streaming messages, we update the last message if it exists
+            // WorldState doesn't support in-place updates, so we add a new message
+            // The UI will handle deduplication if needed
+            worldStateRef.current.addMessage({
+              content: currentModelMessage.content,
+              type: 'thinking',
+              role: 'orchestrator'
+            })
+          }
           
           // Update orchestrator node with the new messages
           setNodes((nds) =>
@@ -1447,16 +1592,16 @@ export default function CanvasPage() {
             : modelReasoningBuffer
           currentModelMessage.content = `🤖 Model streaming plan (JSON):\n${preview}`
           
-          // Update canvas-level chat history (persistent)
-          setCanvasChatHistory(prev => {
-            const existingIndex = prev.findIndex(m => m.id === currentModelMessage!.id)
-            if (existingIndex >= 0) {
-              const updated = [...prev]
-              updated[existingIndex] = { ...currentModelMessage!, role: 'orchestrator' as const }
-              return updated
-            }
-            return [...prev, { ...currentModelMessage!, role: 'orchestrator' as const }]
-          })
+          // ✅ MIGRATION: Update WorldState instead of canvasChatHistory
+          if (worldStateRef.current) {
+            // For streaming messages, we add a new message
+            // The UI will handle deduplication if needed
+            worldStateRef.current.addMessage({
+              content: currentModelMessage.content,
+              type: 'thinking',
+              role: 'orchestrator'
+            })
+          }
           
           setNodes((nds) =>
             nds.map((n) =>
@@ -1623,89 +1768,111 @@ export default function CanvasPage() {
         throw new Error(errorMsg)
       }
       
-      // Build effective prompt (already validated above)
-      const effectivePrompt = userPrompt
+      // ✅ FIX: Skip orchestrator call if plan already exists
+      let plan: any
+      let structureItems: any[] = []
+      let orchestratorResponse: any = null // Store response for content generation check
+      let effectivePrompt = '' // Store prompt for content generation
+      let supabase: any = null // Store supabase client
       
-      onReasoning(`📝 Analyzing prompt: "${effectivePrompt.substring(0, 100)}..."`, 'thinking')
-      
-      // ✅ Already extracted above (before WorldState creation)
-      onReasoning(`🔑 Available providers: ${availableProviders.join(', ')}`, 'thinking')
-      
-      // 🔧 FIX: Use component-level Supabase client (same instance throughout lifecycle)
-      // This ensures the SAME authenticated session is used for node creation AND agent writes
-      const supabase = supabaseClient
-      
-      // Call unified orchestrator to create structure
-      const response = await orchestrator.orchestrate({
-        message: effectivePrompt,
-        canvasNodes: nodes,
-        canvasEdges: edges,
-        documentFormat: format,
-        currentStoryStructureNodeId: structureNodeId, // ✅ FIX: Pass node ID so agents can save content
-        userKeyId: userKeyId || undefined,
-        fixedModelId: finalOrchestratorModel || undefined,
-        availableProviders,
-        modelMode: finalOrchestratorModel ? 'fixed' : 'automatic',
-        supabaseClient: supabase // ✅ FIX: Pass SAME authenticated client instance
-      })
-      
-      // Extract plan from generate_structure action
-      console.log('🔍 [triggerOrchestratedGeneration] Response actions:', response.actions.map((a: any) => ({ type: a.type, status: a.status })))
-      
-      // ✅ NEW: Check for clarification/educational messages first
-      const clarificationAction = response.actions.find((a: any) => 
-        a.type === 'message' && a.status === 'pending' && a.payload?.type === 'result'
-      )
-      
-      if (clarificationAction) {
-        console.log('💬 [triggerOrchestratedGeneration] Orchestrator needs clarification')
-        onReasoning(clarificationAction.payload.content, 'result')
-        // Don't throw error - just return early and let user respond
-        return
-      }
-      
-      const structureAction = response.actions.find((a: any) => a.type === 'generate_structure')
-      
-      if (!structureAction) {
-        console.error('❌ [triggerOrchestratedGeneration] No generate_structure action found')
-        console.log('Available actions:', response.actions)
+      if (existingPlan) {
+        // Use existing plan - skip structure generation
+        plan = existingPlan
+        structureItems = plan.structure || []
+        console.log('✅ [triggerOrchestratedGeneration] Using existing plan, skipping structure generation')
+        console.log('   Structure items:', structureItems.length)
+        console.log('   Tasks:', plan.tasks?.length || 0)
+      } else {
+        // Build effective prompt (already validated above)
+        const effectivePrompt = userPrompt
         
-        // Check if there's an error message action instead
-        const errorAction = response.actions.find((a: any) => a.type === 'message' && a.status === 'failed')
-        if (errorAction) {
-          onReasoning(`❌ ${errorAction.payload.content}`, 'error')
-          throw new Error(errorAction.payload.content)
+        onReasoning(`📝 Analyzing prompt: "${effectivePrompt.substring(0, 100)}..."`, 'thinking')
+        
+        // ✅ Already extracted above (before WorldState creation)
+        onReasoning(`🔑 Available providers: ${availableProviders.join(', ')}`, 'thinking')
+        
+        // 🔧 FIX: Use component-level Supabase client (same instance throughout lifecycle)
+        // This ensures the SAME authenticated session is used for node creation AND agent writes
+        supabase = supabaseClient
+        
+        // Call unified orchestrator to create structure
+        const response = await orchestrator.orchestrate({
+          message: effectivePrompt,
+          canvasNodes: nodes,
+          canvasEdges: edges,
+          documentFormat: format,
+          currentStoryStructureNodeId: structureNodeId, // ✅ FIX: Pass node ID so agents can save content
+          userKeyId: userKeyId || undefined,
+          fixedModelId: finalOrchestratorModel || undefined,
+          availableProviders,
+          modelMode: finalOrchestratorModel ? 'fixed' : 'automatic',
+          supabaseClient: supabase // ✅ FIX: Pass SAME authenticated client instance
+        })
+        
+        // Extract plan from generate_structure action
+        console.log('🔍 [triggerOrchestratedGeneration] Response actions:', response.actions.map((a: any) => ({ type: a.type, status: a.status })))
+        
+        // ✅ NEW: Check for clarification/educational messages first
+        const clarificationAction = response.actions.find((a: any) => 
+          a.type === 'message' && a.status === 'pending' && a.payload?.type === 'result'
+        )
+        
+        if (clarificationAction) {
+          console.log('💬 [triggerOrchestratedGeneration] Orchestrator needs clarification')
+          onReasoning(clarificationAction.payload.content, 'result')
+          // Don't throw error - just return early and let user respond
+          return
         }
         
-        throw new Error(`Orchestrator did not return a structure plan. Intent was: ${response.intent}. Actions: ${response.actions.map((a: any) => a.type).join(', ')}`)
-      }
-      
-      if (!structureAction.payload?.plan) {
-        console.error('❌ [triggerOrchestratedGeneration] Structure action found but no plan in payload:', structureAction)
-        throw new Error('Structure action found but plan is missing from payload')
-      }
-      
-      const plan = structureAction.payload.plan
-      console.log('✅ [triggerOrchestratedGeneration] Plan extracted successfully')
-      
-      // Display orchestrator's thinking steps
-      if (response.thinkingSteps && response.thinkingSteps.length > 0) {
-        response.thinkingSteps.forEach((step: any) => {
-          onReasoning(step.content, step.type as any)
-        })
+        const structureAction = response.actions.find((a: any) => a.type === 'generate_structure')
+        
+        if (!structureAction) {
+          console.error('❌ [triggerOrchestratedGeneration] No generate_structure action found')
+          console.log('Available actions:', response.actions)
+          
+          // Check if there's an error message action instead
+          const errorAction = response.actions.find((a: any) => a.type === 'message' && a.status === 'failed')
+          if (errorAction) {
+            onReasoning(`❌ ${errorAction.payload.content}`, 'error')
+            throw new Error(errorAction.payload.content)
+          }
+          
+          throw new Error(`Orchestrator did not return a structure plan. Intent was: ${response.intent}. Actions: ${response.actions.map((a: any) => a.type).join(', ')}`)
+        }
+        
+        if (!structureAction.payload?.plan) {
+          console.error('❌ [triggerOrchestratedGeneration] Structure action found but no plan in payload:', structureAction)
+          throw new Error('Structure action found but plan is missing from payload')
+        }
+        
+        plan = structureAction.payload.plan
+        structureItems = plan.structure || []
+        console.log('✅ [triggerOrchestratedGeneration] Plan extracted successfully')
+        
+        // Store response for content generation check
+        orchestratorResponse = response
+        
+        // Display orchestrator's thinking steps (only when structure was generated)
+        if (response.thinkingSteps && response.thinkingSteps.length > 0) {
+          response.thinkingSteps.forEach((step: any) => {
+            onReasoning(step.content, step.type as any)
+          })
+        }
       }
       
       onReasoning(`✅ Plan created: ${plan.structure.length} sections, ${plan.tasks.length} tasks`, 'result')
       
-      // Convert plan to structure items
-      const structureItems = plan.structure.map((section: any) => ({
-        id: section.id,
-        level: section.level,
-        name: section.name,
-        parentId: section.parentId,
-        wordCount: section.wordCount,
-        summary: section.summary || ''
-      }))
+      // Convert plan to structure items (if not already converted)
+      if (!structureItems || structureItems.length === 0) {
+        structureItems = plan.structure.map((section: any) => ({
+          id: section.id,
+          level: section.level,
+          name: section.name,
+          parentId: section.parentId,
+          wordCount: section.wordCount,
+          summary: section.summary || ''
+        }))
+      }
       
       // ✅ DEBUG: Log structure and task IDs for verification
       console.log('🔍 [triggerOrchestratedGeneration] Structure IDs:', structureItems.map((s: any) => s.id))
@@ -1798,12 +1965,10 @@ export default function CanvasPage() {
       // ✨ PHASE 3 FIX: Check if content generation was requested
       // The orchestrator may have generated content actions that were deferred
       // because the node didn't exist yet. Now that it exists, trigger content generation.
-      const hasContentActions = response.actions.some((a: any) => 
-        a.type === 'generate_content' && a.payload?.autoStart
-      )
+      const hasContentActions = plan.tasks && plan.tasks.length > 0
       
       if (hasContentActions) {
-        console.log('🎯 [triggerOrchestratedGeneration] Content generation requested, triggering second orchestration')
+        console.log('🎯 [triggerOrchestratedGeneration] Plan has tasks, triggering content generation')
         onReasoning('🎯 Multi-step task detected: Generating content...', 'decision')
         
         try {
@@ -1823,9 +1988,12 @@ export default function CanvasPage() {
             format
           })
           
+          // Build prompt for content generation (use original prompt or task-based prompt)
+          const contentPrompt = effectivePrompt || userPrompt || 'Generate content for the specified sections'
+          
           // Trigger second orchestration with node ID now available
           const contentResponse = await orchestrator.orchestrate({
-            message: effectivePrompt,
+            message: contentPrompt,
             canvasNodes: updatedNodes, // ✅ Use updated nodes (includes structure node)
             canvasEdges: updatedEdges, // ✅ Use updated edges (includes connection)
             documentFormat: format,
@@ -1836,7 +2004,7 @@ export default function CanvasPage() {
             fixedModelId: finalOrchestratorModel || undefined,
             availableProviders,
             modelMode: finalOrchestratorModel ? 'fixed' : 'automatic',
-            supabaseClient: supabase
+            supabaseClient: supabase || supabaseClient
           })
           
           // Display agent execution messages
@@ -1880,7 +2048,6 @@ export default function CanvasPage() {
       onReasoning('✅ Orchestration complete! Document panel opened.', 'result')
       
       alert(`✅ ${format.charAt(0).toUpperCase() + format.slice(1)} structure generated with orchestrator!`)
-      
     } catch (error: any) {
       console.error('❌ Orchestrated generation failed:', error)
       
@@ -2213,14 +2380,14 @@ export default function CanvasPage() {
       hasPreviousContent: currentStructureItems.findIndex((item: any) => item.id === segmentId) > 0
     })
     
-    // Add reasoning message
-    setCanvasChatHistory(prev => [...prev, {
-      id: `write_${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      content: `📝 Orchestrator delegating to writer model with full story context...`,
-      type: 'task' as const,
-      role: 'orchestrator' as const
-    }])
+    // ✅ MIGRATION: Add reasoning message via WorldState
+    if (worldStateRef.current) {
+      worldStateRef.current.addMessage({
+        content: `📝 Orchestrator delegating to writer model with full story context...`,
+        type: 'task',
+        role: 'orchestrator'
+      })
+    }
     
     try {
       // Call API with FULL orchestrator context
@@ -2335,24 +2502,25 @@ export default function CanvasPage() {
         // Don't throw - content is still in local contentMap
       }
       
-      // Add success message
-      setCanvasChatHistory(prev => [...prev, {
-        id: `write_success_${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        content: `✅ Content generated and saved for segment: ${segmentId}`,
-        type: 'result' as const,
-        role: 'orchestrator' as const
-      }])
+      // ✅ MIGRATION: Add success message via WorldState
+      if (worldStateRef.current) {
+        worldStateRef.current.addMessage({
+          content: `✅ Content generated and saved for segment: ${segmentId}`,
+          type: 'result',
+          role: 'orchestrator'
+        })
+      }
       
     } catch (error) {
       console.error('Failed to write content:', error)
-      setCanvasChatHistory(prev => [...prev, {
-        id: `write_error_${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        content: `❌ Failed to generate content: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        type: 'error' as const,
-        role: 'orchestrator' as const
-      }])
+      // ✅ MIGRATION: Add error message via WorldState
+      if (worldStateRef.current) {
+        worldStateRef.current.addMessage({
+          content: `❌ Failed to generate content: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          type: 'error',
+          role: 'orchestrator'
+        })
+      }
     }
   }, [currentStoryStructureNodeId, currentStructureItems, currentSections, currentContentMap, currentStructureFormat])
 
@@ -3364,6 +3532,7 @@ export default function CanvasPage() {
           onAddEdge={(newEdge) => setEdges((eds) => [...eds, newEdge])}
           edges={edges}
           nodes={nodes}
+          worldState={worldStateInstance || undefined}
           onSelectNode={(nodeId: string, sectionId?: string) => {
             // Load document for writing WITHOUT switching away from orchestrator panel
             const node = nodes.find(n => n.id === nodeId)
@@ -3421,7 +3590,6 @@ export default function CanvasPage() {
               autoSelectSection: sectionId || 'none'
             })
           }}
-          canvasChatHistory={canvasChatHistory}
           onAddChatMessage={(message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => {
             // Auto-detect type from message content if not provided
             const actualRole = role || 'orchestrator'
@@ -3442,18 +3610,35 @@ export default function CanvasPage() {
               }
             }
             
-            const msg = {
-              id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              timestamp: new Date().toISOString(),
-              content: message,
+            // ✅ MIGRATION: Update WorldState instead of canvasChatHistory
+            console.log('📝 [onAddChatMessage] Adding message to WorldState:', {
+              messageLength: message.length,
+              messagePreview: message.substring(0, 100),
+              role: actualRole,
               type: messageType,
-              role: actualRole
+              hasWorldState: !!worldStateRef.current
+            })
+            if (worldStateRef.current) {
+              const messageId = worldStateRef.current.addMessage({
+                content: message,
+                type: messageType,
+                role: actualRole
+              })
+              console.log('✅ [onAddChatMessage] Message added to WorldState, ID:', messageId)
+              
+              // Verify it was added
+              const state = worldStateRef.current.getState()
+              console.log('✅ [onAddChatMessage] WorldState now has', state.conversation.messages.length, 'messages')
+            } else {
+              console.warn('⚠️ [onAddChatMessage] worldStateRef.current is null! Message not added.')
             }
-            setCanvasChatHistory(prev => [...prev, msg])
           }}
           onClearChat={() => {
             if (confirm('Clear all chat history? This cannot be undone.')) {
-              setCanvasChatHistory([])
+              // ✅ MIGRATION: Clear WorldState conversation instead
+              if (worldStateRef.current) {
+                worldStateRef.current.clearConversation()
+              }
             }
           }}
           onToggleDocumentView={() => setIsAIDocPanelOpen(!isAIDocPanelOpen)}

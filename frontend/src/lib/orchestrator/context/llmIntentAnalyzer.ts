@@ -86,11 +86,18 @@ SOURCE DOCUMENT EXTRACTION (CRITICAL!):
 - Match against canvas nodes to identify which document the user is referring to
 
 EXISTING vs NEW DOCUMENT (CRITICAL!):
-- If user says "MY podcast", "THE podcast", "MY screenplay" → Check canvas context!
+- If user says "MY podcast", "THE podcast", "MY screenplay", "OUR novel" → Check canvas context!
   * If canvas shows a matching node (e.g., "Podcast: PODCAST document") → open_and_write (open existing node)
   * If canvas shows NO matching node → create_structure (make new document)
 - "get content to MY podcast" with Podcast node visible → open_and_write (NOT create_structure!)
 - "help me with THE screenplay" with Screenplay node visible → open_and_write (NOT general_chat!)
+- "write [sections] in [our/the/my] [document]" → open_and_write (CRITICAL PATTERN!)
+  * Examples: "write the three first chapters in our novel" → open_and_write with targetSegment: "chapter 1, chapter 2, chapter 3"
+  * "write chapter 2 in the screenplay" → open_and_write with targetSegment: "chapter 2"
+  * "write the first act in my novel" → open_and_write with targetSegment: "act 1"
+  * Extract targetSegment from the message (can be multiple sections)
+  * Check canvas for matching document type
+  * If document exists → open_and_write (NOT create_structure!)
 - Only use create_structure when creating something BRAND NEW that doesn't exist yet
 - CRITICAL: If user says "Write a REPORT" but canvas shows "Short Story" nodes, they want to create a NEW REPORT (NOT open the short story!)
   * The document TYPE matters! Report ≠ Short Story ≠ Screenplay
@@ -124,6 +131,10 @@ CRITICAL CONTEXT RULES:
   * "get content to MY podcast" + Podcast exists → open_and_write (HELPFUL: open existing node)
   * "help me with THE screenplay" + Screenplay exists → open_and_write (HELPFUL: open existing node)
   * "craft/write in that node" → open_and_write (HELPFUL MODE: open existing node for writing)
+  * "write [sections] in [our/the/my] [document]" + Document exists → open_and_write (CRITICAL: check canvas first!)
+    * Example: "write the three first chapters in our novel" + Novel exists → open_and_write with targetSegment: "chapter 1, chapter 2, chapter 3"
+    * Example: "write chapter 2 in the screenplay" + Screenplay exists → open_and_write with targetSegment: "chapter 2"
+    * ALWAYS check canvas context for matching document before assuming create_structure!
   * "create a novel" + NO Novel on canvas → create_structure (new document node)
   * "write about X" + NO matching node → create_structure (needs new document first)
 
@@ -142,7 +153,15 @@ Guidelines:
 - If user says "remove", "delete", "get rid of" a node/document → delete_node (requiresContext: false - operates on canvas nodes)
   * IMPORTANT: Even if there are MULTIPLE matching nodes, still use delete_node intent (the system will handle asking which one)
   * Do NOT use clarify_intent for deletion - always use delete_node and let the system handle ambiguity
-- CRITICAL: "MY podcast" / "THE screenplay" when canvas shows matching node → open_and_write (NOT create_structure!)
+- CRITICAL: "MY podcast" / "THE screenplay" / "OUR novel" when canvas shows matching node → open_and_write (NOT create_structure!)
+- CRITICAL: "write [sections] in [our/the/my] [document]" → Check canvas FIRST!
+  * Pattern: "write [X] in [our/the/my] [Y]" where Y is a document type
+  * If canvas shows matching document → open_and_write (extract sections into targetSegment)
+  * If canvas shows NO matching document → create_structure (but this is unusual - user said "our" which implies it exists)
+  * Examples:
+    * "write the three first chapters in our novel" → open_and_write, targetSegment: "chapter 1, chapter 2, chapter 3"
+    * "write chapter 2 in the screenplay" → open_and_write, targetSegment: "chapter 2"
+    * "write the first act in my novel" → open_and_write, targetSegment: "act 1"
 - If user references previous chat ("add it", "put that") → check conversation history
 - If ambiguous or unclear → clarify_intent (ask a question)
 
@@ -221,6 +240,39 @@ CONVERSATIONAL TONE:
 - Instead of "I need more information" → "I'd be happy to help! Just to clarify..."
 - Try to figure out what the user wants before asking questions
 
+CRITICAL - Section Name Extraction:
+- When user says "Write the [Section Name] section" or "Write in [Section Name]", extract the section name as targetSegment
+- Examples:
+  * "Write the Financial Review section" → targetSegment: "Financial Review"
+  * "Write in the Executive Summary" → targetSegment: "Executive Summary"
+  * "Write section 4.0 Financial Review" → targetSegment: "4.0 Financial Review" or "Financial Review"
+  * "Write chapter 2" → targetSegment: "chapter 2"
+  * "Write episode 3" (podcast) → targetSegment: "episode 3"
+  * "Write scene 5" (screenplay) → targetSegment: "scene 5"
+- MULTIPLE SECTIONS: When user mentions multiple sections, extract ALL of them
+  * "write the three first chapters" → targetSegment: "chapter 1, chapter 2, chapter 3" OR extract as: ["chapter 1", "chapter 2", "chapter 3"]
+  * "write chapters 1, 2, and 3" → targetSegment: "chapter 1, chapter 2, chapter 3"
+  * "write the first two scenes" → targetSegment: "scene 1, scene 2"
+  * "write the three first chapters in our novel" → targetSegment: "chapter 1, chapter 2, chapter 3" (and intent: open_and_write)
+  * For multiple sections, you can use comma-separated format or array format in targetSegment
+- The system will fuzzy-match this to the actual section in the document structure
+- Be precise - extract the exact section name/identifier the user mentioned
+
+FORMAT-AWARE SECTION TERMINOLOGY:
+- Different document formats use different section terminology:
+  * **Novel**: Parts → Chapters → Scenes (optional)
+  * **Short Story**: Scenes (optional) → Paragraphs
+  * **Screenplay**: Acts → Sequences (optional) → Scenes → Beats (optional)
+  * **Podcast**: Seasons (optional) → Episodes → Segments (optional) → Topics
+  * **Report**: Executive Summary → Sections (numbered, e.g., 1.0, 2.0) → Subsections
+  * **Article**: Introduction → Sections (H2, H3) → Subsections
+- When extracting targetSegment, consider the document format:
+  * If format is "report" and user says "section 4.0" → targetSegment: "4.0" or the section name
+  * If format is "novel" and user says "chapter 2" → targetSegment: "chapter 2"
+  * If format is "screenplay" and user says "act 1" → targetSegment: "act 1"
+  * If format is "podcast" and user says "episode 3" → targetSegment: "episode 3"
+- Be format-aware: Use the correct terminology for the document type
+
 Return your analysis as JSON with this structure:
 {
   "intent": "write_content" | "answer_question" | "improve_content" | "rewrite_with_coherence" | "modify_structure" | "create_structure" | "navigate_section" | "open_and_write" | "delete_node" | "clarify_intent" | "general_chat",
@@ -232,7 +284,7 @@ Return your analysis as JSON with this structure:
   "needsClarification": boolean,
   "clarifyingQuestion": "Helpful, polite question if needsClarification is true (e.g., 'I'd be happy to help! Just to clarify, did you mean...')",
   "extractedEntities": {
-    "targetSegment": "Which section to act on (e.g., 'chapter 2', 'act 1', 'first scene')",
+    "targetSegment": "Which section to act on. Extract the section name/number from the user's message. Examples: 'Write the Financial Review section' → 'Financial Review' or '4.0 Financial Review', 'Write chapter 2' → 'chapter 2', 'Write in the Executive Summary' → 'Executive Summary'. For multiple sections: 'write the three first chapters' → 'chapter 1, chapter 2, chapter 3'. Be precise - extract the exact section name mentioned.",
     "referenceContent": "Content being referenced from conversation",
     "sourceDocument": "When user says 'based on X' or 'using X', extract the name/ID of the source document from canvas context",
     "isExplicitSourceReference": "Boolean - true if user explicitly mentioned a specific document to base new content on (e.g., 'based on the screenplay', 'using the podcast')",

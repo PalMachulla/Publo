@@ -8,16 +8,20 @@
  * 
  * The Blackboard serves as the "single source of truth" for:
  * - Conversation history and context
- * - Canvas state (nodes, edges, content)
  * - User intent and orchestrator decisions
  * - Temporal patterns and learning
  * - Model selection and routing
+ * - Multi-agent coordination
+ * 
+ * NOTE: Canvas and document state are managed by WorldState (single source of truth).
+ * Blackboard reads from WorldState when needed for temporal memory logging.
  * 
  * @see https://github.com/ruvnet/agentic-flow
  */
 
 import { Node, Edge } from 'reactflow'
 import { TemporalMemory, EventDelta } from '../context/temporalMemory'
+import type { WorldStateManager } from './worldState'
 
 // ============================================================
 // TYPES
@@ -37,22 +41,8 @@ export interface ConversationMessage {
   }
 }
 
-export interface CanvasState {
-  nodes: Node[]
-  edges: Edge[]
-  selectedNodeId: string | null
-  activeDocumentId: string | null
-  lastModified: number
-}
-
-export interface DocumentState {
-  nodeId: string
-  format: string
-  structureItems: any[]
-  contentMap: Record<string, string>
-  wordsWritten: number
-  lastModified: number
-}
+// NOTE: CanvasState and DocumentState removed - WorldState is now the single source of truth
+// These types are kept for backward compatibility during migration but are deprecated
 
 export interface OrchestratorContext {
   currentIntent: string | null
@@ -67,11 +57,8 @@ export interface BlackboardState {
   // Conversation
   messages: ConversationMessage[]
   
-  // Canvas
-  canvas: CanvasState
-  
-  // Documents
-  documents: Map<string, DocumentState>
+  // NOTE: Canvas and document state removed - WorldState is now the single source of truth
+  // Canvas/document state is read from WorldState when needed for temporal memory logging
   
   // Orchestrator
   orchestrator: OrchestratorContext
@@ -86,6 +73,9 @@ export interface BlackboardState {
   agents: Map<string, AgentState>
   taskQueue: Map<string, AgentTask>
   messageLog: A2AMessage[]
+  
+  // Canvas change tracking (for hasCanvasChanged check)
+  canvasLastModified: number
 }
 
 // PHASE 3: Agent types (imported from agents/types.ts when available)
@@ -154,19 +144,12 @@ export class Blackboard {
   private state: BlackboardState
   private subscribers: Map<string, Set<(state: BlackboardState) => void>>
   private messageCallback?: (message: ConversationMessage) => void // Real-time UI callback
+  private worldState?: WorldStateManager // Optional reference to WorldState for reading canvas/document state
   
   constructor(userId: string, messageCallback?: (message: ConversationMessage) => void) {
     this.messageCallback = messageCallback
     this.state = {
       messages: [],
-      canvas: {
-        nodes: [],
-        edges: [],
-        selectedNodeId: null,
-        activeDocumentId: null,
-        lastModified: Date.now()
-      },
-      documents: new Map(),
       orchestrator: {
         currentIntent: null,
         lastAction: null,
@@ -180,12 +163,21 @@ export class Blackboard {
       // PHASE 3: Multi-Agent Coordination
       agents: new Map(),
       taskQueue: new Map(),
-      messageLog: []
+      messageLog: [],
+      canvasLastModified: Date.now()
     }
     
     this.subscribers = new Map()
     
     console.log('🎯 [Blackboard] Initialized for user:', userId)
+  }
+  
+  /**
+   * Set WorldState reference (enables reading canvas/document state for temporal logging)
+   */
+  setWorldState(worldState: WorldStateManager): void {
+    this.worldState = worldState
+    console.log('🔗 [Blackboard] Connected to WorldState')
   }
   
   // ============================================================
@@ -235,20 +227,34 @@ export class Blackboard {
   }
   
   // ============================================================
-  // CANVAS STATE MANAGEMENT
+  // CANVAS STATE MANAGEMENT (DEPRECATED - Use WorldState)
   // ============================================================
   
+  /**
+   * @deprecated Canvas state is now managed by WorldState. This method is kept for backward compatibility.
+   * Use WorldState.update() to modify canvas state instead.
+   */
   updateCanvas(nodes: Node[], edges: Edge[]): void {
-    const hasChanged = 
-      JSON.stringify(this.state.canvas.nodes) !== JSON.stringify(nodes) ||
-      JSON.stringify(this.state.canvas.edges) !== JSON.stringify(edges)
+    console.warn('⚠️ [Blackboard] updateCanvas() is deprecated. Canvas state is now managed by WorldState.')
+    // Update timestamp for hasCanvasChanged check
+    this.state.canvasLastModified = Date.now()
     
-    if (hasChanged) {
-      this.state.canvas.nodes = nodes
-      this.state.canvas.edges = edges
-      this.state.canvas.lastModified = Date.now()
+    // Log to temporal memory (read from WorldState if available)
+    if (this.worldState) {
+      const worldState = this.worldState.getState()
+      const nodeCount = worldState.canvas.nodes.size
+      const edgeCount = worldState.canvas.edges.size
       
-      // Log to temporal memory
+      this.state.temporal.addEvent({
+        verb: 'canvas_updated',
+        object: 'canvas',
+        attributes_diff: {
+          nodeCount,
+          edgeCount
+        }
+      })
+    } else {
+      // Fallback: use provided data
       this.state.temporal.addEvent({
         verb: 'canvas_updated',
         object: 'canvas',
@@ -257,52 +263,133 @@ export class Blackboard {
           edgeCount: edges.length
         }
       })
-      
-      this.notify('canvas')
     }
   }
   
-  getCanvasState(): CanvasState {
-    return this.state.canvas
+  /**
+   * @deprecated Canvas state is now managed by WorldState. Use WorldState.getState().canvas instead.
+   */
+  getCanvasState(): any {
+    console.warn('⚠️ [Blackboard] getCanvasState() is deprecated. Use WorldState.getState().canvas instead.')
+    if (this.worldState) {
+      const worldState = this.worldState.getState()
+      return {
+        nodes: Array.from(worldState.canvas.nodes.values()),
+        edges: Array.from(worldState.canvas.edges.values()),
+        selectedNodeId: worldState.canvas.selectedNodeId,
+        activeDocumentId: worldState.activeDocument.nodeId,
+        lastModified: worldState.meta.lastUpdated
+      }
+    }
+    return null
   }
   
+  /**
+   * Check if canvas has changed since given timestamp
+   * Reads from WorldState if available, otherwise uses internal timestamp
+   */
   hasCanvasChanged(since: number): boolean {
-    return this.state.canvas.lastModified > since
+    if (this.worldState) {
+      const worldState = this.worldState.getState()
+      return worldState.meta.lastUpdated > since
+    }
+    // Fallback to internal timestamp
+    return this.state.canvasLastModified > since
   }
   
-  // ============================================================
-  // DOCUMENT STATE MANAGEMENT
-  // ============================================================
-  
-  updateDocument(nodeId: string, document: Partial<DocumentState>): void {
-    const existing = this.state.documents.get(nodeId)
-    const updated: DocumentState = {
-      nodeId,
-      format: document.format || existing?.format || 'unknown',
-      structureItems: document.structureItems || existing?.structureItems || [],
-      contentMap: document.contentMap || existing?.contentMap || {},
-      wordsWritten: document.wordsWritten || existing?.wordsWritten || 0,
-      lastModified: Date.now()
+  /**
+   * Log canvas update to temporal memory (reads from WorldState)
+   */
+  logCanvasUpdate(): void {
+    if (!this.worldState) {
+      console.warn('⚠️ [Blackboard] logCanvasUpdate() called but WorldState not connected')
+      return
     }
     
-    this.state.documents.set(nodeId, updated)
+    const worldState = this.worldState.getState()
+    const nodeCount = worldState.canvas.nodes.size
+    const edgeCount = worldState.canvas.edges.size
     
-    // Log to temporal memory
     this.state.temporal.addEvent({
-      verb: 'document_updated',
-      object: nodeId,
+      verb: 'canvas_updated',
+      object: 'canvas',
       attributes_diff: {
-        format: updated.format,
-        wordsWritten: updated.wordsWritten,
-        sectionCount: updated.structureItems.length
+        nodeCount,
+        edgeCount
       }
     })
     
-    this.notify('documents')
+    this.state.canvasLastModified = worldState.meta.lastUpdated
   }
   
-  getDocument(nodeId: string): DocumentState | undefined {
-    return this.state.documents.get(nodeId)
+  // ============================================================
+  // DOCUMENT STATE MANAGEMENT (DEPRECATED - Use WorldState)
+  // ============================================================
+  
+  /**
+   * @deprecated Document state is now managed by WorldState. This method is kept for backward compatibility.
+   * Use WorldState.setActiveDocument() to modify document state instead.
+   */
+  updateDocument(nodeId: string, document: Partial<any>): void {
+    console.warn('⚠️ [Blackboard] updateDocument() is deprecated. Document state is now managed by WorldState.')
+    
+    // Log to temporal memory (read from WorldState if available)
+    this.logDocumentUpdate(nodeId)
+  }
+  
+  /**
+   * @deprecated Document state is now managed by WorldState. Use WorldState.getActiveDocument() instead.
+   */
+  getDocument(nodeId: string): any {
+    console.warn('⚠️ [Blackboard] getDocument() is deprecated. Use WorldState.getActiveDocument() instead.')
+    if (this.worldState) {
+      const worldState = this.worldState.getState()
+      const activeDoc = worldState.activeDocument
+      if (activeDoc.nodeId === nodeId) {
+        return {
+          nodeId: activeDoc.nodeId,
+          format: activeDoc.format,
+          structureItems: activeDoc.structure?.items || [],
+          contentMap: Object.fromEntries(activeDoc.content),
+          wordsWritten: Array.from(activeDoc.content.values()).reduce(
+            (sum, content) => sum + content.split(/\s+/).length,
+            0
+          ),
+          lastModified: worldState.meta.lastUpdated
+        }
+      }
+    }
+    return undefined
+  }
+  
+  /**
+   * Log document update to temporal memory (reads from WorldState)
+   */
+  logDocumentUpdate(nodeId: string): void {
+    if (!this.worldState) {
+      console.warn('⚠️ [Blackboard] logDocumentUpdate() called but WorldState not connected')
+      return
+    }
+    
+    const worldState = this.worldState.getState()
+    const activeDoc = worldState.activeDocument
+    
+    if (activeDoc.nodeId === nodeId) {
+      const wordsWritten = Array.from(activeDoc.content.values()).reduce(
+        (sum, content) => sum + content.split(/\s+/).length,
+        0
+      )
+      
+      this.state.temporal.addEvent({
+        verb: 'document_updated',
+        object: nodeId,
+        attributes_diff: {
+          format: activeDoc.format || 'unknown',
+          wordsWritten,
+          sectionCount: activeDoc.structure?.items?.length || 0
+        }
+      })
+    }
   }
   
   // ============================================================
@@ -700,14 +787,6 @@ export class Blackboard {
     const userId = this.state.temporal['userId']
     this.state = {
       messages: [],
-      canvas: {
-        nodes: [],
-        edges: [],
-        selectedNodeId: null,
-        activeDocumentId: null,
-        lastModified: Date.now()
-      },
-      documents: new Map(),
       orchestrator: {
         currentIntent: null,
         lastAction: null,
@@ -721,7 +800,8 @@ export class Blackboard {
       // PHASE 3: Multi-Agent Coordination
       agents: new Map(),
       taskQueue: new Map(),
-      messageLog: []
+      messageLog: [],
+      canvasLastModified: Date.now()
     }
     
     this.notify('all')

@@ -8,7 +8,12 @@
  * This makes the orchestrator as intelligent as an AI assistant while staying fast.
  */
 
-import { analyzeLLMIntent, shouldUseLLMAnalysis, type ConversationMessage } from './llmIntentAnalyzer'
+// ✅ DEPRECATED: Legacy LLM analyzer imports removed (legacy system commented out)
+// import { analyzeLLMIntent, shouldUseLLMAnalysis } from './llmIntentAnalyzer'
+import type { ConversationMessage } from '../core/blackboard'
+import type { WorldStateManager } from '../core/worldState'
+import type { Blackboard } from '../core/blackboard'
+import { Node } from 'reactflow'
 import { IntentPipeline } from './intent/pipeline/IntentPipeline'
 import { intentContextToPipelineContext, pipelineAnalysisToIntentAnalysis } from './intent/utils/adapter'
 
@@ -42,6 +47,9 @@ export interface IntentAnalysis {
     isExplicitSourceReference?: boolean // True if user explicitly said "based on X", "using X"
     suggestedTemplate?: string // Template ID matched from keywords (e.g., "interview", "heros-journey", "feature")
   }
+  // Pipeline-specific metrics (optional, stripped by adapter)
+  pipelineMetrics?: any
+  totalTime?: number
 }
 
 export interface IntentContext {
@@ -57,6 +65,7 @@ export interface IntentContext {
   useLLM?: boolean // Force LLM analysis (for testing or complex cases)
   canvasContext?: string // CANVAS VISIBILITY: Formatted canvas context for LLM
   availableModels?: any[] // Available models from user's API keys (for model router)
+  corrections?: any[] // NEW: Learned correction patterns for intent classification
 }
 
 /**
@@ -66,39 +75,83 @@ export interface IntentContext {
  * Feature flag: USE_NEW_INTENT_PIPELINE
  * When enabled, uses the new 4-stage pipeline instead of the hybrid approach.
  */
-export async function analyzeIntent(context: IntentContext): Promise<IntentAnalysis> {
-  // Feature flag: Use new pipeline if enabled
-  const USE_NEW_INTENT_PIPELINE = process.env.NEXT_PUBLIC_USE_NEW_INTENT_PIPELINE === 'true'
+export async function analyzeIntent(
+  context: IntentContext,
+  canvasNodes?: Node[],  // ✅ ADD: Accept canvasNodes parameter
+  worldState?: WorldStateManager,  // ✅ ADD: Accept worldState for better context
+  blackboard?: Blackboard  // ✅ ADD: Accept blackboard for better context
+): Promise<IntentAnalysis> {
+  // ✅ NEW PIPELINE ONLY: Legacy system has been deprecated
+  // The new 4-stage IntentPipeline is now the only path for intent analysis.
+  // If the pipeline fails, we return a fallback intent rather than using legacy code.
   
-  if (USE_NEW_INTENT_PIPELINE) {
-    console.log('🚀 [Intent] Using new intent pipeline...')
-    try {
-      // Convert IntentContext to PipelineContext
-      // Note: We need worldState and blackboard for full context, but we can build from IntentContext
-      const pipelineContext = intentContextToPipelineContext(context)
-      
-      // Create pipeline instance
-      const pipeline = new IntentPipeline()
-      
-      // ✅ NEW: Update pipeline with available models from user's API keys
-      if (context.availableModels && context.availableModels.length > 0) {
-        console.log('📦 [Intent] Updating pipeline with', context.availableModels.length, 'available models')
-        pipeline.updateAvailableModels(context.availableModels)
-      } else {
-        console.warn('⚠️ [Intent] No available models provided - pipeline will use API defaults')
-      }
-      
-      // Analyze through pipeline
-      const pipelineResult = await pipeline.analyze(context.message, pipelineContext)
-      
-      // Convert back to IntentAnalysis format
-      return pipelineAnalysisToIntentAnalysis(pipelineResult)
-    } catch (error) {
-      console.error('❌ [Intent] New pipeline failed, falling back to legacy system:', error)
-      // Fall through to legacy system
+  console.log('🚀 [Intent] Using new intent pipeline...')
+  try {
+    // Convert IntentContext to PipelineContext
+    // ✅ FIX: Pass canvasNodes, worldState, and blackboard to adapter
+    const pipelineContext = intentContextToPipelineContext(
+      context,
+      worldState,
+      blackboard,
+      canvasNodes  // ✅ Pass actual nodes array
+    )
+    
+    // Create pipeline instance
+    const pipeline = new IntentPipeline()
+    
+    // ✅ NEW: Update pipeline with available models from user's API keys
+    if (context.availableModels && context.availableModels.length > 0) {
+      console.log('📦 [Intent] Updating pipeline with', context.availableModels.length, 'available models')
+      pipeline.updateAvailableModels(context.availableModels)
+    } else {
+      console.warn('⚠️ [Intent] No available models provided - pipeline will use API defaults')
+    }
+    
+    // ✅ NEW: Update pipeline with learned corrections
+    if (context.corrections && context.corrections.length > 0) {
+      console.log('📚 [Intent] Updating pipeline with', context.corrections.length, 'learned corrections')
+      pipeline.updateCorrections(context.corrections)
+    }
+    
+    // Analyze through pipeline
+    const pipelineResult = await pipeline.analyze(context.message, pipelineContext)
+    
+    // Convert back to IntentAnalysis format
+    return pipelineAnalysisToIntentAnalysis(pipelineResult)
+  } catch (error) {
+    console.error('❌ [Intent] New pipeline failed:', error)
+    console.warn('⚠️ [Intent] Pipeline error details:', error instanceof Error ? error.message : String(error))
+    // ✅ DEPRECATED: Legacy system removed - new pipeline is the only path
+    // If pipeline fails, return a fallback intent rather than using legacy code
+    return {
+      intent: 'general_chat',
+      confidence: 0.3,
+      reasoning: 'Intent pipeline failed - unable to analyze user message',
+      suggestedAction: 'Please try rephrasing your request',
+      requiresContext: false,
+      suggestedModel: 'orchestrator',
+      usedLLM: false
     }
   }
   
+  // ============================================================
+  // ✅ DEPRECATED: LEGACY SYSTEM (commented out)
+  // ============================================================
+  // The legacy hybrid approach (pattern matching + LLM fallback) has been
+  // replaced by the new 4-stage IntentPipeline system.
+  // 
+  // Reasons for deprecation:
+  // 1. New pipeline is more modular and maintainable
+  // 2. Better performance with staged analysis (Triage → Context → Deep Analysis → Validation)
+  // 3. Modular prompts (core.ts, canvas.ts, followUp.ts, templates.ts) are easier to update
+  // 4. Better error handling and validation
+  // 5. Supports learned corrections and model routing
+  //
+  // If you need to restore legacy behavior, uncomment the code below.
+  // However, the new pipeline should be preferred and any issues should be fixed in the pipeline.
+  // ============================================================
+  
+  /*
   // LEGACY SYSTEM (original hybrid approach)
   const { message, hasActiveSegment, activeSegmentName, conversationHistory = [] } = context
   const lowerMessage = message.toLowerCase().trim()
@@ -329,21 +382,22 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
   if (!context.isDocumentViewOpen && !hasActiveSegment && context.canvasContext) {
     const writeInNodePatterns = [
       // "Open" commands - CRITICAL for "open the novel", "let's open the screenplay"
-      /^(open|show|display|view).*(the|that|this|my) (novel|screenplay|report|podcast|document|node)/i,
-      /^let'?s (open|work on|edit).*(the|that|this|my) (novel|screenplay|report|podcast|document)/i,
+      /^(open|show|display|view).*(the|that|this|my|our) (novel|screenplay|report|podcast|document|node)/i,
+      /^let'?s (open|work on|edit).*(the|that|this|my|our) (novel|screenplay|report|podcast|document)/i,
       
-      // Direct "write in" phrases
-      /(craft|write|fill|expand|develop).*(in |to )(that|the|this|my) (node|document|podcast|screenplay|novel|report)/i,
-      /(add|put|insert|write|get).*(content|text|words).*(in |to |for )(that|the|this|my)/i,
-      /(work on|edit|improve).*(that|the|this|my) (node|document|podcast|screenplay|novel|report)/i,
+      // Direct "write in" phrases - CRITICAL for "write [sections] in [our/the/my] [document]"
+      /(write|craft|fill|expand|develop).*(the|first|second|third|three|two|1|2|3).*(chapter|act|scene|section|episode).*(in |to |for )(our|the|that|this|my) (novel|screenplay|report|podcast|document)/i,
+      /(write|craft|fill|expand|develop).*(in |to )(that|the|this|my|our) (node|document|podcast|screenplay|novel|report)/i,
+      /(add|put|insert|write|get).*(content|text|words).*(in |to |for )(that|the|this|my|our)/i,
+      /(work on|edit|improve).*(that|the|this|my|our) (node|document|podcast|screenplay|novel|report)/i,
       /help (me )?(craft|write|fill|expand).*(node|document|podcast|screenplay|novel|report)/i,
       
       // "Get/add content to/for my X" - CRITICAL for "get some content to my podcast"
-      /(get|add|create|generate).*(content|text|words).*(to|for|in) (my|the|that|this) (podcast|screenplay|novel|report|document)/i,
-      /help (me )?(get|add|create).*(my|the|that) (podcast|screenplay|novel|report|document)/i,
+      /(get|add|create|generate).*(content|text|words).*(to|for|in) (my|the|that|this|our) (podcast|screenplay|novel|report|document)/i,
+      /help (me )?(get|add|create).*(my|the|that|our) (podcast|screenplay|novel|report|document)/i,
       
       // "Help me with X" when X is an existing node
-      /help (me )?with (the|my|that|this) (podcast|screenplay|novel|report|document)/i,
+      /help (me )?with (the|my|that|this|our) (podcast|screenplay|novel|report|document)/i,
     ]
     
     if (writeInNodePatterns.some(pattern => pattern.test(message))) {
@@ -436,6 +490,7 @@ export async function analyzeIntent(context: IntentContext): Promise<IntentAnaly
     requiresContext: false,
     suggestedModel: 'orchestrator'
   }
+  */
 }
 
 /**

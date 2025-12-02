@@ -6,12 +6,6 @@ import { Node } from 'reactflow'
 import { CreateStoryNodeData, StoryFormat } from '@/types/nodes'
 import { createClient } from '@/lib/supabase/client'
 import { 
-  CollapsibleSection,
-  Card,
-  Badge,
-  RadioGroup,
-  RadioItem,
-  Button,
   ChatAccordion,
   ChatOptionsSelector,
   templateToChatOption
@@ -19,77 +13,27 @@ import {
 import { 
   getMultiAgentOrchestrator, // PHASE 3: Multi-agent support
   buildCanvasContext, 
-  type OrchestratorRequest,
-  type OrchestratorAction,
-  type UserIntent,
-  analyzeIntent,
-  validateIntent,
-  explainIntent,
-  enhanceContextWithRAG,
-  buildRAGEnhancedPrompt,
-  formatCanvasContextForLLM
+  type OrchestratorAction
 } from '@/lib/orchestrator'
 // PHASE 1: WorldState - Unified state management
+// WorldState is the single source of truth for canvas/document state, converting ReactFlow nodes/edges
+// into a format the orchestrator can use. Provides centralized access to active documents, sections,
+// canvas structure, and conversation history across the entire application.
 import { buildWorldStateFromReactFlow, type WorldStateManager } from '@/lib/orchestrator/core/worldState'
+
 // PHASE 2: Tool System - Executable tools
+// Tool registry provides executable actions (generate_content, modify_structure, etc.) that agents
+// can use to perform actual work. The default registry includes all standard orchestrator tools.
 import { createDefaultToolRegistry } from '@/lib/orchestrator/tools'
-// Deprecated: findReferencedNode moved to core/contextProvider (now using resolveNode)
-// import { findReferencedNode } from '@/lib/orchestrator/canvasContextProvider.deprecated'
+
+
+// ReactFlow types for canvas edge data structure
 import { Edge } from 'reactflow'
+
+// React hook that subscribes to WorldState changes and provides reactive data for UI updates.
+// Automatically re-renders components when WorldState changes (document selection, canvas updates, etc.)
 import { useWorldState } from '@/hooks/useWorldState'
 
-// Helper: Get canonical model details for filtering and display
-const getCanonicalModel = (modelId: string) => {
-  const id = modelId.toLowerCase()
-  
-  // ❌ FILTER OUT: Non-text-generation models
-  if (id.includes('embedding')) return null // text-embedding-*
-  if (id.includes('tts')) return null // tts-1, tts-1-hd
-  if (id.includes('whisper')) return null // whisper-1
-  if (id.includes('dall-e')) return null // dall-e-2, dall-e-3
-  if (id.includes('moderation')) return null // text-moderation-*
-  if (id.includes('babbage') || id.includes('davinci') || id.includes('curie')) return null // Legacy completion models
-  if (id.includes('gpt-3.5') && !id.includes('turbo')) return null // Old GPT-3.5 base models
-  if (id.includes('text-davinci') || id.includes('text-curie')) return null // Legacy text models
-
-  // Frontier / Future Models (GPT-5, 4.1)
-  if (id.includes('gpt-5.1')) return { name: 'GPT-5.1 (Frontier)', priority: 110, group: 'OpenAI (Frontier)', isReasoning: true }
-  if (id.includes('gpt-5') && !id.includes('mini') && !id.includes('nano')) return { name: 'GPT-5', priority: 105, group: 'OpenAI (Frontier)', isReasoning: true }
-  if (id.includes('gpt-5') && (id.includes('mini') || id.includes('nano'))) return { name: 'GPT-5 Efficient', priority: 104, group: 'OpenAI (Frontier)', isReasoning: false }
-  if (id.includes('gpt-4.1')) return { name: 'GPT-4.1', priority: 102, group: 'OpenAI (Frontier)', isReasoning: false }
-  
-  // OpenAI Models
-  if (id.includes('o1-preview')) return { name: 'OpenAI o1 Preview', priority: 100, group: 'OpenAI (Reasoning)', isReasoning: true }
-  if (id.includes('o1-mini')) return { name: 'OpenAI o1 Mini', priority: 95, group: 'OpenAI (Reasoning)', isReasoning: true }
-  if (id.includes('gpt-4o') && !id.includes('mini')) return { name: 'GPT-4o', priority: 90, group: 'OpenAI', isReasoning: true }
-  if (id.includes('gpt-4o') && id.includes('mini')) return { name: 'GPT-4o Mini', priority: 70, group: 'OpenAI', isReasoning: false }
-  if (id.includes('gpt-4-turbo') || id.includes('gpt-4-1106') || id.includes('gpt-4-0125')) return { name: 'GPT-4 Turbo', priority: 85, group: 'OpenAI', isReasoning: true }
-  if (id === 'gpt-4' || id.includes('gpt-4-0613') || id.includes('gpt-4-0314')) return { name: 'GPT-4 (Legacy)', priority: 60, group: 'OpenAI', isReasoning: true }
-  if (id.includes('gpt-3.5-turbo')) return { name: 'GPT-3.5 Turbo (Legacy)', priority: 40, group: 'OpenAI', isReasoning: false }
-  
-  // Anthropic Models
-  if (id.includes('claude-sonnet-4.5') || id.includes('claude-4.5-sonnet')) return { name: 'Claude Sonnet 4.5', priority: 95, group: 'Anthropic', isReasoning: true }
-  if (id.includes('claude-3-5-sonnet')) return { name: 'Claude 3.5 Sonnet', priority: 92, group: 'Anthropic', isReasoning: true }
-  if (id.includes('claude-3-opus')) return { name: 'Claude 3 Opus', priority: 88, group: 'Anthropic', isReasoning: true }
-  if (id.includes('claude-3-haiku')) return { name: 'Claude 3 Haiku', priority: 70, group: 'Anthropic', isReasoning: false }
-  
-  // Google Models
-  if (id.includes('gemini-1.5-pro')) return { name: 'Gemini 1.5 Pro', priority: 89, group: 'Google', isReasoning: true }
-  if (id.includes('gemini-1.5-flash')) return { name: 'Gemini 1.5 Flash', priority: 75, group: 'Google', isReasoning: false }
-  if (id.includes('gemini-2.0-flash')) return { name: 'Gemini 2.0 Flash', priority: 87, group: 'Google', isReasoning: true }
-  if (id.includes('gemini-pro')) return { name: 'Gemini Pro', priority: 65, group: 'Google', isReasoning: false }
-  
-  // Groq Models
-  if (id.includes('llama-3.3-70b')) return { name: 'Llama 3.3 70B', priority: 85, group: 'Groq', isReasoning: true }
-  if (id.includes('llama-3.1-70b')) return { name: 'Llama 3.1 70B', priority: 80, group: 'Groq', isReasoning: true }
-  if (id.includes('llama-3.1-8b')) return { name: 'Llama 3.1 8B (Fast)', priority: 75, group: 'Groq', isReasoning: false }
-  if (id.includes('llama-3.2')) return { name: 'Llama 3.2', priority: 72, group: 'Groq', isReasoning: false }
-  if (id.includes('mixtral-8x7b')) return { name: 'Mixtral 8x7B', priority: 70, group: 'Groq', isReasoning: false }
-  if (id.includes('gemma')) return { name: 'Gemma', priority: 50, group: 'Groq', isReasoning: false }
-  
-  // If we don't recognize it, filter it out (safer than showing unknown models)
-  return null
-}
 
 interface ActiveContext {
   type: 'section' | 'segment'
@@ -117,13 +61,7 @@ interface CreateStoryPanelProps {
   onClose: () => void
   onUpdate?: (nodeId: string, data: Partial<CreateStoryNodeData>) => void
   onSendPrompt?: (prompt: string) => void // NEW: For chat-based prompting
-  canvasChatHistory?: Array<{
-    id: string
-    timestamp: string
-    content: string
-    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
-    role?: 'user' | 'orchestrator'
-  }>
+  // ✅ MIGRATION: canvasChatHistory removed - now using WorldState.conversation.messages
   onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => void
   onClearChat?: () => void
   onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
@@ -150,78 +88,11 @@ import { getTemplatesForFormat, type Template } from '@/lib/orchestrator/schemas
 // Old location: lines 141-207 (67 lines removed)
 // New location: frontend/src/lib/orchestrator/schemas/templateRegistry.ts
 
-const storyFormats: Array<{ type: StoryFormat; label: string; description: string; icon: JSX.Element }> = [
-  {
-    type: 'novel',
-    label: 'Novel',
-    description: 'Long-form narrative fiction',
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-      </svg>
-    )
-  },
-  {
-    type: 'short-story',
-    label: 'Short Story',
-    description: 'Brief narrative fiction',
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-      </svg>
-    )
-  },
-  {
-    type: 'report',
-    label: 'Report',
-    description: 'Structured analysis document',
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    )
-  },
-  {
-    type: 'article',
-    label: 'Article',
-    description: 'Editorial or blog post',
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
-      </svg>
-    )
-  },
-  {
-    type: 'screenplay',
-    label: 'Screenplay',
-    description: 'Script for film or TV',
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-      </svg>
-    )
-  },
-  {
-    type: 'essay',
-    label: 'Essay',
-    description: 'Opinion or argumentative piece',
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-      </svg>
-    )
-  },
-  {
-    type: 'podcast',
-    label: 'Podcast',
-    description: 'Audio show with host and guests',
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-      </svg>
-    )
-  }
-]
+// ✅ SINGLE SOURCE OF TRUTH: Import format metadata from schemas
+import { FORMAT_METADATA, getFormatLabel } from '@/lib/orchestrator/schemas/formatMetadata'
+
+// Re-export for backward compatibility (components may reference storyFormats)
+const storyFormats = FORMAT_METADATA
 
 interface ReasoningMessage {
   id: string
@@ -234,39 +105,10 @@ interface ReasoningMessage {
   onOptionSelect?: (optionId: string, optionTitle: string) => void
 }
 
-// Helper function to detect format from user message
-// Prioritizes "create X" patterns over references in "based on Y" contexts
-function detectFormatFromMessage(message: string): StoryFormat | null {
-  const lowerMessage = message.toLowerCase()
-  
-  // PRIORITY 1: Explicit "create X" patterns (primary intent)
-  const createPatterns = [
-    { pattern: /create.*?report/i, format: 'report' as StoryFormat },
-    { pattern: /create.*?podcast/i, format: 'podcast' as StoryFormat },
-    { pattern: /create.*?screenplay/i, format: 'screenplay' as StoryFormat },
-    { pattern: /create.*?novel/i, format: 'novel' as StoryFormat },
-    { pattern: /create.*?short story/i, format: 'short-story' as StoryFormat },
-    { pattern: /create.*?article/i, format: 'article' as StoryFormat }
-  ]
-  
-  for (const { pattern, format } of createPatterns) {
-    if (pattern.test(message)) {
-      console.log('🎯 [Format Detection] Explicit create pattern:', format)
-      return format
-    }
-  }
-  
-  // PRIORITY 2: Standalone mentions (no "create" keyword)
-  // Check for report BEFORE screenplay to avoid "report on screenplay" confusion
-  if (lowerMessage.includes('report')) return 'report'
-  if (lowerMessage.includes('podcast')) return 'podcast'
-  if (lowerMessage.includes('screenplay') || lowerMessage.includes('script')) return 'screenplay'
-  if (lowerMessage.includes('novel') || lowerMessage.includes('book')) return 'novel'
-  if (lowerMessage.includes('short story')) return 'short-story'
-  if (lowerMessage.includes('article') || lowerMessage.includes('blog')) return 'article'
-  
-  return null
-}
+// ✅ REMOVED: detectFormatFromMessage function
+// The orchestrator's intentRouter already extracts documentFormat from user messages.
+// Format detection is now handled entirely by the orchestrator's intent analysis.
+// The UI only passes documentFormat when there's an active document (for context/terminology).
 
 export default function OrchestratorPanel({ 
   node, 
@@ -274,7 +116,6 @@ export default function OrchestratorPanel({
   onClose, 
   onUpdate, 
   onSendPrompt,
-  canvasChatHistory = [],
   onAddChatMessage,
   onClearChat,
   onToggleDocumentView,
@@ -447,15 +288,19 @@ export default function OrchestratorPanel({
   const [loadingConfig, setLoadingConfig] = useState(true)
   const [availableOrchestrators, setAvailableOrchestrators] = useState<Array<{id: string, name: string, keyId: string, provider: string, group?: string, priority?: number}>>([])
   const [activeKeyId, setActiveKeyId] = useState<string | null>(null)
-  const [updatingModel, setUpdatingModel] = useState(false)
+  // ✅ REMOVED: updatingModel state (model selector UI removed)
+  // const [updatingModel, setUpdatingModel] = useState(false)
   const [selectedFormat, setSelectedFormat] = useState<StoryFormat>('novel') // Default to 'novel'
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false) // Prevent double-clicks
   
-  // Model selector state (Cursor-style dropdown at bottom)
+  // Model configuration state (still used by orchestrator, even though UI selector is removed)
+  // TODO: Model selection/enforcement will be redesigned later
   const [modelMode, setModelMode] = useState<'automatic' | 'fixed'>('automatic') // Default to Auto
   const [fixedModeStrategy, setFixedModeStrategy] = useState<'consistent' | 'loose'>('loose') // Default to Loose (cost-effective)
-  const [currentlyUsedModels, setCurrentlyUsedModels] = useState<{intent: string, writer: string}>({intent: '', writer: ''})
+  
+  // ✅ REMOVED: Model selector UI state (button removed, will be redesigned later)
+  // const [currentlyUsedModels, setCurrentlyUsedModels] = useState<{intent: string, writer: string}>({intent: '', writer: ''})
   
   // ✅ UI State: Use WorldState if available, otherwise local state (backward compatible)
   const worldStateUI = worldStateData?.ui
@@ -475,16 +320,25 @@ export default function OrchestratorPanel({
   } | null>(null)
   
   // ✅ Local state fallbacks (used when WorldState not available)
-  const [localIsReasoningOpen, setLocalIsReasoningOpen] = useState(true)
-  const [localIsModelDropdownOpen, setLocalIsModelDropdownOpen] = useState(false)
+  // NOTE: localIsReasoningOpen is set but never read - the reasoning panel state is managed
+  // by WorldState or handled by ChatAccordion component. Keeping commented for potential future use.
+  // const [localIsReasoningOpen, setLocalIsReasoningOpen] = useState(true)
+  
+  // ✅ REMOVED: Model selector UI state (button removed, will be redesigned later)
+  // const [localIsModelDropdownOpen, setLocalIsModelDropdownOpen] = useState(false)
+  // const [updatingModel, setUpdatingModel] = useState(false)
+  // const currentIsModelDropdownOpen = worldStateUI?.isModelDropdownOpen ?? localIsModelDropdownOpen
   
   // ✅ Get UI state from WorldState or fallback to props/local state
-  const currentPendingClarification = worldStateUI?.pendingClarification || pendingClarification
-  const currentPendingCreation = worldStateUI?.pendingCreation || pendingCreation
-  const currentActiveContext = worldStateUI?.activeContext || activeContext
-  const currentIsDocumentViewOpen = worldStateUI?.documentPanelOpen ?? isDocumentViewOpen
-  const currentIsReasoningOpen = worldStateUI?.isReasoningOpen ?? localIsReasoningOpen
-  const currentIsModelDropdownOpen = worldStateUI?.isModelDropdownOpen ?? localIsModelDropdownOpen
+  // NOTE: These "current" variables were intended to provide a unified interface,
+  // but the code was never fully migrated to use them. The code currently uses
+  // the original variables (pendingCreation, activeContext, isDocumentViewOpen, etc.) directly.
+  // Keeping commented for potential future migration to WorldState-first approach.
+  // const currentPendingClarification = worldStateUI?.pendingClarification || pendingClarification
+  // const currentPendingCreation = worldStateUI?.pendingCreation || pendingCreation
+  // const currentActiveContext = worldStateUI?.activeContext || activeContext
+  // const currentIsDocumentViewOpen = worldStateUI?.documentPanelOpen ?? isDocumentViewOpen
+  // const currentIsReasoningOpen = worldStateUI?.isReasoningOpen ?? localIsReasoningOpen
   
   // Chat state (local input only, history is canvas-level)
   const [chatMessage, setChatMessage] = useState('')
@@ -494,19 +348,16 @@ export default function OrchestratorPanel({
   const reasoningEndRef = useRef<HTMLDivElement>(null) // Auto-scroll target
   const chatInputRef = useRef<HTMLTextAreaElement>(null) // Chat input ref
   
-  // ✅ Use WorldState conversation if available, otherwise fallback to canvasChatHistory
+  // ✅ MIGRATION: Always use WorldState conversation (single source of truth)
   const reasoningMessages: ReasoningMessage[] = useMemo(() => {
-    // Ensure canvasChatHistory is available in scope
-    const chatHistory = canvasChatHistory || []
     const worldStateMessages = worldStateData?.conversation.messages || []
-    const fallbackMessages = chatHistory
     console.log('[OrchestratorPanel] Message sources:', {
       worldStateMessages: worldStateMessages.length,
-      canvasChatHistory: fallbackMessages.length,
-      using: worldStateMessages.length > 0 ? 'worldState' : 'canvasChatHistory'
+      using: 'worldState', // ✅ Always WorldState now
+      messageTypes: worldStateMessages.map(m => ({ type: m.type, role: m.role, contentPreview: m.content.substring(0, 50) }))
     })
-    // Get messages from WorldState or fallback to props
-    const messages = worldStateMessages.length > 0 ? worldStateMessages : fallbackMessages
+    // ✅ Always use WorldState - no fallback to canvasChatHistory
+    const messages = worldStateMessages
     
     // Get pending clarification from WorldState or local state
     const currentPendingClarification = worldStateData?.ui.pendingClarification || pendingClarification
@@ -649,12 +500,10 @@ export default function OrchestratorPanel({
   // Detect if streaming - check WorldState for orchestrator processing status
   const isStreaming = effectiveWorldState?.isOrchestratorProcessing() || false
   
-  // Track canvas state to detect changes
-  const [lastCanvasState, setLastCanvasState] = useState<string>('')
-  const currentCanvasState = JSON.stringify({
-    nodes: canvasContext.connectedNodes.map(n => ({ id: n.nodeId, label: n.label, sections: n.detailedContext?.allSections?.length || 0 })),
-    edges: canvasEdges.length
-  })
+  // ✅ REMOVED: Canvas context display logic moved to orchestrator layer
+  // The orchestrator now emits canvas awareness messages via blackboard (orchestratorEngine.ts line ~310).
+  // This keeps the UI layer purely for display - it receives messages from orchestrator, doesn't generate them.
+  // The orchestrator owns the logic of what it can "see" and communicates this to the user.
   
   // Debug logging
   console.log('🔍 [Canvas Context Debug]', {
@@ -725,6 +574,10 @@ export default function OrchestratorPanel({
     // ✅ NEW: Check if there's a pending clarification
     if (pendingClarification) {
       // User is responding to a clarification request by typing a number
+      // 🔍 INVESTIGATE: Number-to-option matching is in UI layer
+      // The UI parses "1", "2", etc. and maps to clarification options.
+      // Consider: Should orchestrator handle this input parsing?
+      // The orchestrator could accept structured responses (option IDs) instead of free text.
       // Try to match the number to an option
       const numberMatch = message.match(/^\s*(\d+)\s*$/)
       if (numberMatch) {
@@ -753,27 +606,50 @@ export default function OrchestratorPanel({
         }
       }
       
-      // If not a number match, treat as a text response
-      console.log('📝 [Clarification] Text response (not a number):', message)
-      setChatMessage('')
-      setPendingClarification(null)
-      // Continue with normal orchestration below
+      // If not a number match, treat as a text response to clarification
+      console.log('📝 [Clarification] Text response (not a number), calling handleClarificationResponse:', message)
+      await handleClarificationResponse(message)
+      return // ✅ CRITICAL: Don't continue with normal orchestration - clarification response handles it
     }
     
-    // ✅ FIX: Don't add user message here - orchestrator will add it automatically
-    // The orchestrator adds the user message to blackboard, which triggers the messageCallback
-    // Adding it here causes duplication in the UI
+    // ============================================================
+    // MESSAGE FLOW: User Input → Orchestrator → Blackboard → UI
+    // ============================================================
+    // 
+    // When the user sends a message, here's what happens:
+    // 
+    // 1. UI clears the input field (line below)
+    // 2. UI calls orchestrator.orchestrate({ message, ... })
+    // 3. Orchestrator adds user message to blackboard (orchestratorEngine.ts line ~296)
+    // 4. Blackboard triggers messageCallback (blackboard.ts line ~212)
+    // 5. messageCallback calls UI's onMessage (orchestratorEngine.ts line ~171)
+    // 6. UI displays the message via onAddChatMessage callback
+    // 
+    // ❌ DO NOT manually add user message here (e.g., onAddChatMessage(message, 'user'))
+    //    This would cause duplication because the orchestrator already adds it to blackboard,
+    //    which automatically triggers the UI display via the callback chain above.
+    // 
+    // ✅ The UI's job is to: clear input, call orchestrator, and display messages it receives.
+    //    The orchestrator's job is: add messages to blackboard, trigger callbacks.
     setChatMessage('')
     
-    // Show canvas context if changed
-    const currentCanvasState = JSON.stringify(canvasNodes.map(n => ({ id: n.id, type: n.type })))
-    if (onAddChatMessage && canvasContext.connectedNodes.length > 0 && currentCanvasState !== lastCanvasState) {
-      onAddChatMessage(`👁️ Canvas visibility: ${canvasContext.connectedNodes.length} node(s) connected`, 'orchestrator', 'thinking')
-      canvasContext.connectedNodes.forEach(ctx => {
-        onAddChatMessage(`   • ${ctx.label}: ${ctx.summary}`, 'orchestrator', 'thinking')
-      })
-      setLastCanvasState(currentCanvasState)
-    }
+    // ============================================================
+    // CANVAS CONTEXT AWARENESS (Moved to Orchestrator Layer)
+    // ============================================================
+    // 
+    // Canvas context display logic was moved from UI to orchestrator layer.
+    // 
+    // Why? Canvas awareness is part of the orchestrator's "reasoning" - it needs to know
+    // what nodes are connected so it can reference them in responses. This logic belongs
+    // in the orchestrator layer, not the UI layer.
+    // 
+    // How it works now:
+    // 1. Orchestrator builds canvas context (orchestratorEngine.ts line ~303)
+    // 2. Orchestrator emits awareness messages via blackboard (orchestratorEngine.ts line ~319)
+    // 3. Blackboard triggers messageCallback → UI displays messages
+    // 
+    // This maintains clean architecture: orchestrator = logic/reasoning, UI = display only.
+    // The UI receives and displays messages from orchestrator, it doesn't generate them.
     
     try {
       // Get user ID from Supabase
@@ -795,20 +671,18 @@ export default function OrchestratorPanel({
       console.log('🔑 [OrchestratorPanel] Available providers:', availableProviders)
       console.log('🔑 [OrchestratorPanel] User key ID:', userKeyId)
       
-      // ✅ FIX: Detect format from user's message BEFORE calling orchestrator
-      const detectedFormat = detectFormatFromMessage(message)
-      const formatToUse = detectedFormat || selectedFormat
-
-      // Update selectedFormat to match detected format for UI consistency
-      if (detectedFormat && detectedFormat !== selectedFormat) {
-        setSelectedFormat(detectedFormat)
-      }
-
-      console.log('📋 [OrchestratorPanel] Format detection:', {
-        detected: detectedFormat,
-        selected: selectedFormat,
-        using: formatToUse,
-        message: message.substring(0, 100)
+      // ✅ FIX: Only pass documentFormat when there's an active document (for context/terminology)
+      // For new document creation, let orchestrator extract format from message via intent analysis
+      // The orchestrator will extract format and put it in extractedEntities.documentFormat
+      const formatForContext = currentStoryStructureNodeId 
+        ? (canvasNodes.find(n => n.id === currentStoryStructureNodeId)?.data?.format as StoryFormat | undefined)
+        : undefined
+      
+      console.log('📋 [OrchestratorPanel] Format context:', {
+        hasActiveDocument: !!currentStoryStructureNodeId,
+        formatForContext,
+        message: message.substring(0, 100),
+        note: 'Orchestrator will extract format from message if creating new document'
       })
       
       // PHASE 1.2: Fetch available models with tier metadata
@@ -863,7 +737,7 @@ export default function OrchestratorPanel({
         canvasEdges,
         activeContext: activeContext || undefined, // Convert null to undefined
         isDocumentViewOpen,
-        documentFormat: formatToUse, // ✅ FIX: Use detected format instead of selectedFormat
+        documentFormat: formatForContext, // ✅ FIX: Only pass format for active documents (context), let orchestrator extract for new documents
         structureItems: freshStructureItems, // ✅ FIX: Use WorldState items if available
         contentMap,
         currentStoryStructureNodeId,
@@ -882,62 +756,67 @@ export default function OrchestratorPanel({
       // ⚠️ REMOVED: Real-time callback already displays messages - no need to display them again!
       // thinkingSteps are now streamed in real-time via onMessage callback
       
-      // PHASE 3: Smart template auto-selection
-      // If intent is create_structure and LLM suggested a template, auto-select it
-      if (response.intent === 'create_structure') {
-        const intentAnalysis = response as any // Type assertion to access extractedEntities
-        const suggestedTemplate = intentAnalysis.extractedEntities?.suggestedTemplate
-        const documentFormat = intentAnalysis.extractedEntities?.documentFormat
-        
-        if (suggestedTemplate && documentFormat) {
-          console.log('🎯 [Smart Intent] Auto-selecting template:', {
-            format: documentFormat,
-            template: suggestedTemplate
-          })
-          
-          // Import template registry
-          const { getTemplateById } = await import('@/lib/orchestrator/schemas/templateRegistry')
-          const template = getTemplateById(documentFormat, suggestedTemplate)
-          
-          if (template) {
-            if (onAddChatMessage) {
-              onAddChatMessage(`✨ Using "${template.name}" template for your ${documentFormat}`, 'orchestrator', 'result')
-            }
-            
-            // Set pending creation with pre-selected template
-            setPendingCreation({
-              format: documentFormat as StoryFormat,
-              userMessage: message
-            })
-            
-            // Auto-select template (skip UI)
-            await handleTemplateSelection(suggestedTemplate, template.name)
-            return // Exit early, template selection will handle the rest
-          }
-        }
-      }
+      // ============================================================
+      // TEMPLATE SELECTION ARCHITECTURE
+      // ============================================================
+      // 
+      // Template selection decisions are handled by CreateStructureAction (orchestrator layer),
+      // NOT by the UI. This maintains clean architecture: orchestrator = logic/reasoning, UI = display/execution.
+      // 
+      // Flow:
+      // 1. Intent analysis extracts suggestedTemplate from user message (if explicit keywords found)
+      //    - "Create a podcast interview" → suggestedTemplate: "interview" ✅
+      //    - "Create a podcast" → suggestedTemplate: undefined (vague) ✅
+      // 
+      // 2. CreateStructureAction receives intent with suggestedTemplate:
+      //    - If suggestedTemplate exists → proceeds directly with structure generation (high confidence)
+      //    - If suggestedTemplate is undefined → returns request_clarification with template options
+      // 
+      // 3. UI executes actions returned by orchestrator:
+      //    - If request_clarification → shows template selector UI
+      //    - If generate_structure → proceeds with structure creation
+      // 
+      // This ensures all template logic is centralized in CreateStructureAction, making it:
+      // - Easier to test (logic isolated in one place)
+      // - More maintainable (single source of truth)
+      // - Architecturally correct (decisions in orchestrator, not UI)
+      // 
+      // See: CreateStructureAction.ts lines 112-254 for template selection logic
       
-      // Execute actions generated by the orchestrator
+      // ✅ SIMPLIFIED: Execute actions returned by orchestrator
+      // Note: The orchestrator now handles action dependencies and auto-execution.
+      // Actions returned here are either:
+      // 1. Actions that require user interaction (requiresUserInput: true)
+      // 2. Actions that couldn't be auto-executed (e.g., structure creation)
+      // 3. Dependency actions that need UI handling (e.g., select_section for navigation)
+      
       if (response.actions.length > 0) {
-        console.log('🎬 [Orchestrator] Executing actions:', response.actions)
+        console.log('🎬 [OrchestratorPanel] Executing UI actions:', response.actions.map((a: OrchestratorAction) => a.type))
         
         if (onAddChatMessage) {
-          onAddChatMessage(`🚀 Executing ${response.actions.length} action(s)...`, 'orchestrator', 'thinking')
+          onAddChatMessage(`🚀 Processing ${response.actions.length} action(s)...`, 'orchestrator', 'thinking')
         }
         
+        // Execute actions (orchestrator has already handled dependencies and auto-execution)
         for (const action of response.actions) {
-          console.log('▶️ [Orchestrator] Executing action:', action.type, action.payload)
-          await executeAction(action)
+          console.log('▶️ [OrchestratorPanel] Executing UI action:', action.type, action.payload)
+          await executeAction(action) // Use executeAction to handle confirmations
         }
         
         if (onAddChatMessage) {
           onAddChatMessage(`✅ Actions completed!`, 'orchestrator', 'result')
         }
       } else {
-        // No actions generated - inform user
-        console.warn('⚠️ [Orchestrator] No actions generated for intent:', response.intent)
-        if (onAddChatMessage) {
-          onAddChatMessage(`💡 I understood your intent (${response.intent}) but couldn't generate specific actions. Could you provide more details?`, 'orchestrator', 'result')
+        // No actions returned - either auto-executed by orchestrator or no actions needed
+        if (response.requiresUserInput) {
+          // Orchestrator is waiting for user input (clarification, etc.)
+          console.log('💬 [OrchestratorPanel] Orchestrator requires user input')
+        } else {
+          // Actions were auto-executed by orchestrator/agents
+          console.log('✅ [OrchestratorPanel] Actions were auto-executed by orchestrator')
+          if (onAddChatMessage) {
+            onAddChatMessage(`✅ Task completed!`, 'orchestrator', 'result')
+          }
         }
       }
       
@@ -977,6 +856,27 @@ export default function OrchestratorPanel({
   }
   
   // ✅ REFACTORED: Handle clarification response by sending back to orchestrator for LLM reasoning
+  // ============================================================
+  // CLARIFICATION RESPONSE HANDLING
+  // ============================================================
+  // 
+  // This function processes user responses to clarification questions.
+  // Instead of calling the full orchestrate() method (which re-analyzes intent
+  // and rebuilds context), we use the dedicated continueClarification() method.
+  // 
+  // Benefits:
+  // - More efficient: Skips intent analysis (we already know originalAction)
+  // - Faster: No canvas context rebuilding (uses existing context)
+  // - Clearer: Explicit method for clarification responses
+  // - Better separation: Logic stays in orchestrator, UI just calls the method
+  // 
+  // Flow:
+  // 1. User responds to clarification (e.g., "1", "TV Pilot", "the first one")
+  // 2. UI calls orchestrator.continueClarification() with response and context
+  // 3. Orchestrator interprets response and builds appropriate actions
+  // 4. UI executes the returned actions
+  // 
+  // See: orchestratorEngine.ts continueClarification() method
   const handleClarificationResponse = async (response: string) => {
     if (!pendingClarification) {
       console.warn('No pending clarification')
@@ -1000,6 +900,36 @@ export default function OrchestratorPanel({
     const availableProviders = Array.from(new Set(availableOrchestrators.map(m => m.provider)))
     const userKeyId = availableOrchestrators.length > 0 ? availableOrchestrators[0].keyId : undefined
     
+    // ✅ FIX: Fetch available models (same as handleSendMessage_NEW)
+    // Try to get from WorldState first, then fetch if needed
+    let availableModelsToPass: any[] | undefined = undefined
+    if (effectiveWorldState) {
+      const worldStateModels = effectiveWorldState.getState().user.availableModels
+      if (worldStateModels && worldStateModels.length > 0) {
+        availableModelsToPass = worldStateModels
+        console.log(`✅ [Clarification] Using ${availableModelsToPass.length} models from WorldState`)
+      }
+    }
+    
+    // If not in WorldState, fetch from API
+    if (!availableModelsToPass || availableModelsToPass.length === 0) {
+      try {
+        console.log('🔍 [Clarification] Fetching available models from API...')
+        const modelsResponse = await fetch('/api/models/available')
+        if (modelsResponse.ok) {
+          const modelsData = await modelsResponse.json()
+          if (modelsData.success && modelsData.models && modelsData.models.length > 0) {
+            availableModelsToPass = modelsData.models
+            console.log(`✅ [Clarification] Loaded ${modelsData.models.length} available models from API`)
+          }
+        } else {
+          console.warn('⚠️ [Clarification] Failed to fetch available models from API')
+        }
+      } catch (error) {
+        console.warn('⚠️ [Clarification] Error fetching available models:', error)
+      }
+    }
+    
     // Send back to orchestrator WITH clarification context
     try {
       // PHASE 1: Update WorldState before clarification response
@@ -1007,6 +937,7 @@ export default function OrchestratorPanel({
         effectiveWorldState.update(draft => {
           draft.user.id = user.id
           draft.user.availableProviders = availableProviders
+          draft.user.availableModels = availableModelsToPass || []
           draft.user.apiKeys.orchestratorKeyId = userKeyId
         })
         
@@ -1018,32 +949,37 @@ export default function OrchestratorPanel({
         var freshStructureItemsForClarification = structureItems || []
       }
       
-      // PHASE 3: Use multi-agent orchestrator for clarification responses too
-      const orchestratorResponse = await getMultiAgentOrchestrator(user.id, {
+      // ✅ NEW: Use dedicated continueClarification method instead of full orchestrate()
+      // This is more efficient because it skips intent analysis and context rebuilding
+      const orchestrator = getMultiAgentOrchestrator(user.id, {
         toolRegistry,
         onMessage: onAddChatMessage // PHASE 3: Real-time message streaming
-      }, effectiveWorldState || undefined).orchestrate({
-        message: response,
-        canvasNodes,
-        canvasEdges,
-        activeContext: activeContext || undefined,
-        isDocumentViewOpen,
-        documentFormat: pendingClarification.originalPayload?.format || selectedFormat,
-        structureItems: freshStructureItemsForClarification, // ✅ FIX: Use WorldState items
-        contentMap,
-        currentStoryStructureNodeId,
-        modelMode,
-        fixedModeStrategy: modelMode === 'fixed' ? fixedModeStrategy : undefined,
-        fixedModelId: modelMode === 'fixed' ? configuredModel.orchestrator : undefined,
-        availableProviders: availableProviders.length > 0 ? availableProviders : undefined,
-        userKeyId,
-        // NEW: Pass clarification context
-        clarificationContext: {
+      }, effectiveWorldState || undefined)
+      
+      const orchestratorResponse = await orchestrator.continueClarification(
+        response, // User's clarification response
+        {
           originalAction: pendingClarification.originalIntent,
           question: pendingClarification.question,
           options: pendingClarification.options,
           payload: pendingClarification.originalPayload
+        },
+        {
+          canvasNodes,
+          canvasEdges,
+          structureItems: freshStructureItemsForClarification,
+          contentMap,
+          currentStoryStructureNodeId,
+          documentFormat: pendingClarification.originalPayload?.format || selectedFormat,
+          availableModels: availableModelsToPass,
+          availableProviders: availableProviders.length > 0 ? availableProviders : undefined,
+          userKeyId
         }
+      )
+      
+      console.log('✅ [Clarification] Orchestrator response received:', {
+        actionsCount: orchestratorResponse.actions.length,
+        actionTypes: orchestratorResponse.actions.map((a: OrchestratorAction) => a.type)
       })
       
       // ⚠️ REMOVED: Real-time callback already displays messages - no need to display them again!
@@ -1069,18 +1005,50 @@ export default function OrchestratorPanel({
         onAddChatMessage(`✅ Actions completed!`, 'orchestrator', 'result')
       }
       
+      // ✅ CRITICAL: Only clear pending clarification if we successfully processed it
+      // Check if we got actions that indicate successful processing (not another clarification request)
+      const hasNonClarificationActions = orchestratorResponse.actions.some(
+        (a: OrchestratorAction) => a.type !== 'request_clarification'
+      )
+      
+      if (hasNonClarificationActions) {
+        setPendingClarification(null)
+        console.log('✅ [Clarification] Cleared pending clarification after successful processing')
+      } else {
+        console.warn('⚠️ [Clarification] Keeping pending clarification - got another clarification request')
+      }
+      
     } catch (error) {
       console.error('❌ [Clarification] Error:', error)
       if (onAddChatMessage) {
         onAddChatMessage(`❌ Error processing clarification: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
       }
+      // Don't clear pending clarification on error - let user try again
+      console.warn('⚠️ [Clarification] Keeping pending clarification due to error')
     }
-    
-    // Clear pending clarification
-    setPendingClarification(null)
   }
   
-  // Helper: Handle confirmation response
+  // ============================================================
+  // CONFIRMATION RESPONSE HANDLING
+  // ============================================================
+  // 
+  // This function processes user responses to confirmation requests.
+  // Instead of building actions in the UI (which violates orchestrator taxonomy),
+  // we use the dedicated continueConfirmation() method in the orchestrator.
+  // 
+  // Benefits:
+  // - Logic stays in orchestrator (maintains architectural separation)
+  // - Single source of truth for action building
+  // - Easier to test and maintain
+  // - Consistent with continueClarification() pattern
+  // 
+  // Flow:
+  // 1. User responds to confirmation ("yes", "no", or selects an option)
+  // 2. UI calls orchestrator.continueConfirmation() with response and context
+  // 3. Orchestrator interprets response and builds appropriate action
+  // 4. UI executes the returned action
+  // 
+  // See: orchestratorEngine.ts continueConfirmation() method
   const handleConfirmationResponse = async (response: string | { id: string }) => {
     if (!pendingConfirmation) {
       console.warn('No pending confirmation')
@@ -1096,106 +1064,71 @@ export default function OrchestratorPanel({
       return
     }
     
-    // Handle clarification (multiple choice)
-    if (pendingConfirmation.confirmationType === 'clarification' && pendingConfirmation.options) {
-      let selectedOption: typeof pendingConfirmation.options[0] | undefined
-      
-      if (typeof response === 'object' && 'id' in response) {
-        // Direct option selection (button click)
-        selectedOption = pendingConfirmation.options.find(opt => opt.id === response.id)
-      } else if (typeof response === 'string') {
-        // Natural language response - try to match
-        const lowerResponse = response.toLowerCase()
-        selectedOption = pendingConfirmation.options.find(opt => 
-          lowerResponse.includes(opt.id.toLowerCase()) ||
-          lowerResponse.includes(opt.label.toLowerCase()) ||
-          (opt.description && lowerResponse.includes(opt.description.toLowerCase()))
-        )
-      }
-      
-      if (selectedOption) {
-        // Build the appropriate action based on the original action type
-        let updatedAction: OrchestratorAction
-        
-        // Check originalAction type (stored in actionType by createConfirmationRequest)
-        const originalAction = pendingConfirmation.actionType as string
-        
-        if (originalAction === 'delete_node') {
-          // For delete_node, we need nodeId and nodeName
-          updatedAction = {
-            type: 'delete_node',
-            payload: {
-              nodeId: selectedOption.id,
-              nodeName: selectedOption.label
-            },
-            status: 'pending'
-          }
-        } else if (originalAction === 'open_and_write') {
-          // For open_and_write, we need nodeId
-          updatedAction = {
-            type: 'open_document',
-            payload: {
-              nodeId: selectedOption.id,
-              sectionId: null
-            },
-            status: 'pending'
-          }
-        } else {
-          // Generic fallback
-          updatedAction = {
-            type: pendingConfirmation.actionType,
-            payload: {
-              ...pendingConfirmation.actionPayload,
-              selectedOptionId: selectedOption.id
-            },
-            status: 'pending'
-          }
-        }
-        
-        // Clear confirmation and execute
-        setPendingConfirmation(null)
-        await executeActionDirectly(updatedAction)
-      } else {
-        if (onAddChatMessage) {
-          onAddChatMessage('❓ I didn\'t understand which option you meant. Please try again or click one of the buttons.', 'orchestrator', 'error')
-        }
-      }
+    // ✅ FIX: Don't add user response here - orchestrator will add it automatically
+    // Get user ID for orchestration
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      console.error('User not authenticated')
       return
     }
     
-    // Handle destructive/permission confirmations (yes/no)
-    if (pendingConfirmation.confirmationType === 'destructive' || pendingConfirmation.confirmationType === 'permission') {
-      const lowerResponse = typeof response === 'string' ? response.toLowerCase().trim() : ''
-      const isConfirmed = lowerResponse === 'yes' || lowerResponse === 'y' || lowerResponse === 'confirm' || lowerResponse === 'ok'
-      const isCancelled = lowerResponse === 'no' || lowerResponse === 'n' || lowerResponse === 'cancel'
+    try {
+      // ✅ NEW: Use orchestrator to process confirmation response
+      const orchestrator = getMultiAgentOrchestrator(user.id, {
+        toolRegistry,
+        onMessage: onAddChatMessage
+      }, effectiveWorldState || undefined)
       
-      if (isConfirmed) {
-        // Execute the action
-        const actionToExecute: OrchestratorAction = {
-          type: pendingConfirmation.actionType,
-          payload: pendingConfirmation.actionPayload,
-          status: 'pending'
+      const orchestratorResponse = await orchestrator.continueConfirmation(
+        response,
+        {
+          actionId: pendingConfirmation.actionId,
+          actionType: pendingConfirmation.actionType,
+          actionPayload: pendingConfirmation.actionPayload,
+          confirmationType: pendingConfirmation.confirmationType,
+          options: pendingConfirmation.options
+        },
+        {
+          canvasNodes,
+          canvasEdges,
+          structureItems,
+          contentMap,
+          currentStoryStructureNodeId
         }
-        
-        setPendingConfirmation(null)
-        await executeActionDirectly(actionToExecute)
-      } else if (isCancelled) {
-        setPendingConfirmation(null)
-        if (onAddChatMessage) {
-          onAddChatMessage('❌ Action cancelled.', 'orchestrator', 'result')
-        }
-      } else {
-        if (onAddChatMessage) {
-          onAddChatMessage('❓ Please reply "yes" to confirm or "no" to cancel.', 'orchestrator', 'error')
+      )
+      
+      // Clear confirmation
+      setPendingConfirmation(null)
+      
+      // Execute returned actions
+      if (orchestratorResponse.actions.length > 0) {
+        for (const action of orchestratorResponse.actions) {
+          await executeActionDirectly(action)
         }
       }
+    } catch (error) {
+      console.error('❌ [Confirmation] Error:', error)
+      if (onAddChatMessage) {
+        onAddChatMessage(`❌ Error processing confirmation: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
+      }
+      // Don't clear pending confirmation on error - let user try again
+      console.warn('⚠️ [Confirmation] Keeping pending confirmation due to error')
     }
   }
   
-  // Action executor - handles actions from the orchestrator (with confirmation checks)
+  /**
+   * Execute action with confirmation handling (if needed)
+   * 
+   * ✅ SIMPLIFIED: The orchestrator now handles action dependencies and sequencing.
+   * This function only handles:
+   * 1. Confirmation requests (destructive actions like delete_node)
+   * 2. Direct execution of actions returned by orchestrator
+   * 
+   * @param action - Action to execute
+   */
   const executeAction = async (action: OrchestratorAction) => {
     // Check if this action requires confirmation
-    const requiresConfirmation = action.type === 'delete_node'
+    const requiresConfirmation = action.type === 'delete_node' && action.requiresUserInput !== false
     
     if (requiresConfirmation) {
       // Create confirmation request instead of executing directly
@@ -1221,7 +1154,20 @@ export default function OrchestratorPanel({
     await executeActionDirectly(action)
   }
   
-  // Action executor - direct execution (bypasses confirmation)
+  /**
+   * Execute action directly (bypasses confirmation)
+   * 
+   * ✅ SIMPLIFIED: This function handles UI-level action execution.
+   * The orchestrator has already handled:
+   * - Action dependencies and sequencing
+   * - Auto-execution of actions that can be handled by agents
+   * 
+   * Actions received here are either:
+   * - Actions that require UI interaction (navigation, structure creation)
+   * - Actions that couldn't be auto-executed
+   * 
+   * @param action - Action to execute directly
+   */
   const executeActionDirectly = async (action: OrchestratorAction) => {
     try {
       switch (action.type) {
@@ -1271,15 +1217,51 @@ export default function OrchestratorPanel({
           
         case 'generate_content':
           // Handle both answer generation and content writing
+          console.log('🔍 [executeActionDirectly] generate_content action:', {
+            isAnswer: action.payload.isAnswer,
+            hasOnAnswerQuestion: !!onAnswerQuestion,
+            hasSectionId: !!action.payload.sectionId,
+            hasOnWriteContent: !!onWriteContent,
+            promptLength: action.payload.prompt?.length || 0,
+            promptPreview: action.payload.prompt?.substring(0, 100)
+          })
+          
           if (action.payload.isAnswer && onAnswerQuestion) {
             // This is an answer to a question
-            const answer = await onAnswerQuestion(action.payload.prompt)
-            if (onAddChatMessage) {
-              onAddChatMessage(`📖 ${answer}`, 'orchestrator', 'result')
+            console.log('💬 [executeActionDirectly] Calling onAnswerQuestion with prompt:', action.payload.prompt?.substring(0, 100))
+            try {
+              const answer = await onAnswerQuestion(action.payload.prompt)
+              console.log('✅ [executeActionDirectly] Received answer, length:', answer?.length || 0)
+              console.log('✅ [executeActionDirectly] Answer preview:', answer?.substring(0, 200))
+              console.log('✅ [executeActionDirectly] onAddChatMessage available:', !!onAddChatMessage)
+              if (onAddChatMessage) {
+                console.log('📤 [executeActionDirectly] Calling onAddChatMessage with answer...')
+                onAddChatMessage(`📖 ${answer}`, 'orchestrator', 'result')
+                console.log('✅ [executeActionDirectly] onAddChatMessage called successfully')
+              } else {
+                console.warn('⚠️ [executeActionDirectly] onAddChatMessage is not available!')
+              }
+            } catch (error) {
+              console.error('❌ [executeActionDirectly] Error in onAnswerQuestion:', error)
+              if (onAddChatMessage) {
+                onAddChatMessage(`❌ Error answering question: ${error instanceof Error ? error.message : 'Unknown error'}`, 'orchestrator', 'error')
+              }
             }
           } else if (action.payload.sectionId && onWriteContent) {
             // This is content for a specific section
+            console.log('✍️ [executeActionDirectly] Calling onWriteContent for section:', action.payload.sectionId)
             await onWriteContent(action.payload.sectionId, action.payload.prompt)
+          } else {
+            // ⚠️ No handler matched - log warning
+            console.warn('⚠️ [executeActionDirectly] generate_content action not handled:', {
+              isAnswer: action.payload.isAnswer,
+              hasOnAnswerQuestion: !!onAnswerQuestion,
+              sectionId: action.payload.sectionId,
+              hasOnWriteContent: !!onWriteContent
+            })
+            if (onAddChatMessage) {
+              onAddChatMessage(`⚠️ Action not handled: generate_content (isAnswer: ${action.payload.isAnswer}, sectionId: ${action.payload.sectionId})`, 'orchestrator', 'error')
+            }
           }
           break
           
@@ -1311,9 +1293,12 @@ export default function OrchestratorPanel({
             const prompt = action.payload.prompt || ''
             const plan = action.payload.plan
 
+            // Use centralized format label helper
+            const expectedTitle = getFormatLabel(format)
+            
             console.log('📝 [generate_structure] Creating story node:', {
               format,
-              expectedTitle: format === 'screenplay' ? 'Screenplay' : format === 'novel' ? 'Novel' : format,
+              expectedTitle,
               planStructureCount: plan.structure?.length,
               prompt: prompt.substring(0, 50) + '...',
               planStructure: plan.structure?.slice(0, 2) // First 2 items only
@@ -1359,8 +1344,8 @@ export default function OrchestratorPanel({
           worldState.toggleReasoningPanel()
         }
       } else {
-        // Fallback to local state
-        setLocalIsReasoningOpen(true)
+        // Fallback to local state (commented out - reasoning panel managed by ChatAccordion)
+        // setLocalIsReasoningOpen(true)
       }
       console.log('[CreateStoryPanel] Auto-opening reasoning panel, messages:', reasoningMessages.length)
     }
@@ -1415,16 +1400,48 @@ export default function OrchestratorPanel({
     }
   }, [reasoningMessages])
 
+  // ============================================================
+  // MODEL CONFIGURATION
+  // ============================================================
+  // 
+  // This function fetches models, maps API keys, and manages orchestrator configuration.
+  // It's still needed to provide model metadata to the orchestrator, even though
+  // the UI model selector button has been removed (will be redesigned later).
+  // 
+  // TODO: Consider extracting to a separate hook or service for reusability.
+  // The logic is complex (140+ lines) and could be shared across components.
+  // 
+  // Note: Model selection UI has been removed - model selection/enforcement
+  // will be redesigned in a future update.
   const fetchConfiguredModels = async () => {
     setLoadingConfig(true)
     
     try {
       console.log('[CreateStoryPanel] Fetching configured models from Profile')
-      const response = await fetch('/api/user/api-keys')
-      const data = await response.json()
       
-      // Populate available orchestrators (Refined & Canonical)
-      if (data.success && data.keys?.length > 0) {
+      // ✅ SINGLE SOURCE OF TRUTH: Use model metadata API instead of hardcoded mappings
+      const modelsResponse = await fetch('/api/models/available')
+      const modelsData = await modelsResponse.json()
+      
+      // Also fetch API keys to get keyId for each model
+      const keysResponse = await fetch('/api/user/api-keys')
+      const keysData = await keysResponse.json()
+      
+      // Create a map of model_id -> keyId for quick lookup
+      const modelToKeyId = new Map<string, string>()
+      if (keysData.success && keysData.keys?.length > 0) {
+        keysData.keys.forEach((key: any) => {
+          if (key.models_cache) {
+            key.models_cache.forEach((model: any) => {
+              // Map provider:model_id to keyId
+              modelToKeyId.set(`${key.provider}:${model.id}`, key.id)
+            })
+          }
+        })
+      }
+      
+      // Populate available orchestrators from metadata API (single source of truth)
+      if (modelsData.success && modelsData.models?.length > 0) {
         const uniqueModels = new Map<string, {
             id: string, 
             name: string, 
@@ -1434,28 +1451,33 @@ export default function OrchestratorPanel({
             priority: number
         }>()
         
-        data.keys.forEach((key: any) => {
-          if (key.models_cache) {
-            key.models_cache.forEach((model: any) => {
-              const canonical = getCanonicalModel(model.id)
-              if (canonical) {
-                // Deduplicate by Canonical Name + Provider (e.g. "GPT-4 Turbo" on OpenAI)
-                // This merges "gpt-4-1106-preview" and "gpt-4-0125-preview" into one "GPT-4 Turbo" entry
-                const dedupKey = `${canonical.name}-${key.provider}`
-                
-                // Only add if not exists, or maybe overwrite if we want "latest" logic? 
-                // For now, first found is fine as they are usually equivalent aliases.
-                if (!uniqueModels.has(dedupKey)) {
-                  uniqueModels.set(dedupKey, {
-                    id: model.id,
-                    name: canonical.name,
-                    keyId: key.id,
-                    provider: key.provider,
-                    group: canonical.group,
-                    priority: canonical.priority
-                  })
-                }
-              }
+        modelsData.models.forEach((model: any) => {
+          // Use vendor_name from database if available, otherwise fall back to displayName
+          const displayName = model.vendor_name || model.displayName || model.id
+          
+          // Get keyId from the map
+          const keyId = modelToKeyId.get(`${model.provider}:${model.id}`) || ''
+          
+          // Use tier for grouping (convert tier to group name)
+          const group = model.tier 
+            ? `${model.provider.charAt(0).toUpperCase() + model.provider.slice(1)}${model.tier === 'frontier' ? ' (Frontier)' : model.tier === 'premium' ? ' (Premium)' : ''}`
+            : model.provider.charAt(0).toUpperCase() + model.provider.slice(1)
+          
+          // Use priority from tier metadata (database is single source of truth)
+          // Default to 50 if priority is missing (shouldn't happen if database is properly configured)
+          const priority = model.priority || 50
+          
+          // Deduplicate by Display Name + Provider
+          const dedupKey = `${displayName}-${model.provider}`
+          
+          if (!uniqueModels.has(dedupKey)) {
+            uniqueModels.set(dedupKey, {
+              id: model.id,
+              name: displayName,
+              keyId: keyId,
+              provider: model.provider,
+              group: group,
+              priority: priority
             })
           }
         })
@@ -1472,9 +1494,11 @@ export default function OrchestratorPanel({
       }
 
       console.log('[CreateStoryPanel] 📦 API Response:', {
-        success: data.success,
-        keyCount: data.keys?.length,
-        allKeys: data.keys?.map((k: any) => ({
+        modelsSuccess: modelsData.success,
+        modelsCount: modelsData.models?.length || 0,
+        keysSuccess: keysData.success,
+        keyCount: keysData.keys?.length || 0,
+        allKeys: keysData.keys?.map((k: any) => ({
           id: k.id,
           provider: k.provider,
           orchestrator_model_id: k.orchestrator_model_id,
@@ -1483,9 +1507,9 @@ export default function OrchestratorPanel({
         }))
       })
       
-      if (data.success && data.keys?.length > 0) {
+      if (keysData.success && keysData.keys?.length > 0) {
         // Find the first key with an orchestrator configured
-        const configuredKey = data.keys.find((key: any) => key.orchestrator_model_id)
+        const configuredKey = keysData.keys.find((key: any) => key.orchestrator_model_id)
         
         console.log('[CreateStoryPanel] 🔍 Search result:', {
           foundKey: !!configuredKey,
@@ -1641,8 +1665,8 @@ export default function OrchestratorPanel({
           <div className="flex-1 overflow-y-auto space-y-3">
             {reasoningMessages.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
-                <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                <svg className="w-12 h-12 mx-auto mb-3 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.0} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
                 <p className="text-sm font-medium">AI reasoning will appear here</p>
                 <p className="text-xs mt-1">Watch the orchestrator think through your story structure</p>
@@ -1767,223 +1791,15 @@ export default function OrchestratorPanel({
             className="w-full resize-none px-4 pt-3 pb-12 text-sm focus:outline-none placeholder-gray-400 bg-transparent"
           />
           
-          {/* Bottom Bar with Model Selector */}
+          {/* Bottom Bar */}
           <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-2 border-t border-gray-200 bg-gray-50/50 backdrop-blur-sm">
             {/* Left: Helper text */}
             <p className="text-[10px] text-gray-500">
               <kbd className="px-1 py-0.5 text-[9px] bg-white border border-gray-300 rounded shadow-sm">Enter</kbd> to send • <kbd className="px-1 py-0.5 text-[9px] bg-white border border-gray-300 rounded shadow-sm">Shift+Enter</kbd> for new line
             </p>
             
-            {/* Right: Model Selector Button */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  if (effectiveWorldState) {
-                    effectiveWorldState.toggleModelDropdown()
-                  } else {
-                    setLocalIsModelDropdownOpen(!localIsModelDropdownOpen)
-                  }
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
-              >
-                {modelMode === 'automatic' ? (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    <span>Auto</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                    </svg>
-                    <span className="max-w-[100px] truncate">{configuredModel.orchestrator || 'Fixed'}</span>
-                  </>
-                )}
-                <svg className={`w-3 h-3 transition-transform ${currentIsModelDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-            
-            {/* Dropdown Menu */}
-            {currentIsModelDropdownOpen && (
-              <div className="absolute bottom-full left-0 mb-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
-                {/* Mode Toggle */}
-                <div className="p-3 border-b border-gray-200 bg-gray-50">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setModelMode('automatic')}
-                      className={`flex-1 px-3 py-2 text-xs font-medium rounded transition-colors ${
-                        modelMode === 'automatic' 
-                          ? 'bg-purple-600 text-white' 
-                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
-                      }`}
-                    >
-                      ⚡ Automatic
-                    </button>
-                    <button
-                      onClick={() => setModelMode('fixed')}
-                      className={`flex-1 px-3 py-2 text-xs font-medium rounded transition-colors ${
-                        modelMode === 'fixed' 
-                          ? 'bg-purple-600 text-white' 
-                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
-                      }`}
-                    >
-                      📌 Fixed
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-gray-500 mt-2">
-                    {modelMode === 'automatic' 
-                      ? 'Best model selected per task (intent, writing, etc.)'
-                      : 'Use one model for all tasks'}
-                  </p>
-                </div>
-                
-                {/* Currently Using (if Auto mode) */}
-                {modelMode === 'automatic' && currentlyUsedModels.intent && (
-                  <div className="p-3 bg-blue-50 border-b border-blue-200">
-                    <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Currently Using:</p>
-                    <div className="space-y-1 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">🧠 Intent:</span>
-                        <span className="font-medium text-gray-900">{currentlyUsedModels.intent}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">✍️ Writer:</span>
-                        <span className="font-medium text-gray-900">{currentlyUsedModels.writer}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Strategy Toggle (only show if Fixed mode) */}
-                {modelMode === 'fixed' && (
-                  <div className="p-3 border-b border-gray-200 bg-gray-50">
-                    <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide mb-2">Strategy:</p>
-                    <div className="space-y-2">
-                      <label className="flex items-start gap-2 cursor-pointer group">
-                        <input
-                          type="radio"
-                          name="strategy"
-                          checked={fixedModeStrategy === 'consistent'}
-                          onChange={() => setFixedModeStrategy('consistent')}
-                          className="mt-0.5 text-purple-600 focus:ring-purple-500"
-                        />
-                        <div className="flex-1">
-                          <div className="text-xs font-medium text-gray-900 group-hover:text-purple-700">
-                            🎯 Consistent
-                          </div>
-                          <div className="text-[10px] text-gray-500">
-                            Use selected model for ALL tasks (expensive)
-                          </div>
-                        </div>
-                      </label>
-                      
-                      <label className="flex items-start gap-2 cursor-pointer group">
-                        <input
-                          type="radio"
-                          name="strategy"
-                          checked={fixedModeStrategy === 'loose'}
-                          onChange={() => setFixedModeStrategy('loose')}
-                          className="mt-0.5 text-purple-600 focus:ring-purple-500"
-                        />
-                        <div className="flex-1">
-                          <div className="text-xs font-medium text-gray-900 group-hover:text-purple-700">
-                            💡 Loose (Strategic)
-                          </div>
-                          <div className="text-[10px] text-gray-500">
-                            Strategic tasks only, cheaper models for writing
-                          </div>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Model List (only show if Fixed mode) */}
-                {modelMode === 'fixed' && (
-                  <div className="p-2">
-                    <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide px-2 py-1.5">Select Model:</p>
-                    {availableOrchestrators.length > 0 ? (
-                      Object.entries(availableOrchestrators.reduce((acc, model) => {
-                        const group = model.group || 'Other'
-                        if (!acc[group]) acc[group] = []
-                        acc[group].push(model)
-                        return acc
-                      }, {} as Record<string, typeof availableOrchestrators>)).map(([group, models]) => (
-                        <div key={group} className="mb-2">
-                          <p className="text-[10px] font-medium text-gray-500 px-2 py-1">{group}</p>
-                          {models.map((model) => (
-                            <button
-                              key={model.id}
-                              onClick={async () => {
-                                // Same logic as before for updating model
-                                setUpdatingModel(true)
-                                setConfiguredModel(prev => ({ ...prev, orchestrator: model.id }))
-                                
-                                try {
-                                  const keysResponse = await fetch('/api/user/api-keys')
-                                  const keysData = await keysResponse.json()
-                                  const targetKey = keysData.keys.find((k: any) => k.id === model.keyId)
-                                  
-                                  if (targetKey) {
-                                    await fetch(`/api/user/api-keys/${targetKey.id}/preferences`, {
-                                      method: 'PATCH',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        orchestratorModelId: model.id,
-                                        writerModelIds: targetKey.writer_model_ids || [] 
-                                      })
-                                    })
-
-                                    const otherKeys = keysData.keys.filter((k: any) => k.id !== targetKey.id && k.orchestrator_model_id)
-                                    if (otherKeys.length > 0) {
-                                      await Promise.all(otherKeys.map((k: any) => 
-                                        fetch(`/api/user/api-keys/${k.id}/preferences`, {
-                                          method: 'PATCH',
-                                          headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({
-                                            orchestratorModelId: null,
-                                            writerModelIds: k.writer_model_ids || []
-                                          })
-                                        })
-                                      ))
-                                    }
-                                    
-                                    await fetchConfiguredModels()
-                                    if (effectiveWorldState) {
-                                      effectiveWorldState.toggleModelDropdown()
-                                    } else {
-                                      setLocalIsModelDropdownOpen(false)
-                                    }
-                                  }
-                                } catch (err) {
-                                  console.error('Failed to switch model', err)
-                                  fetchConfiguredModels()
-                                } finally {
-                                  setUpdatingModel(false)
-                                }
-                              }}
-                              className={`w-full text-left px-3 py-2 text-xs rounded hover:bg-gray-100 transition-colors ${
-                                configuredModel.orchestrator === model.id 
-                                  ? 'bg-purple-50 text-purple-700 font-medium' 
-                                  : 'text-gray-700'
-                              }`}
-                            >
-                              {model.name}
-                            </button>
-                          ))}
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-gray-500 px-2 py-2">No models available</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-            </div>
+            {/* Right: Reserved for future model selector */}
+            {/* TODO: Model selection/enforcement will be redesigned later */}
           </div>
         </div>
       </div>

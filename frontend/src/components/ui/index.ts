@@ -80,6 +80,9 @@ export type { ChatMessageProps } from './molecules/ChatMessage'
 export { ChatOptionsSelector, templateToChatOption } from './molecules/ChatOptionsSelector'
 export type { ChatOptionsSelectorProps, ChatOption } from './molecules/ChatOptionsSelector'
 
+export { VendorFilterDropdown } from './molecules/VendorFilterDropdown'
+export type { VendorFilterDropdownProps } from './molecules/VendorFilterDropdown'
+
 // Organisms
 export { ChatAccordion } from './organisms/ChatAccordion'
 export type { ChatAccordionProps, ChatMessageData } from './organisms/ChatAccordion'

@@ -39,8 +39,7 @@ export {
   createBlackboard,
   type BlackboardState,
   type ConversationMessage,
-  type CanvasState,
-  type DocumentState,
+  // NOTE: CanvasState and DocumentState removed - WorldState is now the single source of truth
   type OrchestratorContext,
   type PatternMemory
 } from './core/blackboard'

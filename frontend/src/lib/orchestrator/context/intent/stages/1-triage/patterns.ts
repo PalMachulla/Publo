@@ -60,15 +60,17 @@ export const SIMPLE_PATTERNS = {
   
   // Open and write (when canvas node is referenced)
   openAndWrite: [
-    /^(open|show|display|view).*(the|that|this|my) (novel|screenplay|report|podcast|document|node)/i,
-    /^let'?s (open|work on|edit).*(the|that|this|my) (novel|screenplay|report|podcast|document)/i,
-    /(craft|write|fill|expand|develop).*(in |to )(that|the|this|my) (node|document|podcast|screenplay|novel|report)/i,
-    /(add|put|insert|write|get).*(content|text|words).*(in |to |for )(that|the|this|my)/i,
-    /(work on|edit|improve).*(that|the|this|my) (node|document|podcast|screenplay|novel|report)/i,
+    /^(open|show|display|view).*(the|that|this|my|our) (novel|screenplay|report|podcast|document|node)/i,
+    /^let'?s (open|work on|edit).*(the|that|this|my|our) (novel|screenplay|report|podcast|document)/i,
+    // CRITICAL: "write [sections] in [our/the/my] [document]" pattern
+    /(write|craft|fill|expand|develop).*(the|first|second|third|three|two|1|2|3).*(chapter|act|scene|section|episode).*(in |to |for )(our|the|that|this|my) (novel|screenplay|report|podcast|document)/i,
+    /(craft|write|fill|expand|develop).*(in |to )(that|the|this|my|our) (node|document|podcast|screenplay|novel|report)/i,
+    /(add|put|insert|write|get).*(content|text|words).*(in |to |for )(that|the|this|my|our)/i,
+    /(work on|edit|improve).*(that|the|this|my|our) (node|document|podcast|screenplay|novel|report)/i,
     /help (me )?(craft|write|fill|expand).*(node|document|podcast|screenplay|novel|report)/i,
-    /(get|add|create|generate).*(content|text|words).*(to|for|in) (my|the|that|this) (podcast|screenplay|novel|report|document)/i,
-    /help (me )?(get|add|create).*(my|the|that) (podcast|screenplay|novel|report|document)/i,
-    /help (me )?with (the|my|that|this) (podcast|screenplay|novel|report|document)/i,
+    /(get|add|create|generate).*(content|text|words).*(to|for|in) (my|the|that|this|our) (podcast|screenplay|novel|report|document)/i,
+    /help (me )?(get|add|create).*(my|the|that|our) (podcast|screenplay|novel|report|document)/i,
+    /help (me )?with (the|my|that|this|our) (podcast|screenplay|novel|report|document)/i,
   ],
   
   // Improve content (when segment is selected)

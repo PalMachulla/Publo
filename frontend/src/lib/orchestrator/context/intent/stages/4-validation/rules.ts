@@ -43,26 +43,89 @@ export const validationRules: ValidationRule[] = [
     return { valid: true }
   },
   
-  // Rule 3: Format mismatch detection
+  // Rule 3: Format mismatch detection (comprehensive)
   (analysis, context) => {
-    const format = analysis.extractedEntities?.documentFormat
+    // Get format from context (documentFormat is in PipelineContext, not extractedEntities)
+    const format = context.documentFormat
     const targetSegment = analysis.extractedEntities?.targetSegment
+    const userMessage = context.conversationHistory?.[context.conversationHistory.length - 1]?.content || ''
     
-    if (!format || !targetSegment) {
+    if (!format) {
       return { valid: true }
     }
     
+    const normalizedFormat = format.toLowerCase().replace(/-/g, '_')
+    const lowerMessage = userMessage.toLowerCase()
+    const lowerSegment = targetSegment?.toLowerCase() || ''
+    
+    // Comprehensive format mismatch rules
     const mismatches = [
-      { format: 'short-story', wrongTerm: 'chapter', correctTerm: 'scene' },
-      { format: 'screenplay', wrongTerm: 'chapter', correctTerm: 'act or scene' },
-      { format: 'novel', wrongTerm: 'scene', correctTerm: 'chapter' },
+      // Short story: Should use SCENES, not chapters
+      { 
+        format: 'short_story', 
+        wrongTerm: 'chapter', 
+        correctTerm: 'scene',
+        checkMessage: true // Check both message and segment
+      },
+      // Screenplay: Should use ACTS and SCENES, not chapters
+      { 
+        format: 'screenplay', 
+        wrongTerm: 'chapter', 
+        correctTerm: 'act or scene',
+        checkMessage: true
+      },
+      // Report: Should use SECTIONS, not chapters
+      { 
+        format: 'report', 
+        wrongTerm: 'chapter', 
+        correctTerm: 'section',
+        checkMessage: true
+      },
+      // Podcast: Should use EPISODES and SEGMENTS, not chapters
+      { 
+        format: 'podcast', 
+        wrongTerm: 'chapter', 
+        correctTerm: 'episode or segment',
+        checkMessage: true
+      },
+      // Article/Essay: Should use SECTIONS, not chapters
+      { 
+        format: 'article', 
+        wrongTerm: 'chapter', 
+        correctTerm: 'section',
+        checkMessage: true
+      },
+      { 
+        format: 'essay', 
+        wrongTerm: 'chapter', 
+        correctTerm: 'section',
+        checkMessage: true
+      },
+      // Novel: Chapters are correct, but scenes might be wrong (optional)
+      { 
+        format: 'novel', 
+        wrongTerm: 'scene', 
+        correctTerm: 'chapter',
+        checkMessage: false, // Only check segment, not message (scenes can exist in novels)
+        optional: true // This is a soft warning, not a hard error
+      },
     ]
     
     for (const mismatch of mismatches) {
-      if (format.includes(mismatch.format) && targetSegment.toLowerCase().includes(mismatch.wrongTerm)) {
+      // Check if format matches (with prefix matching for report variants)
+      const formatMatches = normalizedFormat === mismatch.format || 
+                           (mismatch.format === 'report' && normalizedFormat.startsWith('report'))
+      
+      if (!formatMatches) continue
+      
+      // Check for wrong term in message or segment
+      const hasWrongTerm = (mismatch.checkMessage && lowerMessage.includes(mismatch.wrongTerm)) ||
+                          lowerSegment.includes(mismatch.wrongTerm)
+      
+      if (hasWrongTerm) {
         return {
-          valid: false,
-          error: `Format mismatch: ${format} typically uses ${mismatch.correctTerm}, not ${mismatch.wrongTerm}. Did you mean ${mismatch.correctTerm}?`,
+          valid: mismatch.optional !== true, // Soft warning for optional mismatches
+          error: `${format} typically uses ${mismatch.correctTerm}, not ${mismatch.wrongTerm}. Did you mean ${mismatch.correctTerm}?`,
           autoCorrect: false // Ask user, don't auto-correct
         }
       }
@@ -86,7 +149,7 @@ export const validationRules: ValidationRule[] = [
   // Rule 5: Template suggestion validation
   (analysis, context) => {
     const template = analysis.extractedEntities?.suggestedTemplate
-    const format = analysis.extractedEntities?.documentFormat
+    const format = context.documentFormat
     
     // If template is suggested, make sure it matches format
     if (template && format) {

@@ -28,7 +28,7 @@ export function ChatMessage({
   return (
     <div 
       className={`p-3 rounded ${
-        isUser ? 'bg-gray-100' : 'bg-white border border-gray-200'
+        isUser ? 'bg-white' : 'bg-white border border-gray-200'
       } ${className}`}
     >
       <div className="flex items-start gap-2">

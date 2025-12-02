@@ -74,7 +74,7 @@ export class TriageAgent {
         temperature: 0.1
       })
       
-      return this.parseTriageResponse(response, false)
+      return this.parseTriageResponse(response, message, context, false)
     } catch (error) {
       console.error('❌ [TriageAgent] Fast model classification failed:', error)
       // Fallback to complex if LLM fails
@@ -118,7 +118,7 @@ Please provide a more thorough analysis with higher confidence.`
         temperature: 0.1
       })
       
-      const smartResult = this.parseTriageResponse(response, true)
+      const smartResult = this.parseTriageResponse(response, message, context, true)
       smartResult.wasEscalated = true
       smartResult.escalationReason = fastResult.escalationReason || 'Low confidence or needs reasoning'
       
@@ -144,7 +144,16 @@ Context:
 - Document panel: ${context.documentPanelOpen ? 'OPEN' : 'CLOSED'}
 - Active segment: ${context.activeSegment?.name || 'NONE'}
 - Canvas nodes: ${context.canvasNodes?.length || 0} nodes
+${context.canvasNodes && context.canvasNodes.length > 0 ? `- Canvas node types: ${context.canvasNodes.map(n => `${n.label} (${n.type})`).join(', ')}` : ''}
 ${context.documentFormat ? `- Document format: ${context.documentFormat}` : ''}
+
+${context.canvasNodes && context.canvasNodes.length > 0 ? `
+CANVAS CONTEXT (CRITICAL!):
+The user has ${context.canvasNodes.length} node(s) on the canvas. Check if their request references an existing node!
+- If they say "our novel", "the screenplay", "my podcast" → Check if matching node exists
+- If matching node exists → open_and_write (NOT create_structure!)
+- If NO matching node → create_structure
+` : ''}
 
 Available intents:
 - write_content: Generate new content for a section
@@ -154,9 +163,20 @@ Available intents:
 - modify_structure: Change document structure (add/remove sections)
 - create_structure: Create a new story/document (only when document panel is CLOSED)
 - navigate_section: Navigate to a section within the current document
-- open_and_write: Open an existing canvas node for writing
+- open_and_write: Open an existing canvas node for writing (CRITICAL: Check canvas first!)
 - delete_node: Delete/remove a canvas node
 - clarify_intent: Ask a clarifying question
+
+CRITICAL - Canvas Awareness:
+- If user says "MY podcast", "THE podcast", "MY screenplay", "OUR novel" → Check canvas context!
+  * If canvas shows a matching node → open_and_write (NOT create_structure!)
+  * If canvas shows NO matching node → create_structure
+- "write [sections] in [our/the/my] [document]" → open_and_write (CRITICAL PATTERN!)
+  * Examples: "write the three first chapters in our novel" → open_and_write
+  * "write chapter 2 in the screenplay" → open_and_write
+  * "write the first act in my novel" → open_and_write
+  * ALWAYS check canvas for matching document before assuming create_structure!
+- Only use create_structure when creating something BRAND NEW that doesn't exist yet
 
 ${enhanced ? `
 ENHANCED ANALYSIS MODE:
@@ -167,6 +187,17 @@ Consider:
 - Multi-step requests that might be packed into one message
 - Ambiguous references that need resolution
 ` : ''}
+
+CRITICAL - Canvas-Aware Intent Detection:
+- "write [sections] in [our/the/my] [document]" → Check canvas FIRST!
+  * Pattern: "write [X] in [our/the/my] [Y]" where Y is a document type
+  * If canvas shows matching document → open_and_write (extract sections into targetSegment)
+  * If canvas shows NO matching document → create_structure (but unusual - "our" implies it exists)
+  * Examples:
+    * "write the three first chapters in our novel" → open_and_write (if novel exists on canvas)
+    * "write chapter 2 in the screenplay" → open_and_write (if screenplay exists on canvas)
+    * "write the first act in my novel" → open_and_write (if novel exists on canvas)
+  * IMPORTANT: If canvas context is available, you MUST check it before classifying as create_structure!
 
 CRITICAL - Question Detection:
 - Questions asking "why", "how", "what", "when", "where", "who" → answer_question
@@ -196,7 +227,12 @@ Be honest about your confidence. If you're uncertain or this needs deeper reason
   /**
    * Parse LLM response into TriageResult
    */
-  private parseTriageResponse(response: string, wasEscalated: boolean = false): TriageResult {
+  private parseTriageResponse(
+    response: string, 
+    message: string,
+    context: PipelineContext,
+    wasEscalated: boolean = false
+  ): TriageResult {
     try {
       // Remove markdown code blocks if present
       let content = response.trim()
@@ -211,8 +247,20 @@ Be honest about your confidence. If you're uncertain or this needs deeper reason
       const parsed = JSON.parse(content)
       
       // Build basic intent analysis if we have enough info
+      // BUT: For canvas-aware intents, we need deep analysis to properly check canvas context
+      // Force deep analysis if:
+      // 1. Intent is open_and_write or create_structure (needs canvas check)
+      // 2. Message contains "write [sections] in [our/the/my] [document]" pattern
+      // 3. Canvas has nodes and message references them
+      const hasCanvasReferencePattern = /write.*(the|first|second|third|three|two|1|2|3).*(chapter|act|scene|section|episode).*(in|to|for).*(our|the|my|that|this).*(novel|screenplay|podcast|report|document)/i.test(message)
+      const needsCanvasCheck = parsed.intent === 'open_and_write' || 
+                               parsed.intent === 'create_structure' ||
+                               (context.canvasNodes && context.canvasNodes.length > 0 && 
+                                (hasCanvasReferencePattern || /(our|the|my).*(novel|screenplay|podcast|report)/i.test(message)))
+      
       let intent: IntentAnalysis | null = null
-      if (parsed.intent && parsed.confidence > 0.85) {
+      // Only skip deep analysis if we have high confidence AND don't need canvas check
+      if (parsed.intent && parsed.confidence > 0.85 && !needsCanvasCheck) {
         intent = {
           intent: parsed.intent as any,
           confidence: parsed.confidence,

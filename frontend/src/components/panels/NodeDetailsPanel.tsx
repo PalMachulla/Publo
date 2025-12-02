@@ -69,13 +69,7 @@ interface NodeDetailsPanelProps {
   edges?: Edge[]
   nodes?: Node[]
   onSelectNode?: (nodeId: string, sectionId?: string) => void // NEW: Select and open a specific node, optionally auto-select a section
-  canvasChatHistory?: Array<{
-    id: string
-    timestamp: string
-    content: string
-    type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
-    role?: 'user' | 'orchestrator'
-  }>
+  // ✅ MIGRATION: canvasChatHistory removed - now using WorldState.conversation.messages
   onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => void
   onClearChat?: () => void
   onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
@@ -88,6 +82,7 @@ interface NodeDetailsPanelProps {
   structureItems?: any[] // GHOSTWRITER: Current document structure
   contentMap?: Record<string, string> // GHOSTWRITER: Existing content by section ID
   currentStoryStructureNodeId?: string | null // CANVAS CONTENT: ID of currently loaded story
+  worldState?: import('@/lib/orchestrator/core/worldState').WorldStateManager // ✅ NEW: Optional WorldStateManager for unified state management
 }
 
 export default function NodeDetailsPanel({
@@ -102,7 +97,6 @@ export default function NodeDetailsPanel({
   edges = [],
   nodes = [],
   onSelectNode,
-  canvasChatHistory = [],
   onAddChatMessage,
   onClearChat,
   onToggleDocumentView,
@@ -114,7 +108,8 @@ export default function NodeDetailsPanel({
   onAnswerQuestion,
   structureItems = [],
   contentMap = {},
-  currentStoryStructureNodeId = null
+  currentStoryStructureNodeId = null,
+  worldState
 }: NodeDetailsPanelProps) {
   const { user } = useAuth()
   const supabase = createClient()
@@ -668,7 +663,6 @@ export default function NodeDetailsPanel({
               onCreateStory={onCreateStory || (() => console.warn('onCreateStory not provided'))} 
               onClose={onClose}
               onUpdate={onUpdate}
-              canvasChatHistory={canvasChatHistory}
               onAddChatMessage={onAddChatMessage}
               onClearChat={onClearChat}
               onToggleDocumentView={onToggleDocumentView}
@@ -686,6 +680,7 @@ export default function NodeDetailsPanel({
               onDeleteNode={async (nodeId: string) => {
                 await onDelete(nodeId)
               }}
+              worldState={worldState}
             />
           ) : nodeType === 'story-structure' ? (
             // Story Structure Metadata Panel

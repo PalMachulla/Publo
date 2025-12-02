@@ -10,9 +10,14 @@ import { coreIntentRules } from './prompts/core'
 import { canvasAwarenessRules } from './prompts/canvas'
 import { followUpRules } from './prompts/followUp'
 import { templateRules } from './prompts/templates'
+import type { CorrectionPattern } from '../../../../learning/correctionService'
+import { formatCorrectionsForPrompt } from '../../../../learning/correctionService'
 
 export class PromptComposer {
-  constructor(private customModules?: string[]) {}
+  constructor(
+    private customModules?: string[],
+    private corrections?: CorrectionPattern[] // NEW: Learned corrections to include
+  ) {}
   
   /**
    * Compose prompt from modules based on context
@@ -47,8 +52,18 @@ export class PromptComposer {
       modules.push(...this.customModules)
     }
     
+    // Add correction examples if available
+    let correctionsSection = ''
+    if (this.corrections && this.corrections.length > 0) {
+      correctionsSection = formatCorrectionsForPrompt(this.corrections, {
+        canvasNodes: context.canvasNodes?.map(n => n.label),
+        documentPanelOpen: context.documentPanelOpen,
+        previousIntent: context.conversationHistory?.[context.conversationHistory.length - 2]?.content
+      })
+    }
+    
     // Compose final prompt
-    return `${modules.join('\n\n---\n\n')}
+    return `${modules.join('\n\n---\n\n')}${correctionsSection}
 
 ## Current Context
 
@@ -64,11 +79,14 @@ ${context.documentFormat ? `\n**IMPORTANT: Current document format is "${context
 
 Analyze the user's intent using chain-of-thought reasoning. ${context.documentFormat ? `Remember: This is a ${context.documentFormat} document, so use the correct section terminology (e.g., ${this.getFormatTerminology(context.documentFormat)}).` : ''}
 
+${context.canvasNodes && context.canvasNodes.length > 0 ? `**IMPORTANT**: When explaining your reasoning, be specific about which canvas node(s) you're referring to. Use the node labels (e.g., "the Novel node", "the Screenplay node") rather than generic phrases like "nodes on the canvas". If the user asks about "the story" and there's a specific node visible, identify which node they likely mean.` : ''}
+
 <reasoning>
 1. Context Check:
    - Document panel: ${context.documentPanelOpen ? 'OPEN' : 'CLOSED'}
    - Active segment: ${context.activeSegment?.name || 'NONE'}
    - Canvas nodes: ${context.canvasNodes?.map(n => n.label).join(', ') || 'NONE'}
+   ${context.canvasNodes && context.canvasNodes.length > 0 ? `- Canvas details: ${context.canvasNodes.map(n => `${n.label} (${n.type})`).join(', ')}` : ''}
    - Conversation state: ${context.conversationState?.type || 'initial'}
 
 2. Reference Resolution:
@@ -78,7 +96,7 @@ Analyze the user's intent using chain-of-thought reasoning. ${context.documentFo
 3. Intent Classification:
    - Primary intent: [classify]
    - Confidence: [0-1]
-   - Why: [explain]
+   - Why: [explain - BE SPECIFIC: If canvas nodes exist, reference them by name (e.g., "the Novel node", "the Screenplay node"). If the user's question is about "the story", identify which node they're likely referring to based on context.]
 
 4. Validation:
    - Does this make sense given context? [yes/no]

@@ -6,9 +6,11 @@
  * Flow:
  * 1. Receives user question from intent
  * 2. Builds enhanced prompt with ALL canvas nodes context
- * 3. Includes node summaries, structure, and content (first 5 sections)
- * 4. Adds RAG content if available
- * 5. Returns generate_content action with enhanced prompt
+ * 3. Includes node summaries, structure, and content:
+ *    - If RAG/embeddings available: Uses semantic search (relevant chunks only)
+ *    - If RAG unavailable: Includes ALL content from text (entire novel, not truncated)
+ * 4. Adds RAG content if available (from semantic search)
+ * 5. Returns generate_content action with enhanced prompt (isAnswer: true)
  * 
  * Dependencies:
  * - canvasContext: Canvas nodes and edges for context building
@@ -49,7 +51,9 @@ export class AnswerQuestionAction extends BaseAction {
    * - User's original question
    * - All canvas nodes with their context (label, type, summary)
    * - Node structure (if available)
-   * - Node content (first 5 sections, truncated to 500 chars each)
+   * - Node content:
+   *   * If embeddings available: Uses semantic search (relevant chunks only)
+   *   * If embeddings unavailable: Includes ALL content from text (entire novel, not truncated)
    * - RAG content (if available from semantic search)
    * 
    * @param intent - Analyzed intent from LLM
@@ -105,22 +109,32 @@ export class AnswerQuestionAction extends BaseAction {
           enhancedPrompt += `Structure:\n${node.detailedContext.structure}\n`
         }
         
-        // Add content if available (first 5 sections, truncated)
+        // Add content if available
         if (node.detailedContext?.contentMap) {
           const contentEntries = Object.entries(node.detailedContext.contentMap)
           if (contentEntries.length > 0) {
-            enhancedPrompt += `\nContent (${contentEntries.length} sections):\n`
+            // ✅ FIX: Check if RAG is available
+            // If RAG is available, we'll use semantic search results (added in STEP 4)
+            // If RAG is NOT available, include ALL content from text (not truncated)
+            const useRAG = ragContext?.hasRAG === true
             
-            // Include first 5 sections only
-            contentEntries.slice(0, 5).forEach(([sectionId, content]: [string, any]) => {
-              if (content && typeof content === 'string' && content.trim()) {
-                // Truncate long content to 500 characters
-                const truncated = content.length > 500 
-                  ? content.substring(0, 500) + '...' 
-                  : content
-                enhancedPrompt += `\n${truncated}\n`
-              }
-            })
+            if (!useRAG) {
+              // No embeddings → include ALL content from text (entire novel)
+              enhancedPrompt += `\nFull Content (${contentEntries.length} sections - embeddings not available, using full text):\n`
+              
+              contentEntries.forEach(([sectionId, content]: [string, any]) => {
+                if (content && typeof content === 'string' && content.trim()) {
+                  // ✅ Include full content (not truncated) when RAG unavailable
+                  enhancedPrompt += `\n--- Section: ${sectionId} ---\n${content}\n`
+                }
+              })
+              
+              console.log(`✅ [AnswerQuestionAction] Added full content from ${contentEntries.length} section(s) (RAG unavailable)`)
+            } else {
+              // RAG is available → only include summary (RAG content will be added in STEP 4)
+              enhancedPrompt += `\nContent Summary: ${contentEntries.length} sections available (using semantic search for relevant content)\n`
+              console.log(`✅ [AnswerQuestionAction] RAG available - will use semantic search (${contentEntries.length} sections in document)`)
+            }
           }
         }
       })
@@ -135,8 +149,12 @@ export class AnswerQuestionAction extends BaseAction {
     // ============================================================
     
     if (ragContext?.hasRAG && ragContext.ragContent) {
-      enhancedPrompt += `\n\nAdditional Relevant Content (from semantic search):\n${ragContext.ragContent}`
-      console.log(`✅ [AnswerQuestionAction] Added RAG content`)
+      enhancedPrompt += `\n\n🎯 Relevant Content (from semantic search):\n${ragContext.ragContent}`
+      console.log(`✅ [AnswerQuestionAction] Added RAG content from embeddings`)
+    } else if (ragContext?.fallbackReason) {
+      // Log why RAG wasn't used (for debugging)
+      console.log(`ℹ️ [AnswerQuestionAction] RAG unavailable: ${ragContext.fallbackReason}`)
+      // Note: Full content was already included in STEP 3 above
     }
     
     // ============================================================

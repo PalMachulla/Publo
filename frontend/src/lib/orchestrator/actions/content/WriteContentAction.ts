@@ -230,29 +230,29 @@ export class WriteContentAction extends BaseAction {
         
         // Fallback to pattern matching if targetSegment didn't work
         if (!messageTargetSectionId) {
-          const patterns = [
+        const patterns = [
             /(?:write|add|put|insert).*(?:the\s+)?(.+?)\s+section/i,
             /(?:write|add|put|insert).*(?:in|to|into)\s+(?:the\s+)?(.+?)(?:\s+(?:section|part|chapter|scene|act|sequence))?$/i,
             /(?:write|add|put|insert)\s+(?:some\s+)?(?:text|content|words).*?(?:to|in|into)\s+(?:the\s+)?(.+?)$/i,
-          ]
-          
-          let sectionName: string | null = null
-          for (const pattern of patterns) {
-            const match = request.message.match(pattern)
-            if (match && match[1]) {
+        ]
+        
+        let sectionName: string | null = null
+        for (const pattern of patterns) {
+          const match = request.message.match(pattern)
+          if (match && match[1]) {
               sectionName = match[1].trim()
               // Remove common trailing words
               sectionName = sectionName.replace(/\s+(section|part|chapter|scene|act|sequence|of the report|of the document)$/i, '').trim()
-              break
-            }
+            break
           }
-          
-          if (sectionName) {
+        }
+        
+        if (sectionName) {
             console.log(`🔍 [Pattern Match] Extracted section name: "${sectionName}"`)
-            const foundSection = findSectionByName(request.structureItems, sectionName)
-            if (foundSection) {
-              messageTargetSectionId = foundSection.id
-              console.log('✅ [Name Detection] Found:', foundSection.name)
+          const foundSection = findSectionByName(request.structureItems, sectionName)
+          if (foundSection) {
+            messageTargetSectionId = foundSection.id
+            console.log('✅ [Name Detection] Found:', foundSection.name)
             }
           }
         }
@@ -290,14 +290,18 @@ export class WriteContentAction extends BaseAction {
     }
     
     // Auto-select section if different from active context
+    let selectSectionAction: OrchestratorAction | null = null
     if (!request.activeContext?.id || request.activeContext.id !== targetSectionId) {
-      actions.push({
+      selectSectionAction = {
         type: 'select_section',
         payload: {
           sectionId: targetSectionId
         },
-        status: 'pending'
-      })
+        status: 'pending',
+        autoExecute: true, // Navigation should happen automatically
+        requiresUserInput: false
+      }
+      actions.push(selectSectionAction)
       console.log('🎯 [Auto-Select] Selecting section:', targetSectionId)
     }
     
@@ -378,7 +382,8 @@ export class WriteContentAction extends BaseAction {
       })
     }
     
-    // Generate content action
+    // Generate content action with dependency metadata
+    // ✅ NEW: Mark generate_content as depending on select_section and auto-executable
     actions.push({
       type: 'generate_content',
       payload: {
@@ -387,7 +392,10 @@ export class WriteContentAction extends BaseAction {
         model: writerModel.modelId,
         provider: writerModel.provider
       },
-      status: 'pending'
+      status: 'pending',
+      dependsOn: selectSectionAction ? ['select_section'] : undefined, // Depends on navigation if it was needed
+      autoExecute: true, // Should execute automatically after dependencies are met
+      requiresUserInput: false // No user confirmation needed
     })
     
     console.log('✅ [WriteContentAction] Created actions:', {

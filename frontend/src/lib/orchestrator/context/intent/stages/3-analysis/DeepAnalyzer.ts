@@ -9,15 +9,17 @@ import type { PipelineContext } from '../../pipeline/types'
 import type { IntentAnalysis } from '../../../intentRouter'
 import { ModelRouterAdapter } from '../../utils/modelRouterAdapter'
 import { PromptComposer } from './PromptComposer'
+import type { CorrectionPattern } from '../../../learning/correctionService'
 
 export class DeepAnalyzer {
   private promptComposer: PromptComposer
   
   constructor(
     private modelRouter: ModelRouterAdapter,
-    customPromptModules?: string[]
+    customPromptModules?: string[],
+    corrections?: CorrectionPattern[] // NEW: Learned corrections
   ) {
-    this.promptComposer = new PromptComposer(customPromptModules)
+    this.promptComposer = new PromptComposer(customPromptModules, corrections)
   }
   
   /**

@@ -24,6 +24,7 @@ import { TriageAgent } from '../stages/1-triage/TriageAgent'
 import { ContextResolver } from '../stages/2-context/ContextResolver'
 import { DeepAnalyzer } from '../stages/3-analysis/DeepAnalyzer'
 import { Validator } from '../stages/4-validation/Validator'
+import type { CorrectionPattern } from '../../learning/correctionService'
 
 export class IntentPipeline {
   private config: PipelineConfig
@@ -32,6 +33,7 @@ export class IntentPipeline {
   private contextResolver: ContextResolver
   private deepAnalyzer: DeepAnalyzer
   private validator: Validator
+  private corrections: CorrectionPattern[] = [] // NEW: Learned corrections
   
   constructor(config?: Partial<PipelineConfig>) {
     this.config = { ...DEFAULT_PIPELINE_CONFIG, ...config }
@@ -41,7 +43,7 @@ export class IntentPipeline {
       escalationReasoningThreshold: this.config.escalationReasoningThreshold
     })
     this.contextResolver = new ContextResolver(this.modelRouter)
-    this.deepAnalyzer = new DeepAnalyzer(this.modelRouter, config?.promptModules)
+    this.deepAnalyzer = new DeepAnalyzer(this.modelRouter, config?.promptModules, this.corrections)
     this.validator = new Validator(config?.validationRules)
   }
   
@@ -50,6 +52,15 @@ export class IntentPipeline {
    */
   updateAvailableModels(models: any[]) {
     this.modelRouter.updateAvailableModels(models)
+  }
+  
+  /**
+   * Update learned corrections for the deep analyzer
+   */
+  updateCorrections(corrections: CorrectionPattern[]) {
+    this.corrections = corrections
+    // Recreate deep analyzer with new corrections
+    this.deepAnalyzer = new DeepAnalyzer(this.modelRouter, this.config.promptModules, this.corrections)
   }
   
   /**

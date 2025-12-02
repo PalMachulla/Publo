@@ -344,7 +344,8 @@ async function resolveNodeWithLLM(
   conversationHistory: Array<{ role: string, content: string }>
 ): Promise<NodeContext | null> {
   try {
-    const availableNodes = canvasContext.connectedNodes
+    // Format available nodes as string for prompt
+    const availableNodesString = canvasContext.connectedNodes
       .map(node => `- "${node.label}" (${node.detailedContext?.format || node.nodeType}): ${node.summary}`)
       .join('\n')
 
@@ -353,52 +354,32 @@ async function resolveNodeWithLLM(
       .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
       .join('\n')
 
-    const prompt = `You are helping determine which document/node a user is referring to.
+    // Build the request in the format expected by /api/intent/analyze
+    const systemPrompt = `You are a node resolution assistant. Your job is to identify which canvas node the user is referring to.
 
-AVAILABLE NODES ON CANVAS:
-${availableNodes}
+Available nodes:
+${availableNodesString}
 
-RECENT CONVERSATION:
-${recentConversation}
+${recentConversation ? `Recent conversation:\n${recentConversation}` : ''}
 
-CURRENT USER MESSAGE:
+OUTPUT FORMAT (JSON only, no markdown):
+{
+  "nodeId": "node-id-here or null",
+  "nodeName": "Node Label or null",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of why this node was chosen"
+}
+
+If no clear reference exists, return nodeId: null with low confidence.`
+
+    const userPrompt = `CURRENT USER MESSAGE:
 "${userMessage}"
 
 TASK: Determine which node (if any) the user is referring to in their current message.
 - Consider pronouns like "it", "this", "that", "the plot", "the story"
 - Look at what was recently discussed in the conversation
 - If the user says "the screenplay" after just discussing a screenplay, that's the reference
-- If the user says "the plot" or "it" right after discussing a specific document, resolve to that document
-
-OUTPUT FORMAT (JSON only, no markdown):
-{
-  "nodeId": "node-id-here or null",
-  "nodeName": "Node Label or null",
-  "confidence": 0.0-1.0,
-  "reasoning": "Brief explanation of why this node was chosen"
-}
-
-If no clear reference exists, return nodeId: null with low confidence.`
-
-    // Build the request in the format expected by /api/intent/analyze
-    const systemPrompt = `You are a node resolution assistant. Your job is to identify which canvas node the user is referring to.
-
-Available nodes:
-${availableNodes.map(n => `- ${n.label} (${n.nodeType})`).join('\n')}
-
-${recentConversation.length > 0 ? `Recent conversation:\n${recentConversation.slice(-3).map(m => `${m.role}: ${m.content}`).join('\n')}` : ''}
-
-OUTPUT FORMAT (JSON only, no markdown):
-{
-  "nodeId": "node-id-here or null",
-  "nodeName": "Node Label or null",
-  "confidence": 0.0-1.0,
-  "reasoning": "Brief explanation of why this node was chosen"
-}
-
-If no clear reference exists, return nodeId: null with low confidence.`
-
-    const userPrompt = prompt
+- If the user says "the plot" or "it" right after discussing a specific document, resolve to that document`
 
     const response = await fetch('/api/intent/analyze', {
       method: 'POST',

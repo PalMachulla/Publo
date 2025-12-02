@@ -137,6 +137,7 @@ export interface WorldState {
     version: number
     lastUpdated: number
     isDirty: boolean
+    canvasLastModified: number // Track canvas changes for hasCanvasChanged checks
   }
 }
 
@@ -205,6 +206,9 @@ export class WorldStateManager {
    * })
    */
   update(updater: (draft: WorldState) => void): void {
+    // Store previous canvas state to detect changes
+    const prevCanvasSize = this.state.canvas.nodes.size + this.state.canvas.edges.size
+    
     // Apply updates to mutable draft
     updater(this.state)
     
@@ -212,6 +216,12 @@ export class WorldStateManager {
     this.state.meta.version += 1
     this.state.meta.lastUpdated = Date.now()
     this.state.meta.isDirty = true
+    
+    // Update canvas timestamp if canvas changed
+    const newCanvasSize = this.state.canvas.nodes.size + this.state.canvas.edges.size
+    if (prevCanvasSize !== newCanvasSize) {
+      this.state.meta.canvasLastModified = Date.now()
+    }
     
     // Notify observers
     this.notifyObservers()
@@ -303,6 +313,21 @@ export class WorldStateManager {
       nodes: this.getAllNodes(),
       edges: this.getAllEdges()
     }
+  }
+  
+  /**
+   * Check if canvas has changed since given timestamp
+   */
+  hasCanvasChanged(since: number): boolean {
+    return this.state.meta.canvasLastModified > since || this.state.meta.lastUpdated > since
+  }
+  
+  /**
+   * Update canvas change timestamp (called when nodes/edges change)
+   */
+  private updateCanvasTimestamp(): void {
+    this.state.meta.canvasLastModified = Date.now()
+    this.state.meta.lastUpdated = Date.now()
   }
   
   /**
@@ -611,7 +636,8 @@ export class WorldStateManager {
       meta: {
         version: partial.meta?.version || 1,
         lastUpdated: partial.meta?.lastUpdated || Date.now(),
-        isDirty: partial.meta?.isDirty || false
+        isDirty: partial.meta?.isDirty || false,
+        canvasLastModified: partial.meta?.canvasLastModified || Date.now()
       }
     }
   }
@@ -855,7 +881,8 @@ export function buildWorldStateFromReactFlow(
     meta: {
       version: 1,
       lastUpdated: Date.now(),
-      isDirty: false
+      isDirty: false,
+      canvasLastModified: Date.now()
     }
   })
 }

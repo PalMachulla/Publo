@@ -74,28 +74,96 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
       }))
     })
     
-    // Step 2: CRITICAL - Filter actions BEFORE execution
-    // Determine which actions should be executed by agents vs. returned to UI
+    // Step 2: Process action dependencies and sequencing
+    // ✅ NEW: Handle action dependencies and auto-execution
     const hasNodeId = !!(request?.currentStoryStructureNodeId)
     const originalActionCount = response.actions?.length || 0
     
-    // Split actions into two groups:
-    // 1. actionsForAgentExecution: generate_content actions when we HAVE a node ID
-    // 2. actionsForUI: everything else (structure creation, clarifications, etc.)
+    // Split actions into three groups:
+    // 1. actionsForAgentExecution: generate_content actions when we HAVE a node ID (auto-executable)
+    // 2. actionsForSequencing: Actions with dependencies that need to be executed in order
+    // 3. actionsForUI: Actions that require user interaction or can't be auto-executed
     const actionsForAgentExecution: OrchestratorAction[] = []
+    const actionsForSequencing: OrchestratorAction[] = []
     const actionsForUI: OrchestratorAction[] = []
     
     response.actions?.forEach(a => {
-      if (a.type === 'generate_content' && hasNodeId) {
-        // We have a node ID, agents can execute this
-        actionsForAgentExecution.push(a)
-        console.log(`  ✅ Agent will execute: ${a.type} (${a.payload?.sectionName})`)
-      } else {
-        // UI needs to handle this (structure creation, clarifications, etc.)
+      // Actions that require user input always go to UI
+      if (a.requiresUserInput === true) {
+        actionsForUI.push(a)
+        console.log(`  📤 Returning to UI (requiresUserInput): ${a.type}`)
+        return
+      }
+      
+      // generate_content actions: route based on type
+      if (a.type === 'generate_content') {
+        // ✅ FIX: Questions (isAnswer: true) should always go to UI, not agents
+        if (a.payload?.isAnswer === true) {
+          actionsForUI.push(a)
+          console.log(`  📤 Returning to UI (isAnswer): ${a.type}`)
+          return
+        }
+        
+        // Regular content generation: execute via agents if we have node ID
+        if (hasNodeId) {
+          // Check if this action has dependencies
+          if (a.dependsOn && a.dependsOn.length > 0) {
+            // Has dependencies - add to sequencing queue
+            actionsForSequencing.push(a)
+            console.log(`  🔗 Queued for sequencing (depends on: ${a.dependsOn.join(', ')}): ${a.type}`)
+          } else {
+            // No dependencies - execute immediately
+            actionsForAgentExecution.push(a)
+            console.log(`  ✅ Agent will execute: ${a.type} (${a.payload?.sectionName})`)
+          }
+          return
+        }
+      }
+      
+      // select_section actions: execute first if they're dependencies
+      if (a.type === 'select_section' && a.autoExecute === true) {
+        // Execute navigation first (it's a dependency for generate_content)
+        actionsForSequencing.push(a)
+        console.log(`  🔗 Queued for sequencing (navigation): ${a.type}`)
+        return
+      }
+      
+      // open_document actions: if other actions depend on it, add to sequencing
+      // Check if any other actions depend on open_document
+      if (a.type === 'open_document') {
+        const isDependency = response.actions?.some(otherAction => 
+          otherAction.dependsOn?.includes('open_document')
+        )
+        if (isDependency) {
+          // This open_document is a dependency - add to sequencing so it gets marked complete
+          actionsForSequencing.push(a)
+          console.log(`  🔗 Queued for sequencing (dependency): ${a.type}`)
+          return
+        }
+        // Not a dependency - send to UI normally
         actionsForUI.push(a)
         console.log(`  📤 Returning to UI: ${a.type}`)
+        return
       }
+      
+      // Default: send to UI
+      actionsForUI.push(a)
+      console.log(`  📤 Returning to UI: ${a.type}`)
     })
+    
+    // Step 2.5: Execute actions in dependency order
+    // ✅ NEW: Process sequenced actions (dependencies first)
+    if (actionsForSequencing.length > 0) {
+      const sequencedResult = await this.executeSequencedActions(
+        actionsForSequencing,
+        actionsForAgentExecution,
+        request
+      )
+      // Add any auto-executed actions to the agent execution queue
+      actionsForAgentExecution.push(...sequencedResult.agentActions)
+      // Add any remaining actions to UI
+      actionsForUI.push(...sequencedResult.uiActions)
+    }
     
     console.log('🔍 [MultiAgentOrchestrator] Action split:', {
       total: originalActionCount,
@@ -200,11 +268,14 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
   /**
    * PHASE 3: LLM-powered execution strategy selection
    * Replaces hard-coded rules with reasoning based on context
+   * 
+   * ✅ STEP 4: Now uses actual model performance metrics from database metadata
    */
   private async analyzeExecutionStrategy(
     actions: OrchestratorAction[],
     blackboard: Blackboard,
-    worldState: any
+    worldState: any,
+    availableModels?: any[] // ✅ STEP 4: Accept available models with metadata
   ): Promise<{
     strategy: ExecutionStrategy
     reasoning: string
@@ -222,6 +293,29 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     const recentMessages = blackboard.getRecentMessages(5)
     const context = recentMessages.map(m => `${m.role}: ${m.content}`).join('\n')
     
+    // ✅ STEP 4: Build model performance summary from metadata
+    let modelPerformanceInfo = 'Not available'
+    if (availableModels && availableModels.length > 0) {
+      const performanceSummary = availableModels
+        .filter(m => m.reasoning === false) // Focus on writing models (not reasoning models)
+        .slice(0, 5) // Top 5 models
+        .map(m => {
+          const enriched = m as any
+          const cost = enriched.cost_per_1k_tokens_input 
+            ? `$${enriched.cost_per_1k_tokens_input.toFixed(4)}/1k`
+            : enriched.cost || 'unknown'
+          const speed = enriched.speed_tokens_per_sec 
+            ? `${enriched.speed_tokens_per_sec} tokens/sec`
+            : enriched.speed || 'unknown'
+          return `- ${m.displayName}: ${cost}, ${speed}, tier: ${m.tier}`
+        })
+        .join('\n')
+      
+      if (performanceSummary) {
+        modelPerformanceInfo = `Available writing models:\n${performanceSummary}`
+      }
+    }
+    
     const systemPrompt = `You are an intelligent execution strategy selector for a multi-agent writing system.
 
 Available strategies:
@@ -235,16 +329,18 @@ Context:
 - Action details: ${JSON.stringify(actionSummary, null, 2)}
 - Recent activity: ${context}
 - Blackboard state: ${blackboard.getAllAgents().length} agents active
+- ${modelPerformanceInfo}
 
 Decision criteria:
 - SEQUENTIAL: Use for simple tasks, non-content actions, or mixed action types
-- PARALLEL: Use for 3+ independent content sections (chapters, scenes, etc.) where speed is important
+- PARALLEL: Use for 3+ independent content sections (chapters, scenes, etc.) where speed is important. Consider actual model speed when available.
 - CLUSTER: Use for 1-2 high-priority content sections where quality is critical (first chapters, openings, key scenes)
 
 Consider:
 - Section importance (first chapters, opening scenes are high-priority)
 - User's implicit quality expectations
 - Task complexity and interdependencies
+- Actual model performance (cost, speed) when making efficiency decisions
 
 Respond in JSON format:
 {
@@ -339,6 +435,211 @@ Respond in JSON format:
    * Execute actions with multi-agent coordination
    * Overrides base class method to add agent support
    */
+  /**
+   * Execute actions in dependency order (dependencies first, then dependents)
+   * 
+   * This method handles the sequencing of actions that have dependencies.
+   * For example: generate_content depends on select_section, so we execute
+   * select_section first, then generate_content.
+   * 
+   * @param sequencedActions - Actions with dependencies that need sequencing
+   * @param agentActions - Actions ready for immediate agent execution
+   * @param request - Original orchestrator request (for context)
+   * @returns Object with agentActions (ready for execution) and uiActions (for UI)
+   */
+  private async executeSequencedActions(
+    sequencedActions: OrchestratorAction[],
+    agentActions: OrchestratorAction[],
+    request?: any
+  ): Promise<{
+    agentActions: OrchestratorAction[]
+    uiActions: OrchestratorAction[]
+  }> {
+    const completedActionTypes = new Set<string>()
+    const readyForAgentExecution: OrchestratorAction[] = []
+    const uiActions: OrchestratorAction[] = []
+    
+    // ✅ Track node IDs from open_document actions for dependent generate_content actions
+    const nodeIdByActionType = new Map<string, string>()
+    
+    // Execute actions in dependency order
+    const executeQueue = [...sequencedActions]
+    const executed = new Set<string>()
+    
+    this.getAgentBlackboard().addMessage({
+      role: 'orchestrator',
+      content: `🔗 Processing ${sequencedActions.length} action(s) with dependencies...`,
+      type: 'progress'
+    })
+    
+    while (executeQueue.length > 0) {
+      let progressMade = false
+      
+      for (let i = executeQueue.length - 1; i >= 0; i--) {
+        const action = executeQueue[i]
+        const actionKey = `${action.type}_${action.payload?.sectionId || i}`
+        
+        // Check if dependencies are satisfied
+        const dependenciesSatisfied = !action.dependsOn || action.dependsOn.every(
+          depType => completedActionTypes.has(depType)
+        )
+        
+        if (dependenciesSatisfied && !executed.has(actionKey)) {
+          // Execute dependency actions (like select_section, open_document) via UI callbacks
+          if (action.type === 'select_section') {
+            // Navigation is handled by UI - we just mark it as complete
+            console.log(`📍 [ActionSequencer] Navigation dependency satisfied: ${action.payload?.sectionId}`)
+            
+            this.getAgentBlackboard().addMessage({
+              role: 'orchestrator',
+              content: `📍 Navigating to section: ${action.payload?.sectionName || action.payload?.sectionId}`,
+              type: 'progress'
+            })
+            
+            completedActionTypes.add('select_section')
+            executed.add(actionKey)
+            executeQueue.splice(i, 1)
+            progressMade = true
+            
+            // Add to UI actions so navigation actually happens
+            uiActions.push(action)
+          } else if (action.type === 'open_document') {
+            // open_document is handled by UI - we just mark it as complete
+            const nodeId = action.payload?.nodeId
+            const nodeName = action.payload?.nodeName || nodeId
+            
+            console.log(`📂 [ActionSequencer] Document opening dependency satisfied: ${nodeId}`)
+            
+            // ✅ Store node ID for dependent generate_content actions
+            if (nodeId) {
+              nodeIdByActionType.set('open_document', nodeId)
+            }
+            
+            this.getAgentBlackboard().addMessage({
+              role: 'orchestrator',
+              content: `📂 Opening document: ${nodeName}`,
+              type: 'progress'
+            })
+            
+            completedActionTypes.add('open_document')
+            executed.add(actionKey)
+            executeQueue.splice(i, 1)
+            progressMade = true
+            
+            // Add to UI actions so document actually opens
+            uiActions.push(action)
+          } else if (action.type === 'generate_content') {
+            // ✅ FIX: Questions (isAnswer: true) should always go to UI, not agents
+            // This is a defensive check in case an isAnswer action somehow got into sequencing
+            if (action.payload?.isAnswer === true) {
+              console.log(`📤 [ActionSequencer] Routing isAnswer action to UI: ${action.type}`)
+              uiActions.push(action)
+              completedActionTypes.add('generate_content')
+              executed.add(actionKey)
+              executeQueue.splice(i, 1)
+              progressMade = true
+              continue
+            }
+            
+            // Content generation can now proceed (dependency satisfied)
+            const sectionName = action.payload?.sectionName || action.payload?.sectionId || 'section'
+            
+            // ✅ FIX: If depends on open_document, extract nodeId from the dependency
+            if (action.dependsOn?.includes('open_document')) {
+              const nodeId = nodeIdByActionType.get('open_document')
+              if (nodeId) {
+                // ✅ Inject nodeId into action payload so executeActionsWithAgents can use it
+                action.payload = {
+                  ...action.payload,
+                  nodeId: nodeId // Add nodeId to payload
+                }
+                
+                // ✅ Also update request if available
+                if (request) {
+                  request.currentStoryStructureNodeId = nodeId
+                }
+                
+                console.log(`✍️ [ActionSequencer] Content generation ready (using nodeId from open_document): ${sectionName}`)
+                
+                this.getAgentBlackboard().addMessage({
+                  role: 'orchestrator',
+                  content: `✍️ Ready to generate content for: ${sectionName}`,
+                  type: 'progress'
+                })
+              } else {
+                console.warn(`⚠️ [ActionSequencer] generate_content depends on open_document but no nodeId found`)
+                
+                this.getAgentBlackboard().addMessage({
+                  role: 'orchestrator',
+                  content: `⚠️ Waiting for document to open before generating: ${sectionName}`,
+                  type: 'thinking'
+                })
+                
+                // Send to UI as fallback
+                uiActions.push(action)
+                completedActionTypes.add('generate_content')
+                executed.add(actionKey)
+                executeQueue.splice(i, 1)
+                progressMade = true
+                continue
+              }
+            } else {
+              console.log(`✍️ [ActionSequencer] Content generation dependency satisfied: ${sectionName}`)
+              
+              this.getAgentBlackboard().addMessage({
+                role: 'orchestrator',
+                content: `✍️ Ready to generate content for: ${sectionName}`,
+                type: 'progress'
+              })
+            }
+            
+            readyForAgentExecution.push(action)
+            completedActionTypes.add('generate_content')
+            executed.add(actionKey)
+            executeQueue.splice(i, 1)
+            progressMade = true
+          } else {
+            // Unknown action type - send to UI
+            uiActions.push(action)
+            executed.add(actionKey)
+            executeQueue.splice(i, 1)
+            progressMade = true
+          }
+        }
+      }
+      
+      // Prevent infinite loops
+      if (!progressMade) {
+        console.warn('⚠️ [ActionSequencer] Circular dependency or missing dependency detected')
+        
+        this.getAgentBlackboard().addMessage({
+          role: 'orchestrator',
+          content: `⚠️ Some actions couldn't be executed due to missing dependencies`,
+          type: 'error'
+        })
+        
+        // Move remaining actions to UI
+        for (const action of executeQueue) {
+          uiActions.push(action)
+        }
+        break
+      }
+    }
+    
+    if (readyForAgentExecution.length > 0) {
+      this.getAgentBlackboard().addMessage({
+        role: 'orchestrator',
+        content: `✅ ${readyForAgentExecution.length} action(s) ready for content generation`,
+        type: 'progress'
+      })
+    }
+    
+    return {
+      agentActions: readyForAgentExecution,
+      uiActions
+    }
+  }
+
   async executeActionsWithAgents(
     actions: OrchestratorAction[],
     sessionId: string = `session-${Date.now()}`,
@@ -349,9 +650,7 @@ Respond in JSON format:
       return
     }
     
-    // ✅ FIX: Filter out UI-executed actions
-    // - generate_structure: UI creates node on canvas first
-    // - generate_content: Only execute if we have a node ID (otherwise UI must create node first)
+    // ✅ FIX: Check nodeId from request OR from action payload (for open_document dependencies)
     const hasNodeId = !!(request?.currentStoryStructureNodeId)
     
     const executableActions = actions.filter(a => {
@@ -359,9 +658,29 @@ Respond in JSON format:
       if (a.type === 'generate_structure') return false
       
       // Content generation requires a node ID
-      if (a.type === 'generate_content' && !hasNodeId) {
-        console.log(`⚠️ [MultiAgentOrchestrator] Skipping generate_content (no node ID): ${a.payload?.sectionName}`)
-        return false
+      if (a.type === 'generate_content') {
+        // ✅ Check both request and action payload for nodeId
+        const nodeId = request?.currentStoryStructureNodeId || a.payload?.nodeId
+        
+        if (!nodeId) {
+          console.log(`⚠️ [MultiAgentOrchestrator] Skipping generate_content (no node ID): ${a.payload?.sectionName}`)
+          
+          this.getAgentBlackboard().addMessage({
+            role: 'orchestrator',
+            content: `⚠️ Cannot generate content for "${a.payload?.sectionName || 'section'}" - document not open`,
+            type: 'error'
+          })
+          return false
+        }
+        
+        // ✅ Update request with nodeId if it came from action payload
+        if (!request?.currentStoryStructureNodeId && nodeId) {
+          if (request) {
+            request.currentStoryStructureNodeId = nodeId
+          }
+        }
+        
+        return true
       }
       
       return true
@@ -369,10 +688,10 @@ Respond in JSON format:
     
     if (executableActions.length === 0) {
       console.log('⚠️ [MultiAgentOrchestrator] No executable actions (structure/content must be created by UI first)')
-      this.getBlackboard().addMessage({
+      this.getAgentBlackboard().addMessage({
         role: 'orchestrator',
-        content: '📋 Structure generation complete. UI will create node and generate content.',
-        type: 'result'
+        content: '📋 Waiting for document to be opened before generating content...',
+        type: 'thinking'
       })
       return
     }
@@ -385,10 +704,13 @@ Respond in JSON format:
     })
     
     // 🧠 PHASE 3: LLM-powered strategy selection using Blackboard and WorldState
+    // ✅ STEP 4: Pass available models with metadata for performance-aware strategy selection
+    const availableModels = request?.availableModels || []
     const { strategy, reasoning } = await this.analyzeExecutionStrategy(
       executableActions,
       this.getAgentBlackboard(),
-      this.worldState
+      this.worldState,
+      availableModels // ✅ Pass models with metadata
     )
     
     console.log(`🎯 [MultiAgentOrchestrator] Strategy: ${strategy.toUpperCase()}`)
