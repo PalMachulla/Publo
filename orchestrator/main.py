@@ -13,6 +13,7 @@ Then visit:
 The --reload flag auto-restarts when you change code (like Next.js dev mode).
 """
 from api.state import router as state_router
+from api.orchestrate import router as orchestrate_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -63,6 +64,7 @@ app.include_router(health_router, tags=["Health"])
 app.include_router(intent_router, prefix="/api/intent", tags=["Intent Analysis"])
 app.include_router(orchestrate_router, prefix="/api/orchestrator", tags=["Orchestration"])
 app.include_router(state_router, prefix="/api/state", tags=["State Management"])
+app.include_router(orchestrate_router, prefix="/api/orchestrator", tags=["Orchestration"])
 
 # ============================================================
 # ROOT ENDPOINT
