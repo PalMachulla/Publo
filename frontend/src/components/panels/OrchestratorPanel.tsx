@@ -62,7 +62,15 @@ interface CreateStoryPanelProps {
   onUpdate?: (nodeId: string, data: Partial<CreateStoryNodeData>) => void
   onSendPrompt?: (prompt: string) => void // NEW: For chat-based prompting
   // ✅ MIGRATION: canvasChatHistory removed - now using WorldState.conversation.messages
-  onAddChatMessage?: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => void
+  onAddChatMessage?: (
+    message: string, 
+    role?: 'user' | 'orchestrator', 
+    type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress',
+    metadata?: {
+      structured?: boolean
+      format?: 'progress_list' | 'simple_list' | 'steps'
+    }
+  ) => void
   onClearChat?: () => void
   onToggleDocumentView?: () => void // NEW: Toggle document panel visibility
   isDocumentViewOpen?: boolean // NEW: Document panel visibility state
@@ -103,6 +111,11 @@ interface ReasoningMessage {
   // ✅ NEW: Support inline options for clarification
   options?: Array<{id: string, title: string, description?: string}>
   onOptionSelect?: (optionId: string, optionTitle: string) => void
+  // ✅ NEW: Support structured content metadata
+  metadata?: {
+    structured?: boolean
+    format?: 'progress_list' | 'simple_list' | 'steps'
+  }
 }
 
 // ✅ REMOVED: detectFormatFromMessage function
@@ -417,7 +430,32 @@ export default function OrchestratorPanel({
         }
       }
       
-      return msg
+      // Preserve metadata from WorldState message (if present)
+      // 🔍 DEBUG: Log metadata preservation to diagnose structured content issues
+      if (msg.metadata) {
+        console.log('📦 [OrchestratorPanel] Preserving metadata for message:', {
+          messageId: msg.id,
+          messageType: msg.type,
+          hasMetadata: !!msg.metadata,
+          structured: msg.metadata.structured,
+          format: msg.metadata.format,
+          fullMetadata: msg.metadata,
+          contentPreview: msg.content.substring(0, 100) // Show if content is JSON
+        })
+      } else if (msg.type === 'progress') {
+        // 🔍 DEBUG: Log progress messages without metadata (might be structure generation)
+        console.log('⚠️ [OrchestratorPanel] Progress message WITHOUT metadata:', {
+          messageId: msg.id,
+          contentPreview: msg.content.substring(0, 100),
+          isJSON: msg.content.trim().startsWith('{')
+        })
+      }
+      
+      return {
+        ...msg,
+        // Preserve metadata if present (for structured content like progress lists)
+        ...(msg.metadata && { metadata: msg.metadata })
+      }
     })
   }, [worldStateData, pendingClarification, worldState])
   

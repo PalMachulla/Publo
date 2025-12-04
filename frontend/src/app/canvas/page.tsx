@@ -700,12 +700,35 @@ export default function CanvasPage() {
             
             documentState.setIsAIDocPanelOpen(true)
           }}
-          onAddChatMessage={(message, role, type) => {
+          onAddChatMessage={(
+            message: string, 
+            role?: 'user' | 'orchestrator', 
+            type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress',
+            metadata?: {
+              structured?: boolean
+              format?: 'progress_list' | 'simple_list' | 'steps'
+            }
+          ) => {
+            // ✅ NEW: Support structured content metadata for rich message formatting
+            // 
+            // Metadata allows messages to include structured data (e.g., progress lists)
+            // that can be rendered with icons and better formatting in the UI.
+            // 
+            // Example: Structure generation heartbeat messages use structured content
+            // to show a progress list with icons (spinner for current, checkmark for completed).
+            // 
+            // See:
+            // - StatusMessage component for structured content rendering logic
+            // - orchestratorEngine.structure.ts for structured content creation
+            // - blackboard.ts ConversationMessage interface for metadata type definition
             if (worldStateRef.current) {
               worldStateRef.current.addMessage({
                 content: message,
                 type: type || 'user',
-                role: role || 'user'
+                role: role || 'user',
+                // Pass metadata if provided (for structured content like progress lists)
+                // This enables the UI to parse and render structured content with icons
+                ...(metadata && { metadata })
               })
             }
           }}

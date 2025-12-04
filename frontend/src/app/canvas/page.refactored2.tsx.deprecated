@@ -3551,7 +3551,7 @@ export default function CanvasPage() {
               autoSelectSection: sectionId || 'none'
             })
           }}
-          onAddChatMessage={(message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => {
+          onAddChatMessage={(message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress', metadata?: { structured?: boolean; format?: 'progress_list' | 'simple_list' | 'steps' }) => {
             // Auto-detect type from message content if not provided
             const actualRole = role || 'orchestrator'
             let messageType: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress' = type || 'user'
@@ -3577,13 +3577,16 @@ export default function CanvasPage() {
               messagePreview: message.substring(0, 100),
               role: actualRole,
               type: messageType,
+              hasMetadata: !!metadata,
+              metadataFormat: metadata?.format,
               hasWorldState: !!worldStateRef.current
             })
             if (worldStateRef.current) {
               const messageId = worldStateRef.current.addMessage({
                 content: message,
                 type: messageType,
-                role: actualRole
+                role: actualRole,
+                ...(metadata && { metadata })
               })
               console.log('✅ [onAddChatMessage] Message added to WorldState, ID:', messageId)
               

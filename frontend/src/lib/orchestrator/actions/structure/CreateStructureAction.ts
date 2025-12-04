@@ -195,7 +195,8 @@ export class CreateStructureAction extends BaseAction {
     })
     
     const actions: OrchestratorAction[] = []
-    const blackboard = this.orchestratorEngine.blackboard
+    // PHASE 0: Use protected getBlackboard() method instead of direct access
+    const blackboard = this.orchestratorEngine.getBlackboard()
     
     // ============================================================
     // STEP 1: Validate required fields

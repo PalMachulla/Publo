@@ -20,6 +20,11 @@ export interface ChatMessageData {
   // ✅ NEW: Support inline options for clarification messages
   options?: ChatOption[]
   onOptionSelect?: (optionId: string, optionTitle: string) => void
+  // ✅ NEW: Support structured content metadata
+  metadata?: {
+    structured?: boolean
+    format?: 'progress_list' | 'simple_list' | 'steps'
+  }
 }
 
 export interface ChatAccordionProps {
@@ -127,6 +132,9 @@ export function ChatAccordion({
               isCollapsed={isCollapsed}
               isLastMessage={group.isLast}
               onToggleCollapse={toggleCollapse}
+              // ✅ FIX: Use LAST message's metadata (most recent) for structured content
+              // This ensures we get the latest currentStep value for progress lists
+              metadata={group.messages[group.messages.length - 1]?.metadata || firstMsg.metadata}
             />
             {/* ✅ NEW: Render inline options if present (for clarification messages) */}
             {firstMsg.options && firstMsg.options.length > 0 && firstMsg.onOptionSelect && !isCollapsed && (

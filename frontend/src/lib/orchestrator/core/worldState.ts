@@ -70,6 +70,11 @@ export interface WorldState {
         description?: string
       }>
       onOptionSelect?: (optionId: string, optionTitle: string) => void
+      // ✅ NEW: Support structured content metadata
+      metadata?: {
+        structured?: boolean
+        format?: 'progress_list' | 'simple_list' | 'steps'
+      }
     }>
     lastMessageId: string | null
     unreadCount: number
@@ -384,6 +389,11 @@ export class WorldStateManager {
     type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
     options?: Array<{id: string, title: string, description?: string}>
     onOptionSelect?: (optionId: string, optionTitle: string) => void
+    // ✅ NEW: Support structured content metadata
+    metadata?: {
+      structured?: boolean
+      format?: 'progress_list' | 'simple_list' | 'steps'
+    }
   }): string {
     const msgId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     const msg = {
@@ -393,7 +403,8 @@ export class WorldStateManager {
       type: message.type,
       role: message.role,
       ...(message.options && { options: message.options }),
-      ...(message.onOptionSelect && { onOptionSelect: message.onOptionSelect })
+      ...(message.onOptionSelect && { onOptionSelect: message.onOptionSelect }),
+      ...(message.metadata && { metadata: message.metadata })
     }
     
     this.state.conversation.messages.push(msg)

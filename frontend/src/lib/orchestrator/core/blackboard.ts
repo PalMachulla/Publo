@@ -38,6 +38,9 @@ export interface ConversationMessage {
     confidence?: number
     modelUsed?: string
     tokensUsed?: number
+    // Structured content support for rich message formatting
+    structured?: boolean // Indicates content is JSON-encoded structured data
+    format?: 'progress_list' | 'simple_list' | 'steps' // Format type for structured content
   }
 }
 

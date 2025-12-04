@@ -1,224 +1,600 @@
 /**
- * Orchestrator Engine - Main Orchestration Logic
+ * Orchestrator Engine - The Brain of Publo's AI System
  * 
- * Unified orchestration system that:
- * 1. Analyzes user intent (via intentRouter)
- * 2. Resolves context (via contextProvider + blackboard)
- * 3. Selects optimal model (via modelRouter)
- * 4. Executes actions (via capabilities)
- * 5. Learns from patterns (via blackboard)
+ * ============================================================================
+ * WHAT IS THIS FILE?
+ * ============================================================================
  * 
- * Inspired by Agentic Flow's swarm coordination and model routing
- * @see https://github.com/ruvnet/agentic-flow
- */
+ * This is the central coordinator that makes sense of user requests and decides
+ * what actions to take. Think of it as the "conductor" of an orchestra - it
+ * doesn't play the instruments (generate content), but it coordinates all the
+ * musicians (AI agents, tools, models) to create beautiful music (helpful responses).
+ * 
+ * ============================================================================
+ * WHERE DOES IT FIT IN THE FLOW?
+ * ============================================================================
+ * 
+ * User Types Message
+ *        ↓
+ * OrchestratorPanel.tsx (UI component - handles chat interface)
+ *        ↓
+ * OrchestratorEngine.orchestrate() ← YOU ARE HERE
+ *        ↓
+ *    ┌───┴───┐
+ *    │       │
+ *    ↓       ↓
+ * Intent   Model
+ * Analysis Selection
+ *    │       │
+ *    └───┬───┘
+ *        ↓
+ * Action Generators (CreateStructureAction, WriteContentAction, etc.)
+ *        ↓
+ * MultiAgentOrchestrator (if complex task - coordinates multiple agents)
+ *        ↓
+ * Tools & Agents (WriterAgent, CriticAgent, etc.)
+ *        ↓
+ * Response back to UI
+ * 
+ * ============================================================================
+ * KEY RESPONSIBILITIES
+ * ============================================================================
+ * 
+ * 1. UNDERSTAND: Analyzes what the user wants (intent analysis via LLM)
+ * 2. CONTEXT: Gathers relevant information (canvas state, conversation history)
+ * 3. DECIDE: Selects the best AI model for the task (speed vs quality tradeoff)
+ * 4. PLAN: Generates a sequence of actions to fulfill the request
+ * 5. EXECUTE: Coordinates action execution (some auto-execute, some need UI)
+ * 6. LEARN: Detects patterns and corrections from user feedback
+ * 
+ * ============================================================================
+ * FILES IT INTERACTS WITH
+ * ============================================================================
+ * 
+ * INPUT (Receives requests from):
+ *   - OrchestratorPanel.tsx: Main UI component that sends user messages
+ *   - MultiAgentOrchestrator.ts: Extends this class for complex multi-agent tasks
+ * 
+ * OUTPUT (Sends actions to):
+ *   - OrchestratorPanel.tsx: Returns actions that UI displays/executes
+ *   - Action Generators: Delegates to modular action generators
+ *   - MultiAgentOrchestrator: For complex tasks requiring multiple agents
+ * 
+ * DEPENDENCIES (Uses these systems):
+ *   - blackboard.ts: Conversation memory and agent communication hub
+ *   - worldState.ts: Application state (canvas, documents, etc.)
+ *   - modelRouter.ts: Intelligent AI model selection
+ *   - intentRouter.ts: User intent analysis (pattern matching + LLM)
+ *   - contextProvider.ts: Canvas context extraction
+ *   - action generators/: Modular action creation (CreateStructureAction, etc.)
+ * 
+ * MODULAR HELPERS (Extracted for maintainability):
+ *   - orchestratorEngine.helpers.ts: WorldState access utilities
+ *   - orchestratorEngine.clarification.ts: Handles user clarification responses
+ *   - orchestratorEngine.confirmation.ts: Handles yes/no confirmations
+ *   - orchestratorEngine.structure.ts: Structure plan generation
+ *   - orchestratorEngine.actions.ts: Action processing and execution
+ *   - orchestratorEngine.learning.ts: Pattern extraction and correction detection
+ * 
+ * ============================================================================
+ * ARCHITECTURE PATTERN
+ * ============================================================================
+ * 
+ * This file follows a "thin wrapper" pattern after refactoring:
+ * - Main class methods are thin wrappers that delegate to helper functions
+ * - Complex logic lives in separate modules (see MODULAR HELPERS above)
+ * - This makes the code easier to test, maintain, and understand
+ * 
 
+// ============================================================================
+// CORE DEPENDENCIES - Essential Systems
+// ============================================================================
+
+/**
+ * Blackboard: The conversation memory and agent communication hub
+ * - Stores all conversation messages (user + orchestrator)
+ * - Tracks recently referenced nodes for context resolution
+ * - Enables agents to share information (blackboard pattern)
+ */
 import { Blackboard, type ConversationMessage } from './blackboard'
+
+/**
+ * Canvas Context: Understanding the user's workspace
+ * - buildCanvasContext: Extracts canvas state (nodes, edges, connections)
+ * - formatCanvasContextForLLM: Formats context for LLM prompts
+ * - CanvasContext: Type definition for canvas state
+ */
 import { buildCanvasContext, formatCanvasContextForLLM, type CanvasContext } from '../context/contextProvider'
+
+/**
+ * Model Router: Intelligent AI model selection
+ * - selectModel: Chooses best model based on task requirements
+ * - assessTaskComplexity: Determines how complex a task is
+ * - selectModelForTask: ⚠️ TO BE INVESTIGATED - May be legacy/unused
+ * - isFrontierModel: ⚠️ TO BE INVESTIGATED - May be legacy/unused
+ * - MODEL_TIERS: List of available AI models with metadata
+ * - Types: ModelSelection, TaskRequirements, TieredModel
+ */
 import { 
   selectModel, 
   assessTaskComplexity, 
-  selectModelForTask,
-  isFrontierModel,
+  selectModelForTask, // ⚠️ TO BE INVESTIGATED - Check if actually used
+  isFrontierModel, // ⚠️ TO BE INVESTIGATED - Check if actually used
   MODEL_TIERS,
-  type ModelPriority, 
   type ModelSelection,
   type TaskRequirements,
   type TieredModel
 } from './modelRouter'
-import { analyzeIntent, type IntentAnalysis, type UserIntent } from '../context/intentRouter'
+
+/**
+ * Intent Router: Understanding what the user wants
+ * - analyzeIntent: Analyzes user message to determine intent (create_structure, write_content, etc.)
+ * - Now supports Python backend via feature flag (NEXT_PUBLIC_USE_PYTHON_BACKEND)
+ * - Types: IntentAnalysis (result), UserIntent (possible intents)
+ */
+// Add to imports section (around line 135)
+import { intentContextToPipelineContext } from '../context/intent/utils/adapter'
+import { analyzeIntent } from '../context/intentAnalyzerWrapper'
+import { type IntentAnalysis, type UserIntent } from '../context/intentRouter'
+
+/**
+ * RAG Integration: Enhancing context with semantic search
+ * - enhanceContextWithRAG: Adds relevant information from document corpus
+ * - Used when enableRAG is true in config
+ */
 import { enhanceContextWithRAG } from '../context/ragIntegration'
+
+/**
+ * React Flow: Canvas graph types
+ * - Node: Represents a document/structure node on the canvas
+ * - Edge: Represents connections between nodes
+ */
 import { Node, Edge } from 'reactflow'
+
+/**
+ * Model Filter: Filtering available models
+ * - filterAvailableModels: Filters models based on user's API keys and preferences
+ */
 import { filterAvailableModels } from '../utils/modelFilter'
+
+/**
+ * Error Utils: Error handling utilities
+ * - extractErrorReason: Extracts human-readable error messages from various error types
+ */
 import { extractErrorReason } from '../utils/errorUtils'
-import { getFormatInstructions } from '../schemas/formatInstructions'
+
+/**
+ * Format Instructions: Document format specifications
+ * - getFormatInstructions: ⚠️ TO BE INVESTIGATED - May be legacy/unused (structure generation moved to structure.ts)
+ * - Used for structure generation prompts
+ */
+import { getFormatInstructions } from '../schemas/formatInstructions' // ⚠️ TO BE INVESTIGATED - Check if used
+
+/**
+ * Structure Generation Prompts: Templates for structure generation
+ * - getStructureGenerationPrompt: Builds system prompt for structure generation
+ * - getReportWarning: Adds warnings for report-type documents
+ */
 import { getStructureGenerationPrompt, getReportWarning } from '../prompts/structureGeneration'
-// PHASE 1: WorldState - Unified state management
+
+// ============================================================================
+// STATE MANAGEMENT
+// ============================================================================
+
+/**
+ * WorldState: Unified application state manager
+ * - Single source of truth for canvas state, documents, orchestrator status
+ * - Replaces scattered props and state variables
+ * - Optional for backward compatibility during migration
+ */
 import type { WorldStateManager } from './worldState'
-// PHASE 2: Tool System - Executable tools
+
+/**
+ * Tool Registry: Executable tools system
+ * - Registry of available tools (WriteContentTool, CreateStructureTool, etc.)
+ * - Optional - used by MultiAgentOrchestrator for agent coordination
+ */
 import type { ToolRegistry } from '../tools'
-// PHASE 1 REFACTORING: Modular action generators
+
+// ============================================================================
+// ACTION GENERATORS - Modular Action Creation
+// ============================================================================
+
+/**
+ * Base Action: Abstract base class for all action generators
+ * - Defines the interface that all action generators must implement
+ */
 import { BaseAction } from '../actions/base/BaseAction'
+
+/**
+ * Content Actions: Actions that generate or answer questions about content
+ * - AnswerQuestionAction: Answers user questions about documents
+ * - WriteContentAction: Generates content for sections
+ */
 import { AnswerQuestionAction } from '../actions/content/AnswerQuestionAction'
 import { WriteContentAction } from '../actions/content/WriteContentAction'
+
+/**
+ * Structure Actions: Actions that create or modify document structures
+ * - CreateStructureAction: Generates document structure plans (novels, screenplays, etc.)
+ */
 import { CreateStructureAction } from '../actions/structure/CreateStructureAction'
+
+/**
+ * Navigation Actions: Actions that navigate or modify the canvas
+ * - DeleteNodeAction: Deletes nodes from canvas
+ * - OpenDocumentAction: Opens documents for viewing/editing
+ * - NavigateSectionAction: Navigates to specific sections within documents
+ */
 import { DeleteNodeAction } from '../actions/navigation/DeleteNodeAction'
 import { OpenDocumentAction } from '../actions/navigation/OpenDocumentAction'
 import { NavigateSectionAction } from '../actions/navigation/NavigateSectionAction'
+// ============================================================================
+// MODULAR HELPERS - Extracted for Better Organization
+// ============================================================================
+// These modules were extracted from this file during refactoring to improve
+// maintainability. The main class methods are thin wrappers that delegate
+// to these helper functions.
 
-// ============================================================
-// TYPES
-// ============================================================
+/**
+ * WorldState Helpers: Utilities for accessing application state
+ * - getCanvasNodesHelper: Gets canvas nodes from WorldState or request
+ * - getCanvasEdgesHelper: Gets canvas edges from WorldState or request
+ * - getActiveContextHelper: Gets active document context
+ * - isDocumentViewOpenHelper: Checks if document view is open
+ * - getDocumentFormatHelper: Gets current document format
+ * - getStructureItemsHelper: Gets structure items from active document
+ * - getContentMapHelper: Gets content map from active document
+ * - getAvailableProvidersHelper: Gets available API providers
+ * - getAvailableModelsHelper: Gets available AI models
+ * - getModelPreferencesHelper: Gets user's model preferences
+ */
+import {
+  getCanvasNodesHelper,
+  getCanvasEdgesHelper,
+  getActiveContextHelper,
+  isDocumentViewOpenHelper,
+  getDocumentFormatHelper,
+  getStructureItemsHelper,
+  getContentMapHelper,
+  getAvailableProvidersHelper,
+  getAvailableModelsHelper,
+  getModelPreferencesHelper
+} from './orchestratorEngine.helpers'
 
-export interface OrchestratorConfig {
-  userId: string
-  modelPriority?: ModelPriority
-  enableRAG?: boolean
-  enablePatternLearning?: boolean
-  maxConversationDepth?: number
-  // PHASE 2: Tool system
-  toolRegistry?: ToolRegistry
-  // PHASE 3: Real-time UI callback for immediate message display
-  onMessage?: (content: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => void
-}
+/**
+ * Clarification Helpers: Handling user clarification responses
+ * - handleClarificationResponseHelper: Processes user responses to clarification questions
+ * - buildActionFromClarificationHelper: Builds actions based on user's clarification choice
+ * - Example: User says "the first one" → system interprets and creates appropriate action
+ */
+import {
+  handleClarificationResponseHelper,
+  buildActionFromClarificationHelper
+} from './orchestratorEngine.clarification'
 
-export interface OrchestratorRequest {
-  message: string
-  canvasNodes: Node[]
-  canvasEdges: Edge[]
-  activeContext?: {
-    id: string
-    name: string
-  }
-  isDocumentViewOpen?: boolean
-  documentFormat?: string
-  structureItems?: any[]
-  contentMap?: Record<string, string>
-  currentStoryStructureNodeId?: string | null
-  // Model selection preferences
-  modelMode?: 'automatic' | 'fixed'
-  fixedModeStrategy?: 'consistent' | 'loose'
-  fixedModelId?: string | null
-  // Available providers (from user's API keys)
-  availableProviders?: string[]
-  // PHASE 1.2: Dynamic model availability
-  // Models actually available to the user (from /api/models/available)
-  // If provided, orchestrator will use these instead of filtering MODEL_TIERS
-  availableModels?: TieredModel[]
-  // Structure generation (for create_structure intent)
-  userKeyId?: string // API key ID for structure generation
-  // Clarification response context (when user is responding to a request_clarification action)
-  clarificationContext?: {
-    originalAction: string // 'create_structure', 'open_and_write', 'delete_node'
-    question: string // The question that was asked
-    options: Array<{id: string, label: string, description: string}>
-    payload: any // Original action payload (documentFormat, userMessage, existingDocs, etc.)
-  }
-  // ✅ FIX: Authenticated Supabase client (to avoid RLS issues in agents)
-  supabaseClient?: any
-}
+/**
+ * Confirmation Helpers: Handling yes/no confirmations
+ * - continueConfirmationHelper: Processes user confirmations (yes/no or option selection)
+ * - buildActionFromConfirmationHelper: Builds actions from confirmation responses
+ * - Example: User confirms "yes" to delete → system creates delete action
+ */
+import {
+  continueConfirmationHelper,
+  buildActionFromConfirmationHelper
+} from './orchestratorEngine.confirmation'
 
-export interface OrchestratorResponse {
-  intent: UserIntent
-  confidence: number
-  reasoning: string
-  modelUsed: string
-  actions: OrchestratorAction[]
-  canvasChanged: boolean
-  requiresUserInput: boolean
-  estimatedCost: number
-  thinkingSteps?: Array<{ content: string; type: string }> // NEW: Detailed thinking from blackboard
-}
+/**
+ * Structure Generation Helpers: Creating document structures
+ * - createStructurePlanWithFallbackHelper: Generates structure with automatic model fallback
+ * - createStructurePlanHelper: Core structure generation logic
+ * - Handles structured output formats (OpenAI, Anthropic, Google)
+ * - Includes retry logic and error handling
+ */
+import {
+  createStructurePlanWithFallbackHelper,
+  createStructurePlanHelper
+} from './orchestratorEngine.structure'
 
-export interface OrchestratorAction {
-  type: 'message' | 'open_document' | 'select_section' | 'generate_content' | 'modify_structure' | 'delete_node' | 'request_clarification' | 'generate_structure'
-  payload: any
-  status: 'pending' | 'executing' | 'completed' | 'failed'
-  error?: string
-  /**
-   * Action dependencies and execution metadata
-   * 
-   * - dependsOn: Array of action types that must complete before this action can execute
-   * - autoExecute: If true, orchestrator will automatically execute this action after dependencies are met
-   * - requiresUserInput: If true, action requires user confirmation/interaction before execution
-   * 
-   * Example: generate_content depends on select_section and should auto-execute:
-   *   { dependsOn: ['select_section'], autoExecute: true, requiresUserInput: false }
-   */
-  dependsOn?: string[] // Action types that must complete first
-  autoExecute?: boolean // Should orchestrator execute automatically after dependencies?
-  requiresUserInput?: boolean // Does this action need user confirmation?
-}
+/**
+ * Action Processing Helpers: Managing action execution
+ * - generateActionsHelper: Creates actions based on intent analysis
+ * - processActionDependenciesHelper: Handles action dependencies and auto-execution
+ * - executeActionDirectlyHelper: Executes simple actions without UI interaction
+ */
+import {
+  generateActionsHelper,
+  processActionDependenciesHelper,
+  executeActionDirectlyHelper
+} from './orchestratorEngine.actions'
 
-// Structure generation types (for create_structure intent)
-export interface StructurePlan {
-  reasoning: string
-  structure: Array<{
-    id: string
-    level: number
-    name: string
-    parentId: string | null
-    wordCount: number
-    summary: string
-  }>
-  tasks: Array<{
-    id: string
-    type: string
-    sectionId: string
-    description: string
-  }>
-  metadata?: {
-    totalWordCount: number
-    estimatedTime: string
-    recommendedModels: string[]
-  }
-}
+/**
+ * Learning Helpers: Pattern extraction and correction detection
+ * - extractPatternHelper: Identifies learnable patterns from user interactions
+ * - detectCorrectionFromMessageHelper: Detects when user corrects a misclassification
+ * - Example: User says "I wanted create_structure, not write_content" → system learns
+ */
+import {
+  extractPatternHelper,
+  detectCorrectionFromMessageHelper
+} from './orchestratorEngine.learning'
 
-// ============================================================
+// ============================================================================
+// TYPE DEFINITIONS
+// ============================================================================
+
+/**
+ * Type Definitions: All orchestrator-related types
+ * - OrchestratorConfig: Configuration for orchestrator instance
+ * - OrchestratorRequest: Input request from UI (user message, canvas state, etc.)
+ * - OrchestratorResponse: Output response (actions, intent, model used, etc.)
+ * - OrchestratorAction: Individual action to execute (generate_content, open_document, etc.)
+ * - StructurePlan: Generated document structure (sections, tasks, metadata)
+ */
+import type {
+  OrchestratorConfig,
+  OrchestratorRequest,
+  OrchestratorResponse,
+  OrchestratorAction,
+  StructurePlan
+} from './orchestratorEngine.types'
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/**
+ * Constants: Configuration values and magic numbers
+ * - STRUCTURE_GENERATION_CONFIG: Timeouts, retries, token limits for structure generation
+ * - CANVAS_CHANGE_WINDOW_MS: Time window for detecting canvas changes
+ */
+import {
+  STRUCTURE_GENERATION_CONFIG,
+  CANVAS_CHANGE_WINDOW_MS
+} from './orchestratorEngine.constants'
+
+// Re-export types for external consumers
+export type {
+  OrchestratorConfig,
+  OrchestratorRequest,
+  OrchestratorResponse,
+  OrchestratorAction,
+  StructurePlan
+} from './orchestratorEngine.types'
+
+// ============================================================================
 // ORCHESTRATOR ENGINE CLASS
-// ============================================================
+// ============================================================================
 
+/**
+ * OrchestratorEngine: The Central Coordinator
+ * 
+ * This class orchestrates the entire flow from user message to action execution.
+ * It's designed to be extended by MultiAgentOrchestrator for complex multi-agent tasks.
+ * 
+ * CLASS STRUCTURE:
+ * 
+ * 1. CONSTRUCTOR
+ *    - Initializes Blackboard (conversation memory)
+ *    - Sets up action generators (modular action creators)
+ *    - Connects to WorldState (application state)
+ * 
+ * 2. PUBLIC API (called by UI)
+ *    - orchestrate(): Main entry point - processes user requests
+ *    - continueClarification(): Handles clarification responses
+ *    - continueConfirmation(): Handles confirmation responses
+ * 
+ * 3. PROTECTED METHODS (for subclasses like MultiAgentOrchestrator)
+ *    - prepareContext(): Gathers context (canvas, conversation, state)
+ *    - analyzeUserIntent(): Determines what user wants
+ *    - selectOptimalModel(): Chooses best AI model
+ *    - generateActions(): Creates actions based on intent
+ *    - processActionDependencies(): Handles action execution order
+ *    - buildResponse(): Constructs final response
+ * 
+ * 4. HELPER METHODS (delegate to extracted modules)
+ *    - WorldState access helpers (getCanvasNodes, etc.)
+ *    - Clarification handlers
+ *    - Confirmation handlers
+ *    - Structure generation
+ *    - Action processing
+ *    - Pattern learning
+ * 
+ * 5. FACTORY FUNCTIONS (at bottom of file)
+ *    - getOrchestrator(): Gets or creates orchestrator instance
+ *    - getMultiAgentOrchestrator(): Creates multi-agent orchestrator
+ *    - createOrchestrator(): Creates new orchestrator instance
+ */
 export class OrchestratorEngine {
-  private blackboard: Blackboard
-  private config: Omit<Required<OrchestratorConfig>, 'toolRegistry' | 'onMessage'> & { toolRegistry?: ToolRegistry; onMessage?: OrchestratorConfig['onMessage'] }
-  protected worldState?: WorldStateManager // PHASE 1: Optional for gradual migration (protected for child classes)
-  private toolRegistry?: ToolRegistry // PHASE 2: Optional tool system
-  private actionGenerators: Map<UserIntent, BaseAction> // PHASE 1 REFACTORING: Modular action generators
+  // ============================================================================
+  // CLASS PROPERTIES
+  // ============================================================================
   
+  /**
+   * Blackboard: Conversation memory and agent communication hub
+   * - Stores all conversation messages (user + orchestrator)
+   * - Tracks recently referenced nodes for context resolution
+   * - Enables agents to share information (blackboard pattern)
+   * - Protected for MultiAgentOrchestrator subclass access
+   */
+  protected blackboard: Blackboard
+  
+  /**
+   * Config: Orchestrator configuration
+   * - User preferences (model priority, RAG, learning)
+   * - Optional callbacks (onMessage for real-time updates)
+   * - Protected for MultiAgentOrchestrator subclass access
+   */
+  protected config: Omit<Required<OrchestratorConfig>, 'toolRegistry' | 'onMessage'> & { 
+    toolRegistry?: ToolRegistry
+    onMessage?: OrchestratorConfig['onMessage'] 
+  }
+  
+  /**
+   * WorldState: Unified application state manager
+   * - Single source of truth for canvas, documents, orchestrator status
+   * - Optional for backward compatibility during migration
+   * - Protected for MultiAgentOrchestrator subclass access
+   */
+  protected worldState?: WorldStateManager
+  
+  /**
+   * ToolRegistry: Executable tools system
+   * - Registry of available tools (WriteContentTool, CreateStructureTool, etc.)
+   * - Used by MultiAgentOrchestrator for agent coordination
+   * - Optional - only used in multi-agent scenarios
+   */
+  private toolRegistry?: ToolRegistry
+  
+  /**
+   * ActionGenerators: Modular action creation system
+   * - Maps user intents to action generator classes
+   * - Each generator handles a specific intent (create_structure, write_content, etc.)
+   * - Enables extensible, maintainable action creation
+   */
+  private actionGenerators: Map<UserIntent, BaseAction>
+  
+  // ============================================================================
+  // CONSTRUCTOR
+  // ============================================================================
+  
+  /**
+   * Creates a new OrchestratorEngine instance
+   * 
+   * Initialization Steps:
+   * 1. Sets up Blackboard (conversation memory) with optional real-time message callback
+   * 2. Connects to WorldState if provided (unified application state)
+   * 3. Stores ToolRegistry if provided (for multi-agent coordination)
+   * 4. Initializes action generators (modular action creators)
+   * 5. Configures orchestrator settings (model priority, RAG, learning, etc.)
+   * 
+   * @param config - Orchestrator configuration (userId, preferences, callbacks)
+   * @param worldState - Optional unified state manager (for gradual migration)
+   * 
+   * Architecture Notes:
+   * - Message callback: Blackboard calls onMessage when messages are added
+   * - WorldState connection: Enables temporal memory logging and state synchronization
+   * - Action generators: Each intent has a dedicated generator class
+   */
   constructor(config: OrchestratorConfig, worldState?: WorldStateManager) {
-    // PHASE 3: Pass real-time message callback to Blackboard
-    // ✅ FIX: Don't add to WorldState here - onAddChatMessage callback already handles it
+    // Step 1: Set up message callback for real-time UI updates
+    // Note: Don't add to WorldState here - onAddChatMessage callback already handles it
     // The messageCallback is called by Blackboard when messages are added, and the UI's
     // onAddChatMessage callback (passed as config.onMessage) is responsible for adding
     // messages to WorldState. Adding here would cause duplicates.
     const messageCallback = config.onMessage ? (msg: any) => {
       // Call the UI callback - it will add to WorldState
-      config.onMessage!(msg.content, msg.role, msg.type)
+      // Pass metadata if available for structured content support
+      config.onMessage!(msg.content, msg.role, msg.type, msg.metadata)
     } : undefined
 
+    // Step 2: Initialize Blackboard (conversation memory)
     this.blackboard = new Blackboard(config.userId, messageCallback)
-    this.worldState = worldState // PHASE 1: Store WorldState if provided
     
-    // Connect Blackboard to WorldState (enables temporal memory logging from WorldState)
+    // Step 3: Store and connect WorldState if provided
+    this.worldState = worldState
     if (worldState) {
+      // Connect Blackboard to WorldState (enables temporal memory logging)
       this.blackboard.setWorldState(worldState)
     }
     
-    this.toolRegistry = config.toolRegistry // PHASE 2: Store ToolRegistry if provided
+    // Step 4: Store ToolRegistry if provided (for multi-agent scenarios)
+    this.toolRegistry = config.toolRegistry
+    
+    // Step 5: Build configuration with defaults
     this.config = {
       userId: config.userId,
-      modelPriority: config.modelPriority || 'balanced',
-      enableRAG: config.enableRAG !== false,
-      enablePatternLearning: config.enablePatternLearning !== false,
-      maxConversationDepth: config.maxConversationDepth || 50,
-      toolRegistry: config.toolRegistry, // PHASE 2: Include in config (optional)
-      ...(config.onMessage && { onMessage: config.onMessage }) // PHASE 3: Real-time message callback (optional)
+      modelPriority: config.modelPriority || 'balanced', // balanced, speed, quality
+      enableRAG: config.enableRAG !== false, // Default: enabled
+      enablePatternLearning: config.enablePatternLearning !== false, // Default: enabled
+      maxConversationDepth: config.maxConversationDepth || 50, // Max conversation history
+      toolRegistry: config.toolRegistry, // Optional tool system
+      ...(config.onMessage && { onMessage: config.onMessage }) // Optional real-time callback
     }
     
-    // PHASE 1 REFACTORING: Initialize modular action generators
+    // Step 6: Initialize modular action generators
+    // Each intent maps to a dedicated action generator class
     this.actionGenerators = new Map([
       ['answer_question', new AnswerQuestionAction()],
       ['write_content', new WriteContentAction()],
-      ['create_structure', new CreateStructureAction(this)],
+      ['create_structure', new CreateStructureAction(this)], // Needs orchestrator reference
       ['delete_node', new DeleteNodeAction(this.blackboard)],
       ['open_and_write', new OpenDocumentAction(this.blackboard)],
       ['navigate_section', new NavigateSectionAction()],
-      // More actions will be added as they're extracted
+      // More actions can be added here as they're created
     ])
     
+    // Log initialization for debugging
     console.log('🎯 [Orchestrator] Initialized', {
       userId: config.userId,
       priority: this.config.modelPriority,
       rag: this.config.enableRAG,
       learning: this.config.enablePatternLearning,
-      hasWorldState: !!worldState, // PHASE 1: Log if using WorldState
-      hasToolRegistry: !!config.toolRegistry, // PHASE 2: Log if using tools
+      hasWorldState: !!worldState,
+      hasToolRegistry: !!config.toolRegistry,
       toolCount: config.toolRegistry?.getAll().length || 0,
-      actionGeneratorsCount: this.actionGenerators.size // PHASE 1 REFACTORING: Log action generators
+      actionGeneratorsCount: this.actionGenerators.size
     })
   }
   
+  // ============================================================================
+  // PUBLIC API - Main Entry Points
+  // ============================================================================
+  
   /**
-   * Main orchestration method
+   * Main orchestration method - The Heart of the System
+   * 
+   * This is the primary entry point for processing user requests. It coordinates
+   * the entire flow from user message to action execution.
+   * 
+   * ORCHESTRATION FLOW:
+   * 
+   * 1. CONTEXT PREPARATION
+   *    - Extracts canvas state (nodes, edges, active document)
+   *    - Gathers conversation history
+   *    - Checks for user corrections
+   *    - Updates WorldState with orchestrator status
+   * 
+   * 2. INTENT ANALYSIS
+   *    - Analyzes user message to determine intent (create_structure, write_content, etc.)
+   *    - Uses LLM reasoning for complex/ambiguous requests
+   *    - Applies corrections if user corrected previous misclassification
+   * 
+   * 3. MODEL SELECTION
+   *    - Assesses task complexity (simple, reasoning, complex)
+   *    - Selects optimal AI model based on requirements
+   *    - Enhances context with RAG if enabled
+   * 
+   * 4. ACTION GENERATION
+   *    - Delegates to appropriate action generator based on intent
+   *    - Each generator creates specific actions (generate_content, open_document, etc.)
+   * 
+   * 5. ACTION PROCESSING
+   *    - Resolves action dependencies (topological sorting)
+   *    - Auto-executes simple actions (select_section, message)
+   *    - Returns complex actions to UI (generate_content, create_structure)
+   * 
+   * 6. PATTERN LEARNING (if enabled)
+   *    - Extracts learnable patterns from interaction
+   *    - Stores patterns for future use
+   * 
+   * 7. RESPONSE BUILDING
+   *    - Constructs final response with actions, metadata, and thinking steps
+   *    - Updates WorldState with final status
+   * 
+   * @param request - User request with message, canvas state, preferences, etc.
+   * @returns OrchestratorResponse with actions, intent, model used, and metadata
+   * 
+   * Example:
+   * ```typescript
+   * const response = await orchestrator.orchestrate({
+   *   message: "Create a novel about dragons",
+   *   canvasNodes: [...],
+   *   canvasEdges: [...],
+   *   availableModels: [...]
+   * })
+   * // Returns: { intent: 'create_structure', actions: [...], ... }
+   * ```
    */
   async orchestrate(request: OrchestratorRequest): Promise<OrchestratorResponse> {
     const startTime = Date.now()
@@ -233,92 +609,209 @@ export class OrchestratorEngine {
       }
     })
     
-    // NEW: Handle clarification responses (user responding to request_clarification)
+    // Special case: Handle clarification responses (user responding to clarification question)
+    // This skips the normal orchestration flow since we already know the context
     if (request.clarificationContext) {
       return await this.handleClarificationResponse(request)
     }
     
-    // PHASE 1: Use helper methods to read from WorldState or Request
-    // Extract state early for backward compatibility
-    const _canvasNodes = this.getCanvasNodes(request)
-    const _canvasEdges = this.getCanvasEdges(request)
-    const _activeContext = this.getActiveContext(request)
-    const _isDocViewOpen = this.isDocumentViewOpen(request)
-    const _documentFormat = this.getDocumentFormat(request)
-    const _structureItems = this.getStructureItems(request)
-    const _contentMap = this.getContentMap(request)
-    const _availableProviders = this.getAvailableProviders(request)
-    const _availableModels = this.getAvailableModels(request)
-    const _modelPrefs = this.getModelPreferences(request)
+    // ========================================================================
+    // MAIN ORCHESTRATION FLOW
+    // ========================================================================
     
-    // ✅ CRITICAL FIX: Update WorldState if structureItems provided
-    // This ensures agents have access to the latest structure context
-    console.log('🔍 [Orchestrator] Checking WorldState update conditions:', {
-      hasWorldState: !!this.worldState,
-      hasStructureItems: !!request.structureItems,
-      structureItemsLength: request.structureItems?.length || 0,
-      hasNodeId: !!request.currentStoryStructureNodeId,
-      nodeId: request.currentStoryStructureNodeId
+    // Step 1: Prepare Context
+    // Gathers all necessary information: canvas state, conversation history, available models, etc.
+    const context = await this.prepareContext(request, startTime)
+    
+    // Step 2: Analyze User Intent
+    // Determines what the user wants (create_structure, write_content, etc.)
+    // Applies corrections if user corrected a previous misclassification
+    const intentAnalysis = await this.analyzeUserIntent(request, {
+      canvasNodes: context.canvasNodes,
+      activeContext: context.activeContext,
+      canvasContext: context.canvasContext,
+      conversationHistory: context.conversationHistory,
+      availableModels: context.availableModels,
+      corrections: context.corrections,
+      detectedCorrection: context.detectedCorrection
     })
     
-    // Step 1: Update WorldState (single source of truth for canvas/document state)
+    // Step 3: Select Optimal Model
+    // Chooses the best AI model for the task (considering speed, quality, capabilities)
+    // Enhances context with RAG if enabled
+    const { modelSelection, validatedFixedModelId, ragContext } = await this.selectOptimalModel(
+      intentAnalysis,
+      request,
+      {
+        canvasContext: context.canvasContext,
+        conversationHistory: context.conversationHistory,
+        availableProviders: context.availableProviders,
+        availableModels: context.availableModels
+      },
+      null // ragContext will be created/enhanced in selectOptimalModel if RAG is enabled
+    )
+    
+    // Step 4: Generate Actions
+    // Delegates to appropriate action generator based on intent
+    // Each generator creates specific actions (generate_content, open_document, etc.)
+    const actions = await this.generateActions(
+      intentAnalysis,
+      request,
+      context.canvasContext,
+      ragContext, // RAG-enhanced context for better content generation
+      modelSelection,
+      validatedFixedModelId,
+      context.availableModels
+    )
+    
+    // Step 5: Process Action Dependencies
+    // Handles action execution order and auto-executes simple actions
+    // Returns actions that need UI interaction or complex processing
+    const { executedActions, remainingActions } = await this.processActionDependencies(
+      actions,
+      request
+    )
+    
+    // Log execution summary for debugging
+    if (executedActions.length > 0) {
+      console.log(`✅ [Orchestrator] Auto-executed ${executedActions.length} action(s):`, executedActions.map(a => a.type))
+    }
+    if (remainingActions.length > 0) {
+      console.log(`📤 [Orchestrator] Returning ${remainingActions.length} action(s) to UI:`, remainingActions.map(a => a.type))
+    }
+    
+    // Step 6: Pattern Learning (if enabled)
+    // Extracts learnable patterns from user interactions for future improvement
+    if (this.config.enablePatternLearning && intentAnalysis.confidence > 0.8) {
+      const pattern = this.extractPattern(request.message, intentAnalysis, context.canvasContext)
+      if (pattern) {
+        await this.blackboard.storePattern(
+          pattern.pattern,
+          pattern.action,
+          'intent_detection'
+        )
+      }
+    }
+    
+    // Step 7: Build Final Response
+    // Assembles all information into a response the UI can use
+    const response = this.buildResponse(
+      intentAnalysis,
+      remainingActions,
+      modelSelection,
+      context.canvasChanged,
+      startTime
+    )
+    
+    console.log('✅ [Orchestrator] Completed', {
+      intent: response.intent,
+      confidence: response.confidence,
+      model: response.modelUsed,
+      cost: response.estimatedCost,
+      time: Date.now() - startTime
+    })
+    
+    return response
+  }
+  
+  // ============================================================================
+  // PROTECTED ORCHESTRATION HELPERS
+  // ============================================================================
+  // These methods break down orchestrate() into smaller, testable units.
+  // They're protected so MultiAgentOrchestrator can override or extend them.
+  
+  /**
+   * Prepare Context: Gathers all necessary context for orchestration
+   * 
+   * This method is the first step in orchestration. It:
+   * - Extracts canvas state from WorldState or request props
+   * - Updates WorldState with orchestrator status
+   * - Builds canvas context (connected nodes, relationships)
+   * - Gathers conversation history
+   * - Checks for user corrections (learning from mistakes)
+   * - Filters available models based on user's API keys
+   * 
+   * State Priority:
+   * 1. WorldState (if available) - Single source of truth
+   * 2. Request props - Fallback for backward compatibility
+   * 
+   * @param request - User request with optional state information
+   * @param startTime - Timestamp when orchestration started (for canvas change detection)
+   * @returns Prepared context object with all necessary information
+   * 
+   * Context includes:
+   * - Canvas state (nodes, edges, active document)
+   * - Document state (format, structure items, content map)
+   * - Available models and providers
+   * - Conversation history
+   * - Detected corrections (if user corrected previous intent)
+   */
+  protected async prepareContext(
+    request: OrchestratorRequest,
+    startTime: number
+  ): Promise<{
+    canvasNodes: Node[]
+    canvasEdges: Edge[]
+    activeContext?: { id: string; name: string }
+    isDocViewOpen: boolean
+    documentFormat?: string
+    structureItems?: any[]
+    contentMap?: Record<string, string>
+    availableProviders: string[]
+    availableModels: TieredModel[]
+    canvasContext: CanvasContext
+    canvasChanged: boolean
+    conversationHistory: ConversationMessage[]
+    corrections: any[]
+    detectedCorrection: { wrongIntent: string; correctIntent: string; originalMessage: string } | null
+  }> {
+    // Extract state from WorldState or request
+    const canvasNodes = this.getCanvasNodes(request)
+    const canvasEdges = this.getCanvasEdges(request)
+    const activeContext = this.getActiveContext(request)
+    const isDocViewOpen = this.isDocumentViewOpen(request)
+    const documentFormat = this.getDocumentFormat(request)
+    const structureItems = this.getStructureItems(request)
+    const contentMap = this.getContentMap(request)
+    const availableProviders = this.getAvailableProviders(request) || ['openai', 'groq', 'anthropic', 'google']
+    const availableModels = this.getAvailableModels(request)
+    
+    // Update WorldState if structureItems provided
     if (this.worldState && request.structureItems && request.structureItems.length > 0 && request.currentStoryStructureNodeId) {
-      console.log('🔄 [Orchestrator] Updating WorldState with structure items:', {
-        nodeId: request.currentStoryStructureNodeId,
-        format: _documentFormat || 'novel',
-        itemsCount: request.structureItems.length,
-        firstItemId: request.structureItems[0]?.id
-      })
       this.worldState.setActiveDocument(
         request.currentStoryStructureNodeId,
-        _documentFormat || 'novel',
+        documentFormat || 'novel',
         request.structureItems
       )
-      console.log('✅ [Orchestrator] WorldState updated - agents can now access structure')
-      
-      // Log document update to temporal memory (Blackboard reads from WorldState)
       if (request.currentStoryStructureNodeId) {
         this.blackboard.logDocumentUpdate(request.currentStoryStructureNodeId)
       }
-    } else {
-      console.warn('⚠️ [Orchestrator] WorldState NOT updated - missing requirements')
     }
     
-    // NOTE: Canvas/document state is now managed by WorldState only
-    // Blackboard reads from WorldState for temporal memory logging
-    
-    // Step 2: Add user message to blackboard
+    // Add user message to blackboard
     this.blackboard.addMessage({
       role: 'user',
       content: request.message,
       type: 'user'
     })
     
-    // Step 3: Build canvas context
+    // Build canvas context
     const canvasContext = buildCanvasContext(
       'context',
-      _canvasNodes,
-      _canvasEdges,
+      canvasNodes,
+      canvasEdges,
       request.currentStoryStructureNodeId && request.contentMap
         ? { [request.currentStoryStructureNodeId]: { contentMap: request.contentMap } }
         : undefined
     )
     
-    // ✅ ARCHITECTURE: Canvas context awareness belongs in orchestrator layer
-    // The orchestrator owns the logic of what it can "see" on the canvas and communicates
-    // this awareness to the user via blackboard messages (which trigger UI display via onMessage callback).
-    // This keeps the UI layer purely for display - it doesn't generate canvas awareness messages.
-    // 
-    // Why here? Canvas context is built before intent analysis, so we can inform the user
-    // about what resources are available while the orchestrator is thinking.
+    // Log canvas visibility
     if (canvasContext.connectedNodes.length > 0) {
       this.blackboard.addMessage({
         role: 'orchestrator',
         content: `👁️ Canvas visibility: ${canvasContext.connectedNodes.length} node(s) connected`,
         type: 'thinking'
       })
-      
-      // List each connected node so user knows what the orchestrator can reference
       canvasContext.connectedNodes.forEach(node => {
         this.blackboard.addMessage({
           role: 'orchestrator',
@@ -328,110 +821,148 @@ export class OrchestratorEngine {
       })
     }
     
-    // Step 4: Check for canvas changes (reads from WorldState if available)
-    const canvasChanged = this.blackboard.hasCanvasChanged(startTime - 5000)
+    // Check for canvas changes
+    const canvasChanged = this.blackboard.hasCanvasChanged(startTime - CANVAS_CHANGE_WINDOW_MS)
     
-    // Step 5: Analyze intent (MOVED UP - need to know intent before RAG)
+    // Get conversation history
     const conversationHistory = this.blackboard.getRecentMessages(10)
     
-    // Get available providers and models (needed for both intent analysis and later model selection)
-    const availableProviders = request.availableProviders || ['openai', 'groq', 'anthropic', 'google']
-    const modelsToUse: TieredModel[] = request.availableModels && request.availableModels.length > 0
-      ? filterAvailableModels(request.availableModels)
+    // Get available models
+    const modelsToUse: TieredModel[] = availableModels && availableModels.length > 0
+      ? filterAvailableModels(availableModels)
       : MODEL_TIERS.filter(m => availableProviders.includes(m.provider))
     
-    // Step 5.5: Check for corrections and retrieve similar patterns
+    // Check for corrections
     let corrections: any[] = []
-    let detectedCorrection: { wrongIntent: string, correctIntent: string, originalMessage: string } | null = null
+    let detectedCorrection: { wrongIntent: string; correctIntent: string; originalMessage: string } | null = null
     
     if (request.supabaseClient && this.config.userId) {
       try {
-        // Import correction service
-        const { 
-          findSimilarCorrections, 
-          storeCorrectionPattern
-        } = await import('../learning/correctionService')
+        const { findSimilarCorrections, storeCorrectionPattern } = await import('../learning/correctionService')
         
-        // Detect if this is a correction
-        detectedCorrection = this.detectCorrectionFromMessage(
-          request.message,
-          conversationHistory
-        )
+        detectedCorrection = this.detectCorrectionFromMessage(request.message, conversationHistory)
         
         if (detectedCorrection) {
-          console.log('🔧 [Orchestrator] Correction detected:', detectedCorrection)
-          
-          // Store the correction pattern
-          await storeCorrectionPattern(
-            request.supabaseClient,
-            this.config.userId,
-            {
-              originalMessage: detectedCorrection.originalMessage,
-              wrongIntent: detectedCorrection.wrongIntent,
-              correctIntent: detectedCorrection.correctIntent,
-              correctionMessage: request.message,
-              context: {
-                canvasNodes: _canvasNodes?.map(n => n.data?.label || n.id),
-                documentPanelOpen: _isDocViewOpen,
-                previousIntent: conversationHistory
-                  .slice(-3)
-                  .reverse()
-                  .find(m => m.role === 'orchestrator' && m.metadata?.intent)?.metadata?.intent
-              }
+          await storeCorrectionPattern(request.supabaseClient, this.config.userId, {
+            originalMessage: detectedCorrection.originalMessage,
+            wrongIntent: detectedCorrection.wrongIntent,
+            correctIntent: detectedCorrection.correctIntent,
+            correctionMessage: request.message,
+            context: {
+              canvasNodes: canvasNodes?.map(n => n.data?.label || n.id),
+              documentPanelOpen: isDocViewOpen,
+              previousIntent: conversationHistory
+                .slice(-3)
+                .reverse()
+                .find(m => m.role === 'orchestrator' && m.metadata?.intent)?.metadata?.intent
             }
-          )
+          })
         } else {
-          // Retrieve similar corrections for context
           corrections = await findSimilarCorrections(
             request.supabaseClient,
             this.config.userId,
             request.message,
             { matchThreshold: 0.75, matchCount: 3 }
           )
-          
-          if (corrections.length > 0) {
-            console.log(`📚 [Orchestrator] Found ${corrections.length} similar corrections to guide intent analysis`)
-          }
         }
       } catch (error) {
         console.warn('⚠️ [Orchestrator] Correction learning unavailable:', error)
       }
     }
     
-    // First pass: Quick intent analysis without RAG
-    // Pass available models and corrections to intent pipeline
-    const intentAnalysis = await analyzeIntent({
-      message: request.message,
-      hasActiveSegment: !!request.activeContext,
-      activeSegmentName: request.activeContext?.name,
-      activeSegmentId: request.activeContext?.id,
-      conversationHistory: conversationHistory.map(m => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        timestamp: m.timestamp,
-        type: m.type
-      })),
-      documentStructure: request.structureItems,
-      isDocumentViewOpen: request.isDocumentViewOpen,
-      documentFormat: request.documentFormat,
-      useLLM: true,
-      canvasContext: formatCanvasContextForLLM(canvasContext),
-      availableModels: modelsToUse, // ✅ NEW: Pass available models to intent pipeline
-      corrections: corrections // ✅ NEW: Pass learned corrections to intent pipeline
-    }, _canvasNodes,  // ✅ Pass canvas nodes
-       this.worldState,  // ✅ Pass worldState
-       this.blackboard)  // ✅ Pass blackboard
+    return {
+      canvasNodes,
+      canvasEdges,
+      activeContext,
+      isDocViewOpen,
+      documentFormat,
+      structureItems,
+      contentMap,
+      availableProviders,
+      availableModels: modelsToUse,
+      canvasContext,
+      canvasChanged,
+      conversationHistory,
+      corrections,
+      detectedCorrection
+    }
+  }
+  
+  /**
+   * Analyze User Intent: Determines what the user wants
+   * 
+   * This method analyzes the user's message to determine their intent. It uses:
+   * - Pattern matching for simple, unambiguous requests
+   * - LLM reasoning for complex or ambiguous requests
+   * - Conversation history for context
+   * - Canvas state for document-aware intents
+   * - Correction detection to learn from mistakes
+   * 
+   * Intent Types:
+   * - create_structure: User wants to create a new document structure
+   * - write_content: User wants to write content in a section
+   * - answer_question: User is asking a question about their document
+   * - open_and_write: User wants to open a document and write in it
+   * - delete_node: User wants to delete a node
+   * - navigate_section: User wants to navigate to a specific section
+   * 
+   * @param request - User request
+   * @param context - Prepared context from prepareContext()
+   * @returns IntentAnalysis with intent, confidence, reasoning, and metadata
+   * 
+   * Example:
+   * Input: "Create a screenplay about space exploration"
+   * Output: { intent: 'create_structure', confidence: 0.95, reasoning: '...', ... }
+   */
+  protected async analyzeUserIntent(
+    request: OrchestratorRequest,
+    context: {
+      canvasNodes: Node[]
+      activeContext?: { id: string; name: string }
+      canvasContext: CanvasContext
+      conversationHistory: ConversationMessage[]
+      availableModels: TieredModel[]
+      corrections: any[]
+      detectedCorrection: { wrongIntent: string; correctIntent: string; originalMessage: string } | null
+    }
+  ): Promise<IntentAnalysis> {
+    const intentAnalysis = await analyzeIntent(
+      request.message,  // Extract message from IntentContext
+      intentContextToPipelineContext(
+        {
+          message: request.message,
+          hasActiveSegment: !!context.activeContext,
+          activeSegmentName: context.activeContext?.name,
+          activeSegmentId: context.activeContext?.id,
+          conversationHistory: context.conversationHistory.map(m => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+            type: m.type
+          })),
+          documentStructure: request.structureItems,
+          isDocumentViewOpen: request.isDocumentViewOpen,
+          documentFormat: request.documentFormat,
+          useLLM: true,
+          canvasContext: formatCanvasContextForLLM(context.canvasContext),
+          availableModels: context.availableModels,
+          corrections: context.corrections
+        },
+        this.worldState,
+        this.blackboard,
+        context.canvasNodes
+      )
+    )
     
-    // If correction was detected, override intent
-    if (detectedCorrection) {
-      intentAnalysis.intent = detectedCorrection.correctIntent as any
+    // Override intent if correction detected
+    if (context.detectedCorrection) {
+      intentAnalysis.intent = context.detectedCorrection.correctIntent as any
       intentAnalysis.confidence = 0.95
-      intentAnalysis.reasoning = `User corrected: wanted ${detectedCorrection.correctIntent}, not ${detectedCorrection.wrongIntent}. Correction stored for future learning.`
-      console.log('✅ [Orchestrator] Intent overridden based on user correction')
+      intentAnalysis.reasoning = `User corrected: wanted ${context.detectedCorrection.correctIntent}, not ${context.detectedCorrection.wrongIntent}. Correction stored for future learning.`
     }
     
-    // Update WorldState: Intent analyzed, now deciding
+    // Update WorldState
     this.worldState?.update(draft => {
       draft.orchestrator.status = 'deciding'
       draft.orchestrator.lastIntent = {
@@ -446,87 +977,110 @@ export class OrchestratorEngine {
       }
     })
     
-    // Step 6: Enhance with RAG if enabled (AFTER intent analysis)
-    // SKIP RAG for structure generation - we'll handle it separately with summaries fallback
-    let ragContext: any = null
+    return intentAnalysis
+  }
+  
+  /**
+   * Select Optimal Model: Chooses the best AI model for the task
+   * 
+   * This method intelligently selects an AI model based on:
+   * - Task complexity (simple, reasoning, complex)
+   * - User preferences (speed vs quality)
+   * - Available models (user's API keys)
+   * - Model capabilities (reasoning, structured output, speed)
+   * 
+   * Model Selection Strategy:
+   * 1. Assess task complexity (simple tasks → fast models, complex → reasoning models)
+   * 2. Apply user preferences (balanced, speed, quality)
+   * 3. Filter by available models (user's API keys)
+   * 4. Select best match (considering speed, cost, capabilities)
+   * 
+   * RAG Enhancement:
+   * - If enabled and relevant, enhances context with semantic search
+   * - Adds relevant information from document corpus
+   * - Improves context for content generation tasks
+   * 
+   * @param intentAnalysis - Analyzed user intent
+   * @param request - User request with model preferences
+   * @param context - Context with available models and providers
+   * @param ragContext - Optional RAG context (will be enhanced if enabled)
+   * @returns Model selection with reasoning and estimated cost
+   * 
+   * Example:
+   * Simple task: "What is the plot?" → Fast model (Groq, GPT-3.5)
+   * Complex task: "Create a novel structure" → Reasoning model (GPT-4, Claude Sonnet)
+   */
+  protected async selectOptimalModel(
+    intentAnalysis: IntentAnalysis,
+    request: OrchestratorRequest,
+    context: {
+      canvasContext: CanvasContext
+      conversationHistory: ConversationMessage[]
+      availableProviders: string[]
+      availableModels: TieredModel[]
+    },
+    ragContext: any
+  ): Promise<{
+    modelSelection: ModelSelection
+    validatedFixedModelId: string | null
+    ragContext: any
+  }> {
+    // Enhance with RAG if enabled
+    let enhancedRagContext = ragContext
     if (this.config.enableRAG && 
-        canvasContext.connectedNodes.length > 0 &&
+        context.canvasContext.connectedNodes.length > 0 &&
         intentAnalysis.intent !== 'create_structure' &&
         intentAnalysis.intent !== 'clarify_intent') {
-      
-      ragContext = await enhanceContextWithRAG(
+      enhancedRagContext = await enhanceContextWithRAG(
         request.message,
-        canvasContext,
+        context.canvasContext,
         undefined,
-        conversationHistory.map(m => ({ role: m.role, content: m.content }))
+        context.conversationHistory.map(m => ({ role: m.role, content: m.content }))
       )
     }
     
-    // Step 7: Record intent in blackboard
+    // Record intent in blackboard
     this.blackboard.setIntent(intentAnalysis.intent, intentAnalysis.confidence)
     
-    // Step 8: Assess task complexity and select model
+    // Assess task complexity
     const taskComplexity = assessTaskComplexity(
       intentAnalysis.intent,
-      request.message.length + (ragContext?.ragContent?.length || 0),
+      request.message.length + (enhancedRagContext?.ragContent?.length || 0),
       intentAnalysis.intent === 'rewrite_with_coherence'
     )
     
-    // NOTE: availableProviders and modelsToUse are already defined above (lines 303-306)
-    // Reuse them here - no need to redefine
-    
-    console.log(`🎯 [Orchestrator] Using ${request.availableModels && request.availableModels.length > 0 ? 'dynamic' : 'static'} model list: ${modelsToUse.length} models available`)
-    
-    // ✅ CRITICAL: If using static fallback, warn user
-    if (!request.availableModels || request.availableModels.length === 0) {
-      console.warn('⚠️ [Orchestrator] Using static MODEL_TIERS fallback - models may not be available to user!')
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `⚠️ Unable to fetch your available models. Using default list (some models may fail).`,
-        type: 'warning'
-      })
-    }
-    
-    // VALIDATE fixedModelId against available models
+    // Validate fixed model if specified
     let validatedFixedModelId: string | null = null
     if (request.modelMode === 'fixed' && request.fixedModelId) {
-      const isValidModel = modelsToUse.some(m => m.id === request.fixedModelId)
-      
+      const isValidModel = context.availableModels.some(m => m.id === request.fixedModelId)
       if (isValidModel) {
         validatedFixedModelId = request.fixedModelId
-        console.log('✅ [Orchestrator] Fixed model is valid:', validatedFixedModelId)
       } else {
-        console.warn(`⚠️ [Orchestrator] Configured model "${request.fixedModelId}" not found in available models. Auto-selecting...`)
-        
-        // Add message to blackboard to inform user
         this.blackboard.addMessage({
           role: 'orchestrator',
           content: `⚠️ Configured model "${request.fixedModelId}" is no longer available. Auto-selecting the best model for this task instead.`,
           type: 'decision'
         })
-        
-        validatedFixedModelId = null
       }
     }
     
-    // PHASE 2: Determine if this task requires reasoning
-    // Orchestrator's own operations (planning, analysis, coordination) need reasoning
-    // Content generation will be delegated to writer models later
+    // Determine if reasoning is required
     const requiresReasoning = 
-      intentAnalysis.intent === 'create_structure' || // Structure planning needs reasoning
-      intentAnalysis.intent === 'rewrite_with_coherence' || // Complex editing needs reasoning
-      taskComplexity === 'reasoning' || // Complex reasoning tasks
-      taskComplexity === 'complex' // Complex orchestration tasks
+      intentAnalysis.intent === 'create_structure' ||
+      intentAnalysis.intent === 'rewrite_with_coherence' ||
+      taskComplexity === 'reasoning' ||
+      taskComplexity === 'complex'
     
+    // Select model
     const modelSelection = selectModel(
       taskComplexity,
       this.config.modelPriority,
-      availableProviders,
-      modelsToUse, // PHASE 1.2: Pass actual available models
-      requiresReasoning // PHASE 2: Require reasoning for orchestrator operations
+      context.availableProviders,
+      context.availableModels,
+      requiresReasoning
     )
     
-    // Step 9: Log reasoning to blackboard
+    // Log reasoning to blackboard
     this.blackboard.addMessage({
       role: 'orchestrator',
       content: `🧠 ${intentAnalysis.reasoning}`,
@@ -544,26 +1098,40 @@ export class OrchestratorEngine {
       type: 'decision'
     })
     
-    // Step 10: Generate actions based on intent
-    const actions = await this.generateActions(
-      intentAnalysis,
-      request,
-      canvasContext,
-      ragContext,
-      modelSelection,
-      validatedFixedModelId,
-      modelsToUse // PHASE 2: Pass available models for writer delegation
-    )
-    
-    // Step 11: Process action dependencies and sequencing
-    // ✅ NEW: Automatically execute actions with dependencies in the correct order
-    const { executedActions, remainingActions } = await this.processActionDependencies(
-      actions,
-      request
-    )
-    
-    // Step 12: Build response
-    // Extract thinking steps from blackboard (last 10 orchestrator messages)
+    return { modelSelection, validatedFixedModelId, ragContext: enhancedRagContext }
+  }
+  
+  /**
+   * Build Response: Constructs the final orchestrator response
+   * 
+   * This method assembles all the information into a final response that
+   * the UI can use to display results and execute actions.
+   * 
+   * Response includes:
+   * - Intent and confidence (what we think the user wants)
+   * - Reasoning (why we made this decision)
+   * - Model used (which AI model was selected)
+   * - Actions (what needs to be executed)
+   * - Canvas changes (whether canvas state changed)
+   * - User input required (whether user needs to provide more info)
+   * - Estimated cost (how much this request cost)
+   * - Thinking steps (internal reasoning for debugging)
+   * 
+   * @param intentAnalysis - Analyzed user intent
+   * @param remainingActions - Actions that weren't auto-executed
+   * @param modelSelection - Selected AI model
+   * @param canvasChanged - Whether canvas state changed
+   * @param startTime - When orchestration started (for timing)
+   * @returns Complete OrchestratorResponse ready for UI
+   */
+  protected buildResponse(
+    intentAnalysis: IntentAnalysis,
+    remainingActions: OrchestratorAction[],
+    modelSelection: ModelSelection,
+    canvasChanged: boolean,
+    startTime: number
+  ): OrchestratorResponse {
+    // Extract thinking steps from blackboard
     const recentMessages = this.blackboard.getRecentMessages(10)
     const thinkingSteps = recentMessages
       .filter(m => m.role === 'orchestrator' && (m.type === 'thinking' || m.type === 'decision'))
@@ -574,38 +1142,24 @@ export class OrchestratorEngine {
       confidence: intentAnalysis.confidence,
       reasoning: intentAnalysis.reasoning,
       modelUsed: modelSelection.modelId,
-      actions: remainingActions, // Only return actions that need UI handling
+      actions: remainingActions,
       canvasChanged,
       requiresUserInput: intentAnalysis.needsClarification || remainingActions.some(a => a.requiresUserInput !== false) || false,
       estimatedCost: modelSelection.estimatedCost,
-      thinkingSteps // Include detailed thinking from blackboard
+      thinkingSteps
     }
     
-    // Log what was auto-executed vs returned to UI
-    if (executedActions.length > 0) {
-      console.log(`✅ [Orchestrator] Auto-executed ${executedActions.length} action(s):`, executedActions.map(a => a.type))
-    }
-    if (remainingActions.length > 0) {
-      console.log(`📤 [Orchestrator] Returning ${remainingActions.length} action(s) to UI:`, remainingActions.map(a => a.type))
-    }
-    
-    // Step 11: Learn pattern if enabled
+    // Learn pattern if enabled
     if (this.config.enablePatternLearning && intentAnalysis.confidence > 0.8) {
-      const pattern = this.extractPattern(request.message, intentAnalysis, canvasContext)
-      if (pattern) {
-        await this.blackboard.storePattern(
-          pattern.pattern,
-          pattern.action,
-          'intent_detection'
-        )
-      }
+      // Note: extractPattern needs canvasContext, but we can skip it here
+      // as pattern learning is optional
     }
     
-    // Step 12: Record action
+    // Record action
     this.blackboard.recordAction(intentAnalysis.intent, {
       confidence: intentAnalysis.confidence,
       modelUsed: modelSelection.modelId,
-      taskComplexity,
+      taskComplexity: assessTaskComplexity(intentAnalysis.intent, 0, false),
       elapsedMs: Date.now() - startTime
     })
     
@@ -618,37 +1172,40 @@ export class OrchestratorEngine {
       }
     })
     
-    console.log('✅ [Orchestrator] Completed', {
-      intent: response.intent,
-      confidence: response.confidence,
-      model: response.modelUsed,
-      cost: response.estimatedCost,
-      time: Date.now() - startTime
-    })
-    
     return response
   }
   
-  // ============================================================
-  // CONTINUE CLARIFICATION: Streamlined Clarification Processing
-  // ============================================================
+  // ============================================================================
+  // PUBLIC API - Clarification & Confirmation Handling
+  // ============================================================================
+  // These methods handle user responses to clarification and confirmation requests.
+  // They're optimized to skip full orchestration since we already know the context.
   
   /**
-   * Continue from a clarification response
+   * Continue Clarification: Processes user's clarification response
    * 
-   * This is a streamlined method that processes clarification responses
-   * without re-analyzing intent or rebuilding context. It's more efficient
-   * than calling orchestrate() with clarificationContext because it:
+   * When the orchestrator asks a clarification question (e.g., "Which template?"),
+   * the user responds with their choice. This method processes that response.
    * 
-   * 1. Skips intent analysis (we already know the originalAction)
-   * 2. Skips canvas context rebuilding (uses existing context)
-   * 3. Directly interprets the clarification response
-   * 4. Builds and returns actions immediately
+   * Why This Exists:
+   * - More efficient than full orchestration (skips intent analysis)
+   * - We already know the original action and context
+   * - Directly interprets response and builds appropriate action
    * 
-   * @param response - User's clarification response (e.g., "1", "TV Pilot", "the first one")
-   * @param clarificationContext - The original clarification context from request_clarification action
-   * @param request - Minimal request context (canvas nodes, structure items, etc.)
+   * Response Interpretation:
+   * - Direct matches: "1", "TV Pilot" → Exact option match
+   * - Number matches: "2" → Option at index 1
+   * - Natural language: "the first one", "go with podcast" → LLM interpretation
+   * 
+   * @param response - User's response (option label, number, or natural language)
+   * @param clarificationContext - Original clarification context (question, options, payload)
+   * @param request - Optional request context (will use WorldState if not provided)
    * @returns OrchestratorResponse with actions ready for execution
+   * 
+   * Example:
+   * User asked: "Which template?" with options ["Three Act", "Hero's Journey"]
+   * User responds: "the first one"
+   * This method interprets → selects "Three Act" → creates create_structure action
    */
   async continueClarification(
     response: string,
@@ -737,18 +1294,26 @@ export class OrchestratorEngine {
   }
   
   /**
-   * Handle clarification option selection (UI-facing method)
+   * Handle Clarification Option: UI-facing method for clarification clicks
    * 
-   * This method is called by the UI when a user clicks a clarification option.
-   * The orchestrator reads all context from WorldState and processes the response.
+   * This method is called by the UI when a user clicks a clarification option button.
+   * It reads all necessary context from WorldState (single source of truth) and
+   * processes the clarification response.
    * 
    * Architecture:
-   * - UI Layer: Displays options, receives clicks, calls this method
+   * - UI Layer: Displays clarification options, receives clicks
    * - Logic Layer (this method): Reads from WorldState, processes, returns actions
+   * 
+   * WorldState Integration:
+   * - Reads pending clarification from WorldState.ui.pendingClarification
+   * - Reads canvas state, document state, models from WorldState
+   * - Clears clarification from WorldState after successful processing
    * 
    * @param response - User's response (option label, ID, or natural language)
    * @param request - Optional request context (will be read from WorldState if not provided)
    * @returns OrchestratorResponse with actions ready for execution
+   * 
+   * @throws Error if WorldState is not available (required for this method)
    */
   async handleClarificationOption(
     response: string,
@@ -844,27 +1409,34 @@ export class OrchestratorEngine {
     return result
   }
   
-  // ============================================================
-  // CONTINUE CONFIRMATION: Streamlined Confirmation Processing
-  // ============================================================
-  
   /**
-   * Continue from a confirmation response
+   * Continue Confirmation: Processes user's confirmation response
    * 
-   * This processes confirmation responses (yes/no or option selection)
-   * and returns the action to execute. The orchestrator knows what action
-   * needs confirmation, so it also knows what to execute after confirmation.
+   * When the orchestrator asks for confirmation (e.g., "Delete this node?"),
+   * the user responds with "yes", "no", or selects an option. This method
+   * processes that response and builds the appropriate action.
    * 
-   * This is more efficient than having the UI build actions because:
-   * 1. Logic stays in orchestrator (maintains architectural separation)
-   * 2. Single source of truth for action building
-   * 3. Easier to test and maintain
-   * 4. Consistent with continueClarification() pattern
+   * Confirmation Types:
+   * - Destructive: "Delete this node?" → Requires explicit confirmation
+   * - Permission: "Allow access?" → Requires permission
+   * - Info: "Proceed with this action?" → Informational confirmation
+   * - Clarification: Multiple choice confirmation
    * 
-   * @param response - User's confirmation response ("yes", "no", or selected option)
-   * @param confirmationContext - The original confirmation context
-   * @param request - Minimal request context
-   * @returns OrchestratorResponse with action to execute
+   * Response Processing:
+   * - Yes/No: "yes", "y", "confirm", "ok" → Confirmed
+   * - Cancel: "no", "n", "cancel" → Cancelled
+   * - Option selection: User selects from multiple options
+   * 
+   * Why This Exists:
+   * - Logic stays in orchestrator (maintains architectural separation)
+   * - Single source of truth for action building
+   * - Easier to test and maintain
+   * - Consistent with continueClarification() pattern
+   * 
+   * @param response - User's response ("yes", "no", or selected option)
+   * @param confirmationContext - Original confirmation context (action type, payload, options)
+   * @param request - Optional request context
+   * @returns OrchestratorResponse with action to execute (or empty if cancelled)
    */
   async continueConfirmation(
     response: string | { id: string },
@@ -883,392 +1455,287 @@ export class OrchestratorEngine {
       currentStoryStructureNodeId?: string | null
     } = {}
   ): Promise<OrchestratorResponse> {
-    const startTime = Date.now()
-    
-    // Update WorldState: Processing confirmation response
-    this.worldState?.update(draft => {
-      draft.orchestrator.status = 'thinking'
-      draft.orchestrator.currentTask = {
-        type: 'analyze_intent', // Use existing task type
-        startedAt: Date.now(),
-        description: 'Processing confirmation response'
-      }
-    })
-    
-    // Add user response to blackboard
-    const responseText = typeof response === 'string' ? response : response.id
-    this.blackboard.addMessage({
-      role: 'user',
-      content: responseText,
-      type: 'user'
-    })
-    
-    this.blackboard.addMessage({
-      role: 'orchestrator',
-      content: `🔍 Processing your confirmation...`,
-      type: 'thinking'
-    })
-    
-    // Handle different confirmation types
-    if (confirmationContext.confirmationType === 'clarification' && confirmationContext.options) {
-      // Multiple choice confirmation - find selected option
-      let selectedOption = confirmationContext.options.find(opt => opt.id === responseText)
-      
-      if (!selectedOption && typeof response === 'string') {
-        // Try fuzzy matching
-        const lowerResponse = response.toLowerCase()
-        selectedOption = confirmationContext.options.find(opt => 
-          lowerResponse.includes(opt.id.toLowerCase()) ||
-          lowerResponse.includes(opt.label.toLowerCase()) ||
-          (opt.description && lowerResponse.includes(opt.description.toLowerCase()))
-        )
-      }
-      
-      if (!selectedOption) {
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `❓ I didn't understand which option you meant. Please try again or click one of the buttons.`,
-          type: 'error'
-        })
-        
-        // Update WorldState: Confirmation failed
-        this.worldState?.update(draft => {
-          draft.orchestrator.status = 'idle'
-          draft.orchestrator.currentTask = {
-            type: null,
-            startedAt: null
-          }
-        })
-        
-        return {
-          intent: 'general_chat',
-          confidence: 0.3,
-          reasoning: 'Failed to interpret confirmation response',
-          modelUsed: 'none',
-          actions: [],
-          canvasChanged: false,
-          requiresUserInput: true,
-          estimatedCost: 0
-        }
-      }
-      
-      // Build action based on original action type and selected option
-      // The orchestrator knows what action to build based on the original action
-      const action = this.buildActionFromConfirmation(
-        confirmationContext.actionType,
-        confirmationContext.actionPayload,
-        selectedOption
-      )
-      
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `✅ Proceeding with: ${selectedOption.label}`,
-        type: 'decision'
-      })
-      
-      // Update WorldState: Confirmation processed
-      this.worldState?.update(draft => {
-        draft.orchestrator.status = 'idle'
-        draft.orchestrator.currentTask = {
-          type: null,
-          startedAt: null
-        }
-      })
-      
-      return {
-        intent: confirmationContext.actionType as UserIntent,
-        confidence: 0.95,
-        reasoning: `User confirmed: ${selectedOption.label}`,
-        modelUsed: 'none',
-        actions: [action],
-        canvasChanged: false,
-        requiresUserInput: false,
-        estimatedCost: 0
-      }
-    } else {
-      // Yes/no confirmation (destructive or permission)
-      const lowerResponse = typeof response === 'string' ? response.toLowerCase().trim() : ''
-      const isConfirmed = lowerResponse === 'yes' || lowerResponse === 'y' || 
-                         lowerResponse === 'confirm' || lowerResponse === 'ok'
-      const isCancelled = lowerResponse === 'no' || lowerResponse === 'n' || 
-                          lowerResponse === 'cancel'
-      
-      if (isConfirmed) {
-        // Build action from confirmation context
-        const action: OrchestratorAction = {
-          type: confirmationContext.actionType as OrchestratorAction['type'],
-          payload: confirmationContext.actionPayload,
-          status: 'pending'
-        }
-        
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `✅ Confirmed. Proceeding...`,
-          type: 'decision'
-        })
-        
-        // Update WorldState: Confirmation processed
-        this.worldState?.update(draft => {
-          draft.orchestrator.status = 'idle'
-          draft.orchestrator.currentTask = {
-            type: null,
-            startedAt: null
-          }
-        })
-        
-        return {
-          intent: confirmationContext.actionType as UserIntent,
-          confidence: 0.95,
-          reasoning: 'User confirmed action',
-          modelUsed: 'none',
-          actions: [action],
-          canvasChanged: false,
-          requiresUserInput: false,
-          estimatedCost: 0
-        }
-      } else if (isCancelled) {
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `❌ Action cancelled.`,
-          type: 'result'
-        })
-        
-        // Update WorldState: Confirmation cancelled
-        this.worldState?.update(draft => {
-          draft.orchestrator.status = 'idle'
-          draft.orchestrator.currentTask = {
-            type: null,
-            startedAt: null
-          }
-        })
-        
-        return {
-          intent: 'general_chat',
-          confidence: 0.95,
-          reasoning: 'User cancelled action',
-          modelUsed: 'none',
-          actions: [],
-          canvasChanged: false,
-          requiresUserInput: false,
-          estimatedCost: 0
-        }
-      } else {
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `❓ Please reply "yes" to confirm or "no" to cancel.`,
-          type: 'error'
-        })
-        
-        // Update WorldState: Unclear response
-        this.worldState?.update(draft => {
-          draft.orchestrator.status = 'idle'
-          draft.orchestrator.currentTask = {
-            type: null,
-            startedAt: null
-          }
-        })
-        
-        return {
-          intent: 'general_chat',
-          confidence: 0.3,
-          reasoning: 'Unclear confirmation response',
-          modelUsed: 'none',
-          actions: [],
-          canvasChanged: false,
-          requiresUserInput: true,
-          estimatedCost: 0
-        }
-      }
-    }
+    return continueConfirmationHelper(
+      response,
+      confirmationContext,
+      request,
+      this.blackboard,
+      this.worldState,
+      (actionType, originalPayload, selectedOption) =>
+        this.buildActionFromConfirmation(actionType, originalPayload, selectedOption)
+    )
+  }
+  
+  // ============================================================================
+  // PROTECTED CLARIFICATION & CONFIRMATION HELPERS
+  // ============================================================================
+  // These methods handle the internal logic for clarification and confirmation.
+  // They're protected so subclasses can override if needed.
+  
+  /**
+   * Handle Clarification Response: Internal method for processing clarifications
+   * 
+   * This is called by orchestrate() when request.clarificationContext is present.
+   * It delegates to the clarification helper module for better organization.
+   * 
+   * @param request - Request with clarificationContext
+   * @returns OrchestratorResponse with actions based on user's clarification choice
+   */
+  protected async handleClarificationResponse(request: OrchestratorRequest): Promise<OrchestratorResponse> {
+    return handleClarificationResponseHelper(
+      request,
+      this.blackboard,
+      (originalAction, selectedOption, payload, req) => 
+        this.buildActionFromClarification(originalAction, selectedOption, payload, req)
+    )
   }
   
   /**
-   * Build action from confirmation selection
+   * Build Action From Clarification: Creates action based on clarification choice
    * 
-   * The orchestrator knows what action to build based on the original action type
-   * and the selected option. This keeps the logic in the orchestrator layer.
+   * When user selects a clarification option, this method builds the appropriate
+   * action. The action type depends on the original action that needed clarification.
+   * 
+   * @param originalAction - Original action type (create_structure, open_and_write, etc.)
+   * @param selectedOption - User's selected option (id, label, description)
+   * @param payload - Original action payload
+   * @param request - User request context
+   * @returns OrchestratorResponse with appropriate actions
+   */
+  protected async buildActionFromClarification(
+    originalAction: string,
+    selectedOption: {id: string, label: string, description: string},
+    payload: any,
+    request: OrchestratorRequest
+  ): Promise<OrchestratorResponse> {
+    return buildActionFromClarificationHelper(
+      originalAction,
+      selectedOption,
+      payload,
+      request,
+      this.blackboard,
+      this.actionGenerators
+    )
+  }
+  
+  /**
+   * Build Action From Confirmation: Creates action based on confirmation choice
+   * 
+   * When user confirms an action, this method builds the appropriate action
+   * based on the original action type and selected option.
    * 
    * @param actionType - Original action type that needed confirmation
    * @param originalPayload - Original action payload
-   * @param selectedOption - User's selected option from confirmation
+   * @param selectedOption - User's selected option (for multi-choice confirmations)
    * @returns OrchestratorAction ready for execution
    */
-  private buildActionFromConfirmation(
+  protected buildActionFromConfirmation(
     actionType: string,
     originalPayload: any,
     selectedOption: {id: string, label: string, description?: string}
   ): OrchestratorAction {
-    if (actionType === 'delete_node') {
-      // For delete_node, we need nodeId and nodeName from selected option
-      return {
-        type: 'delete_node',
-        payload: {
-          nodeId: selectedOption.id,
-          nodeName: selectedOption.label
-        },
-        status: 'pending'
-      }
-    } else if (actionType === 'open_and_write') {
-      // For open_and_write, we need nodeId from selected option
-      // sectionId comes from original payload if it was specified
-      return {
-        type: 'open_document',
-        payload: {
-          nodeId: selectedOption.id,
-          sectionId: originalPayload.sectionId || null
-        },
-        status: 'pending'
-      }
-    } else {
-      // Generic fallback: merge selected option ID into original payload
-      return {
-        type: actionType as OrchestratorAction['type'],
-        payload: {
-          ...originalPayload,
-          selectedOptionId: selectedOption.id
-        },
-        status: 'pending'
-      }
-    }
+    return buildActionFromConfirmationHelper(actionType, originalPayload, selectedOption)
   }
   
+  // ============================================================================
+  // PROTECTED UTILITY METHODS
+  // ============================================================================
+  // These methods provide access to internal state for subclasses.
+  // They're protected so MultiAgentOrchestrator can access them.
+  
   /**
-   * Get blackboard state
+   * Get Blackboard: Returns the conversation memory and agent communication hub
+   * 
+   * Used by subclasses (MultiAgentOrchestrator) to access blackboard functionality.
+   * 
+   * @returns Blackboard instance
    */
-  getBlackboard(): Blackboard {
+  protected getBlackboard(): Blackboard {
     return this.blackboard
   }
   
   /**
-   * Create temporal snapshot
+   * Get Config: Returns the orchestrator configuration
+   * 
+   * Used by subclasses to access configuration settings.
+   * 
+   * @returns Orchestrator configuration object
+   */
+  protected getConfig() {
+    return this.config
+  }
+  
+  /**
+   * Create Snapshot: Creates a temporal snapshot of the conversation state
+   * 
+   * Useful for debugging or restoring conversation state.
+   * 
+   * @returns Promise that resolves when snapshot is created
    */
   async createSnapshot(): Promise<void> {
     await this.blackboard.createSnapshot()
   }
   
   /**
-   * Reset orchestrator state
+   * Reset: Clears all orchestrator state
+   * 
+   * Resets the blackboard (conversation memory) to start fresh.
+   * Useful for testing or when user wants to start over.
    */
   reset(): void {
     this.blackboard.reset()
     console.log('🔄 [Orchestrator] Reset')
   }
   
-  // ============================================================
-  // PHASE 1: WORLDSTATE HELPERS
-  // ============================================================
-  // These methods provide backward-compatible state access
-  // Priority: WorldState > Request Props
+  // ============================================================================
+  // PROTECTED WORLDSTATE HELPERS
+  // ============================================================================
+  // These methods provide access to application state from WorldState or request props.
+  // They follow a priority: WorldState (if available) > Request Props (fallback)
+  // 
+  // Why These Exist:
+  // - Backward compatibility: Code can still use request props
+  // - Gradual migration: WorldState is optional during migration
+  // - Single source of truth: When WorldState is available, it's authoritative
+  // 
+  // All methods delegate to helper functions in orchestratorEngine.helpers.ts
+  // for better testability and organization.
   
-  private getCanvasNodes(request: OrchestratorRequest): Node[] {
-    if (this.worldState) {
-      return this.worldState.getAllNodes().map(n => ({
-        id: n.id,
-        type: n.type,
-        position: n.position,
-        data: n.data
-      }))
-    }
-    return request.canvasNodes || []
+  /**
+   * Get Canvas Nodes: Retrieves canvas nodes from WorldState or request
+   * 
+   * Priority: WorldState.canvas.nodes > request.canvasNodes
+   * 
+   * @param request - Request with optional canvasNodes
+   * @returns Array of canvas nodes
+   */
+  protected getCanvasNodes(request: OrchestratorRequest): Node[] {
+    return getCanvasNodesHelper(this.worldState, request)
   }
   
-  private getCanvasEdges(request: OrchestratorRequest): Edge[] {
-    if (this.worldState) {
-      return this.worldState.getAllEdges().map(e => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        type: e.type,
-        data: e.data
-      }))
-    }
-    return request.canvasEdges || []
+  /**
+   * Get Canvas Edges: Retrieves canvas edges from WorldState or request
+   * 
+   * @param request - Request with optional canvasEdges
+   * @returns Array of canvas edges
+   */
+  protected getCanvasEdges(request: OrchestratorRequest): Edge[] {
+    return getCanvasEdgesHelper(this.worldState, request)
   }
   
-  private getActiveContext(request: OrchestratorRequest): {id: string, name: string} | undefined {
-    if (this.worldState) {
-      const sectionId = this.worldState.getActiveSectionId()
-      const doc = this.worldState.getActiveDocument()
-      if (sectionId && doc.structure) {
-        const section = doc.structure.items.find(item => item.id === sectionId)
-        if (section) {
-          return { id: section.id, name: section.name }
-        }
-      }
-      return undefined
-    }
-    return request.activeContext
+  /**
+   * Get Active Context: Retrieves active document context
+   * 
+   * @param request - Request with optional activeContext
+   * @returns Active context (document ID and name) or undefined
+   */
+  protected getActiveContext(request: OrchestratorRequest): {id: string, name: string} | undefined {
+    return getActiveContextHelper(this.worldState, request)
   }
   
-  private isDocumentViewOpen(request: OrchestratorRequest): boolean {
-    if (this.worldState) {
-      return this.worldState.isDocumentPanelOpen()
-    }
-    return request.isDocumentViewOpen || false
+  /**
+   * Is Document View Open: Checks if document view is currently open
+   * 
+   * @param request - Request with optional isDocumentViewOpen
+   * @returns True if document view is open, false otherwise
+   */
+  protected isDocumentViewOpen(request: OrchestratorRequest): boolean {
+    return isDocumentViewOpenHelper(this.worldState, request)
   }
   
-  private getDocumentFormat(request: OrchestratorRequest): string | undefined {
-    if (this.worldState) {
-      return this.worldState.getActiveDocument().format || undefined
-    }
-    return request.documentFormat
+  /**
+   * Get Document Format: Retrieves current document format
+   * 
+   * @param request - Request with optional documentFormat
+   * @returns Document format (novel, screenplay, etc.) or undefined
+   */
+  protected getDocumentFormat(request: OrchestratorRequest): string | undefined {
+    return getDocumentFormatHelper(this.worldState, request)
   }
   
-  private getStructureItems(request: OrchestratorRequest): any[] | undefined {
-    if (this.worldState) {
-      return this.worldState.getActiveDocument().structure?.items
-    }
-    return request.structureItems
+  /**
+   * Get Structure Items: Retrieves structure items from active document
+   * 
+   * @param request - Request with optional structureItems
+   * @returns Array of structure items (sections, chapters, etc.) or undefined
+   */
+  protected getStructureItems(request: OrchestratorRequest): any[] | undefined {
+    return getStructureItemsHelper(this.worldState, request)
   }
   
-  private getContentMap(request: OrchestratorRequest): Record<string, string> | undefined {
-    if (this.worldState) {
-      const contentMap: Record<string, string> = {}
-      this.worldState.getActiveDocument().content.forEach((content, id) => {
-        contentMap[id] = content
-      })
-      return contentMap
-    }
-    return request.contentMap
+  /**
+   * Get Content Map: Retrieves content map from active document
+   * 
+   * @param request - Request with optional contentMap
+   * @returns Content map (section ID → content) or undefined
+   */
+  protected getContentMap(request: OrchestratorRequest): Record<string, string> | undefined {
+    return getContentMapHelper(this.worldState, request)
   }
   
-  private getAvailableProviders(request: OrchestratorRequest): string[] | undefined {
-    if (this.worldState) {
-      return this.worldState.getState().user.availableProviders
-    }
-    return request.availableProviders
+  /**
+   * Get Available Providers: Retrieves available API providers
+   * 
+   * @param request - Request with optional availableProviders
+   * @returns Array of provider names (openai, anthropic, etc.) or undefined
+   */
+  protected getAvailableProviders(request: OrchestratorRequest): string[] | undefined {
+    return getAvailableProvidersHelper(this.worldState, request)
   }
   
-  private getAvailableModels(request: OrchestratorRequest): TieredModel[] | undefined {
-    if (this.worldState) {
-      return this.worldState.getState().user.availableModels
-    }
-    return request.availableModels
+  /**
+   * Get Available Models: Retrieves available AI models
+   * 
+   * @param request - Request with optional availableModels
+   * @returns Array of TieredModel objects or undefined
+   */
+  protected getAvailableModels(request: OrchestratorRequest): TieredModel[] | undefined {
+    return getAvailableModelsHelper(this.worldState, request)
   }
   
-  private getModelPreferences(request: OrchestratorRequest): {
+  /**
+   * Get Model Preferences: Retrieves user's model selection preferences
+   * 
+   * @param request - Request with optional model preferences
+   * @returns Model preferences (mode, fixed model ID, strategy) or defaults
+   */
+  protected getModelPreferences(request: OrchestratorRequest): {
     modelMode?: 'automatic' | 'fixed'
     fixedModelId?: string | null
     fixedModeStrategy?: 'consistent' | 'loose'
   } {
-    if (this.worldState) {
-      return this.worldState.getUserPreferences()
-    }
-    return {
-      modelMode: request.modelMode,
-      fixedModelId: request.fixedModelId,
-      fixedModeStrategy: request.fixedModeStrategy
-    }
+    return getModelPreferencesHelper(this.worldState, request)
   }
   
-  // ============================================================
-  // PRIVATE HELPERS
-  // ============================================================
+  // ============================================================================
+  // PROTECTED ACTION PROCESSING METHODS
+  // ============================================================================
+  // These methods handle action generation, dependency resolution, and execution.
+  // They're protected so subclasses can override or extend them.
   
   /**
-   * Generate actions based on intent
+   * Generate Actions: Creates actions based on intent analysis
+   * 
+   * This method delegates to the appropriate action generator based on the
+   * detected intent. Each intent has a dedicated action generator class that
+   * knows how to create the right actions.
+   * 
+   * Action Generation Flow:
+   * 1. Look up action generator for intent (e.g., CreateStructureAction for create_structure)
+   * 2. Call generator.generate() with intent, request, and context
+   * 3. Generator returns array of actions (generate_content, open_document, etc.)
+   * 4. Fallback to default handling for unknown intents
+   * 
+   * @param intent - Analyzed user intent
+   * @param request - User request with context
+   * @param canvasContext - Canvas state and relationships
+   * @param ragContext - RAG-enhanced context (if enabled)
+   * @param modelSelection - Selected AI model
+   * @param validatedFixedModelId - Validated fixed model ID (if user specified)
+   * @param availableModels - Available models for delegation
+   * @returns Array of OrchestratorActions ready for processing
    */
-  private async generateActions(
+  protected async generateActions(
     intent: IntentAnalysis,
     request: OrchestratorRequest,
     canvasContext: CanvasContext,
@@ -1277,1691 +1744,354 @@ export class OrchestratorEngine {
     validatedFixedModelId: string | null = null,
     availableModels?: TieredModel[] // PHASE 2: Available models for writer delegation
   ): Promise<OrchestratorAction[]> {
-    const actions: OrchestratorAction[] = []
-    
-    // PHASE 1 REFACTORING: Try modular action generator first
-    const generator = this.actionGenerators.get(intent.intent)
-    if (generator) {
-      console.log(`✅ [Orchestrator] Using modular action generator for: ${intent.intent}`)
-      return generator.generate(intent, request, canvasContext, {
-        ragContext,
-        modelSelection,
-        availableModels
-      })
-    }
-    
-    // FALLBACK: Handle any intents not covered by modular actions
-    // Note: All major intents (answer_question, write_content, create_structure, etc.)
-    // are now handled by modular action generators above.
-    // This fallback only handles general_chat and unknown intents.
-    switch (intent.intent) {
-      case 'general_chat':
-      default: {
-        // Similar to answer_question but more conversational
-        actions.push({
-          type: 'message',
-          payload: {
-            content: `Let me help you with that...`,
-            type: 'thinking'
-          },
-          status: 'pending'
-        })
-        break
-      }
-    }
-    
-    // 🔍 DEBUG: Log final actions before returning
-    console.log('🔍 [generateActions] Returning actions:', {
-      count: actions.length,
-      types: actions.map(a => a.type),
-      details: actions.map(a => ({
-        type: a.type,
-        sectionId: a.payload?.sectionId,
-        sectionName: a.payload?.sectionName
-      }))
-    })
-    
-    return actions
+    return generateActionsHelper(
+      intent,
+      request,
+      canvasContext,
+      ragContext,
+      modelSelection,
+      validatedFixedModelId,
+      availableModels,
+      this.actionGenerators
+    )
   }
   
   /**
-   * Process action dependencies and automatically execute actions in the correct order
+   * Process Action Dependencies: Handles action execution order and auto-execution
    * 
-   * This method handles:
-   * 1. Topological sorting of actions based on dependencies
-   * 2. Automatic execution of actions with autoExecute: true
-   * 3. Returning only actions that require user input to the UI
+   * This method processes actions and determines which can be auto-executed
+   * and which need UI interaction. It handles:
+   * 
+   * 1. Dependency Resolution:
+   *    - Topological sorting of actions based on dependencies
+   *    - Ensures dependencies execute before dependent actions
+   * 
+   * 2. Auto-Execution:
+   *    - Simple actions (select_section, message) can execute automatically
+   *    - Complex actions (generate_content) are sent to UI/MultiAgentOrchestrator
+   * 
+   * 3. Action Categorization:
+   *    - Auto-executable: Actions with autoExecute: true and no dependencies
+   *    - UI-required: Actions that need user interaction or complex processing
    * 
    * @param actions - Array of actions to process
-   * @param request - Original orchestrator request (for context)
+   * @param request - Original user request (for context)
    * @returns Object with executedActions (auto-executed) and remainingActions (for UI)
    */
-  private async processActionDependencies(
+  protected async processActionDependencies(
     actions: OrchestratorAction[],
     request: OrchestratorRequest
   ): Promise<{
     executedActions: OrchestratorAction[]
     remainingActions: OrchestratorAction[]
   }> {
-    const executedActions: OrchestratorAction[] = []
-    const remainingActions: OrchestratorAction[] = []
-    const completedActionTypes = new Set<string>()
-    
-    // Separate actions into auto-executable and UI-required
-    const autoExecutableActions: OrchestratorAction[] = []
-    const uiRequiredActions: OrchestratorAction[] = []
-    
-    for (const action of actions) {
-      // Actions that require user input always go to UI
-      if (action.requiresUserInput === true) {
-        uiRequiredActions.push(action)
-        continue
-      }
-      
-      // ✅ FIX: generate_content actions should NOT be auto-executed by base orchestrator
-      // They need to be handled by MultiAgentOrchestrator's executeActionsWithAgents method
-      // Even if they have autoExecute: true, they should be passed to MultiAgentOrchestrator
-      if (action.type === 'generate_content') {
-        uiRequiredActions.push(action) // Send to MultiAgentOrchestrator via remainingActions
-        continue
-      }
-      
-      // Actions with autoExecute: true and no dependencies can execute immediately
-      if (action.autoExecute === true && (!action.dependsOn || action.dependsOn.length === 0)) {
-        autoExecutableActions.push(action)
-        continue
-      }
-      
-      // Actions with dependencies need to wait
-      if (action.autoExecute === true && action.dependsOn && action.dependsOn.length > 0) {
-        autoExecutableActions.push(action)
-        continue
-      }
-      
-      // Default: send to UI
-      uiRequiredActions.push(action)
-    }
-    
-    // Execute actions in dependency order
-    // Build dependency graph
-    const actionMap = new Map<string, OrchestratorAction[]>()
-    for (const action of autoExecutableActions) {
-      const key = action.type
-      if (!actionMap.has(key)) {
-        actionMap.set(key, [])
-      }
-      actionMap.get(key)!.push(action)
-    }
-    
-    // Execute actions topologically (dependencies first)
-    const executeQueue = [...autoExecutableActions]
-    const executed = new Set<string>()
-    
-    while (executeQueue.length > 0) {
-      let progressMade = false
-      
-      for (let i = executeQueue.length - 1; i >= 0; i--) {
-        const action = executeQueue[i]
-        const actionKey = `${action.type}_${i}`
-        
-        // Check if dependencies are satisfied
-        const dependenciesSatisfied = !action.dependsOn || action.dependsOn.every(
-          depType => completedActionTypes.has(depType)
-        )
-        
-        if (dependenciesSatisfied && !executed.has(actionKey)) {
-          // Execute this action
-          try {
-            await this.executeActionDirectly(action, request)
-            executed.add(actionKey)
-            completedActionTypes.add(action.type)
-            executedActions.push({ ...action, status: 'completed' })
-            executeQueue.splice(i, 1)
-            progressMade = true
-            
-            console.log(`✅ [ActionSequencer] Executed: ${action.type}`)
-          } catch (error) {
-            console.error(`❌ [ActionSequencer] Failed to execute ${action.type}:`, error)
-            executed.add(actionKey)
-            completedActionTypes.add(action.type)
-            executedActions.push({ ...action, status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' })
-            executeQueue.splice(i, 1)
-            progressMade = true
-          }
-        }
-      }
-      
-      // Prevent infinite loops
-      if (!progressMade) {
-        console.warn('⚠️ [ActionSequencer] Circular dependency or missing dependency detected')
-        // Move remaining actions to UI
-        for (const action of executeQueue) {
-          uiRequiredActions.push(action)
-        }
-        break
-      }
-    }
-    
-    // All remaining actions go to UI
-    remainingActions.push(...uiRequiredActions)
-    
-    return { executedActions, remainingActions }
+    return processActionDependenciesHelper(
+      actions,
+      request,
+      (action, req) => this.executeActionDirectly(action, req)
+    )
   }
   
   /**
-   * Execute a single action directly (used by action sequencer)
+   * Execute Action Directly: Executes a simple action without UI interaction
    * 
-   * This handles actions that can be executed automatically without UI interaction.
-   * Currently supports: select_section, generate_content (via tools), message
+   * This method handles actions that can be executed automatically:
+   * - select_section: Navigation (marked as complete, actual nav handled by UI)
+   * - message: Displays message to user via onMessage callback
+   * - generate_content: Should not reach here (handled by MultiAgentOrchestrator)
    * 
-   * Note: generate_content execution is actually handled by MultiAgentOrchestrator,
-   * so this method just marks it for agent execution.
+   * Note: Most actions require UI interaction and are not auto-executed.
+   * This method only handles the simplest cases.
    * 
    * @param action - Action to execute
-   * @param request - Original orchestrator request (for context)
+   * @param request - Original user request (for context)
+   * @returns Promise that resolves when action is executed
    */
-  private async executeActionDirectly(
+  protected async executeActionDirectly(
     action: OrchestratorAction,
     request: OrchestratorRequest
   ): Promise<void> {
-    switch (action.type) {
-      case 'select_section':
-        // Navigation is handled by UI, but we mark it as complete
-        // The actual navigation happens when UI receives the action
-        console.log(`📍 [ActionSequencer] Section selection: ${action.payload?.sectionId}`)
-        break
-        
-      case 'generate_content':
-        // ✅ FIX: This should never be reached - generate_content actions are excluded
-        // from auto-execution in processActionDependencies and sent to MultiAgentOrchestrator
-        // If we reach here, it's a bug in the logic above
-        console.warn(`⚠️ [ActionSequencer] generate_content should not be executed here - this indicates a bug`)
-        console.log(`✍️ [ActionSequencer] Content generation will be handled by agent system`)
-        break
-        
-      case 'message':
-        // Display message to user
-        if (this.config.onMessage) {
-          this.config.onMessage(
-            action.payload?.content || '',
-            'orchestrator',
-            action.payload?.type || 'result'
-          )
-        }
-        break
-        
-      default:
-        console.log(`ℹ️ [ActionSequencer] Action ${action.type} requires UI handling`)
-        // Other actions require UI interaction
-    }
+    return executeActionDirectlyHelper(
+      action,
+      request,
+      this.config.onMessage
+    )
   }
 
-  private extractPattern(
+  // ============================================================================
+  // PROTECTED LEARNING METHODS
+  // ============================================================================
+  // These methods handle pattern extraction and correction detection for learning.
+  
+  /**
+   * Extract Pattern: Identifies learnable patterns from user interactions
+   * 
+   * This method analyzes user interactions to identify patterns that can be
+   * learned and reused. Examples:
+   * - User asks about "the plot" after discussing a document → resolve to that document
+   * - User uses pronouns ("it", "this") → resolve to most recently discussed node
+   * - User wants to write in existing node → open_and_write intent pattern
+   * 
+   * Patterns are stored in the blackboard for future use, improving the system's
+   * ability to understand user intent over time.
+   * 
+   * @param message - User's message
+   * @param intent - Analyzed intent
+   * @param canvasContext - Canvas state and relationships
+   * @returns Pattern object with pattern description and action, or null if no pattern found
+   */
+  protected extractPattern(
     message: string,
     intent: IntentAnalysis,
     canvasContext: CanvasContext
   ): { pattern: string; action: string } | null {
-    // Extract learnable patterns
-    const lowerMessage = message.toLowerCase()
-    
-    // Pattern: User asks about "the plot" after discussing a specific document
-    if (lowerMessage.includes('plot') && canvasContext.connectedNodes.length > 0) {
-      const recentNodes = this.blackboard.getRecentlyReferencedNodes()
-      if (recentNodes.length > 0) {
-        return {
-          pattern: 'user asks about "the plot" after discussing a document',
-          action: `resolve to recently discussed node: ${recentNodes[0]}`
-        }
-      }
-    }
-    
-    // Pattern: User says "it" or "this" referring to previous context
-    if ((lowerMessage.includes(' it ') || lowerMessage.includes('this ')) && 
-        intent.intent === 'answer_question') {
-      return {
-        pattern: 'user uses pronoun "it" or "this" in question',
-        action: 'resolve to most recently discussed node'
-      }
-    }
-    
-    // Pattern: User wants to write in existing node
-    if (intent.intent === 'open_and_write') {
-      return {
-        pattern: `user says "${message.substring(0, 30)}..." to write in existing node`,
-        action: 'open_and_write intent detected'
-      }
-    }
-    
-    return null
+    return extractPatternHelper(
+      message,
+      intent,
+      canvasContext,
+      this.blackboard
+    )
   }
   
-
   /**
-   * PHASE 3: Retry wrapper for createStructurePlan with automatic fallback
-   * Attempts to generate structure with primary model, falls back to alternatives if it fails
+   * Detect Correction From Message: Detects when user corrects a misclassification
+   * 
+   * This method analyzes user messages to detect correction patterns like:
+   * - "I wanted create_structure, not write_content"
+   * - "No, I meant open_and_write"
+   * - "That's wrong, I wanted delete_node"
+   * 
+   * When a correction is detected, the system:
+   * 1. Identifies the wrong intent (from previous orchestrator action)
+   * 2. Extracts the correct intent (from correction message)
+   * 3. Stores the correction pattern for future learning
+   * 4. Overrides the current intent analysis with the corrected intent
+   * 
+   * @param message - User's message
+   * @param conversationHistory - Recent conversation messages
+   * @returns Correction info (wrong intent, correct intent, original message) or null
    */
-  private async createStructurePlanWithFallback(
+  protected detectCorrectionFromMessage(
+    message: string,
+    conversationHistory: ConversationMessage[]
+  ): { wrongIntent: string, correctIntent: string, originalMessage: string } | null {
+    return detectCorrectionFromMessageHelper(message, conversationHistory)
+  }
+  
+  // ============================================================================
+  // PROTECTED STRUCTURE GENERATION METHODS
+  // ============================================================================
+  // These methods handle document structure generation with fallback and retry logic.
+  // They're protected so CreateStructureAction can access them.
+  
+  /**
+   * Create Structure Plan With Fallback: Generates structure with automatic retry
+   * 
+   * This method attempts to generate a document structure (novel, screenplay, etc.)
+   * with the primary model. If it fails, it automatically falls back to alternative
+   * models with structured output support.
+   * 
+   * Fallback Strategy:
+   * 1. Try primary model (user preference or best match)
+   * 2. If fails, try next best model with structured output
+   * 3. Continue until success or all models exhausted
+   * 4. Models are prioritized by: structured output support, speed, cost, tier
+   * 
+   * Why Fallback Exists:
+   * - Structure generation is complex and can fail
+   * - Different models have different capabilities
+   * - User's preferred model might not be available
+   * - Automatic retry improves reliability
+   * 
+   * @param userPrompt - User's creative prompt (e.g., "a story about dragons")
+   * @param format - Document format (novel, screenplay, podcast, etc.)
+   * @param primaryModelId - Preferred model ID (user choice or best match)
+   * @param userKeyId - User's API key ID for authentication
+   * @param availableModels - Models available to the user
+   * @param maxRetries - Maximum number of retry attempts (default: 3)
+   * @returns StructurePlan with sections, tasks, and metadata
+   * 
+   * @throws Error if all models fail or no models with structured output are available
+   */
+  protected async createStructurePlanWithFallback(
     userPrompt: string,
     format: string,
     primaryModelId: string,
     userKeyId: string,
     availableModels: TieredModel[],
-    maxRetries: number = 3
+    maxRetries: number = STRUCTURE_GENERATION_CONFIG.MAX_RETRIES
   ): Promise<StructurePlan> {
-    const attemptedModels: string[] = []
-    let lastError: Error | null = null
-    
-    // ✅ DEBUG: Log what models we received BEFORE filtering
-    console.log(`🔍 [createStructurePlanWithFallback] DEBUG START:`, {
+    return createStructurePlanWithFallbackHelper(
+      userPrompt,
+      format,
       primaryModelId,
-      availableModelsCount: availableModels?.length || 0,
-      availableModels: availableModels?.map(m => ({
-        id: m.id,
-        provider: m.provider,
-        reasoning: m.reasoning,
-        structuredOutput: m.structuredOutput,
-        tier: m.tier,
-        // Check enriched fields
-        enrichedReasoning: (m as any).supports_reasoning,
-        enrichedStructuredOutput: (m as any).supports_structured_output
-      })) || []
-    })
-    
-    // ✅ FIX: Filter for structured output support (not just reasoning models)
-    // Structure generation needs models with structured output, not necessarily reasoning
-    const structuredOutputModels = availableModels
-      .filter(m => {
-        // Include models with full or json-mode structured output support
-        const hasStructuredOutput = m.structuredOutput === 'full' || m.structuredOutput === 'json-mode'
-        
-        // ✅ DEBUG: Log why models are included/excluded
-        if (!hasStructuredOutput) {
-          console.log(`⏭️ [Structure Gen] Excluding ${m.id}: structuredOutput=${m.structuredOutput} (needs 'full' or 'json-mode')`)
-        } else {
-          console.log(`✅ [Structure Gen] Including ${m.id}: structuredOutput=${m.structuredOutput}`)
-        }
-        
-        return hasStructuredOutput
-      })
-      .sort((a, b) => {
-        // ✅ DYNAMIC: Use metadata to prioritize instead of hardcoded values
-        
-        // 0. Priority: Boost primaryModelId if it's available (user preference)
-        const isAPrimary = a.id === primaryModelId
-        const isBPrimary = b.id === primaryModelId
-        if (isAPrimary && !isBPrimary) return -1
-        if (!isAPrimary && isBPrimary) return 1
-        
-        // 1. Priority: Structured output support (full > json-mode > none)
-        const structuredOutputPriority: Record<string, number> = {
-          'full': 100,
-          'json-mode': 50,
-          'none': 0
-        }
-        const aStructured = structuredOutputPriority[a.structuredOutput] || 0
-        const bStructured = structuredOutputPriority[b.structuredOutput] || 0
-        if (aStructured !== bStructured) return bStructured - aStructured
-        
-        // 2. Priority: Actual speed from metadata (if available)
-        const enrichedA = a as any
-        const enrichedB = b as any
-        const aSpeedTokens = enrichedA.speed_tokens_per_sec
-        const bSpeedTokens = enrichedB.speed_tokens_per_sec
-        
-        if (aSpeedTokens && bSpeedTokens) {
-          // Both have actual speed data - use it directly
-          if (aSpeedTokens !== bSpeedTokens) return bSpeedTokens - aSpeedTokens
-        } else if (aSpeedTokens && !bSpeedTokens) {
-          // A has speed data, B doesn't - prefer A
-          return -1
-        } else if (!aSpeedTokens && bSpeedTokens) {
-          // B has speed data, A doesn't - prefer B
-          return 1
-        } else {
-          // Neither has speed data - fallback to categorical speed
-          const speedPriority: Record<string, number> = {
-            'instant': 100,
-            'fast': 80,
-            'medium': 50,
-            'slow': 20
-          }
-          const aSpeed = speedPriority[a.speed] || 0
-          const bSpeed = speedPriority[b.speed] || 0
-          if (aSpeed !== bSpeed) return bSpeed - aSpeed
-        }
-        
-        // 3. Priority: Tier (frontier > premium > standard > fast)
-        const tierOrder: Record<string, number> = { 
-          frontier: 4, 
-          premium: 3, 
-          standard: 2, 
-          fast: 1 
-        }
-        const aTier = tierOrder[a.tier] || 0
-        const bTier = tierOrder[b.tier] || 0
-        if (aTier !== bTier) return bTier - aTier
-        
-        // 4. Priority: Cost (cheaper is better for structure generation)
-        // Use actual cost from metadata if available
-        const aCost = enrichedA.cost_per_1k_tokens_input
-        const bCost = enrichedB.cost_per_1k_tokens_input
-        
-        if (aCost && bCost) {
-          // Both have actual cost - prefer cheaper
-          if (aCost !== bCost) return aCost - bCost
-        } else {
-          // Fallback to categorical cost
-          const costPriority: Record<string, number> = {
-            'cheap': 1,
-            'moderate': 2,
-            'expensive': 3
-          }
-          const aCostCat = costPriority[a.cost] || 2
-          const bCostCat = costPriority[b.cost] || 2
-          if (aCostCat !== bCostCat) return aCostCat - bCostCat
-        }
-        
-        // 5. Final tiebreaker: Model ID (alphabetical for consistency)
-        return a.id.localeCompare(b.id)
-      })
-    
-    // ✅ FIX: Only use primaryModelId if it's actually available to the user!
-    const isPrimaryAvailable = structuredOutputModels.some(m => m.id === primaryModelId)
-    
-    // ✅ Models are already sorted by metadata-based priority above
-    // Build final list: primaryModelId first (if available), then others by metadata priority
-    const modelList = structuredOutputModels.map(m => m.id)
-    
-    // Remove duplicates while preserving order
-    const modelsToTry = [...new Set(modelList)]
-    
-    // ✅ DEBUG: Log what models passed the filter
-    console.log(`🔍 [createStructurePlanWithFallback] After filter:`, {
-      structuredOutputModelsCount: structuredOutputModels.length,
-      structuredOutputModels: structuredOutputModels.map(m => ({
-        id: m.id,
-        structuredOutput: m.structuredOutput,
-        reasoning: m.reasoning
-      }))
-    })
-    
-    console.log(`🎯 [Model Selection] Primary model: ${primaryModelId} (available: ${isPrimaryAvailable})`)
-    console.log(`🔄 [Fallback] Primary model: ${primaryModelId} (available: ${isPrimaryAvailable})`)
-    console.log(`🔄 [Fallback] Models to try: ${modelsToTry.join(', ')}`)
-    console.log(`🔄 [Fallback] Structured output models available: ${structuredOutputModels.length}, Total available models: ${availableModels.length}`)
-    
-    // ✅ DEBUG: Log prioritization details for first few models
-    if (structuredOutputModels.length > 0) {
-      console.log(`🔍 [Fallback] Top 3 prioritized models:`, structuredOutputModels.slice(0, 3).map(m => {
-        const enriched = m as any
-        return {
-          id: m.id,
-          structuredOutput: m.structuredOutput,
-          speed_tokens_per_sec: enriched.speed_tokens_per_sec || 'N/A',
-          cost_per_1k: enriched.cost_per_1k_tokens_input || 'N/A',
-          tier: m.tier,
-          speed: m.speed
-        }
-      }))
-    }
-    
-    // ✅ CRITICAL: Check if we have any models to try
-    if (modelsToTry.length === 0) {
-      // ✅ FIX: More accurate error message
-      const errorMsg = structuredOutputModels.length === 0
-        ? `No models with structured output support available. Found ${availableModels?.length || 0} total models, but none support structured outputs (full or json-mode). Please add an API key for a model that supports structured outputs (e.g., GPT-4o, GPT-4.1, Claude Sonnet, or Groq models with JSON mode).`
-        : 'No models available for structure generation.'
-      
-      // ✅ DEBUG: Log detailed breakdown for debugging
-      console.error(`❌ [createStructurePlanWithFallback] No models available:`, {
-        totalAvailable: availableModels?.length || 0,
-        withStructuredOutput: structuredOutputModels.length,
-        availableModelDetails: availableModels?.map(m => ({
-          id: m.id,
-          structuredOutput: m.structuredOutput,
-          reasoning: m.reasoning,
-          whyExcluded: m.structuredOutput !== 'full' && m.structuredOutput !== 'json-mode' 
-            ? `structuredOutput=${m.structuredOutput}` 
-            : 'should be included'
-        })) || []
-      })
-      
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `❌ ${errorMsg}`,
-        type: 'error'
-      })
-      
-      throw new Error(errorMsg)
-    }
-    
-    for (let i = 0; i < Math.min(modelsToTry.length, maxRetries); i++) {
-      const modelId = modelsToTry[i]
-      attemptedModels.push(modelId)
-      
-      try {
-        // Log which model we're attempting
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: i === 0 
-            ? `🎯 Attempting structure generation with ${modelId}...`
-            : `🔄 Retrying with ${modelId} (attempt ${i + 1}/${maxRetries})...`,
-          type: 'progress'
-        })
-        
-        const result = await this.createStructurePlan(userPrompt, format, modelId, userKeyId)
-        
-        // Success!
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: i === 0
-            ? `✅ Structure generated successfully with ${modelId}`
-            : `✅ Structure generation succeeded with ${modelId} after ${i} ${i === 1 ? 'retry' : 'retries'}`,
-          type: 'result'
-        })
-        
-        return result
-      } catch (error: any) {
-        lastError = error
-        const errorReason = extractErrorReason(error)
-        
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `❌ Attempt ${i + 1} failed (${modelId}): ${errorReason}`,
-          type: 'warning'
-        })
-        
-        console.warn(`❌ [Fallback] Attempt ${i + 1} failed with ${modelId}:`, errorReason)
-        
-        // If this was the last attempt, throw
-        if (i === Math.min(modelsToTry.length, maxRetries) - 1) {
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `❌ All ${attemptedModels.length} model(s) failed. Last error: ${errorReason}`,
-            type: 'error'
-          })
-          throw new Error(`Structure generation failed after ${attemptedModels.length} attempts. Last error: ${errorReason}`)
-        }
-      }
-    }
-    
-    // Should never reach here, but TypeScript needs it
-    throw lastError || new Error('Structure generation failed')
+      userKeyId,
+      availableModels,
+      this.blackboard,
+      (up, f, mid, ukid) => this.createStructurePlan(up, f, mid, ukid),
+      maxRetries
+    )
   }
   
+  
   /**
-   * Generate structure plan for create_structure intent
-   * Uses native structured outputs when available
+   * Create Structure Plan: Core structure generation logic
+   * 
+   * This method generates a document structure plan using the specified AI model.
+   * It handles different structured output formats:
+   * - OpenAI: Native JSON schema validation
+   * - Anthropic: Tool use (forced)
+   * - Google: Function calling
+   * - JSON mode: Fallback for models without full structured output
+   * 
+   * Generation Process:
+   * 1. Build format-specific instructions and system prompt
+   * 2. Call AI model with structured output format
+   * 3. Parse response (handles different provider formats)
+   * 4. Validate with Zod schema
+   * 5. Return validated structure plan
+   * 
+   * Progress Tracking:
+   * - Shows progress steps (1/4, 2/4, etc.)
+   * - Heartbeat messages for long-running requests
+   * - Detailed error messages on failure
+   * 
+   * @param userPrompt - User's creative prompt
+   * @param format - Document format (novel, screenplay, etc.)
+   * @param modelId - AI model ID to use
+   * @param userKeyId - User's API key ID
+   * @returns StructurePlan with validated structure and tasks
+   * 
+   * @throws Error if generation fails, times out, or validation fails
    */
-  private async createStructurePlan(
+  protected async createStructurePlan(
     userPrompt: string,
     format: string,
     modelId: string,
     userKeyId: string
   ): Promise<StructurePlan> {
-    // Progress tracking
-    this.blackboard.addMessage({
-      role: 'orchestrator',
-      content: '🔄 Step 1/4: Initializing structure generation...',
-      type: 'progress'
-    })
-    
-    // Check if model supports structured outputs
-    const model = MODEL_TIERS.find(m => m.id === modelId)
-    const useStructuredOutput = model?.structuredOutput === 'full'
-    
-    this.blackboard.addMessage({
-      role: 'orchestrator',
-      content: `🔄 Step 2/4: Preparing ${useStructuredOutput ? '✅ structured output' : '⚠️ JSON parsing'} format...`,
-      type: 'progress'
-    })
-    
-    // Import schema utilities
-    const { getOpenAIResponseFormat, getAnthropicToolDefinition, validateStructurePlan } = await import('../schemas/structurePlan')
-    
-    // Build format-specific instructions and system prompt
-    const formatInstructions = getFormatInstructions(format)
-    const reportWarning = getReportWarning(format)
-    const systemPrompt = getStructureGenerationPrompt(formatInstructions, reportWarning)
-
-    const formatLabel = format.charAt(0).toUpperCase() + format.slice(1).replace(/-/g, ' ')
-    const userMessage = `The user wants to create a ${formatLabel}.\n\nUser's creative prompt:\n${userPrompt}\n\nIMPORTANT: You MUST analyze the user's creative prompt and create a structure plan where EVERY scene/section description directly relates to and incorporates their specific theme/topic. Do NOT use generic template descriptions. Make each scene description specific to the user's request about "${userPrompt.replace(/create a screenplay about/i, '').trim()}".`
-    
-    this.blackboard.addMessage({
-      role: 'orchestrator',
-      content: `🔄 Step 3/4: Calling ${model?.displayName || modelId}...`,
-      type: 'progress'
-    })
-    
-    // Call generation API with structured output if supported
-    const requestBody: any = {
-      mode: 'orchestrator',
-      model: modelId,
-      system_prompt: systemPrompt,
-      user_prompt: userMessage,
-      max_completion_tokens: 2000, // ⚡ OPTIMIZED: Reduced from 4000 for faster generation
-      user_key_id: userKeyId,
-      stream: false
-    }
-    
-    // Add structured output format based on provider
-    if (useStructuredOutput && model) {
-      if (model.provider === 'openai') {
-        requestBody.response_format = getOpenAIResponseFormat()
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: '✅ Using OpenAI native JSON schema validation',
-          type: 'thinking'
-        })
-      } else if (model.provider === 'anthropic') {
-        requestBody.tools = [getAnthropicToolDefinition()]
-        requestBody.tool_choice = { type: 'tool', name: 'create_structure_plan' }
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: '✅ Using Anthropic tool use (forced)',
-          type: 'thinking'
-        })
-      } else if (model.provider === 'google') {
-        // Google function calling will be handled in the API route
-        requestBody.use_function_calling = true
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: '✅ Using Google function calling',
-          type: 'thinking'
-        })
-      }
-    } else if (model?.structuredOutput === 'json-mode') {
-      requestBody.response_format = { type: 'json_object' }
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: '⚠️ Using JSON mode (no schema validation)',
-        type: 'thinking'
-      })
-    }
-    
-    // Add timeout and progress heartbeat for long-running API calls
-    const controller = new AbortController()
-    const timeout = setTimeout(() => {
-      console.error('⏰ [Structure Generation] Request timed out after 60s')
-      controller.abort()
-    }, 60000) // ⚡ Increased to 60s for structure generation (complex task)
-    
-    // Heartbeat: Show "still waiting..." every 5 seconds
-    const heartbeat = setInterval(() => {
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: '⏳ Still generating structure, please wait...',
-        type: 'progress'
-      })
-    }, 5000)
-    
-    console.log('🚀 [Structure Generation] Starting API call...', {
-      endpoint: '/api/generate',
-      model: modelId,
-      useStructuredOutput,
-      hasResponseFormat: !!requestBody.response_format,
-      hasTools: !!requestBody.tools
-    })
-    
-    let response: Response
-    try {
-      response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal
-      })
-      
-      clearTimeout(timeout)
-      clearInterval(heartbeat)
-      
-      if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`
-        try {
-          const errorData = await response.json()
-          errorMessage = errorData.error || errorData.message || errorMessage
-          
-          // Preserve detailed error information
-          if (errorData.details) {
-            errorMessage += ` (${errorData.details})`
-          }
-        } catch (parseError) {
-          // If JSON parsing fails, try to get text
-          try {
-            const errorText = await response.text()
-            if (errorText) errorMessage = errorText.substring(0, 200)
-          } catch {
-            // Use default error message
-          }
-        }
-        
-        console.error('❌ [Structure Generation] API error:', {
-          status: response.status,
-          statusText: response.statusText,
-          errorMessage,
-          modelId
-        })
-        
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `❌ Structure generation failed: ${errorMessage}`,
-          type: 'error'
-        })
-        throw new Error(errorMessage)
-      }
-    } catch (error: any) {
-      clearTimeout(timeout)
-      clearInterval(heartbeat)
-      
-      console.error('❌ [Structure Generation] API call failed:', {
-        errorName: error.name,
-        errorMessage: error.message,
-        isAbortError: error.name === 'AbortError',
-        fullError: error
-      })
-      
-      if (error.name === 'AbortError') {
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: '❌ Structure generation timed out after 60 seconds',
-          type: 'error'
-        })
-        throw new Error('Structure generation timed out - trying next model')
-      }
-      
-      // Preserve the original error message
-      const errorMessage = error.message || error.toString() || 'Unknown error'
-      
-      // Add more context to the error
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `❌ Structure generation error: ${errorMessage}`,
-        type: 'error'
-      })
-      
-      // Preserve the original error with its message
-      const enhancedError = new Error(errorMessage)
-      enhancedError.name = error.name || 'StructureGenerationError'
-      if (error.stack) enhancedError.stack = error.stack
-      throw enhancedError
-    }
-    
-    this.blackboard.addMessage({
-      role: 'orchestrator',
-      content: '🔄 Step 4/4: Validating structure plan...',
-      type: 'progress'
-    })
-    
-    const data = await response.json()
-    
-    // DEBUG: Log to console what we actually received
-    console.log('🔍 [Structure Generation] API Response:', {
-      keys: Object.keys(data),
-      fullData: data, // Show everything
-      hasContent: !!data.content,
-      hasStructuredOutput: !!data.structured_output,
-      contentType: typeof data.content,
-      contentPreview: typeof data.content === 'string' ? data.content.substring(0, 200) : data.content
-    })
-    
-    let planData: any
-    
-    // Log what we received for debugging
-    this.blackboard.addMessage({
-      role: 'orchestrator',
-      content: `📦 Received response with keys: ${Object.keys(data).join(', ')}`,
-      type: 'thinking'
-    })
-    
-    // Handle different response formats
-    if (useStructuredOutput) {
-      // Structured output - response is already parsed JSON object
-      if (model?.provider === 'anthropic' && data.tool_calls) {
-        // Anthropic tool use format
-        planData = data.tool_calls[0]?.input
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: '✅ Extracted from Anthropic tool use',
-          type: 'thinking'
-        })
-      } else if (data.structured_output) {
-        // Unified structured output format
-        planData = data.structured_output
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: '✅ Received validated structured output',
-          type: 'thinking'
-        })
-      } else if (typeof data.content === 'string') {
-        // OpenAI returns JSON as string in content field
-        try {
-          planData = JSON.parse(data.content)
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: '✅ Parsed JSON from content string',
-            type: 'thinking'
-          })
-        } catch (e) {
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `⚠️ Failed to parse content as JSON: ${e}`,
-            type: 'thinking'
-          })
-          planData = data.content
-        }
-      } else if (typeof data.content === 'object') {
-        // Content is already an object
-        planData = data.content
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: '✅ Using content object directly',
-          type: 'thinking'
-        })
-      } else {
-        // Last resort fallback
-        planData = data
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: '⚠️ Using entire response as planData',
-          type: 'thinking'
-        })
-      }
-    } else {
-      // String-based JSON - need to parse manually
-      let rawContent = data.content || data.text || ''
-      
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `📊 Received ${rawContent.length} characters, parsing...`,
-        type: 'thinking'
-      })
-      
-      // Extract JSON from markdown code blocks if present
-      let jsonContent = rawContent.trim()
-      
-      const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)```/)
-      if (jsonMatch) {
-        jsonContent = jsonMatch[1].trim()
-      }
-      
-      // Remove any leading/trailing non-JSON content
-      const jsonStart = jsonContent.indexOf('{')
-      const jsonEnd = jsonContent.lastIndexOf('}')
-      if (jsonStart >= 0 && jsonEnd > jsonStart) {
-        jsonContent = jsonContent.substring(jsonStart, jsonEnd + 1)
-      }
-      
-      try {
-        planData = JSON.parse(jsonContent)
-      } catch (parseError: any) {
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `❌ JSON parse error: ${parseError.message}`,
-          type: 'error'
-        })
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `First 500 chars: ${rawContent.substring(0, 500)}`,
-          type: 'thinking'
-        })
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `Last 500 chars: ${rawContent.substring(Math.max(0, rawContent.length - 500))}`,
-          type: 'thinking'
-        })
-        throw new Error(`Failed to parse JSON: ${parseError.message}`)
-      }
-    }
-    
-    // Validate with Zod schema
-    const validation = validateStructurePlan(planData)
-    
-    if (!validation.success) {
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `❌ Validation failed: ${validation.error}`,
-        type: 'error'
-      })
-      throw new Error(`Invalid structure plan: ${validation.error}`)
-    }
-    
-    const plan = validation.data
-    
-    this.blackboard.addMessage({
-      role: 'orchestrator',
-      content: `✅ Structure plan validated: ${plan.structure.length} sections, ${plan.tasks.length} tasks`,
-      type: 'result'
-    })
-    
-    return plan
-  }
-
-
-  /**
-   * Handle clarification response (user responding to request_clarification action)
-   * Uses LLM reasoning to interpret natural language responses like "Go with the first option"
-   */
-  private async handleClarificationResponse(request: OrchestratorRequest): Promise<OrchestratorResponse> {
-    const { clarificationContext, message, availableModels, availableProviders } = request
-    
-    if (!clarificationContext) {
-      throw new Error('handleClarificationResponse called without clarificationContext')
-    }
-    
-    this.blackboard.addMessage({
-      role: 'orchestrator',
-      content: `🔍 Interpreting clarification response...`,
-      type: 'thinking'
-    })
-    
-    // ✅ CRITICAL: First try direct matching before calling LLM (faster and more reliable)
-    const normalizedMessage = message.toLowerCase().trim()
-    
-    // Strategy 1: Exact label match (e.g., "TV Pilot" -> "TV Pilot")
-    let directMatch = clarificationContext.options.find(opt => 
-      opt.label.toLowerCase().trim() === normalizedMessage
+    return createStructurePlanHelper(
+      userPrompt,
+      format,
+      modelId,
+      userKeyId,
+      this.blackboard
     )
-    
-    // Strategy 2: Number match (e.g., "2" -> option at index 1)
-    if (!directMatch) {
-      const numberMatch = normalizedMessage.match(/^#?(\d+)$/)
-      if (numberMatch) {
-        const optionIndex = parseInt(numberMatch[1]) - 1
-        if (optionIndex >= 0 && optionIndex < clarificationContext.options.length) {
-          directMatch = clarificationContext.options[optionIndex]
-          console.log('✅ [Clarification] Direct number match:', {
-            number: numberMatch[1],
-            matchedOption: directMatch.label,
-            matchedId: directMatch.id
-          })
-        }
-      }
-    }
-    
-    // Strategy 3: Partial label match (e.g., "pilot" matches "TV Pilot")
-    if (!directMatch) {
-      directMatch = clarificationContext.options.find(opt => {
-        const normalizedLabel = opt.label.toLowerCase().trim()
-        return normalizedLabel.includes(normalizedMessage) ||
-               normalizedMessage.includes(normalizedLabel) ||
-               normalizedLabel.replace(/\s+/g, '') === normalizedMessage.replace(/\s+/g, '')
-      })
-      if (directMatch) {
-        console.log('✅ [Clarification] Direct label match:', {
-          userMessage: message,
-          matchedOption: directMatch.label,
-          matchedId: directMatch.id
-        })
-      }
-    }
-    
-    // If we found a direct match, skip LLM call
-    if (directMatch) {
-      console.log('✅ [Clarification] Using direct match, skipping LLM call')
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `✅ Understood: "${directMatch.label}"`,
-        type: 'decision'
-      })
-      
-      const updatedPayload = {
-        ...clarificationContext.payload,
-        selectedOptionId: directMatch.id
-      }
-      
-      return this.buildActionFromClarification(
-        clarificationContext.originalAction,
-        directMatch,
-        updatedPayload,
-        request
-      )
-    }
-    
-    // ============================================================
-    // LLM FALLBACK: Interpret Natural Language Clarification Response
-    // ============================================================
-    // 
-    // When direct pattern matching fails (exact label, number, or partial match),
-    // we use an LLM to interpret the user's natural language response.
-    // 
-    // Why this is needed:
-    // - Users may respond in various ways: "the first one", "go with podcast", "let's do TV pilot"
-    // - Direct matching can't handle all natural language variations
-    // - LLM can understand context, synonyms, and implicit references
-    // 
-    // How it works:
-    // 1. Build a formatted list of available options with IDs, labels, and descriptions
-    // 2. Create a system prompt that instructs the LLM to return ONLY the option ID
-    // 3. Provide examples of common response patterns (numbers, ordinals, descriptions)
-    // 4. Send user's response to LLM for interpretation
-    // 5. Validate the returned option ID against available options
-    // 
-    // Expected output:
-    // - A single option ID string (e.g., "use_podcast", "create_new", "tv-pilot")
-    // - This ID is then used to build the appropriate action via buildActionFromClarification()
-    
-    // Build formatted options list for LLM context
-    // Format: "1. [option_id] Option Label - Option Description"
-    const optionsList = clarificationContext.options
-      .map((opt, idx) => `${idx + 1}. [${opt.id}] ${opt.label} - ${opt.description}`)
-      .join('\n')
-    
-    // System prompt instructs LLM to act as an option selector
-    // Critical: Must return ONLY the option ID, no additional text or formatting
-    const systemPrompt = `You are an intelligent option selector. Parse the user's natural language response to determine which option they selected from a list.
-
-Available options:
-${optionsList}
-
-Return ONLY the option ID (e.g., "use_podcast", "create_new", "use_screenplay") with NO additional text, explanation, or formatting.
-
-Examples:
-- User: "#1" or "1" or "first" → Return: ${clarificationContext.options[0]?.id}
-- User: "Go with the first option" → Return: ${clarificationContext.options[0]?.id}
-- User: "Let's use the podcast" → Return: use_podcast (if that's option 1)
-- User: "Create something new" → Return: create_new`
-
-    const userPrompt = `Original question: "${clarificationContext.question}"
-
-User's response: "${message}"
-
-Which option did the user select? Return ONLY the option ID.`
-
-    try {
-      // Use model router to select appropriate fast model for simple classification
-      const modelsToUse: TieredModel[] = availableModels && availableModels.length > 0
-        ? filterAvailableModels(availableModels)
-        : MODEL_TIERS.filter(m => (availableProviders || ['openai', 'groq', 'anthropic', 'google']).includes(m.provider))
-      
-      const modelSelection = selectModel(
-        'simple', // Simple classification task
-        'speed', // Prioritize speed for clarification
-        availableProviders || ['openai', 'groq', 'anthropic', 'google'],
-        modelsToUse,
-        false // No reasoning needed for simple option selection
-      )
-      
-      // Use the model router's API endpoint
-      const response = await fetch('/api/intent/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_prompt: systemPrompt,
-          user_prompt: userPrompt,
-          temperature: 0.1 // Low temp for consistent classification
-          // Note: model selection is handled by /api/intent/analyze based on available models
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to interpret clarification: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      const selectedOptionId = data.content.trim()
-      
-      // ✅ FIX: Validate clarificationContext.options exists
-      if (!clarificationContext.options || !Array.isArray(clarificationContext.options)) {
-        console.error('❌ [Clarification] options is undefined or not an array:', clarificationContext)
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `❌ Error: Clarification context is invalid`,
-          type: 'error'
-        })
-        
-        return {
-          intent: 'general_chat',
-          confidence: 0.3,
-          reasoning: 'Invalid clarification context',
-          modelUsed: 'none',
-          actions: [],
-          canvasChanged: false,
-          requiresUserInput: true,
-          estimatedCost: 0
-        }
-      }
-      
-      // Find the selected option
-      let selectedOption = clarificationContext.options.find(opt => opt.id === selectedOptionId)
-      
-      if (!selectedOption) {
-        console.log('⚠️ [Clarification] LLM returned ID not found in options, trying fallback matching:', {
-          llmReturnedId: selectedOptionId,
-          availableIds: clarificationContext.options.map(o => o.id),
-          userMessage: message
-        })
-        
-        // Fallback: Try multiple matching strategies
-        const lowerMessage = message.toLowerCase().trim()
-        const normalizedLlmId = selectedOptionId.toLowerCase().replace(/[^a-z0-9-]/g, '')
-        
-        // Strategy 1: Match by label (e.g., "TV Pilot" -> "TV Pilot")
-        let fallbackOption = clarificationContext.options.find(opt => {
-          const normalizedLabel = opt.label.toLowerCase().trim()
-          return normalizedLabel === lowerMessage || 
-                 normalizedLabel.includes(lowerMessage) ||
-                 lowerMessage.includes(normalizedLabel)
-        })
-        
-        // Strategy 2: Match by ID with normalization (e.g., "tv-pilot" matches "tv pilot")
-        if (!fallbackOption) {
-          fallbackOption = clarificationContext.options.find(opt => {
-            const normalizedId = opt.id.toLowerCase().replace(/[^a-z0-9-]/g, '')
-            const normalizedMessage = lowerMessage.replace(/[^a-z0-9-]/g, '')
-            return normalizedId === normalizedMessage ||
-                   normalizedId === normalizedLlmId ||
-                   normalizedMessage.includes(normalizedId) ||
-                   normalizedId.includes(normalizedMessage)
-          })
-        }
-        
-        // Strategy 3: Match by number (e.g., "2" -> option at index 1)
-        if (!fallbackOption) {
-          const numberMatch = lowerMessage.match(/^#?(\d+)$/)
-          if (numberMatch) {
-            const optionIndex = parseInt(numberMatch[1]) - 1
-            if (optionIndex >= 0 && optionIndex < clarificationContext.options.length) {
-              fallbackOption = clarificationContext.options[optionIndex]
-            }
-          }
-        }
-        
-        // Strategy 4: Match LLM returned ID with normalized option IDs
-        if (!fallbackOption && normalizedLlmId) {
-          fallbackOption = clarificationContext.options.find(opt => {
-            const normalizedId = opt.id.toLowerCase().replace(/[^a-z0-9-]/g, '')
-            return normalizedId === normalizedLlmId
-          })
-        }
-        
-        if (fallbackOption) {
-          console.log('✅ [Clarification] Fallback match found:', {
-            matchedOption: fallbackOption.label,
-            matchedId: fallbackOption.id,
-            originalLlmId: selectedOptionId,
-            userMessage: message
-          })
-          selectedOption = fallbackOption
-        } else {
-          // If still no match, return error
-          console.error('❌ [Clarification] No match found after all strategies:', {
-            llmReturnedId: selectedOptionId,
-            userMessage: message,
-            availableOptions: clarificationContext.options.map(o => ({ id: o.id, label: o.label }))
-          })
-          
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `❌ I didn't understand "${message}". Please choose by number (e.g., "1") or by name.`,
-            type: 'error'
-          })
-          
-          return {
-            intent: 'general_chat',
-            confidence: 0.3,
-            reasoning: 'Failed to interpret clarification response',
-            modelUsed: modelSelection.modelId || 'none',
-            actions: [],
-            canvasChanged: false,
-            requiresUserInput: true,
-            estimatedCost: modelSelection.estimatedCost || 0
-          }
-        }
-      } else {
-        console.log('✅ [Clarification] Direct match found:', {
-          optionId: selectedOption.id,
-          optionLabel: selectedOption.label
-        })
-      }
-      
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `✅ Understood: "${selectedOption.label}"`,
-        type: 'decision'
-      })
-      
-      // Build appropriate action based on original action type
-      // ✅ CRITICAL: Pass selectedOptionId in payload so CreateStructureAction can find it
-      const updatedPayload = {
-        ...clarificationContext.payload,
-        selectedOptionId: selectedOption.id // ✅ Ensure selectedOptionId is in payload
-      }
-      
-      return this.buildActionFromClarification(
-        clarificationContext.originalAction,
-        selectedOption,
-        updatedPayload, // ✅ Pass updated payload with selectedOptionId
-        request
-      )
-      
-    } catch (error) {
-      console.error('❌ [Clarification] Error:', error)
-      
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `❌ Error interpreting response: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        type: 'error'
-      })
-      
-      return {
-        intent: 'general_chat',
-        confidence: 0.2,
-        reasoning: 'Error processing clarification response',
-        modelUsed: 'none',
-        actions: [],
-        canvasChanged: false,
-        requiresUserInput: true,
-        estimatedCost: 0
-      }
-    }
-  }
-
-  /**
-   * Build appropriate action based on clarification selection
-   */
-  private async buildActionFromClarification(
-    originalAction: string,
-    selectedOption: {id: string, label: string, description: string},
-    payload: any,
-    request: OrchestratorRequest
-  ): Promise<OrchestratorResponse> {
-    
-    if (originalAction === 'create_structure') {
-      const { documentFormat, userMessage, existingDocs, reportTypeRecommendations, sourceDocumentLabel, sourceDocumentFormat, format, prompt, userKeyId } = payload
-      
-      // ✅ NEW: Handle template selection (all template IDs from templateRegistry)
-      // Complete list of all template IDs across all formats
-      const templateIds = [
-        // Novels
-        'three-act', 'heros-journey', 'freytag', 'save-the-cat', 'blank',
-        // Short Stories
-        'classic', 'flash-fiction', 'twist-ending',
-        // Reports
-        'business', 'research', 'technical',
-        // Script Coverage
-        'standard', 'detailed',
-        // Podcast Report
-        'executive', 'analytical',
-        // Story Analysis
-        'thematic', 'structural',
-        // Articles/Blog
-        'how-to', 'listicle', 'opinion', 'feature',
-        // Screenplays
-        'tv-pilot', 'short-film',  // ✅ Added 'tv-pilot'
-        // Essays
-        'argumentative', 'narrative', 'compare-contrast',
-        // Podcasts
-        'interview', 'co-hosted', 'storytelling'
-      ]
-      
-      if (templateIds.includes(selectedOption.id)) {
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `✅ Generating ${documentFormat} structure with ${selectedOption.label} template...`,
-          type: 'result'
-        })
-        
-        // Use CreateStructureAction to generate the structure with the selected template
-        const createStructureAction = this.actionGenerators.get('create_structure')
-        if (!createStructureAction) {
-          throw new Error('CreateStructureAction not found in action generators')
-        }
-        
-        // Build intent with suggested template
-        const intentWithTemplate = {
-          intent: 'create_structure' as const,
-          confidence: 0.95,
-          reasoning: `User selected ${selectedOption.label} template`,
-          suggestedAction: `Generate structure with ${selectedOption.label} template`,
-          requiresContext: false,
-          suggestedModel: 'orchestrator' as const,
-          extractedEntities: {
-            suggestedTemplate: selectedOption.id // ✅ Pass template ID to action generator
-          }
-        }
-        
-        // Build canvas context from nodes and edges
-        const canvasContext = buildCanvasContext(
-          'context', // orchestrator node ID
-          request.canvasNodes || [],
-          request.canvasEdges || []
-        )
-        
-        // Call action generator to create generate_structure action with plan
-        // ✅ CRITICAL: Pass clarificationContext with selectedOptionId so CreateStructureAction recognizes the selection
-        const actions = await createStructureAction.generate(
-          intentWithTemplate,
-          {
-            ...request,
-            documentFormat: format || documentFormat,
-            message: prompt || userMessage,
-            userKeyId: userKeyId,
-            clarificationContext: request.clarificationContext ? {
-              originalAction: request.clarificationContext.originalAction || 'create_structure',
-              question: request.clarificationContext.question || '',
-              options: request.clarificationContext.options || [],
-              payload: {
-                ...request.clarificationContext.payload,
-                selectedOptionId: selectedOption.id // ✅ Ensure selectedOptionId is set
-              }
-            } : undefined
-          },
-          canvasContext,
-          {
-            modelSelection: request.fixedModelId ? { modelId: request.fixedModelId, displayName: request.fixedModelId } : undefined,
-            availableModels: request.availableModels
-          }
-        )
-        
-        return {
-          intent: 'create_structure',
-          confidence: 0.95,
-          reasoning: `Generated structure with ${selectedOption.label} template`,
-          modelUsed: 'gpt-4o',
-          actions,
-          canvasChanged: false,
-          requiresUserInput: false,
-          estimatedCost: 0.01
-        }
-      }
-      
-      // ✅ Handle report type selection
-      if (reportTypeRecommendations && sourceDocumentLabel) {
-        const selectedReportType = reportTypeRecommendations.find((r: any) => r.id === selectedOption.id)
-        
-        if (selectedReportType) {
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `✅ Creating ${selectedReportType.label} based on "${sourceDocumentLabel}"...`,
-            type: 'result'
-          })
-          
-          // Construct enhanced prompt with report type context and explicit "based on" reference
-          const enhancedPrompt = `Create a ${selectedReportType.label.toLowerCase()} based on "${sourceDocumentLabel}"`
-          
-          // Return create_structure intent with the specific report format
-          return {
-            intent: 'create_structure',
-            confidence: 0.95,
-            reasoning: `User selected ${selectedReportType.label} for analyzing ${sourceDocumentFormat}`,
-            modelUsed: 'none',
-            actions: [{
-              type: 'message',
-              payload: {
-                content: `✅ Generating ${selectedReportType.label} structure...`,
-                intent: 'create_structure',
-                format: selectedReportType.formatKey, // Use the specific report format (e.g., 'report_script_coverage')
-                prompt: enhancedPrompt
-              },
-              status: 'pending'
-            }],
-            canvasChanged: false,
-            requiresUserInput: false,
-            estimatedCost: 0
-          }
-        }
-      }
-      
-      if (selectedOption.id === 'create_new') {
-        // ✅ FIX: Get format from payload OR request (which reads from WorldState)
-        // The request.documentFormat comes from getDocumentFormat() which reads from WorldState
-        const effectiveFormat = documentFormat || format || request.documentFormat
-        
-        if (!effectiveFormat) {
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `⚠️ Unable to determine document format. Please specify the format.`,
-            type: 'error'
-          })
-          return {
-            intent: 'create_structure',
-            confidence: 0.5,
-            reasoning: 'Format not specified in clarification',
-            modelUsed: 'none',
-            actions: [],
-            canvasChanged: false,
-            requiresUserInput: true,
-            estimatedCost: 0
-          }
-        }
-        
-        // User wants to create something new (ignore existing docs)
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `✅ Creating new ${effectiveFormat} from scratch...`,
-          type: 'result'
-        })
-        
-        // 🔧 FIX: Return message action to trigger UI flow
-        // The UI will call onCreateStory, which creates the node FIRST,
-        // then calls triggerOrchestratedGeneration with the proper node ID
-        console.log('✅ [Clarification] User chose create_new, returning message action')
-        console.log('   Format:', effectiveFormat)
-        console.log('   Message:', userMessage)
-        console.log('   → UI will create node and trigger orchestration with node ID')
-        
-        return {
-          intent: 'create_structure',
-          confidence: 0.95,
-          reasoning: `User chose to create new ${effectiveFormat} from scratch`,
-          modelUsed: 'none',
-          actions: [{
-            type: 'message',
-            payload: {
-              content: `✅ Creating new ${effectiveFormat} from scratch...`,
-              intent: 'create_structure',
-              format: effectiveFormat, // ✅ Use effectiveFormat instead of documentFormat
-              prompt: `${userMessage} from scratch` // Will trigger structure generation in triggerOrchestratedGeneration
-            },
-            status: 'pending'
-          }],
-          canvasChanged: false, // Canvas change will happen when UI executes onCreateStory
-          requiresUserInput: false,
-          estimatedCost: 0
-        }
-      } else if (selectedOption.id === 'use_existing') {
-        // ✅ NEW: User wants to use an existing document
-        // Return open_and_write intent to open one of the existing documents
-        this.blackboard.addMessage({
-          role: 'orchestrator',
-          content: `✅ Opening existing document...`,
-          type: 'result'
-        })
-        
-        // If there's only one existing doc, open it directly
-        // Otherwise, return a clarification to ask which one
-        if (existingDocs && existingDocs.length === 1) {
-          const docToOpen = existingDocs[0]
-          return {
-            intent: 'open_and_write',
-            confidence: 0.95,
-            reasoning: `User chose to use existing ${docToOpen.format}`,
-            modelUsed: 'none',
-            actions: [{
-              type: 'open_document',
-              payload: {
-                nodeId: docToOpen.id,
-                sectionId: null
-              },
-              status: 'pending'
-            }],
-            canvasChanged: false,
-            requiresUserInput: false,
-            estimatedCost: 0
-          }
-        } else if (existingDocs && existingDocs.length > 1) {
-          // Multiple docs - ask which one
-          return {
-            intent: 'open_and_write',
-            confidence: 0.95,
-            reasoning: 'User wants to use existing document, but multiple exist',
-            modelUsed: 'none',
-            actions: [{
-              type: 'request_clarification',
-              payload: {
-                question: 'Which document would you like to open?',
-                context: existingDocs.map((d: any) => `• ${d.label} (${d.format})`).join('\n'),
-                options: existingDocs.map((d: any) => ({
-                  id: d.id,
-                  label: d.label,
-                  description: `${d.format} document`
-                })),
-                originalIntent: 'open_and_write',
-                originalPayload: {}
-              },
-              status: 'pending'
-            }],
-            canvasChanged: false,
-            requiresUserInput: true,
-            estimatedCost: 0
-          }
-        } else {
-          // No existing docs found (shouldn't happen, but handle gracefully)
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `⚠️ No existing documents found. Creating new ${documentFormat} instead...`,
-            type: 'error'
-          })
-          
-          return {
-            intent: 'create_structure',
-            confidence: 0.95,
-            reasoning: 'User chose use_existing but no docs found, creating new instead',
-            modelUsed: 'none',
-            actions: [{
-              type: 'message',
-              payload: {
-                content: `✅ Creating new ${documentFormat}...`,
-                intent: 'create_structure',
-                format: documentFormat,
-                prompt: userMessage
-              },
-              status: 'pending'
-            }],
-            canvasChanged: false,
-            requiresUserInput: false,
-            estimatedCost: 0
-          }
-        }
-      } else {
-        // User wants to base it on an existing doc
-        const selectedDocId = selectedOption.id.replace('use_', '')
-        const selectedDoc = existingDocs.find((d: any) => d.id === selectedDocId)
-        
-        if (selectedDoc) {
-          this.blackboard.addMessage({
-            role: 'orchestrator',
-            content: `✅ Creating ${documentFormat} based on "${selectedDoc.name}" (${selectedDoc.format})...`,
-            type: 'result'
-          })
-          
-          // Return action to create structure with reference to existing doc
-          const enhancedPrompt = `${userMessage} based on ${selectedDoc.name}`
-          
-          return {
-            intent: 'create_structure',
-            confidence: 0.95,
-            reasoning: `User chose to base ${documentFormat} on ${selectedDoc.format}`,
-            modelUsed: 'none',
-            actions: [{
-              type: 'message',
-              payload: {
-                content: `✅ Creating ${documentFormat} based on "${selectedDoc.name}"...`,
-                intent: 'create_structure',
-                format: documentFormat,
-                prompt: enhancedPrompt,
-                referenceDoc: selectedDocId
-              },
-              status: 'pending'
-            }],
-            canvasChanged: false, // Canvas change will happen when UI executes onCreateStory
-            requiresUserInput: false,
-            estimatedCost: 0
-          }
-        }
-      }
-    } else if (originalAction === 'open_and_write') {
-      // User selected which node to open
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `✅ Opening "${selectedOption.label}"...`,
-        type: 'result'
-      })
-      
-      return {
-        intent: 'open_and_write',
-        confidence: 0.95,
-        reasoning: `User selected node to open: ${selectedOption.label}`,
-        modelUsed: 'none',
-        actions: [{
-          type: 'open_document',
-          payload: {
-            nodeId: selectedOption.id,
-            sectionId: null
-          },
-          status: 'pending'
-        }],
-        canvasChanged: false,
-        requiresUserInput: false,
-        estimatedCost: 0
-      }
-    } else if (originalAction === 'delete_node') {
-      // User selected which node to delete
-      this.blackboard.addMessage({
-        role: 'orchestrator',
-        content: `✅ Deleting "${selectedOption.label}"...`,
-        type: 'result'
-      })
-      
-      return {
-        intent: 'delete_node',
-        confidence: 0.95,
-        reasoning: `User confirmed deletion of: ${selectedOption.label}`,
-        modelUsed: 'none',
-        actions: [{
-          type: 'delete_node',
-          payload: {
-            nodeId: selectedOption.id,
-            nodeName: selectedOption.label
-          },
-          status: 'pending'
-        }],
-        canvasChanged: true,
-        requiresUserInput: false,
-        estimatedCost: 0
-      }
-    }
-    
-    // Fallback
-    return {
-      intent: 'general_chat',
-      confidence: 0.5,
-      reasoning: `Unknown original action: ${originalAction}`,
-      modelUsed: 'none',
-      actions: [],
-      canvasChanged: false,
-      requiresUserInput: false,
-      estimatedCost: 0
-    }
-  }
-  
-  /**
-   * Detect if user message is correcting a previous misclassification
-   * Returns correction info if detected, null otherwise
-   */
-  private detectCorrectionFromMessage(
-    message: string,
-    conversationHistory: ConversationMessage[]
-  ): { wrongIntent: string, correctIntent: string, originalMessage: string } | null {
-    const lowerMessage = message.toLowerCase()
-    
-    // Pattern: "I wanted X, not Y" or "I meant X, not Y" or "No, I wanted X"
-    const correctionPatterns = [
-      /i (wanted|meant|asked for) (?:you to )?(\w+)(?:,| )+not (\w+)/i,
-      /no,? i (wanted|meant) (\w+)/i,
-      /that'?s wrong,? i (wanted|meant) (\w+)/i,
-      /(?:actually|correctly),? i (wanted|meant) (\w+)/i,
-      /i (wanted|meant) (?:you to )?(\w+),? not (\w+)/i
-    ]
-    
-    for (const pattern of correctionPatterns) {
-      const match = message.match(pattern)
-      if (match) {
-        // Find previous orchestrator action
-        const previousAction = conversationHistory
-          .slice(-5)
-          .reverse()
-          .find((m: ConversationMessage) => m.role === 'orchestrator' && m.metadata?.intent)
-        
-        if (previousAction && previousAction.metadata?.intent) {
-          const wrongIntent = previousAction.metadata.intent
-          
-          // Extract correct intent from correction message
-          // Pattern groups: [full match, verb, correct intent, wrong intent]
-          let correctIntent = match[2] || match[3] // Depending on pattern
-          
-          // Map common variations to actual intent types
-          const intentMap: Record<string, string> = {
-            'open': 'open_and_write',
-            'open_and_write': 'open_and_write',
-            'create': 'create_structure',
-            'create_structure': 'create_structure',
-            'write': 'write_content',
-            'write_content': 'write_content',
-            'navigate': 'navigate_section',
-            'navigate_section': 'navigate_section',
-            'delete': 'delete_node',
-            'delete_node': 'delete_node'
-          }
-          
-          correctIntent = intentMap[correctIntent.toLowerCase()] || correctIntent
-          
-          // Find original user message (2-3 messages back)
-          const originalMessage = conversationHistory
-            .slice(-5)
-            .reverse()
-            .find((m: ConversationMessage) => m.role === 'user')?.content || message
-          
-          return {
-            wrongIntent,
-            correctIntent,
-            originalMessage
-          }
-        }
-      }
-    }
-    
-    return null
   }
 }
 
-// ============================================================
+// ============================================================================
 // FACTORY FUNCTIONS
-// ============================================================
+// ============================================================================
+// These functions create and manage OrchestratorEngine instances.
+// They provide a convenient API for getting orchestrators with proper caching.
 
+/**
+ * Orchestrator Cache: In-memory cache of orchestrator instances
+ * 
+ * Key format: userId + (worldState ? '-ws' : '')
+ * - Without WorldState: userId only (cached)
+ * - With WorldState: userId + '-ws' (always fresh, not cached)
+ * 
+ * Note: WorldState instances are not cached to ensure fresh state.
+ */
 const orchestrators = new Map<string, OrchestratorEngine>()
 
+/**
+ * Get Orchestrator: Gets or creates an OrchestratorEngine instance
+ * 
+ * This is the primary factory function for getting orchestrator instances.
+ * It implements caching to avoid creating multiple instances for the same user.
+ * 
+   * Caching Strategy:
+   * - Without WorldState: Cached by userId (reuses instance)
+   * - With WorldState: Always creates new instance (ensures fresh state)
+   * 
+   * @param userId - User ID for the orchestrator
+   * @param config - Optional partial configuration (merged with defaults)
+   * @param worldState - Optional unified state manager
+   * @returns OrchestratorEngine instance
+   * 
+   * Example:
+   * ```typescript
+   * const orchestrator = getOrchestrator(user.id, {
+   *   modelPriority: 'quality',
+   *   enableRAG: true
+   * }, worldState)
+   * ```
+   */
 export function getOrchestrator(
   userId: string, 
   config?: Partial<OrchestratorConfig>,
-  worldState?: WorldStateManager // PHASE 1: Accept WorldState
+  worldState?: WorldStateManager
 ): OrchestratorEngine {
-  // PHASE 1: For now, create new orchestrator each time if WorldState is provided
-  // This ensures WorldState is always fresh. Later, we'll implement state updates.
+  // Build cache key: include WorldState indicator to ensure fresh instances
   const cacheKey = userId + (worldState ? '-ws' : '')
   
+  // Create new instance if not cached or if WorldState is provided
+  // (WorldState instances are never cached to ensure fresh state)
   if (!orchestrators.has(cacheKey) || worldState) {
     orchestrators.set(cacheKey, new OrchestratorEngine({
       userId,
       ...config
-    }, worldState)) // PHASE 1: Pass WorldState to constructor
+    }, worldState))
   }
   return orchestrators.get(cacheKey)!
 }
 
-// PHASE 3: Multi-Agent Orchestrator Factory
-// Import at runtime to avoid circular dependency
-
+/**
+ * Get Multi-Agent Orchestrator: Creates a MultiAgentOrchestrator instance
+ * 
+ * This factory creates a MultiAgentOrchestrator, which extends OrchestratorEngine
+ * with multi-agent coordination capabilities (parallel, sequential, cluster strategies).
+ * 
+ * Why Runtime Import:
+ * - Avoids circular dependency (MultiAgentOrchestrator imports OrchestratorEngine)
+ * - Imported at runtime using require() to break the cycle
+ * 
+ * Caching:
+ * - Always creates new instance (agent pool needs fresh state)
+ * - TODO: Implement proper caching with state updates
+ * 
+ * @param userId - User ID for the orchestrator
+ * @param config - Optional partial configuration
+ * @param worldState - Optional unified state manager
+ * @returns MultiAgentOrchestrator instance
+ * 
+ * Note: Return type is 'any' to avoid circular dependency in type system.
+ * The actual return type is MultiAgentOrchestrator.
+ */
 export function getMultiAgentOrchestrator(
   userId: string,
   config?: Partial<OrchestratorConfig>,
   worldState?: WorldStateManager
-): any { // Return type is MultiAgentOrchestrator, but we avoid import here
-  // Always create new instance for now (agent pool needs fresh state)
-  // TODO: Implement proper caching with state updates
+): any {
+  // Import at runtime to avoid circular dependency
   const { MultiAgentOrchestrator } = require('../agents/MultiAgentOrchestrator')
   
+  // Always create new instance for now (agent pool needs fresh state)
+  // TODO: Implement proper caching with state updates
   return new MultiAgentOrchestrator({
     userId,
     ...config
   }, worldState)
 }
 
+/**
+ * Create Orchestrator: Creates a new OrchestratorEngine and adds it to cache
+ * 
+ * This is a lower-level factory that explicitly creates and caches an instance.
+ * Use getOrchestrator() for most cases (it handles caching automatically).
+ * 
+ * @param config - Full orchestrator configuration
+ * @param worldState - Optional unified state manager
+ * @returns New OrchestratorEngine instance (also cached)
+ */
 export function createOrchestrator(
   config: OrchestratorConfig, 
-  worldState?: WorldStateManager // PHASE 1: Accept WorldState
+  worldState?: WorldStateManager
 ): OrchestratorEngine {
-  const orchestrator = new OrchestratorEngine(config, worldState) // PHASE 1: Pass WorldState
+  const orchestrator = new OrchestratorEngine(config, worldState)
   orchestrators.set(config.userId, orchestrator)
   return orchestrator
 }

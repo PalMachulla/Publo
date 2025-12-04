@@ -40,7 +40,18 @@ export interface CanvasPanelsProps {
   onSelectNode: (nodeId: string, sectionId?: string) => void
   
   // Chat operations
-  onAddChatMessage: (message: string, role?: 'user' | 'orchestrator', type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress') => void
+  // ✅ NEW: Added metadata parameter for structured content support (progress lists, etc.)
+  // Metadata allows messages to include structured data that can be rendered with icons
+  // and better formatting in the UI. See StatusMessage component for rendering logic.
+  onAddChatMessage: (
+    message: string, 
+    role?: 'user' | 'orchestrator', 
+    type?: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress',
+    metadata?: {
+      structured?: boolean
+      format?: 'progress_list' | 'simple_list' | 'steps'
+    }
+  ) => void
   onClearChat: () => void
   
   // Document panel

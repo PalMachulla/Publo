@@ -1,50 +1,360 @@
 /**
- * Phase 3: Multi-Agent Orchestrator - Intelligent Task Coordination
- * 
- * Extends the base OrchestratorEngine with multi-agent coordination capabilities.
- * Analyzes task complexity and selects optimal execution strategy:
- * - Sequential: Simple tasks (1-2 actions)
- * - Parallel: Independent tasks (3+ chapters/scenes)
- * - Cluster: Complex single tasks requiring quality (writer + critic loops)
+ * Multi-Agent Orchestrator - Advanced Task Coordination with AI Agents
+ *
+ * ============================================================================
+ * WHAT IS THIS FILE?
+ * ============================================================================
+ *
+ * This file extends the base `OrchestratorEngine` with multi-agent coordination
+ * capabilities. While `OrchestratorEngine` analyzes user intent and generates
+ * actions, `MultiAgentOrchestrator` takes those actions and intelligently executes
+ * them using a pool of specialized AI agents (writers, critics) with different
+ * execution strategies.
+ *
+ * Think of it as the "conductor with a full orchestra" - it not only coordinates
+ * but also has specialized musicians (agents) that can work in parallel, sequentially,
+ * or collaboratively (writer-critic clusters) to produce high-quality content.
+ *
+ * ============================================================================
+ * WHERE DOES IT FIT IN THE FLOW?
+ * ============================================================================
+ *
+ * User Types Message
+ *        ↓
+ * OrchestratorPanel.tsx (UI component)
+ *        ↓
+ * OrchestratorEngine.orchestrate() (base class)
+ *        ↓
+ *    [Analyzes intent, generates actions]
+ *        ↓
+ * MultiAgentOrchestrator.orchestrate() (THIS FILE - overrides base)
+ *        ↓
+ *    [Filters actions, selects execution strategy]
+ *        ↓
+ *    ┌─────────────┬──────────────┬──────────────┐
+ *    │             │              │              │
+ *    ↓             ↓              ↓              ↓
+ * Sequential   Parallel      Cluster        UI Actions
+ * (Simple)     (DAG-based)   (Writer+Critic) (User interaction)
+ *    │             │              │              │
+ *    └─────────────┴──────────────┴──────────────┘
+ *        ↓
+ * Tools & Agents (WriterAgent, CriticAgent via ToolRegistry)
+ *        ↓
+ * LLM APIs (OpenAI, Anthropic, etc.)
+ *        ↓
+ * Response back to UI with generated content
+ *
+ * ============================================================================
+ * KEY RESPONSIBILITIES
+ * ============================================================================
+ *
+ * 1. ACTION FILTERING: Separates actions into:
+ *    - Agent-executable: Content generation that can run automatically
+ *    - UI-required: Actions needing user interaction (clarifications, confirmations)
+ *    - Dependency-sequenced: Actions that must execute in order
+ *
+ * 2. STRATEGY SELECTION: Uses LLM reasoning to choose optimal execution strategy:
+ *    - SEQUENTIAL: Simple tasks (1-2 actions) - safe, one at a time
+ *    - PARALLEL: Independent tasks (3+ chapters/scenes) - fast, uses DAG for dependency resolution
+ *    - CLUSTER: High-quality tasks (1-2 important sections) - writer + critic collaboration
+ *
+ * 3. AGENT COORDINATION: Manages a pool of specialized agents:
+ *    - WriterAgent: Generates content for sections
+ *    - CriticAgent: Reviews and improves content quality
+ *    - AgentRegistry: Tracks agent availability and performance
+ *
+ * 4. DEPENDENCY RESOLUTION: Handles action dependencies using DAG (Directed Acyclic Graph):
+ *    - Ensures dependencies execute before dependents
+ *    - Example: select_section must execute before generate_content
+ *    - open_document must execute before generate_content for that document
+ *
+ * 5. TOOL INTEGRATION: Executes actions via ToolRegistry:
+ *    - write_content tool: Generates content using WriterAgent
+ *    - create_structure tool: Creates document structures
+ *    - Other tools: Navigation, deletion, etc.
+ *
+ * ============================================================================
+ * FILES IT INTERACTS WITH
+ * ============================================================================
+ *
+ * EXTENDS:
+ *   - OrchestratorEngine: Base orchestrator class (inherits intent analysis, action generation)
+ *
+ * USES (Agent Infrastructure):
+ *   - AgentRegistry: Manages agent pool (writers, critics)
+ *   - DAGExecutor: Handles dependency resolution for parallel execution
+ *   - WriterAgent: Specialized agent for content generation
+ *   - CriticAgent: Specialized agent for content review and improvement
+ *   - WriterCriticCluster: Collaborative writer-critic loops (currently disabled)
+ *
+ * USES (Core Systems):
+ *   - Blackboard: Conversation memory and agent communication (inherited from base)
+ *   - WorldState: Application state (canvas, documents) - inherited from base
+ *   - ToolRegistry: Executable tools system (from config)
+ *
+ * CALLED BY:
+ *   - OrchestratorPanel.tsx: UI component that uses MultiAgentOrchestrator for complex tasks
+ *   - orchestratorEngine.ts: Factory function getMultiAgentOrchestrator()
+ *
+ * CALLS:
+ *   - ToolRegistry.execute(): Executes actions via tools (write_content, etc.)
+ *   - AgentRegistry: Manages agent pool and task assignment
+ *   - DAGExecutor: Builds dependency graphs and execution order
+ *
+ * ============================================================================
+ * EXECUTION STRATEGIES
+ * ============================================================================
+ *
+ * 1. SEQUENTIAL:
+ *    - Use case: Simple tasks, 1-2 actions, mixed action types
+ *    - Execution: One action at a time, in order
+ *    - Agents: Single writer agent per action
+ *    - Speed: Slowest (but safest)
+ *    - Quality: Good (standard writer quality)
+ *
+ * 2. PARALLEL:
+ *    - Use case: 3+ independent content sections (chapters, scenes)
+ *    - Execution: Multiple actions simultaneously using DAG for dependencies
+ *    - Agents: Multiple writer agents working in parallel
+ *    - Speed: Fastest (parallel execution)
+ *    - Quality: Good (standard writer quality)
+ *
+ * 3. CLUSTER:
+ *    - Use case: 1-2 high-priority sections (first chapters, key scenes)
+ *    - Execution: Writer-critic collaboration with iterative refinement
+ *    - Agents: Writer + Critic working together
+ *    - Speed: Slowest (iterative refinement)
+ *    - Quality: Best (critic-reviewed and improved)
+ *    - Note: Currently disabled (useCluster: false) - see PHASE3_COMPLETE.md
+ *
+ * ============================================================================
+ * ARCHITECTURE NOTES
+ * ============================================================================
+ *
+ * - Inheritance: Extends OrchestratorEngine, overrides orchestrate() method
+ * - Protected Access: Uses protected methods from base class (getBlackboard(), getConfig())
+ * - Tool-Based Execution: All agent execution goes through ToolRegistry (not direct agent calls)
+ * - WorldState Required: Most operations require WorldState for state management
+ * - Dependency Injection: Receives ToolRegistry via config.toolRegistry
  */
 
+// ============================================================================
+// CORE DEPENDENCIES - Base Orchestrator
+// ============================================================================
+
+/**
+ * OrchestratorEngine: Base orchestrator class that this extends
+ * - Provides intent analysis, action generation, context preparation
+ * - MultiAgentOrchestrator overrides orchestrate() to add agent execution
+ * - Inherits protected methods: getBlackboard(), getConfig(), prepareContext(), etc.
+ */
 import { OrchestratorEngine } from '../core/orchestratorEngine'
+
+/**
+ * Blackboard & ConversationMessage: Conversation memory and message types
+ * - Blackboard: Central communication hub for agents (inherited from base)
+ * - ConversationMessage: Type for messages stored in blackboard
+ * - Used for: Agent communication, conversation history, execution tracking
+ */
 import type { Blackboard, ConversationMessage } from '../core/blackboard'
+
+/**
+ * Orchestrator Types: Configuration, request, and action types
+ * - OrchestratorConfig: Configuration for orchestrator (userId, preferences, toolRegistry)
+ * - OrchestratorRequest: User request with message, canvas state, preferences
+ * - OrchestratorAction: Individual action to execute (generate_content, open_document, etc.)
+ * - Used for: Type safety, method signatures, action processing
+ */
 import type { 
   OrchestratorConfig, 
   OrchestratorRequest,
   OrchestratorAction 
 } from '../core/orchestratorEngine'
+
+/**
+ * WorldStateManager: Unified application state manager
+ * - Single source of truth for canvas, documents, orchestrator status
+ * - Required for: Tool execution, state updates, document access
+ * - Inherited from base class as protected worldState
+ */
 import type { WorldStateManager } from '../core/worldState'
+
+// ============================================================================
+// AGENT INFRASTRUCTURE
+// ============================================================================
+
+/**
+ * AgentRegistry: Manages the pool of available agents
+ * - Tracks agent availability (writers, critics)
+ * - Assigns tasks to agents
+ * - Monitors agent performance
+ * - Used for: Agent pool management, task assignment, performance tracking
+ */
 import { AgentRegistry } from './AgentRegistry'
+
+/**
+ * DAGExecutor: Handles dependency resolution for parallel execution
+ * - Builds Directed Acyclic Graph (DAG) from actions with dependencies
+ * - Determines execution order (batches of parallel tasks)
+ * - Ensures dependencies execute before dependents
+ * - Used for: Parallel execution strategy, dependency resolution
+ */
 import { DAGExecutor } from './DAGExecutor'
+
+/**
+ * WriterAgent: Specialized agent for content generation
+ * - Generates content for document sections
+ * - Used by: ToolRegistry (write_content tool) for actual content generation
+ * - Note: Not directly instantiated here - created during agent pool initialization
+ */
 import { WriterAgent } from './WriterAgent'
+
+/**
+ * CriticAgent: Specialized agent for content review and improvement
+ * - Reviews generated content for quality
+ * - Provides feedback for iterative improvement
+ * - Used by: WriterCriticCluster for collaborative refinement (currently disabled)
+ * - Note: Not directly instantiated here - created during agent pool initialization
+ */
 import { CriticAgent } from './CriticAgent'
+
+/**
+ * WriterCriticCluster: Collaborative writer-critic loops
+ * - Coordinates writer and critic agents for iterative refinement
+ * - Used for: Cluster execution strategy (high-quality content)
+ * - Status: Currently disabled (useCluster: false) - see PHASE3_COMPLETE.md
+ * - To be investigated: May be legacy/unused if cluster strategy is permanently disabled
+ */
 import { WriterCriticCluster } from './clusters/WriterCriticCluster'
+
+/**
+ * Agent Types: Type definitions for agent system
+ * - AgentTask: Task representation for agents (id, type, payload, dependencies)
+ * - ExecutionStrategy: Strategy type ('sequential' | 'parallel' | 'cluster')
+ * - DAGNode: Node in dependency graph (for DAGExecutor)
+ * - Used for: Type safety in agent coordination
+ */
 import type { AgentTask, ExecutionStrategy, DAGNode } from './types'
+
+/**
+ * Content Persistence Utilities: Functions for saving agent-generated content
+ * - saveAgentContent: Saves single agent content to database
+ * - batchSaveAgentContent: Saves multiple agent contents in batch
+ * - To be investigated: May be unused if content persistence is handled by tools
+ */
 import { saveAgentContent, batchSaveAgentContent } from './utils/contentPersistence'
 
+// ============================================================================
+// MULTI-AGENT ORCHESTRATOR CLASS
+// ============================================================================
+
+/**
+ * MultiAgentOrchestrator: Advanced Orchestrator with Multi-Agent Coordination
+ * 
+ * This class extends OrchestratorEngine to add intelligent multi-agent execution
+ * capabilities. It analyzes generated actions and executes them using specialized
+ * AI agents (writers, critics) with optimal execution strategies.
+ * 
+ * CLASS STRUCTURE:
+ * 
+ * 1. CONSTRUCTOR
+ *    - Calls super() to initialize base OrchestratorEngine
+ *    - Initializes AgentRegistry (agent pool management)
+ *    - Initializes DAGExecutor (dependency resolution)
+ *    - Creates agent pool (3 writers, 2 critics)
+ * 
+ * 2. OVERRIDDEN METHODS
+ *    - orchestrate(): Overrides base class to add agent execution
+ *      - Calls super.orchestrate() for intent analysis and action generation
+ *      - Filters actions (agent-executable vs UI-required)
+ *      - Handles action dependencies
+ *      - Executes actions with agents using selected strategy
+ * 
+ * 3. STRATEGY SELECTION
+ *    - analyzeExecutionStrategy(): Uses LLM to select optimal strategy
+ *    - Considers: Task complexity, action count, model performance, user expectations
+ * 
+ * 4. EXECUTION METHODS
+ *    - executeSequential(): Simple one-at-a-time execution
+ *    - executeParallel(): Parallel execution with DAG dependency resolution
+ *    - executeCluster(): Writer-critic collaboration (currently disabled)
+ * 
+ * 5. DEPENDENCY HANDLING
+ *    - executeSequencedActions(): Resolves and executes actions in dependency order
+ *    - Handles: select_section → generate_content, open_document → generate_content
+ * 
+ * 6. UTILITY METHODS
+ *    - actionsToTasks(): Converts OrchestratorActions to AgentTasks
+ *    - actionTypeToToolName(): Maps action types to tool names
+ *    - getAgentStats(): Returns agent performance statistics
+ */
 export class MultiAgentOrchestrator extends OrchestratorEngine {
+  // ============================================================================
+  // CLASS PROPERTIES
+  // ============================================================================
+  
+  /**
+   * AgentRegistry: Manages the pool of available agents
+   * - Tracks agent availability (writers, critics)
+   * - Assigns tasks to agents
+   * - Monitors agent performance
+   */
   private agentRegistry: AgentRegistry
+  
+  /**
+   * DAGExecutor: Handles dependency resolution for parallel execution
+   * - Builds DAG from actions with dependencies
+   * - Determines execution order (batches of parallel tasks)
+   * - Used by: executeParallel() strategy
+   */
   private dagExecutor: DAGExecutor
   
+  // ============================================================================
+  // CONSTRUCTOR
+  // ============================================================================
+  
+  /**
+   * Creates a new MultiAgentOrchestrator instance
+   * 
+   * Initialization Steps:
+   * 1. Calls super() to initialize base OrchestratorEngine (Blackboard, WorldState, etc.)
+   * 2. Initializes AgentRegistry (agent pool management)
+   * 3. Initializes DAGExecutor (dependency resolution for parallel execution)
+   * 4. Creates agent pool (3 writers, 2 critics)
+   * 5. Logs initialization to Blackboard for UI visibility
+   * 
+   * @param config - Orchestrator configuration (must include toolRegistry for execution)
+   * @param worldState - Optional unified state manager (required for tool execution)
+   * 
+   * Architecture Notes:
+   * - ToolRegistry: Must be provided in config.toolRegistry for agent execution
+   * - WorldState: Required for most operations (tool execution, state updates)
+   * - Agent Pool: Created during initialization (3 writers, 2 critics)
+   * - Blackboard: Inherited from base class, shared with agents for communication
+   */
   constructor(
     config: OrchestratorConfig,
     worldState?: WorldStateManager
   ) {
+    // Step 1: Initialize base OrchestratorEngine
     super(config, worldState)
     
-    // Initialize agent infrastructure
+    // Step 2: Initialize agent infrastructure
+    // AgentRegistry manages the pool of available agents
     this.agentRegistry = new AgentRegistry(this.getAgentBlackboard())
+    
+    // DAGExecutor handles dependency resolution for parallel execution
     this.dagExecutor = new DAGExecutor(this.getAgentBlackboard(), this.agentRegistry)
     
-    // Initialize agent pool
+    // Step 3: Create agent pool (3 writers, 2 critics)
     this.initializeAgents()
     
+    // Log initialization
     console.log('🤖 [MultiAgentOrchestrator] Initialized with multi-agent coordination')
     console.log('   Has WorldState:', !!this.worldState)
     
-    // Log initialization to Blackboard for UI visibility
+    // Log to Blackboard for UI visibility
     this.getAgentBlackboard().addMessage({
       role: 'orchestrator',
       content: '🤖 Multi-agent system initialized',
@@ -52,12 +362,52 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     })
   }
   
-  // ============================================================
-  // OVERRIDE: ORCHESTRATE WITH AGENT EXECUTION
-  // ============================================================
+  // ============================================================================
+  // OVERRIDDEN METHODS - Main Entry Point
+  // ============================================================================
   
   /**
-   * Override orchestrate to execute actions with agents automatically
+   * Orchestrate: Overrides base class to add agent execution
+   * 
+   * This is the main entry point that extends the base OrchestratorEngine's
+   * orchestration with intelligent multi-agent execution.
+   * 
+   * EXECUTION FLOW:
+   * 
+   * 1. CALL BASE ORCHESTRATE
+   *    - Calls super.orchestrate() to analyze intent and generate actions
+   *    - Base class handles: context preparation, intent analysis, model selection, action generation
+   * 
+   * 2. FILTER ACTIONS
+   *    - Separates actions into three groups:
+   *      - actionsForAgentExecution: Content generation that can run automatically (has nodeId)
+   *      - actionsForSequencing: Actions with dependencies that need ordered execution
+   *      - actionsForUI: Actions requiring user interaction or can't be auto-executed
+   * 
+   * 3. HANDLE DEPENDENCIES
+   *    - Processes actions with dependencies (select_section → generate_content)
+   *    - Executes dependencies first, then dependents
+   *    - Extracts nodeId from open_document actions for dependent generate_content
+   * 
+   * 4. EXECUTE WITH AGENTS
+   *    - Selects execution strategy (sequential, parallel, cluster) using LLM reasoning
+   *    - Executes actions via ToolRegistry (tools → agents → LLM APIs)
+   *    - Captures agent messages for UI display
+   * 
+   * 5. RETURN RESPONSE
+   *    - Returns only UI-required actions (agent-executed actions are already complete)
+   *    - Includes agent thinking steps in response.thinkingSteps
+   * 
+   * @param request - User request with message, canvas state, preferences, etc.
+   * @returns OrchestratorResponse with UI-required actions and agent thinking steps
+   * 
+   * Example:
+   * User: "Write chapters 1, 2, and 3"
+   * → Base generates 3 generate_content actions
+   * → This method filters: all 3 are agent-executable (has nodeId)
+   * → Strategy: PARALLEL (3+ independent sections)
+   * → Executes all 3 in parallel via tools
+   * → Returns empty actions array (all executed) + thinking steps
    */
   async orchestrate(request: any): Promise<any> {
     // Step 1: Call parent to analyze and generate actions
@@ -238,10 +588,30 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     return response
   }
   
-  // ============================================================
+  // ============================================================================
   // AGENT INITIALIZATION
-  // ============================================================
+  // ============================================================================
   
+  /**
+   * Initialize Agents: Creates the agent pool
+   * 
+   * This method creates a pool of specialized agents that will be used for
+   * content generation. The pool consists of:
+   * - 3 WriterAgent instances: For parallel content generation
+   * - 2 CriticAgent instances: For content review (used in cluster strategy, currently disabled)
+   * 
+   * Agent Pool Strategy:
+   * - Writers: Multiple instances allow parallel execution of independent tasks
+   * - Critics: Fewer instances since they're only used in cluster mode (currently disabled)
+   * 
+   * Registration:
+   * - Agents are registered with AgentRegistry
+   * - AgentRegistry tracks availability and assigns tasks
+   * - Agents share the same Blackboard for communication
+   * 
+   * Note: Agents are created but not directly used here. They're accessed via
+   * ToolRegistry when tools (write_content) are executed.
+   */
   private initializeAgents(): void {
     const userId = this.getConfig().userId
     
@@ -261,15 +631,48 @@ export class MultiAgentOrchestrator extends OrchestratorEngine {
     console.log(`✅ [MultiAgentOrchestrator] Agent pool ready: ${stats.totalAgents} agents (${stats.agentsByType.writer || 0} writers, ${stats.agentsByType.critic || 0} critics)`)
   }
   
-  // ============================================================
+  // ============================================================================
   // STRATEGY SELECTION
-  // ============================================================
+  // ============================================================================
   
   /**
-   * PHASE 3: LLM-powered execution strategy selection
-   * Replaces hard-coded rules with reasoning based on context
+   * Analyze Execution Strategy: Uses LLM to select optimal execution strategy
    * 
-   * ✅ STEP 4: Now uses actual model performance metrics from database metadata
+   * This method uses LLM reasoning to intelligently select the best execution
+   * strategy based on task characteristics, context, and available resources.
+   * 
+   * Strategy Selection Criteria:
+   * - SEQUENTIAL: Simple tasks, 1-2 actions, mixed action types, non-content actions
+   * - PARALLEL: 3+ independent content sections, speed is important, model performance allows it
+   * - CLUSTER: 1-2 high-priority sections, quality is critical, first chapters/key scenes
+   * 
+   * LLM Analysis Factors:
+   * - Total actions and content generation actions count
+   * - Action details (sections, types, dependencies)
+   * - Recent conversation context
+   * - Blackboard state (active agents)
+   * - Model performance metrics (cost, speed) when available
+   * - Section importance (first chapters, opening scenes)
+   * 
+   * Model Performance Integration:
+   * - Uses actual model metadata (cost_per_1k_tokens_input, speed_tokens_per_sec)
+   * - Considers model performance when making efficiency decisions
+   * - Focuses on writing models (not reasoning models) for parallel execution
+   * 
+   * Fallback:
+   * - If LLM analysis fails, defaults to SEQUENTIAL (safest option)
+   * - Logs error to Blackboard for UI visibility
+   * 
+   * @param actions - Actions to execute
+   * @param blackboard - Conversation memory for context
+   * @param worldState - Application state (for context)
+   * @param availableModels - Available models with performance metadata
+   * @returns Selected strategy ('sequential' | 'parallel' | 'cluster') with reasoning
+   * 
+   * Example:
+   * Input: 5 generate_content actions for chapters 1-5
+   * LLM Analysis: "5 independent sections, speed important, models support parallel"
+   * Output: { strategy: 'parallel', reasoning: '...' }
    */
   private async analyzeExecutionStrategy(
     actions: OrchestratorAction[],
@@ -427,25 +830,62 @@ Respond in JSON format:
     }
   }
   
-  // ============================================================
-  // EXECUTION ROUTING
-  // ============================================================
+  // ============================================================================
+  // DEPENDENCY RESOLUTION
+  // ============================================================================
   
   /**
-   * Execute actions with multi-agent coordination
-   * Overrides base class method to add agent support
-   */
-  /**
-   * Execute actions in dependency order (dependencies first, then dependents)
+   * Execute Sequenced Actions: Resolves and executes actions in dependency order
    * 
-   * This method handles the sequencing of actions that have dependencies.
-   * For example: generate_content depends on select_section, so we execute
-   * select_section first, then generate_content.
+   * This method handles actions that have dependencies, ensuring dependencies
+   * execute before dependents. It's a critical part of the orchestration flow
+   * that enables complex multi-step operations.
+   * 
+   * DEPENDENCY TYPES:
+   * 
+   * 1. select_section → generate_content
+   *    - Navigation must happen before content generation
+   *    - Handled by: Marking select_section as complete, then allowing generate_content
+   * 
+   * 2. open_document → generate_content
+   *    - Document must be open before generating content for it
+   *    - Handled by: Extracting nodeId from open_document, injecting into generate_content
+   * 
+   * EXECUTION PROCESS:
+   * 
+   * 1. Dependency Detection:
+   *    - Checks if select_section was already executed by base orchestrator
+   *    - Tracks completed action types
+   *    - Maps nodeIds from open_document actions
+   * 
+   * 2. Topological Sorting:
+   *    - Sorts actions to process dependencies first
+   *    - Actions with no dependencies come first
+   *    - Actions with satisfied dependencies come next
+   * 
+   * 3. Action Execution:
+   *    - select_section: Marked complete, sent to UI for actual navigation
+   *    - open_document: Marked complete, nodeId stored, sent to UI for actual opening
+   *    - generate_content: NodeId injected from open_document if needed, ready for agents
+   * 
+   * 4. Circular Dependency Prevention:
+   *    - Detects infinite loops (no progress made)
+   *    - Moves remaining actions to UI as fallback
    * 
    * @param sequencedActions - Actions with dependencies that need sequencing
-   * @param agentActions - Actions ready for immediate agent execution
-   * @param request - Original orchestrator request (for context)
-   * @returns Object with agentActions (ready for execution) and uiActions (for UI)
+   * @param agentActions - Actions ready for immediate agent execution (will be populated)
+   * @param request - Original orchestrator request (for context and nodeId updates)
+   * @returns Object with:
+   *   - agentActions: Actions ready for agent execution (dependencies satisfied)
+   *   - uiActions: Actions that need UI interaction (navigation, document opening)
+   * 
+   * Example:
+   * Input: [
+   *   { type: 'open_document', payload: { nodeId: 'doc-1' } },
+   *   { type: 'generate_content', dependsOn: ['open_document'], payload: { sectionId: 's1' } }
+   * ]
+   * Process: open_document → extract nodeId → inject into generate_content → ready for agents
+   * Output: { agentActions: [generate_content with nodeId], uiActions: [open_document] }
    */
   private async executeSequencedActions(
     sequencedActions: OrchestratorAction[],
@@ -673,10 +1113,55 @@ Respond in JSON format:
     }
   }
 
+  /**
+   * Execute Actions With Agents: Main agent execution coordinator
+   * 
+   * This method coordinates the execution of actions using specialized AI agents.
+   * It filters executable actions, selects an execution strategy, and routes
+   * to the appropriate execution method.
+   * 
+   * EXECUTION FLOW:
+   * 
+   * 1. FILTER ACTIONS
+   *    - Removes generate_structure (always executed by UI)
+   *    - Validates generate_content has nodeId (required for execution)
+   *    - Updates request with nodeId if extracted from action payload
+   * 
+   * 2. STRATEGY SELECTION
+   *    - Calls analyzeExecutionStrategy() with LLM reasoning
+   *    - Considers: Action count, complexity, model performance, user expectations
+   *    - Returns: 'sequential' | 'parallel' | 'cluster' with reasoning
+   * 
+   * 3. ROUTE TO EXECUTION METHOD
+   *    - SEQUENTIAL → executeSequential() (one at a time)
+   *    - PARALLEL → executeParallel() (DAG-based parallel execution)
+   *    - CLUSTER → executeCluster() (writer-critic collaboration)
+   * 
+   * 4. TOOL EXECUTION
+   *    - All execution goes through ToolRegistry (not direct agent calls)
+   *    - Tools (write_content) internally use agents (WriterAgent)
+   *    - WorldState required for tool execution
+   * 
+   * @param actions - Actions to execute (should be pre-filtered for agent execution)
+   * @param sessionId - Session identifier for tracking (defaults to timestamp)
+   * @param request - Original orchestrator request (for nodeId, format, etc.)
+   * @returns Promise that resolves when all actions are executed
+   * 
+   * Requirements:
+   * - request.currentStoryStructureNodeId or action.payload.nodeId (for generate_content)
+   * - config.toolRegistry (for tool execution)
+   * - worldState (for tool execution and state updates)
+   * 
+   * Example:
+   * Input: [generate_content for section1, generate_content for section2]
+   * Strategy: PARALLEL (2 independent sections)
+   * Execution: Both execute simultaneously via write_content tool
+   * Result: Content generated for both sections
+   */
   async executeActionsWithAgents(
     actions: OrchestratorAction[],
     sessionId: string = `session-${Date.now()}`,
-    request?: any // Pass request for accessing currentStoryStructureNodeId
+    request?: any
   ): Promise<void> {
     if (actions.length === 0) {
       console.log('⚠️ [MultiAgentOrchestrator] No actions to execute')
@@ -771,10 +1256,50 @@ Respond in JSON format:
     }
   }
   
-  // ============================================================
-  // SEQUENTIAL EXECUTION
-  // ============================================================
+  // ============================================================================
+  // EXECUTION STRATEGIES
+  // ============================================================================
   
+  /**
+   * Execute Sequential: Simple one-at-a-time execution
+   * 
+   * This strategy executes actions sequentially, one after another. It's the
+   * safest option and is used for:
+   * - Simple tasks (1-2 actions)
+   * - Mixed action types (not all content generation)
+   * - When dependencies require strict ordering
+   * 
+   * EXECUTION PROCESS:
+   * 
+   * 1. For each action:
+   *    - Maps action type to tool name (generate_content → write_content)
+   *    - Builds tool payload with action payload + nodeId + format
+   *    - Executes via ToolRegistry
+   *    - Logs progress to Blackboard
+   * 
+   * 2. Tool Execution:
+   *    - Uses ToolRegistry.execute() with tool name and payload
+   *    - Tools internally use agents (WriterAgent for write_content)
+   *    - WorldState required for tool execution
+   * 
+   * 3. Error Handling:
+   *    - Continues execution even if one action fails
+   *    - Logs errors to console and Blackboard
+   * 
+   * @param actions - Actions to execute sequentially
+   * @param request - Original orchestrator request (for nodeId, format, etc.)
+   * @returns Promise that resolves when all actions are executed
+   * 
+   * Requirements:
+   * - config.toolRegistry (for tool execution)
+   * - worldState (for tool execution)
+   * - request.currentStoryStructureNodeId (for generate_content actions)
+   * 
+   * Example:
+   * Actions: [generate_content for section1, generate_content for section2]
+   * Execution: section1 → wait → section2 → wait
+   * Time: ~2x individual action time (sequential)
+   */
   private async executeSequential(actions: OrchestratorAction[], request?: any): Promise<void> {
     console.log(`⏭️ [MultiAgentOrchestrator] Executing ${actions.length} action(s) sequentially via TOOL SYSTEM`)
     
@@ -864,7 +1389,21 @@ Respond in JSON format:
   }
   
   /**
-   * Map action type to tool name
+   * Action Type To Tool Name: Maps OrchestratorAction types to ToolRegistry tool names
+   * 
+   * This utility method maps action types from the orchestrator to the corresponding
+   * tool names in the ToolRegistry. It's used when executing actions via tools.
+   * 
+   * Mapping:
+   * - generate_content → write_content (content generation tool)
+   * - generate_structure → create_structure (structure generation tool)
+   * - open_document → open_document (document opening tool)
+   * - select_section → select_section (section navigation tool)
+   * - delete_node → delete_node (node deletion tool)
+   * - message → message (message display tool)
+   * 
+   * @param actionType - OrchestratorAction type (e.g., 'generate_content')
+   * @returns ToolRegistry tool name (e.g., 'write_content') or null if no mapping
    */
   private actionTypeToToolName(actionType: string): string | null {
     const mapping: Record<string, string> = {
@@ -879,10 +1418,65 @@ Respond in JSON format:
     return mapping[actionType] || null
   }
   
-  // ============================================================
-  // PARALLEL EXECUTION (DAG)
-  // ============================================================
-  
+  /**
+   * Execute Parallel: Parallel execution with DAG dependency resolution
+   * 
+   * This strategy executes multiple actions simultaneously, using a DAG (Directed
+   * Acyclic Graph) to handle dependencies. It's the fastest option for independent
+   * tasks and is used for:
+   * - 3+ independent content sections (chapters, scenes)
+   * - When speed is important
+   * - When model performance supports parallel execution
+   * 
+   * EXECUTION PROCESS:
+   * 
+   * 1. CONVERT TO TASKS
+   *    - Converts OrchestratorActions to AgentTasks
+   *    - Preserves dependencies and payload information
+   * 
+   * 2. BUILD DAG
+   *    - Uses DAGExecutor to build dependency graph
+   *    - Identifies independent tasks (can run in parallel)
+   *    - Identifies dependent tasks (must wait for dependencies)
+   * 
+   * 3. GET EXECUTION ORDER
+   *    - DAGExecutor returns batches of tasks
+   *    - Each batch contains tasks that can run in parallel
+   *    - Batches execute sequentially (batch 1 → batch 2 → ...)
+   * 
+   * 4. EXECUTE BATCHES
+   *    - For each batch, execute all tasks in parallel
+   *    - Uses Promise.all() for parallel execution
+   *    - Maps tasks back to actions for tool execution
+   *    - Executes via ToolRegistry (write_content tool)
+   * 
+   * 5. TRACK PROGRESS
+   *    - Logs batch progress to Blackboard
+   *    - Tracks completion and failure counts
+   *    - Calculates execution time and speedup
+   * 
+   * DEPENDENCY HANDLING:
+   * - Tasks with no dependencies: Execute in first batch
+   * - Tasks with dependencies: Wait for dependencies to complete
+   * - Example: If section2 depends on section1, they're in different batches
+   * 
+   * @param actions - Actions to execute in parallel
+   * @param sessionId - Session identifier for tracking
+   * @param request - Original orchestrator request (for nodeId, format, etc.)
+   * @returns Promise that resolves when all actions are executed
+   * 
+   * Requirements:
+   * - config.toolRegistry (for tool execution)
+   * - worldState (for tool execution)
+   * - request.currentStoryStructureNodeId (for generate_content actions)
+   * 
+   * Example:
+   * Actions: [generate_content for ch1, ch2, ch3, ch4, ch5] (all independent)
+   * DAG: All in batch 1 (no dependencies)
+   * Execution: All 5 execute simultaneously
+   * Time: ~1x individual action time (parallel) vs ~5x (sequential)
+   * Speedup: ~5x faster than sequential
+   */
   private async executeParallel(
     actions: OrchestratorAction[],
     sessionId: string,
@@ -1060,10 +1654,48 @@ Respond in JSON format:
     }
   }
   
-  // ============================================================
-  // CLUSTER EXECUTION (WRITER + CRITIC)
-  // ============================================================
-  
+  /**
+   * Execute Cluster: Writer-critic collaboration for high-quality content
+   * 
+   * This strategy uses writer-critic collaboration for iterative refinement,
+   * producing the highest quality content. It's used for:
+   * - 1-2 high-priority sections (first chapters, key scenes)
+   * - When quality is more important than speed
+   * - Important content that needs review and improvement
+   * 
+   * EXECUTION PROCESS:
+   * 
+   * 1. For each generate_content action:
+   *    - Calls write_content tool with useCluster flag
+   *    - Tool coordinates WriterAgent + CriticAgent collaboration
+   *    - Writer generates content, Critic reviews and provides feedback
+   *    - Iterative refinement until quality threshold met
+   * 
+   * 2. Quality Metrics:
+   *    - Tool returns quality metrics (wordCount, finalScore, iterations)
+   *    - Logs metrics to Blackboard for UI display
+   * 
+   * CURRENT STATUS:
+   * - useCluster is currently set to false (disabled)
+   * - See PHASE3_COMPLETE.md "Known Limitations" for details
+   * - When enabled, would use WriterCriticCluster for collaboration
+   * 
+   * @param actions - Actions to execute with cluster strategy
+   * @param sessionId - Session identifier for tracking
+   * @param request - Original orchestrator request (for nodeId, format, etc.)
+   * @returns Promise that resolves when all actions are executed
+   * 
+   * Requirements:
+   * - config.toolRegistry (for tool execution)
+   * - worldState (required, checked at start)
+   * - request.currentStoryStructureNodeId (for generate_content actions)
+   * 
+   * Example:
+   * Action: generate_content for "Chapter 1: Opening Scene"
+   * Execution: Writer generates → Critic reviews → Writer improves → Critic approves
+   * Result: High-quality content with quality score and iteration count
+   * Time: ~3-5x individual action time (iterative refinement)
+   */
   private async executeCluster(
     actions: OrchestratorAction[],
     sessionId: string,
@@ -1166,14 +1798,40 @@ Respond in JSON format:
     }
   }
   
-  // ============================================================
-  // TASK CONVERSION
-  // ============================================================
+  // ============================================================================
+  // TASK CONVERSION UTILITIES
+  // ============================================================================
   
+  /**
+   * Actions To Tasks: Converts OrchestratorActions to AgentTasks
+   * 
+   * This utility method converts actions from the orchestrator format to the
+   * agent task format required by DAGExecutor. It's used for parallel execution
+   * strategy to build dependency graphs.
+   * 
+   * @param actions - OrchestratorActions to convert
+   * @returns Array of AgentTasks ready for DAGExecutor
+   */
   private actionsToTasks(actions: OrchestratorAction[]): AgentTask[] {
     return actions.map(action => this.actionToTask(action))
   }
   
+  /**
+   * Action To Task: Converts a single OrchestratorAction to AgentTask
+   * 
+   * This method creates an AgentTask from an OrchestratorAction, preserving
+   * important information like section details, dependencies, and constraints.
+   * 
+   * Task Structure:
+   * - id: Unique task identifier
+   * - type: Task type (write_chapter, create_structure, etc.)
+   * - payload: Task payload with section info and constraints
+   * - dependencies: Array of dependency task IDs (empty for now, set by DAGExecutor)
+   * - status: Task status (pending, in_progress, completed, failed)
+   * 
+   * @param action - OrchestratorAction to convert
+   * @returns AgentTask ready for DAGExecutor
+   */
   private actionToTask(action: OrchestratorAction): AgentTask {
     return {
       id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -1204,6 +1862,22 @@ Respond in JSON format:
     }
   }
   
+  /**
+   * Action Type To Task Type: Maps OrchestratorAction types to AgentTask types
+   * 
+   * This utility method maps action types to task types used by the agent system.
+   * It's used when converting actions to tasks for DAGExecutor.
+   * 
+   * Mapping:
+   * - generate_content → write_chapter (content generation task)
+   * - generate_structure → create_structure (structure generation task)
+   * - modify_structure → modify_structure (structure modification task)
+   * - open_document → open_document (document opening task)
+   * - Other types: Passed through as-is
+   * 
+   * @param actionType - OrchestratorAction type (e.g., 'generate_content')
+   * @returns AgentTask type (e.g., 'write_chapter')
+   */
   private actionTypeToTaskType(actionType: string): string {
     const mapping: Record<string, string> = {
       'generate_content': 'write_chapter',
@@ -1215,26 +1889,46 @@ Respond in JSON format:
     return mapping[actionType] || actionType
   }
   
-  // ============================================================
-  // PUBLIC API
-  // ============================================================
+  // ============================================================================
+  // PUBLIC API - Inspection & Statistics
+  // ============================================================================
   
   /**
-   * Get agent registry (for inspection/testing)
+   * Get Agent Registry: Returns the agent registry for inspection/testing
+   * 
+   * This method provides access to the AgentRegistry, which manages the agent
+   * pool. Useful for debugging, testing, or monitoring agent availability.
+   * 
+   * @returns AgentRegistry instance
    */
   getAgentRegistry(): AgentRegistry {
     return this.agentRegistry
   }
   
   /**
-   * Get DAG executor (for inspection/testing)
+   * Get DAG Executor: Returns the DAG executor for inspection/testing
+   * 
+   * This method provides access to the DAGExecutor, which handles dependency
+   * resolution. Useful for debugging or inspecting dependency graphs.
+   * 
+   * @returns DAGExecutor instance
    */
   getDAGExecutor(): DAGExecutor {
     return this.dagExecutor
   }
   
   /**
-   * Get agent statistics
+   * Get Agent Stats: Returns comprehensive agent statistics
+   * 
+   * This method returns statistics about agent performance, registry state,
+   * and execution metrics. Useful for monitoring and debugging.
+   * 
+   * Statistics include:
+   * - registry: Agent pool statistics (total agents, by type, availability)
+   * - performance: Agent performance metrics (tasks completed, average time, etc.)
+   * - execution: Execution statistics from Blackboard (messages, actions, etc.)
+   * 
+   * @returns Object with registry, performance, and execution statistics
    */
   getAgentStats() {
     return {
@@ -1244,21 +1938,42 @@ Respond in JSON format:
     }
   }
   
-  // ============================================================
-  // UTILITIES
-  // ============================================================
+  // ============================================================================
+  // UTILITY METHODS
+  // ============================================================================
   
+  /**
+   * Count Words: Utility method for counting words in text
+   * 
+   * This is a simple utility method that counts words in a text string.
+   * Used for content metrics and reporting.
+   * 
+   * @param text - Text to count words in
+   * @returns Number of words in the text
+   */
   private countWords(text: string): number {
     return text.trim().split(/\s+/).length
   }
   
-  // Expose protected methods for agent access
+  /**
+   * Get Agent Blackboard: Wrapper for accessing Blackboard
+   * 
+   * This method provides access to the Blackboard (conversation memory) using
+   * the protected method from the base OrchestratorEngine class.
+   * 
+   * Why This Exists:
+   * - Base class has protected getBlackboard() method
+   * - This wrapper provides convenient access with a descriptive name
+   * - Maintains consistency with other getter methods
+   * 
+   * @returns Blackboard instance (shared with base class)
+   */
   private getAgentBlackboard() {
-    return (this as any).blackboard
+    return this.getBlackboard() // Use protected method from OrchestratorEngine
   }
   
-  private getConfig() {
-    return (this as any).config
-  }
+  // Note: getConfig() is now protected in parent class (OrchestratorEngine)
+  // All calls use this.getConfig() directly, which works with protected access
+  // No wrapper method needed - inheritance handles it correctly
 }
 
