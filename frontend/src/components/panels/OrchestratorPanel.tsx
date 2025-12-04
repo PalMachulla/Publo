@@ -15,6 +15,13 @@ import {
   buildCanvasContext, 
   type OrchestratorAction
 } from '@/lib/orchestrator'
+
+// FROM MIGRATION - BACKEND
+// MIGRATION - BACKEND: useOrchestratorSession hook
+import { useOrchestratorSession } from '@/lib/orchestrator/hooks/useOrchestratorSession'
+
+
+
 // PHASE 1: WorldState - Unified state management
 // WorldState is the single source of truth for canvas/document state, converting ReactFlow nodes/edges
 // into a format the orchestrator can use. Provides centralized access to active documents, sections,
@@ -55,6 +62,8 @@ interface ConfirmationRequest {
   expiresAt: number // Timeout after 2 minutes
 }
 
+// This is the props for the OrchestratorPanel component
+// It is used to pass data to the OrchestratorPanel component
 interface CreateStoryPanelProps {
   node: Node<CreateStoryNodeData>
   onCreateStory: (format: StoryFormat, template?: string, userPrompt?: string, plan?: any) => void
@@ -118,10 +127,10 @@ interface ReasoningMessage {
   }
 }
 
-// ✅ REMOVED: detectFormatFromMessage function
-// The orchestrator's intentRouter already extracts documentFormat from user messages.
-// Format detection is now handled entirely by the orchestrator's intent analysis.
-// The UI only passes documentFormat when there's an active document (for context/terminology).
+
+
+
+
 
 export default function OrchestratorPanel({ 
   node, 
@@ -149,6 +158,36 @@ export default function OrchestratorPanel({
   const router = useRouter()
   const supabase = createClient()
   
+// ============================================================
+  // PHASE 2: PERSISTENT STATE (Supabase)
+  // ============================================================
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  
+  // Fetch user ID on mount
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setCurrentUserId(user.id)
+      }
+    }
+    getUser()
+  }, [supabase.auth])
+  
+  // Session hook for persistent state
+  const { 
+    session, 
+    messages: persistedMessages, 
+    persistMessage,
+    isEnabled: isPersistenceEnabled 
+  } = useOrchestratorSession({
+    userId: currentUserId || '',
+    canvasId: currentStoryStructureNodeId || undefined,
+    enabled: !!currentUserId && process.env.NEXT_PUBLIC_USE_PERSISTENT_STATE === 'true'
+  })
+  
+
+
   // ✅ Build WorldStateManager from ReactFlow state (if not provided as prop)
   // Use ref to persist WorldState across re-mounts and preserve conversation messages
   const worldStateRef = useRef<WorldStateManager | null>(null)
@@ -183,7 +222,32 @@ export default function OrchestratorPanel({
     worldStateRef.current = newWorldState
     return newWorldState
   })
+// Add a ref to track if we've restored
+const hasRestoredMessages = useRef(false)
 
+// ============================================================
+// RESTORE PERSISTED MESSAGES ON MOUNT
+// ============================================================
+useEffect(() => {
+  // Only restore once
+  if (hasRestoredMessages.current) return
+  
+  if (isPersistenceEnabled && persistedMessages.length > 0 && effectiveWorldState) {
+    console.log('🔄 [Session] Restoring messages to WorldState:', persistedMessages.length)
+    
+    hasRestoredMessages.current = true // Mark as restored
+    
+    persistedMessages.forEach(msg => {
+      effectiveWorldState.addMessage({
+        role: msg.role as 'user' | 'orchestrator' | 'system',
+        content: msg.content,
+        type: msg.type as any
+      })
+    })
+    
+    console.log('✅ [Session] Messages restored')
+  }
+}, [isPersistenceEnabled, persistedMessages, effectiveWorldState])
   // Update WorldState when canvas or context changes, but preserve conversation
   useEffect(() => {
     if (worldState) {
@@ -361,8 +425,10 @@ export default function OrchestratorPanel({
   const reasoningEndRef = useRef<HTMLDivElement>(null) // Auto-scroll target
   const chatInputRef = useRef<HTMLTextAreaElement>(null) // Chat input ref
   
+  
+  
   // ✅ MIGRATION: Always use WorldState conversation (single source of truth)
-  const reasoningMessages: ReasoningMessage[] = useMemo(() => {
+  const reasoningMessages: any[] = useMemo(() => {
     const worldStateMessages = worldStateData?.conversation.messages || []
     console.log('[OrchestratorPanel] Message sources:', {
       worldStateMessages: worldStateMessages.length,
@@ -650,6 +716,11 @@ export default function OrchestratorPanel({
     //    The orchestrator's job is: add messages to blackboard, trigger callbacks.
     setChatMessage('')
     
+// Persist user message to Supabase
+if (isPersistenceEnabled && persistMessage) {
+  await persistMessage('user', message, 'user')
+}
+
     // ============================================================
     // CANVAS CONTEXT AWARENESS (Moved to Orchestrator Layer)
     // ============================================================
@@ -823,6 +894,10 @@ export default function OrchestratorPanel({
         if (onAddChatMessage) {
           onAddChatMessage(`✅ Actions completed!`, 'orchestrator', 'result')
         }
+         // ✅ ADD: Persist to Supabase
+  if (isPersistenceEnabled && persistMessage) {
+    await persistMessage('orchestrator', `Completed ${response.actions.length} action(s)`, 'result')
+  }
       } else {
         // No actions returned - either auto-executed by orchestrator or no actions needed
         if (response.requiresUserInput) {
@@ -834,6 +909,10 @@ export default function OrchestratorPanel({
           if (onAddChatMessage) {
             onAddChatMessage(`✅ Task completed!`, 'orchestrator', 'result')
           }
+          // ✅ ADD: Persist to Supabase
+    if (isPersistenceEnabled && persistMessage) {
+      await persistMessage('orchestrator', 'Task auto-executed by orchestrator', 'result')
+    }
         }
       }
       

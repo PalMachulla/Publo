@@ -62,7 +62,7 @@ export interface WorldState {
       timestamp: string
       content: string
       type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
-      role: 'user' | 'orchestrator'
+      role: 'user' | 'orchestrator' | 'system'
       // Support inline options for clarifications
       options?: Array<{
         id: string
@@ -385,8 +385,10 @@ export class WorldStateManager {
    */
   addMessage(message: {
     content: string
-    role: 'user' | 'orchestrator'
+    role: 'user' | 'orchestrator' | 'system'
     type: 'thinking' | 'decision' | 'task' | 'result' | 'error' | 'user' | 'model' | 'progress'
+    id?: string           // Add optional
+  timestamp?: string    // Add optional
     options?: Array<{id: string, title: string, description?: string}>
     onOptionSelect?: (optionId: string, optionTitle: string) => void
     // ✅ NEW: Support structured content metadata
