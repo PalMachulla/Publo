@@ -1,0 +1,52 @@
+# ============================================================
+# PUBLO BACKEND - Python Dependencies
+# ============================================================
+# 
+# Install with: pip install -r requirements.txt
+# 
+# For development: pip install -r requirements.txt --break-system-packages
+# (The --break-system-packages flag is needed on some Linux systems)
+
+# ============================================================
+# CORE FRAMEWORK
+# ============================================================
+fastapi==0.109.0          # Web framework (like Next.js API routes)
+uvicorn[standard]==0.27.0 # ASGI server (runs FastAPI)
+python-dotenv==1.0.0      # Environment variable management
+
+# ============================================================
+# LANGCHAIN & LANGGRAPH
+# ============================================================
+langchain==0.1.16         # LLM orchestration framework
+langchain-core==0.1.46    # Core abstractions
+langchain-openai==0.1.3   # OpenAI integration
+langchain-anthropic==0.1.11  # Anthropic/Claude integration
+langchain-google-genai==1.0.1  # Google AI integration
+langgraph==0.0.30         # Graph-based agent workflows
+
+# ============================================================
+# DATABASE & STATE
+# ============================================================
+supabase==2.4.0           # Supabase Python client
+asyncpg==0.29.0           # Async PostgreSQL driver
+
+# ============================================================
+# VALIDATION & TYPES
+# ============================================================
+pydantic==2.6.0           # Data validation (like Zod in TypeScript)
+pydantic-settings==2.1.0  # Settings management
+
+# ============================================================
+# UTILITIES
+# ============================================================
+httpx==0.26.0             # Async HTTP client
+python-multipart==0.0.6   # Form data parsing (for file uploads)
+sse-starlette==2.0.0      # Server-Sent Events (real-time updates)
+
+# ============================================================
+# DEVELOPMENT & TESTING
+# ============================================================
+pytest==8.0.0             # Testing framework
+pytest-asyncio==0.23.4    # Async test support
+black==24.1.1             # Code formatting
+ruff==0.2.1               # Fast linting
