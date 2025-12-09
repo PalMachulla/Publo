@@ -14,7 +14,10 @@ import StoryStructurePanel from './StoryStructurePanel'
 import { PASTEL_COLORS } from '@/components/nodes/narrationline/NarrationSegment'
 import { parseMarkdownStructure } from '@/lib/markdownParser'
 import { getFormatSystemPrompt } from '@/lib/groq/formatPrompts'
-
+// ============================================================
+// 1. ADD TO IMPORTS (around line 15)
+// ============================================================
+import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
 // Helper function to lighten a hex color for cascading
 function lightenColor(hex: string, depth: number): string {
   const cleanHex = hex.replace('#', '')
@@ -83,6 +86,9 @@ interface NodeDetailsPanelProps {
   contentMap?: Record<string, string> // GHOSTWRITER: Existing content by section ID
   currentStoryStructureNodeId?: string | null // CANVAS CONTENT: ID of currently loaded story
   worldState?: import('@/lib/orchestrator/core/worldState').WorldStateManager // ✅ NEW: Optional WorldStateManager for unified state management
+  storyId?: string
+  orchestratorNodeId?: string
+  onCreateStoryNode?: (data: any) => void
 }
 
 export default function NodeDetailsPanel({
@@ -109,8 +115,12 @@ export default function NodeDetailsPanel({
   structureItems = [],
   contentMap = {},
   currentStoryStructureNodeId = null,
-  worldState
+  worldState,
+  storyId,
+  orchestratorNodeId,
+  onCreateStoryNode,
 }: NodeDetailsPanelProps) {
+  
   const { user } = useAuth()
   const supabase = createClient()
   const [commentText, setCommentText] = useState('')
@@ -660,6 +670,9 @@ export default function NodeDetailsPanel({
           ) : nodeType === 'create-story' ? (
               <OrchestratorPanel
               node={node as any} 
+              storyId={storyId}                           // ← ADD
+      orchestratorNodeId={orchestratorNodeId}     // ← ADD  
+      onCreateStoryNode={onCreateStoryNode}       // ← ADD
               onCreateStory={onCreateStory || (() => console.warn('onCreateStory not provided'))} 
               onClose={onClose}
               onUpdate={onUpdate}

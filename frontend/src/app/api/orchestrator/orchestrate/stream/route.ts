@@ -1,17 +1,21 @@
 // src/app/api/orchestrator/orchestrate/stream/route.ts
+/**
+ * Streaming Orchestrator Proxy
+ * 
+ * Proxies Server-Sent Events (SSE) from the Python backend to the frontend.
+ * This enables real-time progress updates for structure generation.
+ */
+
+import { NextRequest } from 'next/server'
 
 const BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000'
 
 // ============================================================
-// CASE TRANSFORMATION UTILITIES
+// CASE TRANSFORMATION (same as non-streaming route)
 // ============================================================
 
 function toSnakeCase(str: string): string {
   return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
-}
-
-function toCamelCase(str: string): string {
-  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
 }
 
 function keysToSnakeCase(obj: any): any {
@@ -26,98 +30,105 @@ function keysToSnakeCase(obj: any): any {
   }, {} as Record<string, any>)
 }
 
-function keysToCamelCase(obj: any): any {
-  if (obj === null || obj === undefined) return obj
-  if (Array.isArray(obj)) return obj.map(keysToCamelCase)
-  if (typeof obj !== 'object') return obj
-  
-  return Object.keys(obj).reduce((acc, key) => {
-    const camelKey = toCamelCase(key)
-    acc[camelKey] = keysToCamelCase(obj[key])
-    return acc
-  }, {} as Record<string, any>)
-}
-
 // ============================================================
-// POST /api/orchestrator/orchestrate/stream
+// SSE STREAM PROXY
 // ============================================================
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     
     // Transform frontend camelCase → backend snake_case
     const snakeCaseBody = keysToSnakeCase(body)
     
-    console.log('🔄 [Proxy] Stream request:', {
+    console.log('🔄 [StreamProxy] Request:', {
       message: snakeCaseBody.message?.slice(0, 50),
-      userId: snakeCaseBody.user_id
+      userId: snakeCaseBody.user_id,
+      storyId: snakeCaseBody.story_id
     })
     
+    // Call Python streaming endpoint
     const response = await fetch(`${BACKEND_URL}/api/orchestrator/orchestrate/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(snakeCaseBody),
     })
     
-    if (!response.ok || !response.body) {
-      return new Response(
-        JSON.stringify({ success: false, error: `Backend error: ${response.status}` }),
-        { status: response.status, headers: { 'Content-Type': 'application/json' } }
-      )
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ [StreamProxy] Backend error:', errorText)
+      
+      // Return error as SSE event
+      const errorStream = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder()
+          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: errorText })}\n\n`))
+          controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ success: false })}\n\n`))
+          controller.close()
+        }
+      })
+      
+      return new Response(errorStream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        }
+      })
     }
     
-    // Create a TransformStream to process and forward SSE events
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk)
-        
-        // Process each SSE line
-        const lines = text.split('\n')
-        const transformedLines: string[] = []
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const jsonStr = line.slice(6) // Remove 'data: '
-              const data = JSON.parse(jsonStr)
-              
-              // Transform the data payload to camelCase
-              const transformedData = keysToCamelCase(data)
-              
-              transformedLines.push(`data: ${JSON.stringify(transformedData)}`)
-            } catch {
-              // Not JSON, pass through as-is
-              transformedLines.push(line)
-            }
-          } else {
-            transformedLines.push(line)
-          }
+    // Stream the response through
+    const stream = new ReadableStream({
+      async start(controller) {
+        const reader = response.body?.getReader()
+        if (!reader) {
+          controller.close()
+          return
         }
         
-        controller.enqueue(new TextEncoder().encode(transformedLines.join('\n')))
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            controller.enqueue(value)
+          }
+        } catch (error) {
+          console.error('❌ [StreamProxy] Stream error:', error)
+        } finally {
+          controller.close()
+        }
       }
     })
     
-    // Pipe the backend response through our transformer
-    const transformedStream = response.body.pipeThrough(transformStream)
-    
-    return new Response(transformedStream, {
+    return new Response(stream, {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-      },
+        'X-Accel-Buffering': 'no',
+      }
     })
     
   } catch (error) {
-    console.error('❌ [Proxy] Stream error:', error)
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Stream failed' 
-      }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    console.error('❌ [StreamProxy] Error:', error)
+    
+    // Return error as SSE event
+    const errorStream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder()
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: errorMsg })}\n\n`))
+        controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ success: false })}\n\n`))
+        controller.close()
+      }
+    })
+    
+    return new Response(errorStream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      }
+    })
   }
 }

@@ -33,12 +33,15 @@ import { useCanvasSharing } from '@/hooks/canvas/useCanvasSharing'
 // Services
 import { createStoryStructureNode, updateNodeData, deleteNode, addNewNode } from '@/services/canvas/canvasService'
 import { updateStructureItems, switchDocument, writeContent, answerQuestion } from '@/services/canvas/documentService'
-import { triggerOrchestratedGeneration } from '@/services/canvas/orchestrationService'
+// DEPRECATED: Legacy orchestration moved to Python backend
+// The new flow uses OrchestratorPanel → backendClient.ts → Python API
+// import { triggerOrchestratedGeneration } from '@/services/canvas/orchestrationService'
 
 // Components
 import CanvasHeader from '@/components/canvas/CanvasHeader'
 import CanvasViewport from '@/components/canvas/CanvasViewport'
 import CanvasPanels from '@/components/canvas/CanvasPanels'
+import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
 
 // Node types
 import UniversalNode from '@/components/canvas/UniversalNode'
@@ -441,26 +444,9 @@ export default function CanvasPage() {
       handleStructureItemClick: handleStructureItemClick || undefined,
       handleStructureItemsUpdate: handleStructureItemsUpdate || undefined,
       handleAgentAssign: handleAgentAssign || undefined,
-      triggerOrchestratedGeneration: async (structureNodeId, format, options) => {
-        await triggerOrchestratedGeneration(structureNodeId, format, {
-          setNodes: canvasState.setNodes,
-          setEdges: canvasState.setEdges,
-          setCurrentStoryStructureNodeId: documentState.setCurrentStoryStructureNodeId,
-          setCurrentStructureItems: documentState.setCurrentStructureItems,
-          setCurrentStructureFormat: documentState.setCurrentStructureFormat,
-          setCurrentContentMap: documentState.setCurrentContentMap,
-          setIsAIDocPanelOpen: documentState.setIsAIDocPanelOpen,
-          worldStateRef,
-          hasUnsavedChangesRef: canvasData.hasUnsavedChangesRef,
-          isInferencingRef: canvasData.isInferencingRef,
-          user,
-          nodes: canvasState.nodes,
-          edges: canvasState.edges,
-          storyId,
-          supabaseClient,
-          handleSave: canvasData.handleSave
-        }, options)
-      },
+      // DEPRECATED: Legacy orchestration moved to Python backend
+      // The new flow uses OrchestratorPanel → backendClient.ts → Python API → onCreateStoryNode
+      triggerOrchestratedGeneration: undefined,
       hasUnsavedChangesRef: canvasData.hasUnsavedChangesRef,
       isLoadingRef: canvasData.isLoadingRef,
       storyId,
@@ -470,7 +456,7 @@ export default function CanvasPage() {
       userId: canvasData.userId,
       selectedNode: canvasState.selectedNode
     }, { template, userPromptDirect, plan })
-  }, [canvasState, documentState, handleStructureItemClick, handleStructureItemsUpdate, handleAgentAssign, availableAgents, canvasData, user, storyId, supabaseClient, worldStateRef])
+  }, [canvasState, documentState, handleStructureItemClick, handleStructureItemsUpdate, handleAgentAssign, availableAgents, canvasData, storyId])
   
   // Handle add new node
   const handleAddNewNode = useCallback((nodeType: NodeType) => {
@@ -663,6 +649,53 @@ export default function CanvasPage() {
 
         {/* Panels */}
         <CanvasPanels
+          storyId={storyId || ''}
+          /**
+           * onStoryNodeCreated - Called when orchestrator creates a new story structure node
+           * 
+           * This callback is triggered by CanvasPanels.handleCreateStoryNode after:
+           * 1. User requests story creation via orchestrator chat
+           * 2. Python backend generates structure (chapters, scenes, etc.)
+           * 3. CanvasPanels creates the storyStructureNode and adds it to canvas
+           * 
+           * Here we:
+           * 1. Set document state so AIDocumentPanel knows what to display
+           * 2. Open AIDocumentPanel automatically for immediate editing
+           * 3. Save canvas with delay (React state needs time to update)
+           * 
+           * WHY SETTIMEOUT FOR SAVE:
+           * React's setState is async. When CanvasPanels calls onAddNode/onAddEdge,
+           * the nodes/edges arrays don't update immediately. If we call handleSave()
+           * right away, it saves the OLD state without the new node.
+           * The 500ms delay gives React time to process the state updates.
+           */
+          onStoryNodeCreated={(nodeId: string, structureData: CreateStoryNodeData) => {
+            console.log('🎉 [page.tsx] Story node created:', nodeId, structureData)
+            
+            // ─────────────────────────────────────────────────────────────
+            // Step 1: Set document state for AIDocumentPanel
+            // ─────────────────────────────────────────────────────────────
+            documentState.setCurrentStoryStructureNodeId(nodeId)
+            documentState.setCurrentStructureItems(structureData.items || [])
+            documentState.setCurrentStructureFormat(structureData.format as StoryFormat)
+            documentState.setCurrentContentMap({}) // No content yet - fresh document
+            
+            // ─────────────────────────────────────────────────────────────
+            // Step 2: Open the document panel automatically
+            // ─────────────────────────────────────────────────────────────
+            documentState.setIsAIDocPanelOpen(true)
+            
+            // ─────────────────────────────────────────────────────────────
+            // Step 3: Save canvas with delay to ensure node is in state
+            // ─────────────────────────────────────────────────────────────
+            // NOTE: We use setTimeout because React setState is async.
+            // The node was just added via setNodes(), but the state hasn't
+            // updated yet. Saving immediately would miss the new node.
+            setTimeout(() => {
+              console.log('💾 [page.tsx] Saving canvas with new story node...')
+              canvasData.handleSave()
+            }, 500)
+          }}
           selectedNode={canvasState.selectedNode}
           isPanelOpen={canvasState.isPanelOpen}
           onClosePanel={() => canvasState.setIsPanelOpen(false)}
@@ -781,4 +814,3 @@ export default function CanvasPage() {
     </div>
   )
 }
-

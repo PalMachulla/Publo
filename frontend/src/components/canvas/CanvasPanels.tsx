@@ -1,48 +1,151 @@
 /**
  * CanvasPanels - Canvas panel components wrapper
  * 
- * Wraps and coordinates:
- * - NodeDetailsPanel (node details and orchestrator)
- * - AIDocumentPanel (document editing)
+ * This component coordinates the side panels for the canvas:
+ * - NodeDetailsPanel: Shows node properties and the orchestrator chat
+ * - AIDocumentPanel: Full document editing experience
  * 
- * Architecture Notes:
- * - Coordinates panel state between NodeDetailsPanel and AIDocumentPanel
- * - Handles callbacks for document operations
- * - Manages WorldState instance sharing
+ * =============================================================================
+ * ARCHITECTURE DECISION: Direct Node Creation vs Hook
+ * =============================================================================
  * 
- * @see NodeDetailsPanel for node details UI
+ * We implement story node creation DIRECTLY here instead of using the 
+ * `useCreateStoryNode` hook because:
+ * 
+ * 1. CanvasPanels is rendered as a SIBLING to CanvasViewport, not inside it
+ * 2. ReactFlowProvider wraps CanvasViewport, not CanvasPanels
+ * 3. Therefore, useReactFlow() hooks don't work here (zustand provider error)
+ * 
+ * Solution: We receive `onAddNode` and `onAddEdge` as props from page.tsx,
+ * which has access to `canvasState.setNodes` and `canvasState.setEdges`.
+ * 
+ * =============================================================================
+ * DATA FLOW: Orchestrator → Story Node → Document Panel
+ * =============================================================================
+ * 
+ * 1. User types "Create a screenplay about X" in OrchestratorPanel
+ * 2. Python backend generates structure with chapters/sections
+ * 3. OrchestratorPanel receives structure → calls onCreateStoryNode(data)
+ * 4. handleCreateStoryNode (this file):
+ *    - Creates a new storyStructureNode with the structure data
+ *    - Wires up onItemClick to enable the edit button
+ *    - Adds node and edge to canvas via onAddNode/onAddEdge
+ *    - Calls onStoryNodeCreated to notify parent
+ * 5. page.tsx receives onStoryNodeCreated:
+ *    - Sets documentState with the new node's data
+ *    - Opens AIDocumentPanel automatically
+ * 6. User can now edit the document or click the edit icon later to reopen
+ * 
+ * =============================================================================
+ * COMPONENT HIERARCHY
+ * =============================================================================
+ * 
+ * page.tsx (has canvasState with nodes/edges)
+ *   ├── CanvasViewport (wrapped in ReactFlowProvider internally)
+ *   │     └── ReactFlow canvas with nodes
+ *   │
+ *   └── CanvasPanels (this file - NOT inside ReactFlowProvider)
+ *         ├── NodeDetailsPanel
+ *         │     └── OrchestratorPanel (when orchestrator node selected)
+ *         │           └── Calls handleCreateStoryNode when structure generated
+ *         │
+ *         └── AIDocumentPanel (document editing)
+ * 
+ * @see NodeDetailsPanel for node details UI and orchestrator integration
  * @see AIDocumentPanel for document editing UI
- * @see canvas/page.tsx for original implementation
+ * @see useCreateStoryNode for the hook version (only works inside ReactFlowProvider)
+ * @see canvas/page.tsx for the parent component and state management
  */
 
-import React from 'react'
+import React, { useCallback } from 'react'
 import { Node, Edge } from 'reactflow'
 import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
 import AIDocumentPanel from '@/components/panels/AIDocumentPanel'
 import type { WorldStateManager } from '@/lib/orchestrator/core/worldState'
 import { StoryFormat } from '@/types/nodes'
+import { getOrchestratorNodeId, isOrchestratorNode } from '@/data/stories'
+import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
+
+// =============================================================================
+// PROPS INTERFACE
+// =============================================================================
 
 export interface CanvasPanelsProps {
-  // Node details panel
+  // ─────────────────────────────────────────────────────────────────────────
+  // Story/Canvas Context
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /** 
+   * The story ID from URL params. Used to:
+   * - Compute orchestratorNodeId (context_${storyId})
+   * - Scope chat history to this canvas
+   */
+  storyId: string
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Node Selection & Panel State
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /** Currently selected node (for NodeDetailsPanel) */
   selectedNode: Node | null
+  
+  /** Whether NodeDetailsPanel is open */
   isPanelOpen: boolean
+  
+  /** Close NodeDetailsPanel */
   onClosePanel: () => void
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Canvas Operations (passed from page.tsx which has canvasState)
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /** Update a node's data */
   onNodeUpdate: (nodeId: string, newData: any) => void
+  
+  /** Delete a node */
   onNodeDelete: (nodeId: string) => void
+  
+  /** Legacy story creation (format-based) */
   onCreateStory: (format: StoryFormat, template?: string, userPromptDirect?: string, plan?: any) => Promise<void>
+  
+  /** 
+   * Add a node to the canvas.
+   * This is how we add nodes without useReactFlow() - page.tsx passes
+   * a function that calls canvasState.setNodes()
+   */
   onAddNode: (newNode: Node) => void
+  
+  /** 
+   * Add an edge to the canvas.
+   * Same pattern as onAddNode for edges.
+   */
   onAddEdge: (newEdge: Edge) => void
+  
+  /** Current edges (for rendering and querying connections) */
   edges: Edge[]
+  
+  /** Current nodes (for finding orchestrator position, etc.) */
   nodes: Node[]
+  
+  /** WorldState instance for unified state management */
   worldState?: WorldStateManager
   
-  // Document selection
+  // ─────────────────────────────────────────────────────────────────────────
+  // Document Selection & Navigation
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /** 
+   * Select a node and optionally navigate to a section.
+   * Called when user clicks edit button on story node.
+   * Opens AIDocumentPanel with the document loaded.
+   */
   onSelectNode: (nodeId: string, sectionId?: string) => void
   
-  // Chat operations
-  // ✅ NEW: Added metadata parameter for structured content support (progress lists, etc.)
-  // Metadata allows messages to include structured data that can be rendered with icons
-  // and better formatting in the UI. See StatusMessage component for rendering logic.
+  // ─────────────────────────────────────────────────────────────────────────
+  // Chat Operations (for OrchestratorPanel)
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /** Add a message to the chat history */
   onAddChatMessage: (
     message: string, 
     role?: 'user' | 'orchestrator', 
@@ -52,41 +155,111 @@ export interface CanvasPanelsProps {
       format?: 'progress_list' | 'simple_list' | 'steps'
     }
   ) => void
+  
+  /** Clear chat history */
   onClearChat: () => void
   
-  // Document panel
+  // ─────────────────────────────────────────────────────────────────────────
+  // Document Panel State
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /** Whether document view toggle is on (in NodeDetailsPanel) */
   isDocumentViewOpen: boolean
+  
+  /** Toggle document view */
   onToggleDocumentView: () => void
+  
+  /** Notify when panel width changes (for layout calculations) */
   onPanelWidthChange: (width: number) => void
   
-  // Active context
+  // ─────────────────────────────────────────────────────────────────────────
+  // Active Context (for contextual writing)
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /** Currently active section/segment for contextual operations */
   activeContext: { type: 'section' | 'segment'; id: string; name: string } | null
+  
+  /** Clear the active context */
   onClearContext: () => void
   
-  // Document operations
+  // ─────────────────────────────────────────────────────────────────────────
+  // Document Operations
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /** Write content to a specific segment */
   onWriteContent: (segmentId: string, prompt: string) => Promise<void>
+  
+  /** Answer a question about the content */
   onAnswerQuestion: (question: string) => Promise<string>
+  
+  /** Current structure items (chapters, sections, etc.) */
   structureItems: any[]
+  
+  /** Map of section ID to content */
   contentMap: Record<string, string>
+  
+  /** Currently loaded story structure node ID */
   currentStoryStructureNodeId: string | null
   
-  // Document panel state
+  // ─────────────────────────────────────────────────────────────────────────
+  // AIDocumentPanel State
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /** Whether AIDocumentPanel is open */
   isAIDocPanelOpen: boolean
+  
+  /** Close AIDocumentPanel */
   onCloseDocumentPanel: () => void
+  
+  /** Initial section to scroll to when opening */
   initialSectionId: string | null
+  
+  /** Update structure items for a node */
   onUpdateStructure: (nodeId: string, items: any[]) => void
+  
+  /** Width of orchestrator panel (for layout) */
   orchestratorPanelWidth: number
+  
+  /** Switch to a different document */
   onSwitchDocument: (nodeId: string) => void
+  
+  /** Set the active context */
   onSetContext: (context: { type: 'section' | 'segment'; id: string; name: string } | null) => void
+  
+  /** Callback when sections are loaded from database */
   onSectionsLoaded: (sections: Array<{ id: string; structure_item_id: string; content: string }>) => void
+  
+  /** Register a refresh function for sections */
   onRefreshSections: (refreshFn: () => Promise<void>) => void
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Story Node Creation Callback
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /** 
+   * Called when a new story structure node is created.
+   * 
+   * @param nodeId - The ID of the newly created node
+   * @param data - The structure data (format, items, label, logline, etc.)
+   * 
+   * page.tsx uses this to:
+   * - Set documentState with the new structure
+   * - Open AIDocumentPanel automatically
+   * - Save the canvas
+   */
+  onStoryNodeCreated?: (nodeId: string, data: CreateStoryNodeData) => void
 }
 
+// =============================================================================
+// COMPONENT
+// =============================================================================
+
 /**
- * Canvas panels component
+ * Canvas panels component - coordinates NodeDetailsPanel and AIDocumentPanel
  */
 export default function CanvasPanels(props: CanvasPanelsProps) {
   const {
+    storyId,
     selectedNode,
     isPanelOpen,
     onClosePanel,
@@ -119,12 +292,163 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     onSwitchDocument,
     onSetContext,
     onSectionsLoaded,
-    onRefreshSections
+    onRefreshSections,
+    onStoryNodeCreated
   } = props
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Computed Values
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /**
+   * Compute orchestrator node ID from story ID.
+   * Format: "context_${storyId}" (e.g., "context_abc-123")
+   * 
+   * This ensures each canvas has a unique orchestrator node ID,
+   * preventing primary key conflicts in the database.
+   */
+  const orchestratorNodeId = getOrchestratorNodeId(storyId)
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Story Node Creation
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /**
+   * Creates a story structure node on the canvas.
+   * 
+   * WHY WE DO THIS HERE:
+   * We can't use the useCreateStoryNode hook because CanvasPanels is outside
+   * ReactFlowProvider. Instead, we use onAddNode/onAddEdge props from page.tsx.
+   * 
+   * WHAT THIS DOES:
+   * 1. Finds the orchestrator node to position the new node below it
+   * 2. Creates a storyStructureNode with the generated structure
+   * 3. Wires up onItemClick so the edit button opens AIDocumentPanel
+   * 4. Creates an edge connecting orchestrator → story node
+   * 5. Notifies page.tsx via onStoryNodeCreated
+   * 
+   * @param data - Structure data from the orchestrator:
+   *   - format: 'novel' | 'screenplay' | 'podcast' | etc.
+   *   - label: Story title (e.g., "The Last Lighthouse Keeper")
+   *   - items: Array of structure items (chapters, scenes, etc.)
+   *   - template: Template used (e.g., "heros-journey")
+   *   - logline: Story summary
+   */
+  const handleCreateStoryNode = useCallback((data: CreateStoryNodeData) => {
+    console.log('📐 [CanvasPanels] Creating story node:', data)
+    
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 1: Find orchestrator node for positioning
+    // ─────────────────────────────────────────────────────────────────────
+    
+    let orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
+    
+    if (!orchestratorNode) {
+      // Fallback: find any orchestrator node (for backwards compatibility)
+      orchestratorNode = nodes.find(n => isOrchestratorNode(n.id))
+    }
+    
+    if (!orchestratorNode) {
+      console.error('❌ [CanvasPanels] Orchestrator node not found')
+      return
+    }
+    
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 2: Generate unique ID and position
+    // ─────────────────────────────────────────────────────────────────────
+    
+    const newNodeId = `story-structure-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    
+    // Position below and slightly left of orchestrator
+    const newPosition = {
+      x: orchestratorNode.position.x - 50,
+      y: orchestratorNode.position.y + 200
+    }
+    
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 3: Create the story structure node
+    // ─────────────────────────────────────────────────────────────────────
+    
+    const newNode: Node = {
+      id: newNodeId,
+      type: 'storyStructureNode',
+      position: newPosition,
+      data: {
+        nodeType: 'story-structure',
+        label: data.label || 'Story Structure',
+        format: data.format,
+        template: data.template,
+        logline: data.logline,
+        items: data.items,
+        comments: [],
+        
+        /**
+         * onItemClick - Called when user clicks the edit button on the node.
+         * 
+         * This is what makes the pencil icon work! StoryStructureNode.tsx
+         * has an edit button that calls this when clicked:
+         * 
+         *   if (onItemClick && items.length > 0) {
+         *     const firstItem = items.find(item => item.level === 1) || items[0]
+         *     onItemClick(firstItem, items, format, id)
+         *   }
+         * 
+         * We forward this to onSelectNode which opens AIDocumentPanel.
+         */
+        onItemClick: (item: any, allItems: any[], format: string, nodeId: string) => {
+          console.log('📝 [StoryStructureNode] Edit button clicked:', { nodeId, itemId: item?.id })
+          onSelectNode(nodeId, item?.id)
+        },
+        
+        /**
+         * onItemsUpdate - Called when structure items are reordered/modified.
+         * Forwards to page.tsx's onUpdateStructure to persist changes.
+         */
+        onItemsUpdate: (newItems: any[]) => {
+          console.log('📝 [StoryStructureNode] Items updated:', newItems.length)
+          onUpdateStructure(newNodeId, newItems)
+        }
+      }
+    }
+    
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 4: Create edge from orchestrator to story node
+    // ─────────────────────────────────────────────────────────────────────
+    
+    const newEdge: Edge = {
+      id: `edge-${orchestratorNode.id}-${newNodeId}`,
+      source: orchestratorNode.id,
+      target: newNodeId,
+      type: 'smoothstep' // Curved connector line
+    }
+    
+    console.log('✅ [CanvasPanels] Adding node and edge:', { newNodeId, edgeId: newEdge.id })
+    
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 5: Add to canvas and notify parent
+    // ─────────────────────────────────────────────────────────────────────
+    
+    // These call canvasState.setNodes/setEdges in page.tsx
+    onAddNode(newNode)
+    onAddEdge(newEdge)
+    
+    // Notify page.tsx so it can open AIDocumentPanel with the new document
+    onStoryNodeCreated?.(newNodeId, data)
+    
+    return newNodeId  // Add this line to return the node ID
+  }, [nodes, orchestratorNodeId, onAddNode, onAddEdge, onStoryNodeCreated, onSelectNode, onUpdateStructure])
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
   
   return (
     <>
-      {/* Right Panel */}
+      {/* 
+        NodeDetailsPanel - Right side panel showing node properties.
+        When an orchestrator node is selected, this renders OrchestratorPanel
+        which handles the chat interface and story generation.
+      */}
       <NodeDetailsPanel
         node={selectedNode}
         isOpen={isPanelOpen}
@@ -150,11 +474,23 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
         structureItems={structureItems}
         contentMap={contentMap}
         currentStoryStructureNodeId={currentStoryStructureNodeId}
+        // New props for orchestrator integration
+        storyId={storyId}
+        orchestratorNodeId={orchestratorNodeId}
+        onCreateStoryNode={handleCreateStoryNode}
       />
 
-      {/* AI Document Panel */}
+      {/* 
+        AIDocumentPanel - Full document editing experience.
+        Opens when user:
+        - Creates a new story (via onStoryNodeCreated callback)
+        - Clicks edit button on a story node (via onItemClick → onSelectNode)
+        
+        Key prop: currentStoryStructureNodeId determines which document to show.
+        Force re-mount when document changes using key prop.
+      */}
       <AIDocumentPanel 
-        key={currentStoryStructureNodeId || 'no-document'} // Force re-mount when document changes
+        key={currentStoryStructureNodeId || 'no-document'}
         isOpen={isAIDocPanelOpen} 
         onClose={onCloseDocumentPanel}
         storyStructureNodeId={currentStoryStructureNodeId}
@@ -173,4 +509,3 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     </>
   )
 }
-

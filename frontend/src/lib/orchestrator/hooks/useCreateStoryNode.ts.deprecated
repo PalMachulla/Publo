@@ -1,0 +1,155 @@
+/**
+ * Sample implementation of onCreateStoryNode callback
+ * 
+ * Add this to your page.tsx or canvas component where you manage ReactFlow state.
+ * This creates a StoryStructureNode connected to the orchestrator.
+ * 
+ * Updated: Uses dynamic orchestrator node ID (context_${storyId})
+ */
+
+import { useCallback } from 'react'
+import { useReactFlow, Node, Edge } from 'reactflow'
+import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
+import { isOrchestratorNode } from '@/data/stories'
+
+// Generate unique ID (consistent with codebase pattern)
+function generateNodeId(): string {
+  return `story_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+}
+
+// ============================================================
+// HOOK: useCreateStoryNode
+// ============================================================
+
+interface UseCreateStoryNodeOptions {
+  storyId: string  // Required: used to find orchestrator node
+  orchestratorNodeId?: string  // Optional: override for orchestrator node ID
+  onNodeCreated?: (nodeId: string) => void
+}
+
+export function useCreateStoryNode(options: UseCreateStoryNodeOptions) {
+  const { storyId, orchestratorNodeId: overrideOrchestratorId, onNodeCreated } = options
+  const { getNode, getNodes, setNodes, setEdges } = useReactFlow()
+  
+  const createStoryNode = useCallback((data: CreateStoryNodeData) => {
+    console.log('🎨 [Canvas] Creating story node:', data)
+    
+    // Find orchestrator node - try override, then context_${storyId}, then search
+    let orchestratorNode = null
+    
+    if (overrideOrchestratorId) {
+      orchestratorNode = getNode(overrideOrchestratorId)
+    }
+    
+    if (!orchestratorNode) {
+      orchestratorNode = getNode(`context_${storyId}`)
+    }
+    
+    // Fallback: search for any orchestrator node
+    if (!orchestratorNode) {
+      const allNodes = getNodes()
+      orchestratorNode = allNodes.find(n => isOrchestratorNode(n.id))
+    }
+    
+    if (!orchestratorNode) {
+      console.error('❌ [Canvas] Orchestrator node not found')
+      return null
+    }
+    
+    console.log('✅ [Canvas] Found orchestrator node:', orchestratorNode.id)
+    
+    // Generate unique ID
+    const nodeId = generateNodeId()
+    
+    // Position below orchestrator (with some offset)
+    const position = {
+      x: orchestratorNode.position.x - 70, // Center below (story node is wider)
+      y: orchestratorNode.position.y + 300  // Below with gap
+    }
+    
+    // Create the story structure node
+    const newNode: Node = {
+      id: nodeId,
+      type: 'storyStructureNode',
+      position,
+      data: {
+        format: data.format,
+        label: data.label,
+        items: data.items,
+        logline: data.logline,
+        template: data.template,
+        wordsWritten: 0,
+        // Callbacks will be added by the node registration
+        onItemClick: undefined,
+        onItemsUpdate: undefined,
+      }
+    }
+    
+    // Create curved edge from orchestrator to story node
+    const newEdge: Edge = {
+      id: `edge-${orchestratorNode.id}-${nodeId}`,
+      source: orchestratorNode.id,
+      target: nodeId,
+      type: 'smoothstep', // Curved connector
+      animated: false,
+      style: {
+        stroke: '#9ca3af', // gray-400
+        strokeWidth: 2
+      }
+    }
+    
+    // Add node and edge to canvas
+    setNodes((nodes) => [...nodes, newNode])
+    setEdges((edges) => [...edges, newEdge])
+    
+    console.log('✅ [Canvas] Story node created:', nodeId)
+    
+    // Notify parent
+    onNodeCreated?.(nodeId)
+    
+    return nodeId
+  }, [storyId, overrideOrchestratorId, getNode, getNodes, setNodes, setEdges, onNodeCreated])
+  
+  return createStoryNode
+}
+
+// ============================================================
+// USAGE IN PAGE COMPONENT
+// ============================================================
+
+/*
+// In your page.tsx or canvas component:
+
+import { useCreateStoryNode } from '@/lib/orchestrator/hooks/useCreateStoryNode'
+
+function CanvasPage({ storyId }: { storyId: string }) {
+  const [storyStructureNodeId, setStoryStructureNodeId] = useState<string | undefined>()
+  
+  // Create the callback - requires storyId now
+  const handleCreateStoryNode = useCreateStoryNode({
+    storyId,
+    // orchestratorNodeId is optional - will default to context_${storyId}
+    onNodeCreated: (nodeId) => {
+      setStoryStructureNodeId(nodeId)
+    }
+  })
+  
+  return (
+    <ReactFlowProvider>
+      <ReactFlow nodes={nodes} edges={edges} ...>
+        ...
+      </ReactFlow>
+      
+      <OrchestratorPanel
+        storyId={storyId}
+        orchestratorNodeId={`context_${storyId}`}
+        storyStructureNodeId={storyStructureNodeId}
+        onCreateStoryNode={handleCreateStoryNode}
+        // ... other props
+      />
+    </ReactFlowProvider>
+  )
+}
+*/
+
+export default useCreateStoryNode

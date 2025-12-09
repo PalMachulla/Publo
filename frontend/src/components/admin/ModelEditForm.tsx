@@ -225,7 +225,10 @@ export default function ModelEditForm({ model, onClose, onSave }: ModelEditFormP
                 </label>
                 <select
                   value={formData.tier || ''}
-                  onChange={(e) => setFormData({ ...formData, tier: e.target.value || null })}
+                  onChange={(e) => {
+                    const tier = e.target.value as 'frontier' | 'premium' | 'standard' | 'fast' | '';
+                    setFormData({ ...formData, tier: tier || null });
+                  }}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400"
                 >
                   <option value="">Not Set</option>
@@ -284,8 +287,11 @@ export default function ModelEditForm({ model, onClose, onSave }: ModelEditFormP
                   Speed
                 </label>
                 <select
-                  value={formData.speed || ''}
-                  onChange={(e) => setFormData({ ...formData, speed: e.target.value || null })}
+                  value={formData.speed ?? ''}
+                  onChange={(e) => {
+                    const value = e.target.value as '' | 'instant' | 'fast' | 'medium' | 'slow';
+                    setFormData({ ...formData, speed: value === '' ? null : value });
+                  }}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400"
                 >
                   <option value="">Not Set</option>
@@ -300,8 +306,11 @@ export default function ModelEditForm({ model, onClose, onSave }: ModelEditFormP
                   Cost
                 </label>
                 <select
-                  value={formData.cost || ''}
-                  onChange={(e) => setFormData({ ...formData, cost: e.target.value || null })}
+                  value={formData.cost ?? ''}
+                  onChange={(e) => {
+                    const value = e.target.value as '' | 'cheap' | 'moderate' | 'expensive';
+                    setFormData({ ...formData, cost: value === '' ? null : value });
+                  }}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400"
                 >
                   <option value="">Not Set</option>

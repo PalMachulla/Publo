@@ -235,10 +235,10 @@ export async function writeContent(
     }
     
     // Update the content map with new content (local state)
-    setCurrentContentMap(prev => ({
-      ...prev,
+    setCurrentContentMap({
+      ...currentContentMap,
       [segmentId]: data.content
-    }))
+    })
     
     // ✅ NEW HIERARCHICAL SYSTEM: Save content to document_data JSONB
     console.log('💾 Saving generated content to hierarchical document:', {

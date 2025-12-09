@@ -1,161 +1,87 @@
 /**
  * Orchestrator - Public API
  * 
- * Clean, single entry point for all orchestrator functionality.
- * Inspired by Agentic Flow's clean API design.
+ * =============================================================================
+ * POST-PYTHON MIGRATION
+ * =============================================================================
  * 
- * Usage:
- * ```typescript
- * import { createOrchestrator } from '@/lib/orchestrator'
+ * Most orchestration logic has moved to the Python backend (FastAPI + LangGraph).
+ * This index now only exports:
+ * - Backend client (for calling Python API)
+ * - State client (for session persistence)
+ * - Blackboard/WorldState (for frontend state management)
+ * - UI components (OrchestratorPanel)
  * 
- * const orchestrator = createOrchestrator({ userId: 'user-123' })
- * const response = await orchestrator.orchestrate({
- *   message: 'Tell me about the screenplay',
- *   canvasNodes: nodes,
- *   canvasEdges: edges
- * })
- * ```
+ * The following have been DEPRECATED (moved to Python):
+ * - OrchestratorEngine → Python LangGraph workflow
+ * - IntentRouter/IntentPipeline → Python intent analysis
+ * - Actions/Tools → Python action execution
+ * - Multi-agent orchestration → Python agents
+ * 
+ * @see /api/orchestrator/orchestrate/route.ts for the API endpoint
+ * @see Python backend: orchestrator/graph/nodes.py
  */
 
-// Core exports
+// ─────────────────────────────────────────────────────────────────────────────
+// BACKEND CLIENT - Calls Python orchestrator API
+// ─────────────────────────────────────────────────────────────────────────────
 export {
-  OrchestratorEngine,
-  getOrchestrator,
-  getMultiAgentOrchestrator, // PHASE 3: Multi-agent support
-  createOrchestrator,
-  type OrchestratorConfig,
-  type OrchestratorRequest,
-  type OrchestratorResponse,
-  type OrchestratorAction
-} from './core/orchestratorEngine'
+  orchestrate as orchestrateViaBackend,
+  type OrchestrateRequest,
+  type OrchestrateResponse,
+  type OrchestratorAction as BackendAction
+} from './backendClient'
 
-// ✅ FIX: Import functions for local use, then re-export
-import { getBlackboard as _getBlackboard } from './core/blackboard'
-import { getMultiAgentOrchestrator as _getMultiAgentOrchestrator } from './core/orchestratorEngine'
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE CLIENT - Session persistence with Supabase
+// ─────────────────────────────────────────────────────────────────────────────
+export {
+  getOrCreateSession,
+  addMessage as addStateMessage,
+  loadMessages,
+  type Session as OrchestratorSession,
+  type Message as OrchestratorMessage
+} from './stateClient'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BLACKBOARD - Frontend conversation state
+// ─────────────────────────────────────────────────────────────────────────────
 export {
   Blackboard,
   getBlackboard,
   createBlackboard,
   type BlackboardState,
   type ConversationMessage,
-  // NOTE: CanvasState and DocumentState removed - WorldState is now the single source of truth
   type OrchestratorContext,
   type PatternMemory
 } from './core/blackboard'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WORLD STATE - Frontend state management (for passing to Python backend)
+// ─────────────────────────────────────────────────────────────────────────────
 export {
-  buildCanvasContext,
-  resolveNode,
-  formatCanvasContextForLLM,
-  type NodeContext,
-  type CanvasContext
-} from './context/contextProvider'
+  WorldStateManager,
+  buildWorldStateFromReactFlow,
+  type WorldState
+} from './core/worldState'
 
-export {
-  selectModel,
-  assessTaskComplexity,
-  getModelInfo,
-  supportsCapability,
-  estimateCost,
-  type ModelPriority,
-  type TaskComplexity,
-  type ModelCapability,
-  type ModelSelection
-} from './core/modelRouter'
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES - Keep types that are still referenced
+// ─────────────────────────────────────────────────────────────────────────────
+export type {
+  OrchestratorConfig,
+  OrchestratorRequest,
+  OrchestratorResponse,
+  OrchestratorAction
+} from './core/orchestratorEngine.types'
 
-// Intent system exports (for advanced usage)
-export {
-  analyzeIntent,
-  validateIntent,
-  explainIntent,
-  type UserIntent,
-  type IntentAnalysis,
-  type IntentContext
-} from './context/intentRouter'
+// ─────────────────────────────────────────────────────────────────────────────
+// HOOKS
+// ─────────────────────────────────────────────────────────────────────────────
+export { useOrchestratorSession } from './hooks/useOrchestratorSession'
 
-// Capabilities exports (for direct access)
-export {
-  enhanceContextWithRAG,
-  buildRAGEnhancedPrompt,
-  type RAGEnhancedContext
-} from './context/ragIntegration'
-
-// Temporal memory exports
-export {
-  TemporalMemory,
-  createTemporalMemory,
-  type EventDelta,
-  type TimelineSnapshot,
-  type RouterScore
-} from './context/temporalMemory'
-
-// Tool system exports (PHASE 2)
-export {
-  createDefaultToolRegistry,
-  type Tool,
-  type ToolRegistry,
-  type ToolContext,
-  type ToolResult
-} from './tools'
-
-// ============================================================
-// CONVENIENCE FUNCTIONS
-// ============================================================
-
-/**
- * Quick start: Create and orchestrate in one call
- * @deprecated Consider using MultiAgentOrchestrator directly for Phase 3 multi-agent features
- */
-export async function orchestrate(
-  userId: string,
-  request: import('./core/orchestratorEngine').OrchestratorRequest,
-  config?: Partial<import('./core/orchestratorEngine').OrchestratorConfig>
-) {
-  // ✅ FIX: Import and instantiate MultiAgentOrchestrator
-  const { MultiAgentOrchestrator } = await import('./agents/MultiAgentOrchestrator')
-  const orchestrator = new MultiAgentOrchestrator({ userId, ...config })
-  return await orchestrator.orchestrate(request)
-}
-
-/**
- * Get conversation history for a user
- */
-export function getConversationHistory(userId: string, count: number = 10) {
-  const blackboard = _getBlackboard(userId) // Use imported version
-  return blackboard.getRecentMessages(count)
-}
-
-/**
- * Clear conversation history for a user
- */
-export function clearConversation(userId: string) {
-  const orchestrator = _getMultiAgentOrchestrator(userId) // Use imported version
-  orchestrator.reset()
-}
-
-/**
- * Learn from a successful pattern
- */
-export async function learnPattern(
-  userId: string,
-  pattern: string,
-  action: string,
-  namespace: string = 'general'
-) {
-  const blackboard = _getBlackboard(userId) // Use imported version
-  await blackboard.storePattern(pattern, action, namespace)
-}
-
-/**
- * Query learned patterns
- */
-export async function queryPatterns(
-  userId: string,
-  query: string,
-  namespace?: string
-) {
-  const blackboard = _getBlackboard(userId) // Use imported version
-  return await blackboard.queryPatterns(query, namespace)
-}
-
+// ─────────────────────────────────────────────────────────────────────────────
+// DEPRECATED - Tools moved to Python backend
+// ─────────────────────────────────────────────────────────────────────────────
+// The tool system (ToolRegistry, BaseTool, etc.) has been deprecated.
+// Python backend now handles all tool execution via LangGraph.

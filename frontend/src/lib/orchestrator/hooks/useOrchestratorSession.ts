@@ -1,74 +1,241 @@
-// src/lib/orchestrator/hooks/useOrchestratorSession.ts
+/**
+ * useOrchestratorSession Hook
+ * 
+ * Manages orchestrator session state with Supabase persistence.
+ * Sessions are now scoped to story (canvas/project).
+ * 
+ * Updated: Added storyId parameter to scope chat history per canvas.
+ * Updated: Type normalization to UPPERCASE for Supabase constraint.
+ */
 
-import { useEffect, useState, useCallback } from 'react'
-import { getOrCreateSession, addMessage, loadMessages, Session, Message } from '../stateClient'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { createClient } from '@/lib/supabase/client'
+
+// ============================================================
+// TYPES
+// ============================================================
+
+interface OrchestratorSession {
+  id: string
+  user_id: string
+  story_id: string | null
+  created_at: string
+  updated_at: string
+  metadata?: Record<string, unknown>
+}
+
+interface OrchestratorMessage {
+  id: string
+  session_id: string
+  role: 'user' | 'orchestrator' | 'system'
+  content: string
+  type: string
+  created_at: string
+  metadata?: Record<string, unknown>
+}
 
 interface UseOrchestratorSessionOptions {
   userId: string
-  canvasId?: string
-  enabled?: boolean  // Feature flag
+  storyId?: string  // NEW: Scope session to story/canvas
+  enabled?: boolean
+  onSessionCreated?: (session: OrchestratorSession) => void
+  onError?: (error: Error) => void
 }
 
-export function useOrchestratorSession({ 
-  userId, 
-  canvasId, 
-  enabled = true 
-}: UseOrchestratorSessionOptions) {
-  const [session, setSession] = useState<Session | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+interface UseOrchestratorSessionReturn {
+  session: OrchestratorSession | null
+  messages: OrchestratorMessage[]
+  isLoading: boolean
+  error: Error | null
+  persistMessage: (role: string, content: string, type: string, metadata?: Record<string, unknown>) => Promise<void>
+  clearHistory: () => Promise<void>
+  isEnabled: boolean
+}
+
+// ============================================================
+// HOOK
+// ============================================================
+
+export function useOrchestratorSession({
+  userId,
+  storyId,
+  enabled = true,
+  onSessionCreated,
+  onError
+}: UseOrchestratorSessionOptions): UseOrchestratorSessionReturn {
+  const [session, setSession] = useState<OrchestratorSession | null>(null)
+  const [messages, setMessages] = useState<OrchestratorMessage[]>([])
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  
+  const supabaseRef = useRef(createClient())
+  const initializingRef = useRef(false)
 
-  // Initialize session on mount
+  // ========== INITIALIZE SESSION ==========
   useEffect(() => {
-    if (!enabled || !userId) {
-      setIsLoading(false)
-      return
-    }
-
-    async function init() {
+    if (!enabled || !userId || initializingRef.current) return
+    
+    const initSession = async () => {
+      initializingRef.current = true
+      setIsLoading(true)
+      
       try {
-        setIsLoading(true)
-        console.log('🔄 [Session] Initializing for user:', userId)
+        const supabase = supabaseRef.current
         
-        const sess = await getOrCreateSession(userId, canvasId)
-        setSession(sess)
+        // Build query to find existing session
+        let query = supabase
+          .from('orchestrator_sessions')
+          .select('*')
+          .eq('user_id', userId)
         
-        // Load existing messages
-        const msgs = await loadMessages(sess.id)
-        setMessages(msgs)
-        console.log(`📂 [Session] Loaded ${msgs.length} messages`)
+        // Scope to story if provided
+        if (storyId) {
+          query = query.eq('story_id', storyId)
+        } else {
+          query = query.is('story_id', null)
+        }
+        
+        const { data: existingSessions, error: fetchError } = await query
+          .order('updated_at', { ascending: false })
+          .limit(1)
+        
+        if (fetchError) throw fetchError
+        
+        let activeSession: OrchestratorSession
+        
+        if (existingSessions && existingSessions.length > 0) {
+          // Use existing session
+          activeSession = existingSessions[0]
+          console.log('📂 [Session] Found existing session:', activeSession.id)
+        } else {
+          // Create new session
+          const { data: newSession, error: createError } = await supabase
+            .from('orchestrator_sessions')
+            .insert({
+              user_id: userId,
+              story_id: storyId || null,
+              metadata: { 
+                created_from: 'useOrchestratorSession',
+                story_scoped: !!storyId
+              }
+            })
+            .select()
+            .single()
+          
+          if (createError) throw createError
+          
+          activeSession = newSession
+          console.log('✨ [Session] Created new session:', activeSession.id, storyId ? `for story ${storyId}` : '(global)')
+          onSessionCreated?.(activeSession)
+        }
+        
+        setSession(activeSession)
+        
+        // Load messages for this session
+        const { data: sessionMessages, error: messagesError } = await supabase
+          .from('orchestrator_messages')
+          .select('*')
+          .eq('session_id', activeSession.id)
+          .order('created_at', { ascending: true })
+        
+        if (messagesError) throw messagesError
+        
+        setMessages(sessionMessages || [])
+        console.log('📝 [Session] Loaded', sessionMessages?.length || 0, 'messages')
         
       } catch (err) {
-        console.error('❌ [Session] Init error:', err)
-        setError(err as Error)
+        const error = err instanceof Error ? err : new Error('Failed to initialize session')
+        console.error('❌ [Session] Error:', error)
+        setError(error)
+        onError?.(error)
       } finally {
         setIsLoading(false)
+        initializingRef.current = false
       }
     }
+    
+    initSession()
+  }, [userId, storyId, enabled, onSessionCreated, onError])
+  
+  // ========== RESET ON STORY CHANGE ==========
+  useEffect(() => {
+    // When storyId changes, reset session to trigger re-initialization
+    if (storyId) {
+      setSession(null)
+      setMessages([])
+      initializingRef.current = false
+    }
+  }, [storyId])
 
-    init()
-  }, [userId, canvasId, enabled])
-
-  // Persist a new message
+  // ========== PERSIST MESSAGE ==========
   const persistMessage = useCallback(async (
-    role: 'user' | 'orchestrator' | 'system',
+    role: string,
     content: string,
-    type: string = 'message',
-    metadata: Record<string, any> = {}
+    type: string,
+    metadata?: Record<string, unknown>
   ) => {
-    if (!session || !enabled) return null
-
+    if (!session) {
+      console.warn('⚠️ [Session] Cannot persist message - no active session')
+      return
+    }
+    
     try {
-      const msg = await addMessage(session.id, role, content, type, metadata)
-      setMessages(prev => [...prev, msg])
-      console.log('💾 [Session] Message persisted:', msg.id)
-      return msg
+      const supabase = supabaseRef.current
+      
+      // Normalize type to UPPERCASE to match Supabase CHECK constraint
+      const normalizedType = type.toUpperCase()
+      
+      const { data: newMessage, error } = await supabase
+        .from('orchestrator_messages')
+        .insert({
+          session_id: session.id,
+          role,
+          content,
+          type: normalizedType,
+          metadata
+        })
+        .select()
+        .single()
+      
+      if (error) throw error
+      
+      // Update local state
+      setMessages(prev => [...prev, newMessage])
+      
+      // Update session timestamp
+      await supabase
+        .from('orchestrator_sessions')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', session.id)
+      
+      console.log('💾 [Session] Message persisted:', newMessage.id, `(type: ${normalizedType})`)
+      
     } catch (err) {
       console.error('❌ [Session] Failed to persist message:', err)
-      return null
     }
-  }, [session, enabled])
+  }, [session])
+
+  // ========== CLEAR HISTORY ==========
+  const clearHistory = useCallback(async () => {
+    if (!session) return
+    
+    try {
+      const supabase = supabaseRef.current
+      
+      const { error } = await supabase
+        .from('orchestrator_messages')
+        .delete()
+        .eq('session_id', session.id)
+      
+      if (error) throw error
+      
+      setMessages([])
+      console.log('🗑️ [Session] History cleared')
+      
+    } catch (err) {
+      console.error('❌ [Session] Failed to clear history:', err)
+    }
+  }, [session])
 
   return {
     session,
@@ -76,6 +243,9 @@ export function useOrchestratorSession({
     isLoading,
     error,
     persistMessage,
-    isEnabled: enabled && !!session
+    clearHistory,
+    isEnabled: enabled
   }
 }
+
+export default useOrchestratorSession

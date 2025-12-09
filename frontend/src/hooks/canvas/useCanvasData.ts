@@ -14,8 +14,11 @@
  * - Tracks loading and saving states
  * - Provides refs for unsaved changes tracking
  * 
- * Legacy Code:
- * - Line 272: Force admin check for specific email (temporary, needs proper admin system)
+ * IMPORTANT - Refs for Current State:
+ * We use refs (nodesRef, edgesRef) to always have access to the CURRENT
+ * nodes/edges state, even inside stale callbacks. This solves the closure
+ * problem where handleSave() would save stale data when called from
+ * callbacks that captured old state.
  * 
  * @see canvas/page.tsx for original implementation
  */
@@ -127,6 +130,26 @@ export function useCanvasData(
   
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // REFS FOR CURRENT STATE
+  // ─────────────────────────────────────────────────────────────────────────
+  // These refs always hold the LATEST nodes/edges values.
+  // We use these in handleSave instead of the closure values to avoid
+  // the stale closure problem where callbacks capture old state.
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  const nodesRef = useRef<Node[]>(nodes)
+  const edgesRef = useRef<Edge[]>(edges)
+  
+  // Keep refs in sync with props
+  useEffect(() => {
+    nodesRef.current = nodes
+  }, [nodes])
+  
+  useEffect(() => {
+    edgesRef.current = edges
+  }, [edges])
   
   // Access control state
   const [hasAccess, setHasAccess] = useState<boolean>(false)
@@ -357,9 +380,18 @@ export function useCanvasData(
             ...node,
             data: {
               ...node.data,
-              onItemClick: handleStructureItemClick ? (item: any) => handleStructureItemClick(item, node.id) : undefined,
-              onItemsUpdate: handleStructureItemsUpdate ? (items: any[]) => handleStructureItemsUpdate(node.id, items) : undefined,
-              onWidthUpdate: handleNodeUpdate ? (width: number) => handleNodeUpdate(node.id, { customNarrationWidth: width }) : undefined,
+              // onItemClick signature: (item, allItems, format, nodeId) => void
+              // StoryStructureNode calls: onItemClick(item, items, format, id)
+              onItemClick: handleStructureItemClick 
+                ? (item: any, allItems: any[], format: StoryFormat, nodeId: string) => 
+                    handleStructureItemClick(item, allItems, format, nodeId)
+                : undefined,
+              onItemsUpdate: handleStructureItemsUpdate 
+                ? (items: any[]) => handleStructureItemsUpdate(node.id, items) 
+                : undefined,
+              onWidthUpdate: handleNodeUpdate 
+                ? (width: number) => handleNodeUpdate(node.id, { customNarrationWidth: width }) 
+                : undefined,
               availableAgents: loadedAgents,
               onAgentAssign: handleAgentAssign
             }
@@ -459,6 +491,10 @@ export function useCanvasData(
   /**
    * Manual save function (user-triggered only)
    * 
+   * IMPORTANT: Uses refs (nodesRef, edgesRef) instead of closure values
+   * to always get the CURRENT state. This fixes the stale closure problem
+   * where callbacks would save old data.
+   * 
    * Features:
    * - Ensures context node exists before saving
    * - Shows orchestrator loading animation
@@ -471,9 +507,21 @@ export function useCanvasData(
       return
     }
     
+    // ─────────────────────────────────────────────────────────────────────
+    // CRITICAL: Use refs to get CURRENT state, not stale closure values
+    // ─────────────────────────────────────────────────────────────────────
+    const currentNodes = nodesRef.current
+    const currentEdges = edgesRef.current
+    
+    console.log('💾 [handleSave] Saving with current state:', {
+      nodesCount: currentNodes.length,
+      edgesCount: currentEdges.length,
+      nodeIds: currentNodes.map(n => n.id)
+    })
+    
     // Ensure context node is always present before saving
-    const hasContext = nodes.some(node => node.id === 'context')
-    let nodesToSave = nodes
+    const hasContext = currentNodes.some(node => node.id === 'context')
+    let nodesToSave = currentNodes
     
     if (!hasContext) {
       const contextNode: Node = {
@@ -486,7 +534,7 @@ export function useCanvasData(
           nodeType: 'create-story' as NodeType
         },
       }
-      nodesToSave = [...nodes, contextNode]
+      nodesToSave = [...currentNodes, contextNode]
       setNodes(nodesToSave)
     }
     
@@ -501,9 +549,10 @@ export function useCanvasData(
     
     setSaving(true)
     try {
-      await saveCanvas(storyId, nodesToSave, edges)
+      await saveCanvas(storyId, nodesToSave, currentEdges)
       // Clear the unsaved changes flag after successful save
       hasUnsavedChangesRef.current = false
+      console.log('✅ [handleSave] Canvas saved successfully')
       
       // Wait a moment to show completion, then hide
       setTimeout(() => {
@@ -529,7 +578,7 @@ export function useCanvasData(
     } finally {
       setSaving(false)
     }
-  }, [storyId, nodes, edges, setNodes, saving])
+  }, [storyId, setNodes, saving]) // Note: removed nodes/edges from deps - we use refs now
   
   /**
    * Handle logout
@@ -577,4 +626,3 @@ export function useCanvasData(
     userId: user?.id
   }
 }
-

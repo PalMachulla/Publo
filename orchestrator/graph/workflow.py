@@ -1,8 +1,8 @@
-# graph/workflow.py
 """
 LangGraph Workflow Definition
 
 This replaces MultiAgentOrchestrator with a declarative graph.
+Tool executor is included but bypassed when no tools are pending.
 """
 
 from langgraph.graph import StateGraph, END
@@ -13,6 +13,7 @@ from .nodes import (
     generate_actions_node,
     writer_node,
     critic_node,
+    tool_executor_node,
     merge_results_node
 )
 
@@ -43,7 +44,13 @@ def should_revise(state: OrchestratorState) -> str:
 
 
 def needs_action(state: OrchestratorState) -> str:
-    """Check if we have actions to execute"""
+    """Check if we have actions to execute or need clarification"""
+    
+    # If clarification is needed, skip to merge (UI will handle)
+    if state.get("needs_clarification", False):
+        print("🤔 [Workflow] Clarification needed, skipping to merge")
+        return "merge"
+    
     actions = state.get("actions", []) or []
     intent = state.get("intent", {}) or {}
     error = state.get("error")
@@ -57,9 +64,30 @@ def needs_action(state: OrchestratorState) -> str:
     if intent_type in ["general_chat", "clarify"]:
         return "merge"
     
-    if len(actions) > 0:
+    # Check if tools are needed first
+    pending_tools = state.get("pending_tool_calls", []) or []
+    if len(pending_tools) > 0:
+        return "tools"
+    
+    # Check if any actions need writer execution
+    # Both content generation AND structure generation use the writer
+    writer_actions = [
+        a for a in actions 
+        if a.get("type") in ["generate_content", "generate_structure"]
+    ]
+    if len(writer_actions) > 0:
         return "execute"
     
+    return "merge"
+
+
+def after_tools(state: OrchestratorState) -> str:
+    """Route after tool execution - continue to writer or merge"""
+    actions = state.get("actions", []) or []
+    content_actions = [a for a in actions if a.get("type") == "generate_content"]
+    
+    if len(content_actions) > 0:
+        return "writer"
     return "merge"
 
 
@@ -71,9 +99,10 @@ def build_orchestrator_graph() -> StateGraph:
     1. analyze_intent → Understand what user wants
     2. generate_actions → Create action plan
     3. select_strategy → Choose execution strategy
-    4. writer → Execute writing (if needed)
-    5. critic → Review (if cluster strategy)
-    6. merge_results → Prepare response
+    4. [optional] tool_executor → Execute MCP/tool calls if pending
+    5. writer → Execute writing (if needed)
+    6. critic → Review (if cluster strategy)
+    7. merge_results → Prepare response
     
     Visual:
     
@@ -93,48 +122,50 @@ def build_orchestrator_graph() -> StateGraph:
           │ needs_action │
           └──────┬──────┘
                  │
-         execute │ merge
-           ┌─────┴─────┐
-           │           │
-    ┌──────▼──────┐    │
-    │   writer    │    │
-    └──────┬──────┘    │
-           │           │
-    ┌──────┴──────┐    │
-    │ use_critic? │    │
-    └──────┬──────┘    │
-           │           │
-     critic│   merge   │
-       ┌───┴───┐       │
-       │       │       │
-┌──────▼──┐    │       │
-│  critic │    │       │
-└────┬────┘    │       │
-     │         │       │
-┌────┴────┐    │       │
-│ revise? │    │       │
-└────┬────┘    │       │
-     │         │       │
-revise│  merge │       │
-  │   └───┬────┘       │
-  │       │            │
-  │  ┌────▼────────────▼───┐
-  │  │   merge_results     │
-  │  └──────────┬──────────┘
-  │             │
-  └─────────────┘   END
-         ▲
-         │
-         └── (loops back to writer for revision)
+       ┌─────────┼─────────┐
+       │         │         │
+     tools    execute    merge
+       │         │         │
+       ▼         ▼         │
+  ┌─────────┐ ┌─────┐      │
+  │ tool_ex │ │write│      │
+  └────┬────┘ └──┬──┘      │
+       │         │         │
+       └────┬────┘         │
+            │              │
+     ┌──────┴──────┐       │
+     │ use_critic? │       │
+     └──────┬──────┘       │
+            │              │
+      critic│    merge     │
+        ┌───┴───┐          │
+        ▼       │          │
+   ┌────────┐   │          │
+   │ critic │   │          │
+   └───┬────┘   │          │
+       │        │          │
+  ┌────┴────┐   │          │
+  │ revise? │   │          │
+  └────┬────┘   │          │
+       │        │          │
+  revise│ merge │          │
+    │   └───┬───┘          │
+    │       │              │
+    │  ┌────▼──────────────▼───┐
+    │  │     merge_results     │
+    │  └───────────┬───────────┘
+    │              │
+    └──────────────┘  END
     """
     
     # Create graph with our state type
     graph = StateGraph(OrchestratorState)
     
-    # Add nodes
+    # Add all nodes
     graph.add_node("analyze_intent", analyze_intent_node)
     graph.add_node("generate_actions", generate_actions_node)
     graph.add_node("select_strategy", select_strategy_node)
+    graph.add_node("tool_executor", tool_executor_node)  # For future MCP
     graph.add_node("writer", writer_node)
     graph.add_node("critic", critic_node)
     graph.add_node("merge_results", merge_results_node)
@@ -146,12 +177,23 @@ revise│  merge │       │
     graph.add_edge("analyze_intent", "generate_actions")
     graph.add_edge("generate_actions", "select_strategy")
     
-    # Conditional: strategy → execute or merge
+    # Conditional: strategy → tools, execute, or merge
     graph.add_conditional_edges(
         "select_strategy",
         needs_action,
         {
+            "tools": "tool_executor",
             "execute": "writer",
+            "merge": "merge_results"
+        }
+    )
+    
+    # After tools: continue to writer or merge
+    graph.add_conditional_edges(
+        "tool_executor",
+        after_tools,
+        {
+            "writer": "writer",
             "merge": "merge_results"
         }
     )
@@ -171,7 +213,7 @@ revise│  merge │       │
         "critic",
         should_revise,
         {
-            "revise": "writer",  # Loop back for revision
+            "revise": "writer",
             "merge": "merge_results"
         }
     )
@@ -201,14 +243,16 @@ def get_orchestrator():
     return _compiled_graph
 
 
+def reset_orchestrator():
+    """Reset the compiled graph (useful for testing or config changes)"""
+    global _compiled_graph
+    _compiled_graph = None
+    print("🔄 [Workflow] Graph reset")
+
+
 def get_orchestrator_with_memory(session_id: str):
     """
     Get orchestrator with checkpoint persistence.
-    
-    Allows for:
-    - Resuming interrupted workflows
-    - Human-in-the-loop interrupts
-    - Workflow history
     """
     try:
         from langgraph.checkpoint.sqlite import SqliteSaver
@@ -218,7 +262,7 @@ def get_orchestrator_with_memory(session_id: str):
         
         return graph.compile(
             checkpointer=checkpointer,
-            interrupt_before=["writer"]  # Allow human-in-the-loop before writing
+            interrupt_before=["writer"]
         )
     except ImportError:
         print("⚠️ [Workflow] SQLite checkpointer not available, using memory-only")

@@ -1,0 +1,230 @@
+// src/lib/orchestrator/hooks/useOrchestrate.ts
+
+/**
+ * Hook to call the Python orchestration backend.
+ * Handles loading state, error handling, and response parsing.
+ */
+
+import { useState, useCallback } from 'react'
+import type { OrchestrateRequest, OrchestrateResponse } from '../components/OrchestratorPanel/types'
+
+interface UseOrchestrateOptions {
+  /** Called when orchestration starts */
+  onStart?: () => void
+  /** Called when orchestration completes successfully */
+  onSuccess?: (response: OrchestrateResponse) => void
+  /** Called when orchestration fails */
+  onError?: (error: Error) => void
+}
+
+interface UseOrchestrateReturn {
+  /** Call the orchestration endpoint */
+  orchestrate: (request: OrchestrateRequest) => Promise<OrchestrateResponse | null>
+  /** Whether a request is in progress */
+  isLoading: boolean
+  /** Last error, if any */
+  error: Error | null
+  /** Last response, if any */
+  lastResponse: OrchestrateResponse | null
+  /** Clear the error state */
+  clearError: () => void
+}
+
+/**
+ * Transform camelCase keys to snake_case for Python backend
+ */
+function toSnakeCase(str: string): string {
+  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
+}
+
+function keysToSnakeCase(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj
+  if (Array.isArray(obj)) return obj.map(keysToSnakeCase)
+  if (typeof obj !== 'object') return obj
+  
+  return Object.keys(obj as Record<string, unknown>).reduce((acc, key) => {
+    const snakeKey = toSnakeCase(key)
+    acc[snakeKey] = keysToSnakeCase((obj as Record<string, unknown>)[key])
+    return acc
+  }, {} as Record<string, unknown>)
+}
+
+/**
+ * Transform snake_case keys to camelCase from Python backend
+ */
+function toCamelCase(str: string): string {
+  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+}
+
+function keysToCamelCase(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj
+  if (Array.isArray(obj)) return obj.map(keysToCamelCase)
+  if (typeof obj !== 'object') return obj
+  
+  return Object.keys(obj as Record<string, unknown>).reduce((acc, key) => {
+    const camelKey = toCamelCase(key)
+    acc[camelKey] = keysToCamelCase((obj as Record<string, unknown>)[key])
+    return acc
+  }, {} as Record<string, unknown>)
+}
+
+export function useOrchestrate(options: UseOrchestrateOptions = {}): UseOrchestrateReturn {
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+  const [lastResponse, setLastResponse] = useState<OrchestrateResponse | null>(null)
+  
+  const clearError = useCallback(() => setError(null), [])
+  
+  const orchestrate = useCallback(async (request: OrchestrateRequest): Promise<OrchestrateResponse | null> => {
+    setIsLoading(true)
+    setError(null)
+    options.onStart?.()
+    
+    try {
+      console.log('🎯 [useOrchestrate] Sending request:', request.message.slice(0, 50))
+      
+      // Transform to snake_case for Python backend
+      const snakeCaseRequest = keysToSnakeCase(request)
+      
+      const response = await fetch('/api/orchestrator/orchestrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(snakeCaseRequest),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || `Request failed: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      
+      // Transform back to camelCase for frontend
+      const camelCaseData = keysToCamelCase(data) as OrchestrateResponse
+      
+      console.log('✅ [useOrchestrate] Response:', {
+        success: camelCaseData.success,
+        intent: camelCaseData.intent,
+        actions: camelCaseData.actions?.length || 0,
+        messages: camelCaseData.messages?.length || 0
+      })
+      
+      setLastResponse(camelCaseData)
+      options.onSuccess?.(camelCaseData)
+      
+      return camelCaseData
+      
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      console.error('❌ [useOrchestrate] Error:', error)
+      setError(error)
+      options.onError?.(error)
+      return null
+      
+    } finally {
+      setIsLoading(false)
+    }
+  }, [options])
+  
+  return {
+    orchestrate,
+    isLoading,
+    error,
+    lastResponse,
+    clearError
+  }
+}
+
+// ============================================================
+// STREAMING VERSION (for future use)
+// ============================================================
+
+interface StreamEvent {
+  type: 'intent' | 'strategy' | 'message' | 'action' | 'result' | 'critic' | 'done' | 'error'
+  data: unknown
+}
+
+interface UseOrchestrateStreamOptions {
+  onIntent?: (intent: { intent: string; confidence: number }) => void
+  onStrategy?: (strategy: string) => void
+  onMessage?: (message: { role: string; content: string; type: string }) => void
+  onAction?: (action: unknown) => void
+  onResult?: (result: { sectionId: string; content: string }) => void
+  onDone?: () => void
+  onError?: (error: string) => void
+}
+
+export function useOrchestrateStream(options: UseOrchestrateStreamOptions = {}) {
+  const [isStreaming, setIsStreaming] = useState(false)
+  
+  const orchestrateStream = useCallback(async (request: OrchestrateRequest) => {
+    setIsStreaming(true)
+    
+    try {
+      const snakeCaseRequest = keysToSnakeCase(request)
+      
+      const response = await fetch('/api/orchestrator/orchestrate/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(snakeCaseRequest),
+      })
+      
+      if (!response.ok || !response.body) {
+        throw new Error(`Stream failed: ${response.status}`)
+      }
+      
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        
+        const text = decoder.decode(value)
+        const lines = text.split('\n')
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6)) as StreamEvent
+              const data = keysToCamelCase(event.data)
+              
+              switch (event.type) {
+                case 'intent':
+                  options.onIntent?.(data as { intent: string; confidence: number })
+                  break
+                case 'strategy':
+                  options.onStrategy?.(data as string)
+                  break
+                case 'message':
+                  options.onMessage?.(data as { role: string; content: string; type: string })
+                  break
+                case 'action':
+                  options.onAction?.(data)
+                  break
+                case 'result':
+                  options.onResult?.(data as { sectionId: string; content: string })
+                  break
+                case 'done':
+                  options.onDone?.()
+                  break
+                case 'error':
+                  options.onError?.(data as string)
+                  break
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+      
+    } catch (err) {
+      options.onError?.(err instanceof Error ? err.message : String(err))
+    } finally {
+      setIsStreaming(false)
+    }
+  }, [options])
+  
+  return { orchestrateStream, isStreaming }
+}

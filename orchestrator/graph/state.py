@@ -1,4 +1,3 @@
-# graph/state.py
 """
 LangGraph State Schema
 
@@ -40,10 +39,13 @@ class ActionPayload(TypedDict, total=False):
 
 class Action(TypedDict, total=False):
     """Orchestrator action"""
-    type: str  # generate_content, generate_structure, modify_structure, etc.
+    type: str  # generate_content, generate_structure, open_document, etc.
     payload: dict
     requiresUserInput: bool
     priority: str  # high, normal, low
+    status: str  # pending, completed, failed
+    dependsOn: list  # Actions that must complete first
+    autoExecute: bool  # Whether to execute automatically
 
 
 class IntentAnalysis(TypedDict, total=False):
@@ -63,7 +65,24 @@ class Message(TypedDict, total=False):
     """Conversation message"""
     role: str  # user | orchestrator | system
     content: str
-    type: str  # thinking | decision | result | error | progress
+    type: str  # thinking | decision | result | error | progress | options
+
+
+class ClarificationOption(TypedDict, total=False):
+    """Option for request_clarification action"""
+    id: str
+    label: str
+    description: Optional[str]
+    metadata: Optional[dict]
+
+
+class ToolCall(TypedDict, total=False):
+    """Tool call request (for MCP/function calling)"""
+    id: str
+    tool_name: str  # web_search, rag_query, etc.
+    parameters: dict
+    status: str  # pending, executing, completed, failed
+    result: Optional[Any]
 
 
 # ============================================================
@@ -90,6 +109,24 @@ def add_actions(existing: list, new: list) -> list:
 
 def merge_results(existing: dict, new: dict) -> dict:
     """Merge new results into existing dict"""
+    if existing is None:
+        existing = {}
+    if new is None:
+        new = {}
+    return {**existing, **new}
+
+
+def add_tool_calls(existing: list, new: list) -> list:
+    """Append new tool calls to existing list"""
+    if existing is None:
+        existing = []
+    if new is None:
+        new = []
+    return existing + new
+
+
+def merge_tool_results(existing: dict, new: dict) -> dict:
+    """Merge new tool results into existing dict"""
     if existing is None:
         existing = {}
     if new is None:
@@ -127,6 +164,12 @@ class OrchestratorState(TypedDict, total=False):
     structure_items: list
     conversation_history: list
     
+    # ========== CANVAS STATE ==========
+    # All nodes on canvas (for open_document, delete_node)
+    canvas_nodes: list  # List of node summaries
+    canvas_edges: list  # List of edges
+    story_structure_node_id: Optional[str]  # Currently active document node
+    
     # ========== MODEL PREFERENCES ==========
     model_mode: str  # automatic | fixed
     fixed_model_id: Optional[str]
@@ -147,11 +190,26 @@ class OrchestratorState(TypedDict, total=False):
     # ========== MESSAGES ==========
     messages: Annotated[list, add_messages]
     
+    # ========== CLARIFICATION ==========
+    # For request_clarification action
+    needs_clarification: bool
+    clarification_options: list  # List of ClarificationOption
+    clarification_message: Optional[str]
+    original_action: Optional[str]  # Action to execute after clarification
+    clarification_response: Optional[dict]  # User's response {option_id, original_action}
+    
     # ========== WRITER-CRITIC LOOP ==========
     iteration: int
     max_iterations: int
     critic_approved: bool
     enable_critic: bool
+    
+    # ========== TOOL CALLING (MCP/Future) ==========
+    # These fields support future tool/MCP integration
+    pending_tool_calls: Annotated[list, add_tool_calls]  # Tools to execute
+    tool_results: Annotated[dict, merge_tool_results]    # tool_id -> result
+    available_tools: list  # Which tools are enabled ['web_search', 'rag_query', etc.]
+    tool_execution_required: bool  # Whether we need to execute tools before continuing
     
     # ========== ERROR HANDLING ==========
     error: Optional[str]

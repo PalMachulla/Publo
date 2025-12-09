@@ -1,0 +1,396 @@
+"""
+Streaming Orchestrator Endpoint
+
+Server-Sent Events (SSE) endpoint that streams orchestrator progress
+to the frontend, enabling real-time updates in chat and canvas.
+
+Event Types (UPPERCASE to match Supabase constraint):
+- MESSAGE: Chat message to display
+- STRATEGY: Structure plan created
+- STRUCTURE_PARTIAL: Initial structure skeleton for canvas
+- SECTION_UPDATE: Single section completed
+- STRUCTURE_COMPLETE: Full structure ready
+- ACTION: Action to execute
+- CLARIFICATION: Needs user input
+- ERROR: Error occurred
+- DONE: Stream complete
+"""
+
+import json
+import asyncio
+from typing import AsyncGenerator, Optional, Dict, Any
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
+router = APIRouter()
+
+
+# ============================================================
+# REQUEST MODELS
+# ============================================================
+
+class StreamOrchestrateRequest(BaseModel):
+    """Request model for streaming orchestration"""
+    message: str
+    user_id: str
+    story_id: Optional[str] = None
+    canvas_nodes: Optional[list] = None
+    canvas_edges: Optional[list] = None
+    current_story_structure_node_id: Optional[str] = None
+    is_document_view_open: bool = False
+    active_context: Optional[Dict[str, Any]] = None
+    clarification_response: Optional[Dict[str, Any]] = None
+    document_format: Optional[str] = None
+
+
+# ============================================================
+# SSE HELPERS
+# ============================================================
+
+def sse_event(event_type: str, data: dict) -> str:
+    """Format data as SSE event"""
+    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+
+def sse_message(content: str, message_type: str = "result") -> str:
+    """Convenience: Send a chat message"""
+    return sse_event("MESSAGE", {
+        "role": "orchestrator",
+        "content": content,
+        "type": message_type
+    })
+
+
+def sse_error(error: str) -> str:
+    """Convenience: Send an error"""
+    return sse_event("ERROR", {"error": error})
+
+
+# ============================================================
+# STRUCTURE GENERATION (Progressive)
+# ============================================================
+
+async def generate_structure_streaming(
+    prompt: str,
+    format_type: str,
+    template_id: Optional[str] = None
+) -> AsyncGenerator[str, None]:
+    """
+    Generate structure progressively, yielding SSE events.
+    
+    This replaces the single-shot generate_structure() with
+    a step-by-step process that streams updates.
+    """
+    # Import from actual file location
+    from orchestrator.graph.agents.writer import plan_outline, generate_section_summary
+    from orchestrator.graph.schemas.template_registry import get_template_by_id
+    
+    # Step 1: Acknowledge
+    yield sse_message(
+        f"Great idea! Let me help you create a {format_type.replace('-', ' ')}... 📖",
+        "result"
+    )
+    await asyncio.sleep(0.1)  # Small delay for UX
+    
+    # Step 2: Get template if specified
+    template = None
+    if template_id:
+        template = get_template_by_id(format_type, template_id)
+        if template:
+            yield sse_message(
+                f"Using the \"{template.name}\" template 📋",
+                "thinking"
+            )
+    
+    # Step 3: Plan the structure
+    yield sse_message("🔍 Analyzing your idea and planning the structure...", "thinking")
+    
+    try:
+        plan = await plan_outline(prompt, format_type, template)
+        
+        title = plan.get("title", "Untitled")
+        sections = plan.get("sections", [])
+        logline = plan.get("logline", "")
+        
+        yield sse_event("STRATEGY", {
+            "title": title,
+            "logline": logline,
+            "sectionCount": len(sections),
+            "sectionNames": sections
+        })
+        
+        yield sse_message(
+            f"📐 Creating \"{title}\" with {len(sections)} sections",
+            "result"
+        )
+        
+    except Exception as e:
+        yield sse_error(f"Failed to plan structure: {str(e)}")
+        yield sse_event("DONE", {"success": False})
+        return
+    
+    # Step 4: Create skeleton structure (appears on canvas immediately)
+    skeleton_items = [
+        {
+            "id": f"section-{i}",
+            "name": section_name,
+            "level": 0,
+            "summary": None,
+            "isLoading": True
+        }
+        for i, section_name in enumerate(sections)
+    ]
+    
+    yield sse_event("STRUCTURE_PARTIAL", {
+        "format": format_type,
+        "template": template_id,
+        "title": title,
+        "logline": logline,
+        "items": skeleton_items,
+        "isGenerating": True
+    })
+    
+    # Step 5: Generate each section summary
+    completed_items = []
+    
+    for i, section_name in enumerate(sections):
+        yield sse_message(f"✍️ Writing \"{section_name}\"...", "progress")
+        
+        try:
+            summary = await generate_section_summary(
+                title=title,
+                section_name=section_name,
+                section_index=i,
+                total_sections=len(sections),
+                previous_sections=completed_items,
+                format_type=format_type,
+                prompt=prompt
+            )
+            
+            completed_item = {
+                "id": f"section-{i}",
+                "name": section_name,
+                "level": 0,
+                "summary": summary,
+                "isLoading": False
+            }
+            completed_items.append(completed_item)
+            
+            # Send section update
+            yield sse_event("SECTION_UPDATE", {
+                "index": i,
+                "section": completed_item
+            })
+            
+        except Exception as e:
+            print(f"❌ Error generating section {section_name}: {e}")
+            # Continue with empty summary on error
+            completed_items.append({
+                "id": f"section-{i}",
+                "name": section_name,
+                "level": 0,
+                "summary": f"(Error: {str(e)})",
+                "isLoading": False
+            })
+    
+    # Step 6: Send complete structure
+    final_structure = {
+        "format": format_type,
+        "template": template_id,
+        "title": title,
+        "logline": logline,
+        "items": completed_items,
+        "isGenerating": False
+    }
+    
+    yield sse_event("STRUCTURE_COMPLETE", final_structure)
+    
+    yield sse_message(
+        "✅ Structure ready! Click any section to start writing.",
+        "result"
+    )
+    
+    yield sse_event("DONE", {"success": True, "structure": final_structure})
+
+
+# ============================================================
+# MAIN STREAMING ENDPOINT
+# ============================================================
+
+@router.post("/orchestrate/stream")
+async def orchestrate_stream(request: StreamOrchestrateRequest):
+    """
+    Streaming orchestration endpoint.
+    
+    Returns Server-Sent Events (SSE) for real-time updates.
+    """
+    
+    async def event_generator() -> AsyncGenerator[str, None]:
+        try:
+            # Import intent analyzer
+            from orchestrator.intent.analyzer import analyze_intent
+            from orchestrator.intent.types import PipelineContext
+            
+            # Build context
+            context = PipelineContext(
+                message=request.message,
+                activeSegment=request.active_context,
+                documentPanelOpen=request.is_document_view_open,
+                documentFormat=request.document_format,
+                canvasContext=None,
+                conversationHistory=[]
+            )
+            
+            # Step 1: Analyze intent
+            yield sse_message("🤔 Let me understand what you need...", "thinking")
+            
+            intent_result = await analyze_intent(request.message, context)
+            intent_type = intent_result.intent
+            confidence = intent_result.confidence
+            
+            yield sse_event("INTENT", {
+                "intent": intent_type,
+                "confidence": confidence,
+                "entities": intent_result.extracted_entities
+            })
+            
+            print(f"✅ [Stream] Intent: {intent_type} ({confidence:.0%})")
+            
+            # Step 2: Route based on intent
+            if intent_type == "create_structure":
+                # Extract format from entities or default
+                entities = intent_result.extracted_entities or {}
+                format_type = (
+                    entities.get("documentFormat") or 
+                    entities.get("document_format") or 
+                    detect_format_from_message(request.message) or
+                    "novel"
+                )
+                template_id = entities.get("suggestedTemplate") or entities.get("suggested_template")
+                
+                # Check for clarification response
+                if request.clarification_response:
+                    if request.clarification_response.get("original_action") == "create_structure":
+                        template_id = request.clarification_response.get("option_id")
+                
+                # Check if we need template clarification
+                if not template_id:
+                    from orchestrator.graph.schemas.template_registry import get_templates_for_format, get_format_label
+                    
+                    templates = get_templates_for_format(format_type)
+                    
+                    if templates and len(templates) > 1:
+                        # Need clarification
+                        format_label = get_format_label(format_type)
+                        
+                        yield sse_message(
+                            f"I'd love to help you create a {format_label.lower()}! "
+                            f"Which structure template would you like to use?",
+                            "result"
+                        )
+                        
+                        yield sse_event("CLARIFICATION", {
+                            "originalAction": "create_structure",
+                            "message": f"Choose a template for your {format_label.lower()}:",
+                            "options": [
+                                {
+                                    "id": t.id,
+                                    "label": t.name,
+                                    "description": t.description
+                                }
+                                for t in templates
+                            ]
+                        })
+                        
+                        yield sse_event("DONE", {"success": True, "needsClarification": True})
+                        return
+                
+                # Generate structure progressively
+                async for event in generate_structure_streaming(
+                    prompt=request.message,
+                    format_type=format_type,
+                    template_id=template_id
+                ):
+                    yield event
+                    
+            elif intent_type == "write_content":
+                # Content generation (could also be streamed)
+                yield sse_message("✍️ I'll help you write that content...", "result")
+                
+                # For now, fall back to non-streaming
+                # TODO: Implement streaming content generation
+                yield sse_event("ACTION", {
+                    "type": "generate_content",
+                    "payload": {
+                        "prompt": request.message,
+                        "sectionId": request.active_context.get("id") if request.active_context else None
+                    }
+                })
+                
+                yield sse_event("DONE", {"success": True})
+                
+            elif intent_type == "answer_question":
+                yield sse_message("🤔 Let me think about that...", "thinking")
+                
+                # TODO: Stream the answer
+                yield sse_event("ACTION", {
+                    "type": "answer_question",
+                    "payload": {"prompt": request.message}
+                })
+                
+                yield sse_event("DONE", {"success": True})
+                
+            elif intent_type == "general_chat":
+                yield sse_message("👋 ", "result")  # Will be replaced with actual response
+                
+                # TODO: Stream chat response
+                yield sse_event("DONE", {"success": True})
+                
+            else:
+                yield sse_message(
+                    f"I understood your request as '{intent_type}'. Let me help with that...",
+                    "result"
+                )
+                yield sse_event("DONE", {"success": True})
+                
+        except Exception as e:
+            print(f"❌ [Stream] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            yield sse_error(str(e))
+            yield sse_event("DONE", {"success": False, "error": str(e)})
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def detect_format_from_message(message: str) -> Optional[str]:
+    """Detect document format from message keywords"""
+    message_lower = message.lower()
+    
+    format_keywords = {
+        "screenplay": ["screenplay", "script", "movie script", "film script"],
+        "short-story": ["short story", "short-story", "flash fiction"],
+        "novel": ["novel", "book", "long story"],
+        "podcast": ["podcast", "audio script", "episode"],
+        "blog": ["blog", "blog post", "article"],
+    }
+    
+    for format_type, keywords in format_keywords.items():
+        for keyword in keywords:
+            if keyword in message_lower:
+                return format_type
+    
+    return None

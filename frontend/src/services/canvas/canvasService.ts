@@ -318,7 +318,13 @@ export async function createStoryStructureNode(
         console.log('   Tasks:', plan.tasks.map((t: any) => ({ id: t.id, type: t.type, sectionId: t.sectionId })))
         
         // ✅ FIX: Call triggerOrchestratedGeneration with plan to skip structure generation
-        triggerOrchestratedGeneration?.(structureId, format, aiPromptNode || null, 'context', userPromptDirect, plan)
+        //triggerOrchestratedGeneration?.(structureId, format, aiPromptNode || null, 'context', userPromptDirect, plan)
+        triggerOrchestratedGeneration?.(structureId, format, {
+          aiPromptNode: aiPromptNode || null,
+          orchestratorNodeId: 'context',
+          userPromptDirect,
+          existingPlan: plan
+        })
         return // Exit early - structure is done, only content generation needed
       } else {
         console.log('ℹ️ [handleCreateStory] No tasks in plan, structure-only creation - opening document panel')
@@ -360,11 +366,17 @@ export async function createStoryStructureNode(
       
       // Note: WorldState will be created and updated inside triggerOrchestratedGeneration
       // after the structure is generated and saved
-      triggerOrchestratedGeneration?.(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
+      //triggerOrchestratedGeneration?.(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
+      triggerOrchestratedGeneration?.(structureId, format, {
+        aiPromptNode: aiPromptNode || null,
+        orchestratorNodeId: 'context',
+        userPromptDirect
+      })
     } catch (err) {
       console.error('❌ [handleCreateStory] Failed to save node before orchestration:', err)
       // Still try to orchestrate even if save failed (might be duplicate key error)
-      triggerOrchestratedGeneration?.(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
+      // DEPRECATED: Legacy orchestration removed - new flow uses OrchestratorPanel → Python
+     // triggerOrchestratedGeneration?.(structureId, format, aiPromptNode || null, 'context', userPromptDirect)
     }
   } else {
     console.warn('⚠️ No AI Prompt node or chat prompt found, skipping auto-generation')
