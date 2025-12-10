@@ -947,8 +947,71 @@ async def writer_node(state: OrchestratorState) -> Dict[str, Any]:
         4. Next: Critic reviews (if cluster strategy)
     """
     try:
-        from .agents.writer import generate_content, generate_structure
         import os
+        
+        # ============================================================
+        # PHASE 4: SUBAGENT SPAWNING (OPTIONAL)
+        # ============================================================
+        # Use WriterAgent with subagent spawning if feature flag enabled
+        USE_DEEP_AGENTS_SUBAGENTS = os.getenv("USE_DEEP_AGENTS_SUBAGENTS", "false").lower() == "true"
+        
+        if USE_DEEP_AGENTS_SUBAGENTS:
+            try:
+                from orchestrator.agents.writer_agent import WriterAgent
+                from orchestrator.agents.deep_agent_backend import OrchestratorFilesystemBackend
+                from orchestrator.agents.migration_utils import initialize_filesystem_for_session
+                
+                # Initialize filesystem if not already done (Phase 1)
+                filesystem_meta = state.get("_filesystem", {})
+                if filesystem_meta.get("enabled"):
+                    session_id = filesystem_meta.get("project_id")
+                    backend = OrchestratorFilesystemBackend(project_id=session_id)
+                else:
+                    # Initialize filesystem for this session
+                    session_id = state.get("session_id") or f"session-{state.get('user_id', 'default')}"
+                    backend = initialize_filesystem_for_session(session_id, state)
+                
+                # Create writer agent
+                writer_agent = WriterAgent(backend)
+                
+                # Get actions and plan
+                actions = state.get("actions", []) or []
+                plan = state.get("plan")
+                results = dict(state.get("results", {}) or {})
+                
+                # Generate content using subagents (parallel execution)
+                content_results = await writer_agent.generate_content(actions, plan)
+                results.update(content_results)
+                
+                # Generate structure (if needed)
+                structure_actions = [a for a in actions if a.get("type") == "generate_structure"]
+                for action in structure_actions:
+                    structure = await writer_agent.generate_structure(action, plan)
+                    results["structure"] = structure
+                
+                print(f"✅ [Writer] Subagent execution complete: {len(results)} result(s)")
+                
+                return {
+                    "results": results,
+                    "iteration": (state.get("iteration", 0) or 0) + 1,
+                    "messages": [{
+                        "role": "orchestrator",
+                        "content": f"Generated content using {len(content_results)} subagent(s)",
+                        "type": "result"
+                    }]
+                }
+                
+            except Exception as e:
+                # Fallback to original logic if subagent spawning fails
+                print(f"⚠️ [Writer] Subagent spawning failed (falling back to original): {e}")
+                import traceback
+                traceback.print_exc()
+                # Continue to original logic below
+        
+        # ============================================================
+        # ORIGINAL WRITER LOGIC (FALLBACK)
+        # ============================================================
+        from .agents.writer import generate_content, generate_structure
         
         # ============================================================
         # PHASE 3: CONTEXT MANAGEMENT (OPTIONAL)
