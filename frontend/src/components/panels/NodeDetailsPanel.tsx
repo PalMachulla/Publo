@@ -146,13 +146,19 @@ export default function NodeDetailsPanel({
   
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = useRef(false)
-  
+  // Prevent re-render loops
+  const prevNodeIdRef = useRef<string | null>(null)
+  const onPanelWidthChangeRef = useRef(onPanelWidthChange)
   useEffect(() => {
     isMountedRef.current = true
     return () => {
       isMountedRef.current = false
     }
   }, [])
+ // Keep callback ref in sync without triggering re-renders
+ useEffect(() => {
+  onPanelWidthChangeRef.current = onPanelWidthChange
+}, [onPanelWidthChange])
 
   // Check embedding status for current node
   const checkEmbeddingStatus = useCallback(async (nodeId: string) => {
@@ -327,7 +333,8 @@ export default function NodeDetailsPanel({
     }
   }
 
-  // Detect test nodes connected to orchestrator (MUST be before any early returns)
+ // Detect test nodes connected to orchestrator
+  // Use stable comparison to avoid re-renders
   const connectedTestNode = useMemo(() => {
     if (!node) return null
     
@@ -342,41 +349,41 @@ export default function NodeDetailsPanel({
     }
     
     return null
-  }, [edges, nodes, node])
+    // Use primitive values for comparison, not object references
+  }, [node?.id, edges.length, nodes.length])
 
-  // Detect AI Prompt nodes connected to orchestrator (MUST be before any early returns)
-  const connectedAIPromptNode = useMemo(() => {
-    if (!node) return null
-    
-    const orchestratorId = 'context'
-    const promptEdges = edges.filter(edge => edge.target === orchestratorId)
-    
-    for (const edge of promptEdges) {
-      const sourceNode = nodes.find(n => n.id === edge.source)
-      if (sourceNode?.data?.nodeType === 'aiPrompt') {
-        return sourceNode as Node<AIPromptNodeData>
-      }
+ // Detect AI Prompt nodes connected to orchestrator
+ const connectedAIPromptNode = useMemo(() => {
+  if (!node) return null
+  
+  const orchestratorId = 'context'
+  const promptEdges = edges.filter(edge => edge.target === orchestratorId)
+  
+  for (const edge of promptEdges) {
+    const sourceNode = nodes.find(n => n.id === edge.source)
+    if (sourceNode?.data?.nodeType === 'aiPrompt') {
+      return sourceNode as Node<AIPromptNodeData>
     }
-    
-    return null
-  }, [edges, nodes, node])
+  }
+  
+  return null
+}, [node?.id, edges.length, nodes.length])
 
-  // Detect Structure node connected to orchestrator's output (MUST be before any early returns)
-  const connectedStructureNode = useMemo(() => {
-    if (!node) return null
-    
-    // Find edges where this orchestrator is the source
-    const outgoingEdges = edges.filter(edge => edge.source === node.id)
-    
-    for (const edge of outgoingEdges) {
-      const targetNode = nodes.find(n => n.id === edge.target)
-      if (targetNode?.type === 'storyStructureNode') {
-        return targetNode as Node<StoryStructureNodeData>
-      }
+ // Detect Structure node connected to orchestrator's output
+ const connectedStructureNode = useMemo(() => {
+  if (!node) return null
+  
+  const outgoingEdges = edges.filter(edge => edge.source === node.id)
+  
+  for (const edge of outgoingEdges) {
+    const targetNode = nodes.find(n => n.id === edge.target)
+    if (targetNode?.type === 'storyStructureNode') {
+      return targetNode as Node<StoryStructureNodeData>
     }
-    
-    return null
-  }, [edges, nodes, node])
+  }
+  
+  return null
+}, [node?.id, edges.length, nodes.length])
 
   // Handle resize drag (MUST be before any early returns)
   useEffect(() => {
@@ -401,22 +408,32 @@ export default function NodeDetailsPanel({
     }
   }, [isResizing])
 
-  // Notify parent when panel width changes
+  // Notify parent when panel width changes (using ref to avoid loops)
   useEffect(() => {
-    if (onPanelWidthChange) {
-      onPanelWidthChange(panelWidth)
-    }
-  }, [panelWidth, onPanelWidthChange])
+    onPanelWidthChangeRef.current?.(panelWidth)
+  }, [panelWidth])
   
-  // Check embedding status when story-structure node is selected
-  // Only run on client-side, not during SSR
-  useEffect(() => {
-    if (typeof window === 'undefined') return // Skip during SSR
-    if (node && node.type === 'storyStructureNode') {
+   // Check embedding status when story-structure node is selected
+   useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (node?.type === 'storyStructureNode') {
       checkEmbeddingStatus(node.id)
     }
-  }, [node, checkEmbeddingStatus])
+  }, [node?.id, node?.type, checkEmbeddingStatus])
 
+  // Debug logging - only fire when node ID actually changes
+  // ============================================================
+  useEffect(() => {
+    if (!node) return
+    if (node.id === prevNodeIdRef.current) return
+    
+    prevNodeIdRef.current = node.id
+    console.log('NodeDetailsPanel - Node selected:', {
+      nodeId: node.id,
+      nodeType: node.type,
+      dataNodeType: (node.data as any).nodeType,
+    })
+  }, [node?.id])
   // Early returns AFTER all hooks
   if (!node) return null
   
@@ -424,7 +441,8 @@ export default function NodeDetailsPanel({
   const nodeType = nodeData.nodeType || 'story'
   
   // Debug logging
-  console.log('NodeDetailsPanel - Node clicked:', {
+  // REMOVED AFTER REFACTORING - TOO MUCH LOGGING
+  /*console.log('NodeDetailsPanel - Node clicked:', {
     nodeId: node.id,
     nodeType: node.type,
     dataNodeType: nodeData.nodeType,
@@ -432,7 +450,7 @@ export default function NodeDetailsPanel({
     format: nodeData.format,
     allData: nodeData,
     hasTestNode: !!connectedTestNode
-  })
+  })*/
   
   // Don't show panel for story-draft nodes - they open the AI Document Panel
   if (nodeType === 'story-draft') {
@@ -669,6 +687,7 @@ export default function NodeDetailsPanel({
             </div>
           ) : nodeType === 'create-story' ? (
               <OrchestratorPanel
+              userId={user?.id || ''}
               node={node as any} 
               storyId={storyId}                           // ← ADD
       orchestratorNodeId={orchestratorNodeId}     // ← ADD  

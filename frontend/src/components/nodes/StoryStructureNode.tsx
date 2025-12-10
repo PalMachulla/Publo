@@ -105,11 +105,11 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
               )}
             </button>
             
-            {/* Edit Content Button - Opens Content Canvas */}
+            {/* Edit Content Button - Opens AiDocumentPanel */}
             <button
               onClick={(e) => {
                 e.stopPropagation() // Stop it from opening structure panel
-                // Open Content Canvas by triggering onItemClick with first item (or a dummy item to show full document)
+                // Open Document Panel by triggering onItemClick with first item (or a dummy item to show full document)
                 if (onItemClick && items.length > 0) {
                   // Get the first top-level item to open the document at the start
                   const firstItem = items.find(item => item.level === 1) || items[0]

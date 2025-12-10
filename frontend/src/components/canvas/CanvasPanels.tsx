@@ -362,7 +362,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     // Position below and slightly left of orchestrator
     const newPosition = {
       x: orchestratorNode.position.x - 50,
-      y: orchestratorNode.position.y + 200
+      y: orchestratorNode.position.y + 400
     }
     
     // ─────────────────────────────────────────────────────────────────────

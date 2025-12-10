@@ -14,7 +14,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, AsyncIterator, Any, List
+from langsmith import traceable
 import json
+import asyncio
 
 router = APIRouter()
 
@@ -82,7 +84,8 @@ class OrchestrateRequest(BaseModel):
     max_iterations: int = 3
     
     # Clarification response (when user selects an option)
-    clarification_response: Optional[dict] = None
+    clarification_response: Optional[str] = None
+    original_action: Optional[str] = None  # The action that needed clarification
 
 
 class ActionPayload(BaseModel):
@@ -162,6 +165,7 @@ class OrchestrateResponse(BaseModel):
 # ============================================================
 
 @router.post("/orchestrate", response_model=OrchestrateResponse)
+@traceable(name="orchestrate_request", metadata={"endpoint": "orchestrate"})
 async def orchestrate(request: OrchestrateRequest):
     """
     Full orchestration endpoint.
@@ -199,7 +203,11 @@ async def orchestrate(request: OrchestrateRequest):
             "conversation_history": request.conversation_history,
             
             # Clarification response (if user selected an option)
-            "clarification_response": request.clarification_response,
+            # Workflow expects: {"option_id": "...", "original_action": "..."}
+            "clarification_response": {
+                "option_id": request.clarification_response,
+                "original_action": request.original_action or "create_structure"
+            } if request.clarification_response else None,
             
             # Workflow state
             "actions": [],
@@ -222,7 +230,16 @@ async def orchestrate(request: OrchestrateRequest):
         }
         
         # Run the graph
-        final_state = await orchestrator.ainvoke(initial_state)
+        final_state = await orchestrator.ainvoke(
+            initial_state,
+            config={
+                "configurable": {
+                    "user_id": request.user_id,
+                    "session_id": request.session_id or "",
+                    "document_format": request.document_format,
+                }
+            }
+        )
         
         # Extract results
         intent_data = final_state.get("intent", {}) or {}
@@ -332,10 +349,111 @@ async def orchestrate_stream(request: OrchestrateRequest):
     - ERROR: Error occurred
     """
     async def generate() -> AsyncIterator[str]:
+        """
+        Generate SSE events for streaming orchestration.
+        
+        This function streams two things in parallel:
+        1. LangGraph workflow events (node completions)
+        2. LLM reasoning tokens (token-by-token streaming)
+        
+        The reasoning stream runs in parallel with the graph, providing
+        real-time feedback like Claude.ai/Cursor while the workflow executes.
+        """
         try:
             from graph.workflow import get_orchestrator
+            from orchestrator.intent.deep_analyzer import get_deep_analyzer, SYSTEM_PROMPT, USER_PROMPT
+            from orchestrator.intent.types import PipelineContext
+            from langchain.prompts import ChatPromptTemplate
             
             orchestrator = get_orchestrator()
+            
+            # Log if this is a clarification response
+            if request.clarification_response:
+                print(f"✅ [Stream] Received clarification response: option_id={request.clarification_response}, original_action={request.original_action}")
+            
+            # ============================================================
+            # PARALLEL STREAMING: Reasoning Tokens
+            # ============================================================
+            # Stream LLM reasoning tokens in parallel with the graph workflow.
+            # This provides real-time feedback as the LLM generates its reasoning,
+            # similar to how Claude.ai and Cursor show tokens as they arrive.
+            
+            async def stream_reasoning_tokens() -> AsyncIterator[str]:
+                """
+                Stream reasoning tokens from the LLM as they're generated.
+                
+                This runs in parallel with the graph workflow, sending tokens
+                as they arrive from the LLM (not waiting for the complete response).
+                
+                Yields:
+                    SSE events with type 'REASONING_TOKEN' containing accumulated text
+                """
+                try:
+                    # Only stream reasoning if we're doing intent analysis
+                    # (not for clarification responses or other flows)
+                    if request.clarification_response:
+                        # Skip reasoning stream for clarification responses
+                        return
+                    
+                    analyzer = get_deep_analyzer()
+                    
+                    # Build context for intent analysis (same as analyze_intent_node)
+                    context = PipelineContext(
+                        message=request.message,
+                        activeSegment=request.active_segment.model_dump() if request.active_segment else None,
+                        documentPanelOpen=request.document_panel_open,
+                        documentFormat=request.document_format,
+                        canvasContext=request.canvas_context,
+                        conversationHistory=request.conversation_history or []
+                    )
+                    
+                    # Build the prompt (same as deep_analyzer does)
+                    context_section = analyzer._build_context_section(context)
+                    system_prompt_text = SYSTEM_PROMPT.format(context_section=context_section)
+                    user_prompt_text = USER_PROMPT.format(message=request.message)
+                    
+                    # Create prompt template
+                    prompt = ChatPromptTemplate.from_messages([
+                        ("system", system_prompt_text),
+                        ("human", user_prompt_text)
+                    ])
+                    
+                    # Create chain and stream tokens
+                    chain = prompt | analyzer.llm
+                    
+                    # Accumulate tokens as they arrive
+                    accumulated_reasoning = ""
+                    
+                    print("🧠 [Stream] Starting reasoning token stream...")
+                    
+                    # Stream tokens from LLM
+                    async for chunk in chain.astream({}):
+                        # Extract token from chunk
+                        if hasattr(chunk, 'content'):
+                            token = chunk.content
+                        elif isinstance(chunk, dict) and 'content' in chunk:
+                            token = chunk['content']
+                        else:
+                            token = str(chunk)
+                        
+                        # Accumulate tokens
+                        accumulated_reasoning += token
+                        
+                        # Send token event to frontend (accumulated text)
+                        yield f"event: REASONING_TOKEN\ndata: {json.dumps({'token': accumulated_reasoning, 'is_complete': False})}\n\n"
+                    
+                    # Send final event marking reasoning as complete
+                    yield f"event: REASONING_TOKEN\ndata: {json.dumps({'token': accumulated_reasoning, 'is_complete': True})}\n\n"
+                    
+                    print(f"✅ [Stream] Reasoning stream complete ({len(accumulated_reasoning)} chars)")
+                    
+                except Exception as e:
+                    # Don't fail the whole stream if reasoning streaming fails
+                    print(f"⚠️ [Stream] Reasoning stream error (non-fatal): {e}")
+                    # Continue without reasoning stream
+            
+            # Start reasoning stream
+            reasoning_stream = stream_reasoning_tokens()
             
             initial_state = {
                 "user_message": request.message,
@@ -348,7 +466,12 @@ async def orchestrate_stream(request: OrchestrateRequest):
                 "structure_items": request.structure_items,
                 "canvas_nodes": request.canvas_nodes,
                 "conversation_history": request.conversation_history,
-                "clarification_response": request.clarification_response,
+                # Clarification response (if user selected an option)
+                # Workflow expects: {"option_id": "...", "original_action": "..."}
+                "clarification_response": {
+                    "option_id": request.clarification_response,
+                    "original_action": request.original_action or "create_structure"
+                } if request.clarification_response else None,
                 "actions": [],
                 "messages": [],
                 "results": {},
@@ -369,11 +492,140 @@ async def orchestrate_stream(request: OrchestrateRequest):
             sent_intent = False
             sent_strategy = False
             sent_clarification = False
+            sent_structure_created = False
+            sections_announced = set()  # Track which sections we've announced as "writing"
             
-            # Stream node outputs
-            async for event in orchestrator.astream(initial_state):
-                for node_name, node_output in event.items():
-                    print(f"📡 [Stream] Node completed: {node_name}")
+            # Helper to parse structure and emit progressive events
+            def parse_structure_for_events(content):
+                """Parse structure JSON and return title + sections for progressive UI"""
+                try:
+                    if isinstance(content, str):
+                        structure = json.loads(content)
+                    else:
+                        structure = content
+                    
+                    title = structure.get("title", "Untitled")
+                    sections = []
+                    
+                    # Handle different structure formats
+                    if "sections" in structure:
+                        for sec in structure["sections"]:
+                            sections.append({
+                                "id": sec.get("id", ""),
+                                "title": sec.get("title", sec.get("name", "Untitled Section")),
+                                "type": sec.get("type", "section")
+                            })
+                    elif "chapters" in structure:
+                        for ch in structure["chapters"]:
+                            sections.append({
+                                "id": ch.get("id", ""),
+                                "title": ch.get("title", ch.get("name", "Untitled Chapter")),
+                                "type": "chapter"
+                            })
+                    
+                    return {
+                        "title": title,
+                        "section_count": len(sections),
+                        "sections": sections,
+                        "format": structure.get("format", "unknown")
+                    }
+                except (json.JSONDecodeError, TypeError, KeyError) as e:
+                    print(f"⚠️ Could not parse structure: {e}")
+                    return None
+            
+            # ============================================================
+            # PARALLEL STREAMING: Graph Workflow + Reasoning Tokens
+            # ============================================================
+            # Stream both:
+            # 1. Graph workflow events (node completions)
+            # 2. Reasoning tokens (as they arrive from LLM)
+            #
+            # Strategy: Use asyncio to merge both streams, sending events
+            # to frontend as they arrive from either source.
+            
+            # Create queues for merging streams
+            event_queue = asyncio.Queue()
+            
+            async def consume_graph_stream():
+                """
+                Consume graph stream and put events in queue.
+                
+                This runs the LangGraph workflow and queues node output events
+                for merging with reasoning tokens.
+                """
+                try:
+                    async for event in orchestrator.astream(
+                        initial_state,
+                        config={
+                            "configurable": {
+                                "user_id": request.user_id,
+                                "session_id": request.session_id or "",
+                                "document_format": request.document_format,
+                            }
+                        }
+                    ):
+                        await event_queue.put(('graph', event))
+                    await event_queue.put(('graph', None))  # Sentinel: graph done
+                except Exception as e:
+                    await event_queue.put(('graph', ('error', str(e))))
+            
+            async def consume_reasoning_stream():
+                """
+                Consume reasoning token stream and put events in queue.
+                
+                This streams LLM tokens as they arrive and queues them for
+                merging with graph events.
+                
+                Note: reasoning_stream yields SSE-formatted strings (already formatted),
+                like "event: REASONING_TOKEN\ndata: {...}\n\n"
+                We queue them as-is for direct yielding to the frontend.
+                """
+                try:
+                    async for sse_event in reasoning_stream:
+                        # reasoning_stream yields SSE-formatted strings
+                        # Queue them as-is for direct yielding
+                        await event_queue.put(('reasoning', sse_event))
+                    await event_queue.put(('reasoning', None))  # Sentinel: reasoning done
+                except Exception as e:
+                    print(f"⚠️ [Stream] Reasoning stream consumption error: {e}")
+                    await event_queue.put(('reasoning', None))  # Mark as done even on error
+            
+            # Start both consumers in parallel
+            graph_task = asyncio.create_task(consume_graph_stream())
+            reasoning_task = asyncio.create_task(consume_reasoning_stream())
+            
+            # Track completion
+            graph_done = False
+            reasoning_done = False
+            
+            # Process events from both streams as they arrive
+            while not (graph_done and reasoning_done):
+                # Wait for next event from either stream
+                stream_type, event_data = await event_queue.get()
+                
+                if stream_type == 'reasoning':
+                    # Reasoning token event - send directly to frontend
+                    # event_data is already a formatted SSE string from reasoning_stream
+                    # Format: "event: REASONING_TOKEN\ndata: {...}\n\n"
+                    if event_data is None:
+                        reasoning_done = True
+                    else:
+                        # Directly yield the SSE-formatted string (already has event: and data:)
+                        yield event_data
+                
+                elif stream_type == 'graph':
+                    # Graph workflow event - process node outputs
+                    if event_data is None:
+                        graph_done = True
+                        continue
+                    elif isinstance(event_data, tuple) and event_data[0] == 'error':
+                        # Graph error
+                        yield f"event: ERROR\ndata: {json.dumps({'error': event_data[1]})}\n\n"
+                        graph_done = True
+                        continue
+                    
+                    # Process graph event (node outputs)
+                    for node_name, node_output in event_data.items():
                     
                     # Stream intent analysis (deduplicated - only send once)
                     if "intent" in node_output and node_output["intent"] and not sent_intent:
@@ -385,9 +637,12 @@ async def orchestrate_stream(request: OrchestrateRequest):
                         sent_strategy = True
                         yield f"event: STRATEGY\ndata: {json.dumps({'strategy': node_output['strategy']})}\n\n"
                     
-                    # Stream clarification needed
+                            # Stream clarification needed - STOP and wait for user response
                     if node_output.get("needs_clarification"):
                         yield f"event: CLARIFICATION\ndata: {json.dumps({'options': node_output.get('clarification_options', []), 'message': node_output.get('clarification_message'), 'originalAction': node_output.get('original_action', 'create_structure')})}\n\n"
+                                # Stop processing - user must respond before continuing
+                                print("⏸️ [Stream] Pausing for clarification - waiting for user response")
+                                return
                     
                     # Stream messages (deduplicated)
                     if "messages" in node_output:
@@ -397,7 +652,7 @@ async def orchestrate_stream(request: OrchestrateRequest):
                                 sent_messages.add(msg_key)
                                 yield f"event: MESSAGE\ndata: {json.dumps(msg)}\n\n"
                     
-                    # Stream actions (deduplicated)
+                            # Stream actions (deduplicated) + announce section writing
                     if "actions" in node_output:
                         for action in node_output["actions"]:
                             action_key = f"{action['type']}:{action.get('payload', {}).get('sectionId', '')}"
@@ -405,16 +660,41 @@ async def orchestrate_stream(request: OrchestrateRequest):
                                 sent_actions.add(action_key)
                                 yield f"event: ACTION\ndata: {json.dumps(action)}\n\n"
                     
-                    # Stream results (deduplicated)
+                                        # If this is a generate_content action, emit SECTION_WRITING
+                                        if action['type'] == 'generate_content':
+                                            section_id = action.get('payload', {}).get('sectionId', '')
+                                            section_title = action.get('payload', {}).get('title', 'Section')
+                                            if section_id and section_id not in sections_announced:
+                                                sections_announced.add(section_id)
+                                                yield f"event: SECTION_WRITING\ndata: {json.dumps({'section_id': section_id, 'title': section_title})}\n\n"
+                            
+                            # Stream results (deduplicated) with enhanced structure events
                     if "results" in node_output and node_output["results"]:
                         for section_id, content in node_output["results"].items():
                             if section_id not in sent_results:
                                 sent_results.add(section_id)
+                                        
+                                        # Special handling for structure result
+                                        if section_id == "structure" and not sent_structure_created:
+                                            sent_structure_created = True
+                                            structure_info = parse_structure_for_events(content)
+                                            if structure_info:
+                                                yield f"event: STRUCTURE_CREATED\ndata: {json.dumps(structure_info)}\n\n"
+                                            # Also send the raw result for canvas creation
+                                            yield f"event: RESULT\ndata: {json.dumps({'section_id': section_id, 'content': content})}\n\n"
+                                        else:
+                                            # Regular section content - emit completion
+                                            preview = content[:100] + "..." if len(content) > 100 else content
+                                            yield f"event: SECTION_COMPLETE\ndata: {json.dumps({'section_id': section_id, 'preview': preview, 'word_count': len(content.split())})}\n\n"
                                 yield f"event: RESULT\ndata: {json.dumps({'section_id': section_id, 'content': content})}\n\n"
                     
                     # Stream critic approval
                     if "critic_approved" in node_output:
                         yield f"event: CRITIC\ndata: {json.dumps({'approved': node_output['critic_approved']})}\n\n"
+            
+            # Wait for both streams to complete (cleanup)
+            # This ensures both tasks finish even if one completes first
+            await asyncio.gather(graph_task, reasoning_task, return_exceptions=True)
             
             # Send completion
             yield f"event: DONE\ndata: {json.dumps({'success': True})}\n\n"

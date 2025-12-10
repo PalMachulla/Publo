@@ -185,6 +185,14 @@ export function useOrchestratorSession({
       // Normalize type to UPPERCASE to match Supabase CHECK constraint
       const normalizedType = type.toUpperCase()
       
+      // Log what we're trying to insert for debugging
+      console.log('💾 [Session] Attempting to persist:', {
+        role,
+        type: normalizedType,
+        contentLength: content.length,
+        sessionId: session.id
+      })
+      
       const { data: newMessage, error } = await supabase
         .from('orchestrator_messages')
         .insert({
@@ -197,7 +205,18 @@ export function useOrchestratorSession({
         .select()
         .single()
       
-      if (error) throw error
+      if (error) {
+        console.error('❌ [Session] Database error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          attemptedType: normalizedType,
+          role,
+          contentPreview: content.substring(0, 50)
+        })
+        throw error
+      }
       
       // Update local state
       setMessages(prev => [...prev, newMessage])

@@ -2,26 +2,51 @@
  * OrchestratorPanel - Wrapper Component
  * 
  * =============================================================================
- * POST-PYTHON MIGRATION
+ * STREAMING UI MIGRATION (Phase 2)
  * =============================================================================
  * 
- * This wrapper now always uses the new OrchestratorPanel that communicates
- * with the Python backend via backendClient.ts.
+ * This wrapper uses a feature flag to switch between:
+ * - NEW: Progressive streaming UI with visual feedback (OrchestratorPanelStreaming)
+ * - CURRENT: Existing panel in @/lib/orchestrator/components/OrchestratorPanel
  * 
- * The legacy TypeScript-based orchestrator has been deprecated.
+ * Feature Flag: NEXT_PUBLIC_USE_STREAMING_ORCHESTRATOR
+ *   - true  → New progressive streaming UI
+ *   - false → Current panel (default, safe fallback)
  * 
- * Previously this component used a feature flag (NEXT_PUBLIC_USE_PYTHON_ORCHESTRATION)
- * to switch between new and legacy panels. That flag is no longer needed.
+ * Once the streaming UI is stable, we can:
+ * 1. Remove the feature flag
+ * 2. Move files out of @/lib to proper locations
+ * 3. Archive the old panel
  * 
- * @see lib/orchestrator/components/OrchestratorPanel for the implementation
- * @see lib/orchestrator/backendClient.ts for Python API communication
+ * @see components/orchestrator/OrchestratorPanelStreaming for new implementation
+ * @see lib/orchestrator/components/OrchestratorPanel for current implementation
  */
 'use client'
 
-import { OrchestratorPanel as NewPanel } from '@/lib/orchestrator/components/OrchestratorPanel'
+import { OrchestratorPanel as CurrentPanel } from '@/lib/orchestrator/components/OrchestratorPanel'
+import { OrchestratorPanelStreaming } from '@/components/orchestrator/OrchestratorPanelStreaming'
 
-// Re-export the new panel directly
-// The legacy panel (LegacyOrchestratorPanel.tsx) has been deprecated
-export default function OrchestratorPanel(props: any) {
-  return <NewPanel {...props} />
+// Feature flag for progressive streaming UI
+const USE_STREAMING_UI = process.env.NEXT_PUBLIC_USE_STREAMING_ORCHESTRATOR === 'true'
+
+export interface OrchestratorPanelProps {
+  userId: string
+  sessionId?: string
+  documentFormat?: string
+  onStructureComplete?: (structure: any) => void
+  onSectionComplete?: (sectionId: string, content: string) => void
+  onClarificationNeeded?: (clarification: any) => void
+  // Pass through any other props the panels need
+  [key: string]: any
 }
+
+export default function OrchestratorPanel(props: OrchestratorPanelProps) {
+  if (USE_STREAMING_UI) {
+    return <OrchestratorPanelStreaming {...props} />
+  }
+  
+  return <CurrentPanel {...props} />
+}
+
+// Also export named for flexibility
+export { OrchestratorPanel }
