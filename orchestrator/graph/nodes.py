@@ -72,6 +72,64 @@ async def analyze_intent_node(state: OrchestratorState) -> Dict[str, Any]:
         # Import here to avoid circular imports
         from orchestrator.intent.analyzer import analyze_intent
         from orchestrator.intent.types import PipelineContext
+        import os
+        
+        # ============================================================
+        # PHASE 3: CONTEXT MANAGEMENT (OPTIONAL)
+        # ============================================================
+        # Load context from filesystem if feature flag enabled
+        # This reduces context window usage by loading only what's needed
+        USE_DEEP_AGENTS_CONTEXT = os.getenv("USE_DEEP_AGENTS_CONTEXT", "false").lower() == "true"
+        
+        canvas_context = None
+        conversation_history = []
+        active_seg = state.get("active_segment")
+        
+        if USE_DEEP_AGENTS_CONTEXT:
+            try:
+                from orchestrator.agents.deep_agent_backend import OrchestratorFilesystemBackend
+                from orchestrator.agents.file_storage import load_context_from_filesystem
+                from orchestrator.agents.migration_utils import initialize_filesystem_for_session
+                
+                # Initialize filesystem if not already done (Phase 1)
+                filesystem_meta = state.get("_filesystem", {})
+                if filesystem_meta.get("enabled"):
+                    session_id = filesystem_meta.get("project_id")
+                    backend = OrchestratorFilesystemBackend(project_id=session_id)
+                else:
+                    # Initialize filesystem for this session
+                    session_id = state.get("session_id") or f"session-{state.get('user_id', 'default')}"
+                    backend = initialize_filesystem_for_session(session_id, state)
+                
+                # Load context from filesystem (selective loading)
+                canvas_data = load_context_from_filesystem(backend, "canvas")
+                conversation_data = load_context_from_filesystem(backend, "conversation")
+                document_data = load_context_from_filesystem(backend, "document")
+                
+                # Convert filesystem data to context format
+                if canvas_data:
+                    # canvas_data is already a dict (from filesystem)
+                    import json
+                    canvas_context = json.dumps(canvas_data) if isinstance(canvas_data, dict) else str(canvas_data)
+                
+                if conversation_data:
+                    conversation_history = conversation_data.get("messages", [])
+                
+                # Update active_segment from document data if available
+                if document_data and not active_seg:
+                    active_seg = document_data.get("active_segment")
+                
+                print(f"💾 [Context] Loaded from filesystem: canvas={bool(canvas_data)}, conversation={len(conversation_history)} messages")
+                
+            except Exception as e:
+                # Fallback to state if filesystem fails
+                print(f"⚠️ [Context] Filesystem loading failed (using state): {e}")
+                canvas_context = state.get("canvas_context")
+                conversation_history = state.get("conversation_history", [])
+        else:
+            # Original behavior: read from state
+            canvas_context = state.get("canvas_context")
+            conversation_history = state.get("conversation_history", [])
         
         # ============================================================
         # BUILD CONTEXT FOR INTENT ANALYSIS
@@ -80,14 +138,13 @@ async def analyze_intent_node(state: OrchestratorState) -> Dict[str, Any]:
         # - What section is active? (affects "write_content" vs "create_structure")
         # - What's on the canvas? (helps resolve references like "that story")
         # - Conversation history? (understands follow-ups)
-        active_seg = state.get("active_segment")
         context = PipelineContext(
             message=state.get("user_message", ""),
             activeSegment=active_seg,
             documentPanelOpen=state.get("document_panel_open", False),
             documentFormat=state.get("document_format"),
-            canvasContext=state.get("canvas_context"),
-            conversationHistory=state.get("conversation_history", [])
+            canvasContext=canvas_context,
+            conversationHistory=conversation_history
         )
         
         # ============================================================
@@ -891,6 +948,48 @@ async def writer_node(state: OrchestratorState) -> Dict[str, Any]:
     """
     try:
         from .agents.writer import generate_content, generate_structure
+        import os
+        
+        # ============================================================
+        # PHASE 3: CONTEXT MANAGEMENT (OPTIONAL)
+        # ============================================================
+        # Load context from filesystem if feature flag enabled
+        USE_DEEP_AGENTS_CONTEXT = os.getenv("USE_DEEP_AGENTS_CONTEXT", "false").lower() == "true"
+        
+        canvas_context = None
+        if USE_DEEP_AGENTS_CONTEXT:
+            try:
+                from orchestrator.agents.deep_agent_backend import OrchestratorFilesystemBackend
+                from orchestrator.agents.file_storage import load_context_from_filesystem
+                from orchestrator.agents.migration_utils import initialize_filesystem_for_session
+                
+                # Initialize filesystem if not already done (Phase 1)
+                filesystem_meta = state.get("_filesystem", {})
+                if filesystem_meta.get("enabled"):
+                    session_id = filesystem_meta.get("project_id")
+                    backend = OrchestratorFilesystemBackend(project_id=session_id)
+                else:
+                    # Initialize filesystem for this session
+                    session_id = state.get("session_id") or f"session-{state.get('user_id', 'default')}"
+                    backend = initialize_filesystem_for_session(session_id, state)
+                
+                # Load canvas context from filesystem (selective loading)
+                canvas_data = load_context_from_filesystem(backend, "canvas")
+                
+                # Convert filesystem data to context format
+                if canvas_data:
+                    import json
+                    canvas_context = json.dumps(canvas_data) if isinstance(canvas_data, dict) else str(canvas_data)
+                
+                print(f"💾 [Writer] Loaded canvas context from filesystem")
+                
+            except Exception as e:
+                # Fallback to state if filesystem fails
+                print(f"⚠️ [Writer] Filesystem loading failed (using state): {e}")
+                canvas_context = state.get("canvas_context")
+        else:
+            # Original behavior: read from state
+            canvas_context = state.get("canvas_context")
         
         # ============================================================
         # GET ACTIONS AND INITIALIZE RESULTS
@@ -921,7 +1020,7 @@ async def writer_node(state: OrchestratorState) -> Dict[str, Any]:
                 content = await generate_content(
                     prompt=payload.get("prompt", ""),
                     section_name=section_name,
-                    context=state.get("canvas_context")
+                    context=canvas_context
                 )
                 
                 # Store result (keyed by section_id for easy lookup)
@@ -944,7 +1043,7 @@ async def writer_node(state: OrchestratorState) -> Dict[str, Any]:
                     prompt=prompt,
                     format_type=format_type,
                     template_id=template_id,
-                    context=state.get("canvas_context")
+                    context=canvas_context
                 )
                 
                 # Store structure result (special key "structure")
