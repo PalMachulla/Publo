@@ -165,7 +165,8 @@ export function useCanvasData(
   // TEMPORARY: Force admin for specific email while debugging
   // TODO: Replace with proper admin system
   const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
-  console.log('🔧 isForceAdmin check:', { email: user?.email, isForceAdmin, userRole })
+  // Removed excessive logging - only log in development if needed
+  // console.log('🔧 isForceAdmin check:', { email: user?.email, isForceAdmin, userRole })
   
   // Loading/saving state
   const [saving, setSaving] = useState(false)

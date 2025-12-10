@@ -29,8 +29,8 @@ from typing import Optional, Literal
 import os
 
 # Import our intent analysis module
-from orchestrator.intent.analyzer import analyze_intent
-from orchestrator.intent.types import IntentAnalysis, PipelineContext
+from core.intent.analyzer import analyze_intent
+from core.intent.types import IntentAnalysis, PipelineContext
 
 router = APIRouter()
 
@@ -182,7 +182,7 @@ async def classify_only(request: IntentRequest):
     
     Returns null if no pattern matches.
     """
-    from orchestrator.intent.classifier import classify_with_patterns
+    from core.intent.classifier import classify_with_patterns
     
     context = PipelineContext(
         message=request.message,

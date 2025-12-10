@@ -365,8 +365,8 @@ async def orchestrate_stream(request: OrchestrateRequest):
         """
         try:
             from graph.workflow import get_orchestrator
-            from orchestrator.intent.deep_analyzer import get_deep_analyzer, SYSTEM_PROMPT, USER_PROMPT
-            from orchestrator.intent.types import PipelineContext
+            from core.intent.deep_analyzer import get_deep_analyzer, SYSTEM_PROMPT, USER_PROMPT
+            from core.intent.types import PipelineContext
             from langchain.prompts import ChatPromptTemplate
             
             orchestrator = get_orchestrator()
@@ -496,6 +496,19 @@ async def orchestrate_stream(request: OrchestrateRequest):
             # This prepares for Phase 2-5 where nodes will read from filesystem
             if USE_DEEP_AGENTS_FILESYSTEM:
                 try:
+                    import sys
+                    import os
+                    from pathlib import Path
+                    # ✅ FIX: Add project root to path for imports
+                    current_file = Path(__file__).resolve()
+                    project_root = current_file.parent.parent.parent
+                    project_root_str = str(project_root)
+                    # Normalize paths for comparison
+                    normalized_paths = [os.path.abspath(p) for p in sys.path]
+                    if os.path.abspath(project_root_str) not in normalized_paths:
+                        sys.path.insert(0, project_root_str)
+                        print(f"🔧 [Filesystem] Added project root to path: {project_root_str}")
+                    
                     from orchestrator.agents.migration_utils import initialize_filesystem_for_session
                     
                     session_id = request.session_id or f"session-{request.user_id}"
@@ -539,8 +552,17 @@ async def orchestrate_stream(request: OrchestrateRequest):
                     title = structure.get("title", "Untitled")
                     sections = []
                     
-                    # Handle different structure formats
-                    if "sections" in structure:
+                    # ✅ FIX: Handle "items" array (from generate_structure function)
+                    # The structure from writer.py uses "items" not "sections" or "chapters"
+                    if "items" in structure:
+                        for item in structure["items"]:
+                            sections.append({
+                                "id": item.get("id", ""),
+                                "title": item.get("name", item.get("title", "Untitled Section")),
+                                "type": item.get("type", "section")
+                            })
+                    # Handle different structure formats (legacy support)
+                    elif "sections" in structure:
                         for sec in structure["sections"]:
                             sections.append({
                                 "id": sec.get("id", ""),
@@ -563,6 +585,8 @@ async def orchestrate_stream(request: OrchestrateRequest):
                     }
                 except (json.JSONDecodeError, TypeError, KeyError) as e:
                     print(f"⚠️ Could not parse structure: {e}")
+                    import traceback
+                    traceback.print_exc()
                     return None
             
             # ============================================================
@@ -684,18 +708,50 @@ async def orchestrate_stream(request: OrchestrateRequest):
                                     sent_messages.add(msg_key)
                                     yield f"event: MESSAGE\ndata: {json.dumps(msg)}\n\n"
                         
-                        # Stream actions (deduplicated) + announce section writing
+                        # Stream plan summary (NEW: for UI display)
+                        if "plan_summary" in node_output and node_output["plan_summary"]:
+                            plan_data = node_output["plan_summary"]
+                            yield f"event: PLAN\ndata: {json.dumps(plan_data)}\n\n"
+                        
+                        # Stream actions (deduplicated) + handle action-specific events
                         if "actions" in node_output:
                             for action in node_output["actions"]:
-                                action_key = f"{action['type']}:{action.get('payload', {}).get('sectionId', '')}"
+                                action_type = action.get('type', '')
+                                payload = action.get('payload', {})
+                                action_key = f"{action_type}:{payload.get('sectionId', payload.get('nodeId', ''))}"
+                                
                                 if action_key not in sent_actions:
                                     sent_actions.add(action_key)
                                     yield f"event: ACTION\ndata: {json.dumps(action)}\n\n"
                                     
-                                    # If this is a generate_content action, emit SECTION_WRITING
-                                    if action['type'] == 'generate_content':
-                                        section_id = action.get('payload', {}).get('sectionId', '')
-                                        section_title = action.get('payload', {}).get('title', 'Section')
+                                    # ============================================================
+                                    # NAVIGATION ACTIONS: Emit events for frontend to handle
+                                    # ============================================================
+                                    
+                                    # OPEN_DOCUMENT: Tell frontend to open a document node
+                                    if action_type == 'open_document':
+                                        node_id = payload.get('nodeId', '')
+                                        node_name = payload.get('nodeName', 'Document')
+                                        yield f"event: OPEN_DOCUMENT\ndata: {json.dumps({'node_id': node_id, 'node_name': node_name})}\n\n"
+                                        print(f"📂 [Stream] Emitting OPEN_DOCUMENT: {node_name} ({node_id})")
+                                    
+                                    # SELECT_SECTION: Tell frontend to navigate to a section
+                                    elif action_type == 'select_section':
+                                        section_id = payload.get('sectionId', '')
+                                        section_name = payload.get('sectionName', 'Section')
+                                        yield f"event: SELECT_SECTION\ndata: {json.dumps({'section_id': section_id, 'section_name': section_name})}\n\n"
+                                        print(f"📍 [Stream] Emitting SELECT_SECTION: {section_name} ({section_id})")
+                                    
+                                    # MESSAGE: Show a message to user (error/info)
+                                    elif action_type == 'message':
+                                        msg_content = payload.get('content', '')
+                                        msg_type = payload.get('type', 'info')
+                                        yield f"event: MESSAGE\ndata: {json.dumps({'role': 'orchestrator', 'content': msg_content, 'type': msg_type})}\n\n"
+                                    
+                                    # GENERATE_CONTENT: Announce section writing
+                                    elif action_type == 'generate_content':
+                                        section_id = payload.get('sectionId', '')
+                                        section_title = payload.get('title', 'Section')
                                         if section_id and section_id not in sections_announced:
                                             sections_announced.add(section_id)
                                             yield f"event: SECTION_WRITING\ndata: {json.dumps({'section_id': section_id, 'title': section_title})}\n\n"
@@ -728,55 +784,68 @@ async def orchestrate_stream(request: OrchestrateRequest):
             # This ensures both tasks finish even if one completes first
             await asyncio.gather(graph_task, reasoning_task, return_exceptions=True)
             
-                  # ============================================================
-                  # PHASE 5: PERSISTENT MEMORY - Learn from Success
-                  # ============================================================
-                  # After successful completion, learn from the interaction
-                  try:
-                      from orchestrator.agents.memory_manager import MemoryManager
-                      from orchestrator.agents.preference_learner import PreferenceLearner
-                      from orchestrator.agents.pattern_learner import PatternLearner
-                      from orchestrator.agents.deep_agent_backend import OrchestratorFilesystemBackend
-                      
-                      # Initialize memory if filesystem is enabled
-                      if USE_DEEP_AGENTS_FILESYSTEM:
-                          session_id = request.session_id or f"session-{request.user_id}"
-                          backend = OrchestratorFilesystemBackend(project_id=session_id)
-                          memory = MemoryManager(backend)
-                          preference_learner = PreferenceLearner(memory)
-                          pattern_learner = PatternLearner(memory)
-                          
-                          # Collect results for learning
-                          final_results = {}
-                          for section_id in sent_results:
-                              # Results are already sent, but we can learn from the action types
-                              final_results[section_id] = "completed"
-                          
-                          # Learn from interaction
-                          if final_results:
-                              pattern_learner.learn_from_success(
-                                  result={"results": final_results},
-                                  metrics={"completion_time": None},  # TODO: Track actual time
-                                  context={
-                                      "user_message": request.message,
-                                      "intent": None,  # TODO: Get from state
-                                      "strategy": None  # TODO: Get from state
-                                  }
-                              )
-                              
-                              preference_learner.learn_from_interaction(
-                                  user_message=request.message,
-                                  result={"results": final_results}
-                              )
-                              
-                              print(f"🧠 [Memory] Learned from successful interaction")
-                  
-                  except Exception as e:
-                      # Don't fail if learning fails
-                      print(f"⚠️ [Memory] Learning failed (non-fatal): {e}")
-                  
-                  # Send completion
-                  yield f"event: DONE\ndata: {json.dumps({'success': True})}\n\n"
+            # ============================================================
+            # PHASE 5: PERSISTENT MEMORY - Learn from Success
+            # ============================================================
+            # After successful completion, learn from the interaction
+            try:
+                import sys
+                import os
+                from pathlib import Path
+                # ✅ FIX: Add project root to path for imports
+                current_file = Path(__file__).resolve()
+                project_root = current_file.parent.parent.parent
+                project_root_str = str(project_root)
+                # Normalize paths for comparison
+                normalized_paths = [os.path.abspath(p) for p in sys.path]
+                if os.path.abspath(project_root_str) not in normalized_paths:
+                    sys.path.insert(0, project_root_str)
+                    print(f"🔧 [Memory] Added project root to path: {project_root_str}")
+                
+                from orchestrator.agents.memory_manager import MemoryManager
+                from orchestrator.agents.preference_learner import PreferenceLearner
+                from orchestrator.agents.pattern_learner import PatternLearner
+                from orchestrator.agents.deep_agent_backend import OrchestratorFilesystemBackend
+                
+                # Initialize memory if filesystem is enabled
+                if USE_DEEP_AGENTS_FILESYSTEM:
+                    session_id = request.session_id or f"session-{request.user_id}"
+                    backend = OrchestratorFilesystemBackend(project_id=session_id)
+                    memory = MemoryManager(backend)
+                    preference_learner = PreferenceLearner(memory)
+                    pattern_learner = PatternLearner(memory)
+                    
+                    # Collect results for learning
+                    final_results = {}
+                    for section_id in sent_results:
+                        # Results are already sent, but we can learn from the action types
+                        final_results[section_id] = "completed"
+                    
+                    # Learn from interaction
+                    if final_results:
+                        pattern_learner.learn_from_success(
+                            result={"results": final_results},
+                            metrics={"completion_time": None},  # TODO: Track actual time
+                            context={
+                                "user_message": request.message,
+                                "intent": None,  # TODO: Get from state
+                                "strategy": None  # TODO: Get from state
+                            }
+                        )
+                        
+                        preference_learner.learn_from_interaction(
+                            user_message=request.message,
+                            result={"results": final_results}
+                        )
+                        
+                        print(f"🧠 [Memory] Learned from successful interaction")
+            
+            except Exception as e:
+                # Don't fail if learning fails
+                print(f"⚠️ [Memory] Learning failed (non-fatal): {e}")
+            
+            # Send completion
+            yield f"event: DONE\ndata: {json.dumps({'success': True})}\n\n"
             
         except Exception as e:
             print(f"❌ [Stream] Error: {e}")

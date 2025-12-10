@@ -70,8 +70,8 @@ async def analyze_intent_node(state: OrchestratorState) -> Dict[str, Any]:
     
     try:
         # Import here to avoid circular imports
-        from orchestrator.intent.analyzer import analyze_intent
-        from orchestrator.intent.types import PipelineContext
+        from core.intent.analyzer import analyze_intent
+        from core.intent.types import PipelineContext
         import os
         
         # ============================================================
@@ -87,6 +87,14 @@ async def analyze_intent_node(state: OrchestratorState) -> Dict[str, Any]:
         
         if USE_DEEP_AGENTS_CONTEXT:
             try:
+                import sys
+                from pathlib import Path
+                # ✅ FIX: Add project root to path for imports
+                current_file = Path(__file__).resolve()
+                project_root = current_file.parent.parent.parent
+                if str(project_root) not in sys.path:
+                    sys.path.insert(0, str(project_root))
+                
                 from orchestrator.agents.deep_agent_backend import OrchestratorFilesystemBackend
                 from orchestrator.agents.file_storage import load_context_from_filesystem
                 from orchestrator.agents.migration_utils import initialize_filesystem_for_session
@@ -316,6 +324,137 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
     import os
     
     # ============================================================
+    # CLARIFICATION RESPONSE HANDLING (CHECK FIRST!)
+    # ============================================================
+    # If user responded to a clarification, process it before anything else.
+    # This must run BEFORE the planner to prevent re-analysis of the response.
+    clarification_response = state.get("clarification_response")
+    if clarification_response:
+        response_action = clarification_response.get("original_action")
+        selected_option = clarification_response.get("option_id")
+        intent = state.get("intent", {}) or {}
+        
+        print(f"✅ [Actions] Processing clarification response: action={response_action}, option={selected_option}")
+        
+        # Handle open_document clarification (user selected a document)
+        if response_action == "open_document":
+            canvas_nodes = state.get("canvas_nodes", []) or []
+            target_node = None
+            response_lower = (selected_option or "").lower().strip()
+            
+            # Try by ID first
+            for node in canvas_nodes:
+                node_id = (node.get("id") or node.get("nodeId") or "").lower()
+                if node_id == response_lower:
+                    target_node = node
+                    break
+            
+            # Try by label/name
+            if not target_node:
+                for node in canvas_nodes:
+                    label = (node.get("label") or node.get("name") or 
+                             node.get("data", {}).get("label") or "").lower()
+                    if label == response_lower or response_lower in label or label in response_lower:
+                        target_node = node
+                        break
+            
+            # Try ordinal matching
+            if not target_node:
+                ordinal_map = {"first": 0, "1": 0, "second": 1, "2": 1, "third": 2, "3": 2}
+                doc_nodes = [n for n in canvas_nodes if "story" in str(n.get("type", "")).lower()]
+                for ordinal, idx in ordinal_map.items():
+                    if ordinal in response_lower and idx < len(doc_nodes):
+                        target_node = doc_nodes[idx]
+                        break
+            
+            if target_node:
+                node_id = target_node.get("id") or target_node.get("nodeId", "")
+                node_name = (target_node.get("label") or target_node.get("name") or 
+                            target_node.get("data", {}).get("label", "Document"))
+                
+                actions = [{
+                    "type": "open_document",
+                    "payload": {"nodeId": node_id, "nodeName": node_name},
+                    "requiresUserInput": False,
+                    "priority": "high",
+                    "status": "pending"
+                }]
+                
+                # Check if user also wanted to write content
+                user_message = (state.get("user_message") or "").lower()
+                if any(w in user_message for w in ["write", "writing", "chapter"]):
+                    structure_items = state.get("structure_items", []) or []
+                    import re
+                    chapter_match = re.search(r'chapter\s*(\d+)', user_message)
+                    target_section = None
+                    if chapter_match:
+                        idx = int(chapter_match.group(1)) - 1
+                        if 0 <= idx < len(structure_items):
+                            target_section = structure_items[idx]
+                    elif structure_items:
+                        target_section = structure_items[0]
+                    
+                    if target_section:
+                        actions.append({
+                            "type": "generate_content",
+                            "payload": {
+                                "sectionId": target_section.get("id"),
+                                "sectionName": target_section.get("name") or target_section.get("title"),
+                                "prompt": f"Write content for {target_section.get('name')}"
+                            },
+                            "requiresUserInput": False,
+                            "priority": "normal",
+                            "status": "pending"
+                        })
+                
+                print(f"📂 [Actions] Opening document: {node_name}")
+                return {
+                    "actions": actions,
+                    "needs_clarification": False,
+                    "messages": [{"role": "orchestrator", "content": f"Opening: {node_name}", "type": "decision"}]
+                }
+        
+        # Handle write_content clarification (user selected a chapter)
+        elif response_action == "write_content":
+            structure_items = state.get("structure_items", []) or []
+            target_section = None
+            response_lower = (selected_option or "").lower().strip()
+            
+            ordinal_map = {"first": 0, "1": 0, "second": 1, "2": 1, "third": 2, "3": 2}
+            for ordinal, idx in ordinal_map.items():
+                if ordinal in response_lower and idx < len(structure_items):
+                    target_section = structure_items[idx]
+                    break
+            
+            if not target_section:
+                for item in structure_items:
+                    if item.get("id", "").lower() == response_lower:
+                        target_section = item
+                        break
+                    label = (item.get("name") or item.get("title") or "").lower()
+                    if label == response_lower or response_lower in label:
+                        target_section = item
+                        break
+            
+            if target_section:
+                print(f"✍️ [Actions] Writing chapter: {target_section.get('name')}")
+                return {
+                    "actions": [{
+                        "type": "generate_content",
+                        "payload": {
+                            "sectionId": target_section.get("id"),
+                            "sectionName": target_section.get("name"),
+                            "prompt": state.get("user_message", "")
+                        },
+                        "requiresUserInput": False,
+                        "priority": "normal",
+                        "status": "pending"
+                    }],
+                    "needs_clarification": False,
+                    "messages": [{"role": "orchestrator", "content": f"Writing: {target_section.get('name')}", "type": "decision"}]
+                }
+    
+    # ============================================================
     # PHASE 2: DEEP AGENT PLANNER (OPTIONAL)
     # ============================================================
     # Use Deep Agent planner if feature flag enabled
@@ -323,6 +462,25 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
     
     if USE_DEEP_AGENTS_PLANNER:
         try:
+            import sys
+            import os
+            from pathlib import Path
+            # ✅ FIX: Add project root (parent of orchestrator/) to path
+            # When running from orchestrator/, we need the project root in path
+            # so that "orchestrator.agents" can be imported
+            current_file = Path(__file__).resolve()
+            # File is at: orchestrator/graph/nodes.py
+            # Parent is: orchestrator/graph/
+            # Parent.parent is: orchestrator/
+            # Parent.parent.parent is: project root (where we want to be)
+            project_root = current_file.parent.parent.parent
+            project_root_str = str(project_root)
+            # Normalize paths for comparison
+            normalized_paths = [os.path.abspath(p) for p in sys.path]
+            if os.path.abspath(project_root_str) not in normalized_paths:
+                sys.path.insert(0, project_root_str)
+                print(f"🔧 [Actions] Added project root to path: {project_root_str}")
+            
             from orchestrator.agents.planner_agent import PlannerAgent
             from orchestrator.agents.plan_converter import convert_plan_to_actions, extract_clarification_from_plan
             from orchestrator.agents.deep_agent_backend import OrchestratorFilesystemBackend
@@ -359,17 +517,48 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
             )
             
             # Convert plan to actions (backward compatibility)
-            actions = convert_plan_to_actions(plan)
+            # CRITICAL: Pass all context so section IDs can be resolved correctly
+            user_message = state.get("user_message", "")
+            canvas_nodes = state.get("canvas_nodes", []) or []
+            entities = intent.get("extractedEntities", {}) or {}
+            active_segment = state.get("active_segment")
+            structure_items = state.get("structure_items", []) or []
+            
+            actions = convert_plan_to_actions(
+                plan, 
+                user_message=user_message,
+                canvas_nodes=canvas_nodes,
+                entities=entities,
+                active_segment=active_segment,
+                structure_items=structure_items
+            )
             
             # Extract clarification if needed
             clarification = extract_clarification_from_plan(plan)
             
             print(f"✅ [Actions] Planner generated {len(actions)} action(s) from plan")
             
-            # Return result with plan and actions
+            # Build plan summary for UI display
+            plan_summary = {
+                "task": plan.get("task", state.get("user_message", "")),
+                "intent": plan.get("intent", ""),
+                "step_count": len(plan.get("steps", [])),
+                "steps": [
+                    {
+                        "id": step.get("id", f"step_{i}"),
+                        "description": step.get("description", "")[:80],  # Truncate for UI
+                        "action_type": step.get("action_type", "general_task"),
+                        "status": "pending"
+                    }
+                    for i, step in enumerate(plan.get("steps", []))
+                ]
+            }
+            
+            # Return result with actions and plan summary for UI
+            # Note: 'plan_summary' is for streaming to UI, not stored in state
             result = {
                 "actions": actions,
-                "plan": plan,  # Store plan for future reference
+                "plan_summary": plan_summary,  # NEW: For UI display
                 "messages": [{
                     "role": "orchestrator",
                     "content": f"Created plan with {len(plan.get('steps', []))} steps, generated {len(actions)} action(s)",
@@ -387,6 +576,38 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
                     "options": clarification.get("clarification_options", [])
                 })
             
+            # Check if any action needs node clarification (converter couldn't find document)
+            for action in actions:
+                if action.get("payload", {}).get("_needs_node_clarification"):
+                    search_term = action.get("payload", {}).get("_search_term", "")
+                    canvas_nodes = state.get("canvas_nodes", []) or []
+                    
+                    # Get all document nodes as options
+                    doc_nodes = [
+                        n for n in canvas_nodes 
+                        if n.get("type") in ["storyStructureNode", "storyNode"]
+                        or "story" in str(n.get("type", "")).lower()
+                    ]
+                    
+                    if doc_nodes:
+                        def get_label(n):
+                            return n.get("label") or n.get("name") or n.get("data", {}).get("label", "Unknown")
+                        
+                        result["needs_clarification"] = True
+                        result["clarification_message"] = f"I couldn't find '{search_term}'. Which document would you like to open?"
+                        result["original_action"] = "open_document"
+                        result["clarification_options"] = [
+                            {
+                                "id": n.get("id") or n.get("nodeId", ""),
+                                "label": get_label(n),
+                                "description": f"{n.get('type', 'document')}"
+                            }
+                            for n in doc_nodes
+                        ]
+                        print(f"🤔 [Actions] Node not found, offering {len(doc_nodes)} document options")
+                    break  # Only handle first
+            
+            print(f"✅ [Actions] Planner generated {len(actions)} action(s) from plan")
             return result
             
         except Exception as e:
@@ -434,9 +655,42 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
         
         if response_action == "create_structure":
             # User selected a template - create structure with that template
-            # Detect format from the template ID (e.g., "podcast-cohosted" -> "podcast")
-            format_type = "novel"  # default
-            if selected_option:
+            # ✅ FIX: Detect format from original user message, not stale state
+            # The state might have "novel" from a previous request, so we need to
+            # re-detect format from the original message or conversation history
+            
+            format_type = None
+            
+            # 1. Try to detect from original user message (most reliable)
+            original_message = state.get("user_message", "").lower()
+            available_formats = ["podcast", "novel", "screenplay", "article", "report"]
+            for fmt in available_formats:
+                if fmt in original_message:
+                    format_type = fmt
+                    print(f"✅ [Actions] Detected format from original message: {format_type}")
+                    break
+            
+            # 2. If not in message, check conversation history for format mentions
+            if not format_type:
+                conversation_history = state.get("conversation_history", []) or []
+                for msg in reversed(conversation_history):  # Check most recent first
+                    msg_content = (msg.get("content") or "").lower()
+                    for fmt in available_formats:
+                        if fmt in msg_content:
+                            format_type = fmt
+                            print(f"✅ [Actions] Detected format from conversation history: {format_type}")
+                            break
+                    if format_type:
+                        break
+            
+            # 3. Fall back to state (might be stale, but better than nothing)
+            if not format_type:
+                format_type = state.get("document_format")
+                if format_type:
+                    print(f"⚠️ [Actions] Using format from state (may be stale): {format_type}")
+            
+            # 4. Try to detect from template ID prefix
+            if not format_type and selected_option:
                 if selected_option.startswith("podcast-"):
                     format_type = "podcast"
                 elif selected_option.startswith("screenplay-"):
@@ -445,6 +699,13 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
                     format_type = "novel"
                 elif selected_option.startswith("article-"):
                     format_type = "article"
+            
+            # 5. Final fallback to novel
+            if not format_type:
+                format_type = "novel"
+                print(f"⚠️ [Actions] No format detected, defaulting to: {format_type}")
+            
+            print(f"📝 [Actions] Format preserved: {format_type} (original message: {original_message[:50]}, template: {selected_option})")
             
             actions.append({
                 "type": "generate_structure",
@@ -470,6 +731,199 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
                     "type": "decision"
                 }]
             }
+        
+        # ============================================================
+        # CLARIFICATION RESPONSE: WRITE CONTENT (select chapter)
+        # ============================================================
+        elif response_action == "write_content":
+            # User selected which chapter to write
+            # selected_option could be: "the first", "1", "chapter-1", "Chapter 1", etc.
+            structure_items = state.get("structure_items", []) or []
+            target_section = None
+            
+            # Try to interpret the response
+            response_lower = (selected_option or "").lower().strip()
+            
+            # Pattern 1: Ordinal words ("the first", "first", "second", etc.)
+            ordinal_map = {
+                "first": 0, "1st": 0, "the first": 0,
+                "second": 1, "2nd": 1, "the second": 1,
+                "third": 2, "3rd": 2, "the third": 2,
+                "fourth": 3, "4th": 3, "fifth": 4, "5th": 4
+            }
+            for ordinal, index in ordinal_map.items():
+                if ordinal in response_lower:
+                    if index < len(structure_items):
+                        target_section = structure_items[index]
+                    break
+            
+            # Pattern 2: Number ("1", "2", etc.)
+            if not target_section:
+                import re
+                num_match = re.search(r'^(\d+)$', response_lower)
+                if num_match:
+                    index = int(num_match.group(1)) - 1  # 1-indexed
+                    if 0 <= index < len(structure_items):
+                        target_section = structure_items[index]
+            
+            # Pattern 3: Direct ID match ("chapter-1")
+            if not target_section:
+                for item in structure_items:
+                    if item.get("id", "").lower() == response_lower:
+                        target_section = item
+                        break
+            
+            # Pattern 4: Name match ("Chapter 1", "The Great Escape")
+            if not target_section:
+                for item in structure_items:
+                    item_name = (item.get("name") or item.get("title") or "").lower()
+                    if item_name == response_lower or response_lower in item_name:
+                        target_section = item
+                        break
+            
+            if target_section:
+                actions.append({
+                    "type": "generate_content",
+                    "payload": {
+                        "sectionId": target_section.get("id"),
+                        "sectionName": target_section.get("name") or target_section.get("title"),
+                        "prompt": state.get("user_message", "")
+                    },
+                    "requiresUserInput": False,
+                    "priority": "normal",
+                    "status": "pending"
+                })
+                
+                section_name = target_section.get("name") or target_section.get("title")
+                print(f"📝 [Actions] Resolved chapter selection: '{selected_option}' → {section_name}")
+                
+                return {
+                    "actions": actions,
+                    "needs_clarification": False,
+                    "messages": [{
+                        "role": "orchestrator",
+                        "content": f"Writing content for: {section_name}",
+                        "type": "decision"
+                    }]
+                }
+            else:
+                print(f"⚠️ [Actions] Could not resolve chapter: '{selected_option}'")
+                # Continue to normal processing
+        
+        # ============================================================
+        # CLARIFICATION RESPONSE: OPEN DOCUMENT (select from list)
+        # ============================================================
+        elif response_action == "open_document":
+            # User selected which document to open
+            # selected_option is the node ID or name
+            canvas_nodes = state.get("canvas_nodes", []) or []
+            target_node = None
+            
+            response_lower = (selected_option or "").lower().strip()
+            
+            # Try to find the node by ID first
+            for node in canvas_nodes:
+                node_id = (node.get("id") or node.get("nodeId") or "").lower()
+                if node_id == response_lower:
+                    target_node = node
+                    break
+            
+            # Try by label/name
+            if not target_node:
+                for node in canvas_nodes:
+                    label = (node.get("label") or node.get("name") or 
+                             node.get("data", {}).get("label") or "").lower()
+                    if label == response_lower or response_lower in label:
+                        target_node = node
+                        break
+            
+            # Try ordinal matching ("the first", "1", etc.)
+            if not target_node:
+                ordinal_map = {
+                    "first": 0, "1st": 0, "the first": 0, "1": 0,
+                    "second": 1, "2nd": 1, "the second": 1, "2": 1,
+                    "third": 2, "3rd": 2, "the third": 2, "3": 2,
+                    "fourth": 3, "4th": 3, "4": 3,
+                    "fifth": 4, "5th": 4, "5": 4
+                }
+                # Filter to document nodes only
+                doc_nodes = [
+                    n for n in canvas_nodes 
+                    if n.get("type") in ["storyStructureNode", "storyNode"]
+                    or "story" in str(n.get("type", "")).lower()
+                ]
+                for ordinal, index in ordinal_map.items():
+                    if ordinal in response_lower:
+                        if index < len(doc_nodes):
+                            target_node = doc_nodes[index]
+                        break
+            
+            if target_node:
+                node_id = target_node.get("id") or target_node.get("nodeId", "")
+                node_name = (target_node.get("label") or target_node.get("name") or 
+                            target_node.get("data", {}).get("label", "Document"))
+                
+                actions.append({
+                    "type": "open_document",
+                    "payload": {
+                        "nodeId": node_id,
+                        "nodeName": node_name
+                    },
+                    "requiresUserInput": False,
+                    "priority": "high",
+                    "status": "pending"
+                })
+                
+                print(f"📂 [Actions] Resolved document selection: '{selected_option}' → {node_name} ({node_id})")
+                
+                # Check if original request also wanted to write content
+                # e.g., "open X and start writing chapter 1"
+                user_message = (state.get("user_message") or "").lower()
+                intent_type = intent.get("intent", "")
+                
+                if intent_type == "open_and_write" or any(word in user_message for word in ["write", "writing", "start chapter", "chapter 1"]):
+                    # Also queue up a write action for chapter 1 (or first section)
+                    structure_items = state.get("structure_items", []) or []
+                    
+                    # Try to extract which chapter from the original message
+                    import re
+                    chapter_match = re.search(r'chapter\s*(\d+)', user_message)
+                    target_section = None
+                    
+                    if chapter_match:
+                        chapter_num = int(chapter_match.group(1)) - 1  # 0-indexed
+                        if 0 <= chapter_num < len(structure_items):
+                            target_section = structure_items[chapter_num]
+                    elif structure_items:
+                        # Default to first chapter
+                        target_section = structure_items[0]
+                    
+                    if target_section:
+                        actions.append({
+                            "type": "generate_content",
+                            "payload": {
+                                "sectionId": target_section.get("id"),
+                                "sectionName": target_section.get("name") or target_section.get("title"),
+                                "prompt": f"Write content for {target_section.get('name') or 'this section'}"
+                            },
+                            "requiresUserInput": False,
+                            "priority": "normal",
+                            "status": "pending"
+                        })
+                        print(f"✍️ [Actions] Also queued writing: {target_section.get('name')}")
+                
+                return {
+                    "actions": actions,
+                    "needs_clarification": False,
+                    "messages": [{
+                        "role": "orchestrator",
+                        "content": f"Opening document: {node_name}",
+                        "type": "decision"
+                    }]
+                }
+            else:
+                print(f"⚠️ [Actions] Could not resolve document: '{selected_option}'")
+                # Continue to normal processing
     
     # ============================================================
     # ACTION GENERATION: WRITE CONTENT
@@ -544,10 +998,23 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
                     print(f"✅ [Actions] Detected format from message: {format_type}")
                     break
         
+        # ✅ FIX: Also check state's document_format (from previous request or context)
+        # But prioritize detected format over stale state
+        if not format_type:
+            format_type = state.get("document_format")
+            if format_type:
+                print(f"⚠️ [Actions] Using format from state (may be stale): {format_type}")
+        
         # Default to novel if still not detected
         if not format_type:
             format_type = "novel"
             print(f"⚠️ [Actions] No format detected, defaulting to: {format_type}")
+        else:
+            print(f"✅ [Actions] Using format: {format_type} (from entities: {entities.get('documentFormat')}, state: {state.get('document_format')})")
+        
+        # ✅ FIX: Store detected format in state so it's preserved for clarification responses
+        # This ensures "podcast" is remembered when user selects template
+        # Only update if we detected a new format (don't overwrite with None)
         
         # ============================================================
         # STEP 2: DETECT TEMPLATE (hero's journey, three-act, etc.)
@@ -834,6 +1301,12 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
         }]
     }
     
+    # ✅ FIX: Preserve document_format in state so clarification responses can use it
+    # Only update if format_type was detected (exists in local scope)
+    if 'format_type' in locals() and format_type:
+        result["document_format"] = format_type
+        print(f"💾 [Actions] Storing format in state: {format_type}")
+    
     # If clarification is needed, add clarification state
     # This will pause the workflow and wait for user input
     if needs_clarification:
@@ -957,6 +1430,19 @@ async def writer_node(state: OrchestratorState) -> Dict[str, Any]:
         
         if USE_DEEP_AGENTS_SUBAGENTS:
             try:
+                import sys
+                import os
+                from pathlib import Path
+                # ✅ FIX: Add project root to path for imports
+                current_file = Path(__file__).resolve()
+                project_root = current_file.parent.parent.parent
+                project_root_str = str(project_root)
+                # Normalize paths for comparison
+                normalized_paths = [os.path.abspath(p) for p in sys.path]
+                if os.path.abspath(project_root_str) not in normalized_paths:
+                    sys.path.insert(0, project_root_str)
+                    print(f"🔧 [Writer] Added project root to path: {project_root_str}")
+                
                 from orchestrator.agents.writer_agent import WriterAgent
                 from orchestrator.agents.deep_agent_backend import OrchestratorFilesystemBackend
                 from orchestrator.agents.migration_utils import initialize_filesystem_for_session
@@ -983,11 +1469,19 @@ async def writer_node(state: OrchestratorState) -> Dict[str, Any]:
                 content_results = await writer_agent.generate_content(actions, plan)
                 results.update(content_results)
                 
-                # Generate structure (if needed)
+                # Generate structure (if needed) - ONLY PROCESS FIRST ONE
+                # The planner might create multiple steps, but we only need one structure
                 structure_actions = [a for a in actions if a.get("type") == "generate_structure"]
-                for action in structure_actions:
+                if structure_actions:
+                    # Take the first structure action only - avoid duplicate generation
+                    action = structure_actions[0]
+                    # Ensure format is propagated from state
+                    if not action.get("payload", {}).get("format"):
+                        action.setdefault("payload", {})["format"] = state.get("document_format")
                     structure = await writer_agent.generate_structure(action, plan)
                     results["structure"] = structure
+                    if len(structure_actions) > 1:
+                        print(f"⚠️ [Writer] Skipped {len(structure_actions) - 1} duplicate structure action(s)")
                 
                 print(f"✅ [Writer] Subagent execution complete: {len(results)} result(s)")
                 
@@ -1022,6 +1516,19 @@ async def writer_node(state: OrchestratorState) -> Dict[str, Any]:
         canvas_context = None
         if USE_DEEP_AGENTS_CONTEXT:
             try:
+                import sys
+                import os
+                from pathlib import Path
+                # ✅ FIX: Add project root to path for imports
+                current_file = Path(__file__).resolve()
+                project_root = current_file.parent.parent.parent
+                project_root_str = str(project_root)
+                # Normalize paths for comparison
+                normalized_paths = [os.path.abspath(p) for p in sys.path]
+                if os.path.abspath(project_root_str) not in normalized_paths:
+                    sys.path.insert(0, project_root_str)
+                    print(f"🔧 [Writer Context] Added project root to path: {project_root_str}")
+                
                 from orchestrator.agents.deep_agent_backend import OrchestratorFilesystemBackend
                 from orchestrator.agents.file_storage import load_context_from_filesystem
                 from orchestrator.agents.migration_utils import initialize_filesystem_for_session
@@ -1061,56 +1568,72 @@ async def writer_node(state: OrchestratorState) -> Dict[str, Any]:
         results = dict(state.get("results", {}) or {})  # Make a copy to avoid mutating
         
         # ============================================================
-        # EXECUTE EACH ACTION
+        # EXECUTE ACTIONS (with deduplication)
         # ============================================================
-        # Loop through actions and execute them using the writer agent
-        for action in actions:
-            action_type = action.get("type")
+        # Process content actions - recognize various content-related action types
+        # The LLM may return "write_article", "compose_content", "draft_section" etc.
+        def is_content_action(action_type: str) -> bool:
+            if not action_type:
+                return False
+            action_lower = action_type.lower()
+            return (
+                action_lower == "generate_content" or
+                "write" in action_lower or
+                "content" in action_lower or
+                "draft" in action_lower or
+                "compose" in action_lower or
+                "author" in action_lower
+            )
+        
+        content_actions = [a for a in actions if is_content_action(a.get("type", ""))]
+        if content_actions:
+            print(f"📝 [Writer] Found {len(content_actions)} content action(s)")
+        for action in content_actions:
+            payload = action.get("payload", {})
+            section_name = payload.get("sectionName", "Content")
+            section_id = payload.get("sectionId", "default")
+            
+            print(f"✍️ [Writer] Generating content for: {section_name}")
+            
+            content = await generate_content(
+                prompt=payload.get("prompt", ""),
+                section_name=section_name,
+                context=canvas_context
+            )
+            
+            results[section_id] = content
+        
+        # Process structure action - ONLY FIRST ONE (avoid duplicates from planner)
+        structure_actions = [a for a in actions if a.get("type") == "generate_structure"]
+        if structure_actions:
+            # Take only the first structure action
+            action = structure_actions[0]
             payload = action.get("payload", {})
             
-            # ============================================================
-            # ACTION: GENERATE CONTENT
-            # ============================================================
-            # Write content for a section (e.g., "Write chapter 1")
-            if action_type == "generate_content":
-                section_name = payload.get("sectionName", "Content")
-                section_id = payload.get("sectionId", "default")
-                
-                print(f"✍️ [Writer] Generating content for: {section_name}")
-                
-                # Call writer agent to generate content
-                # This uses LLM (GPT/Claude) to create the actual text
-                content = await generate_content(
-                    prompt=payload.get("prompt", ""),
-                    section_name=section_name,
-                    context=canvas_context
-                )
-                
-                # Store result (keyed by section_id for easy lookup)
-                results[section_id] = content
-                
-            # ============================================================
-            # ACTION: GENERATE STRUCTURE
-            # ============================================================
-            # Create document structure (chapters, scenes, etc.)
-            elif action_type == "generate_structure":
-                format_type = payload.get("format", "novel")
-                template_id = payload.get("template")
-                prompt = payload.get("prompt", "")
-                
-                print(f"📐 [Writer] Generating structure for: {format_type} (template: {template_id or 'default'})")
-                
-                # Call writer agent to generate structure
-                # This creates the document outline (chapters, scenes, etc.)
-                structure = await generate_structure(
-                    prompt=prompt,
-                    format_type=format_type,
-                    template_id=template_id,
-                    context=canvas_context
-                )
-                
-                # Store structure result (special key "structure")
-                results["structure"] = structure
+            # CRITICAL: Use state's document_format as fallback, not hardcoded "novel"
+            # This ensures podcast requests generate podcast structures, not novels
+            state_format = state.get("document_format")
+            format_type = payload.get("format") or state_format or "novel"
+            template_id = payload.get("template")
+            # Use payload prompt, fallback to user_message (the original request)
+            prompt = payload.get("prompt") or state.get("user_message", "")
+            
+            print(f"📐 [Writer] Generating structure for: {format_type} (template: {template_id or 'default'})")
+            
+            # Call writer agent to generate structure
+            # This creates the document outline (chapters, scenes, etc.)
+            structure = await generate_structure(
+                prompt=prompt,
+                format_type=format_type,
+                template_id=template_id,
+                context=canvas_context
+            )
+            
+            # Store structure result (special key "structure")
+            results["structure"] = structure
+            
+            if len(structure_actions) > 1:
+                print(f"⚠️ [Writer] Skipped {len(structure_actions) - 1} duplicate structure action(s)")
         
         # ============================================================
         # UPDATE ITERATION COUNTER

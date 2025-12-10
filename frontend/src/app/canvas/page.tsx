@@ -52,6 +52,9 @@ import ClusterNode from '@/components/nodes/ClusterNode'
 import TestNode from '@/components/nodes/TestNode'
 import AIPromptNode from '@/components/nodes/AIPromptNode'
 
+// nodeTypes - Defined outside component to prevent React Flow warning
+// about recreating on each render. Since it's outside the component,
+// the object reference is stable and React Flow won't complain.
 const nodeTypes = {
   storyNode: UniversalNode,
   createStoryNode: OrchestratorNode, // Legacy support
@@ -650,6 +653,7 @@ export default function CanvasPage() {
         {/* Panels */}
         <CanvasPanels
           storyId={storyId || ''}
+          userId={canvasData.userId || ''}  // ✅ FIX: Pass userId for node saving
           /**
            * onStoryNodeCreated - Called when orchestrator creates a new story structure node
            * 
@@ -688,11 +692,11 @@ export default function CanvasPage() {
             // ─────────────────────────────────────────────────────────────
             // Step 3: Save canvas with delay to ensure node is in state
             // ─────────────────────────────────────────────────────────────
-            // NOTE: We use setTimeout because React setState is async.
-            // The node was just added via setNodes(), but the state hasn't
-            // updated yet. Saving immediately would miss the new node.
+            // NOTE: Node is already saved to DB by CanvasPanels.handleCreateStoryNode.
+            // We just need to save the canvas state (edges, etc.) to ensure consistency.
+            // The delay gives React time to process the state updates.
             setTimeout(() => {
-              console.log('💾 [page.tsx] Saving canvas with new story node...')
+              console.log('💾 [page.tsx] Saving canvas state (node already in DB)...')
               canvasData.handleSave()
             }, 500)
           }}

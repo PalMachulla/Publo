@@ -8,8 +8,8 @@ without needing LLM API calls (fast, deterministic).
 """
 
 import pytest
-from orchestrator.intent.classifier import classify_with_patterns
-from orchestrator.intent.types import PipelineContext, IntentAnalysis
+from core.intent.classifier import classify_with_patterns
+from core.intent.types import PipelineContext, IntentAnalysis
 
 
 # ============================================================

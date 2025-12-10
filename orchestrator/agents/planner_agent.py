@@ -27,51 +27,69 @@ from .deep_agent_backend import OrchestratorFilesystemBackend
 # ============================================================
 PLANNER_SYSTEM_PROMPT = """You are Publo's creative writing orchestrator planner.
 
-Your job is to break down user requests into detailed, executable plans.
+Your job is to create focused, minimal plans for user requests.
 
-When a user asks to:
-- Create a story structure → Plan: research structure, create outline, generate sections
-- Write content → Plan: identify target section, gather context, write content, review
-- Edit content → Plan: identify changes, update content, verify consistency
-- Navigate → Plan: find section, open document, select section
+CRITICAL: Match complexity to the request. DO NOT over-plan!
 
-Always create a plan with clear steps. Each step should be:
-1. Specific and actionable
-2. Have clear dependencies (which steps must complete first)
-3. Include context needed (what files/data to read)
-4. Specify expected output (what will be created)
+**SIMPLE REQUESTS (1 step max):**
+- "Open X" → 1 step: open_document
+- "Go to chapter 3" → 1 step: select_section
+- "Close the document" → 1 step: close_document
+- "Show me Y" → 1 step: open_document or select_section
+
+**MODERATE REQUESTS (2-3 steps):**
+- "Write chapter 1" → 1-2 steps: (select_section), generate_content
+- "Create an outline" → 1 step: generate_structure
+
+**COMPLEX REQUESTS (3-5 steps):**
+- "Create a novel about X" → 2-3 steps: generate_structure
+- "Write the entire story" → Multiple steps for each section
 
 Plan Format (JSON):
 {{
   "task": "User's original request",
-  "intent": "write_content | create_structure | navigate_section | etc.",
+  "intent": "open_document | write_content | create_structure | navigate_section | etc.",
   "steps": [
     {{
       "id": "step_1",
-      "description": "Clear description of what this step does",
-      "action_type": "generate_content | generate_structure | select_section | etc.",
-      "dependencies": [],  // Steps that must complete first (by id)
-      "context_needed": ["canvas_state", "document_structure"],  // Files to read
-      "payload": {{  // Action payload (sectionId, prompt, format, etc.)
-        "sectionId": "...",
-        "prompt": "...",
-        "format": "..."
+      "description": "What this step does",
+      "action_type": "open_document | generate_content | generate_structure | select_section",
+      "dependencies": [],
+      "payload": {{
+        "documentTitle": "...",  // For open_document
+        "sectionId": "...",      // For select_section/generate_content
+        "format": "..."          // For generate_structure
       }},
-      "priority": "high | normal | low",
-      "requires_user_input": false  // Does this need user to choose something?
+      "priority": "high",
+      "requires_user_input": false
     }}
   ],
-  "clarification_needed": false,  // Does the plan need user input?
-  "clarification_message": null,  // Question to ask user
-  "clarification_options": []  // Options for user to choose
+  "clarification_needed": false,
+  "clarification_message": null,
+  "clarification_options": []
 }}
 
-Important:
-- Break complex tasks into multiple steps
-- Order steps by dependencies (no circular dependencies)
-- Include all necessary context
-- Mark steps that need user input
-- If information is missing, set clarification_needed=true"""
+IMPORTANT RULES:
+1. "Open X" = JUST open the document. Do NOT write content.
+2. "Go to X" = JUST navigate. Do NOT generate anything.
+3. Only add writing steps if user EXPLICITLY asks to write/create content.
+4. Fewer steps is ALWAYS better. Don't add unnecessary steps.
+5. If intent is "open_and_write", check if user actually said "write" or just "open".
+
+CONTEXT-AWARE RULES:
+6. "this chapter", "this section", "it" = Refers to the ACTIVE SEGMENT (provided in context).
+   If Active Segment is provided, use its ID and name in the action payload.
+7. If user says "write this chapter" but NO Active Segment is set → ASK FOR CLARIFICATION.
+   Set clarification_needed=true, message="Which chapter would you like me to write?"
+8. When writing content, ALWAYS include:
+   - sectionId: The section/chapter ID to write
+   - sectionName: The name for display
+   - prompt: What to write (from user message + context)
+
+WRITING CONTENT:
+9. For "write chapter X" → generate_content with that chapter's sectionId
+10. For "write this chapter" with active segment → generate_content with activeSegment.id
+11. Include context about the story/document in the prompt for better content generation."""
 
 
 PLANNER_USER_PROMPT = """User Request: {user_message}
@@ -83,15 +101,21 @@ Intent Analysis:
 - Extracted Entities: {entities}
 
 Current Context:
-- Active Segment: {active_segment}
+- Active Segment (currently selected): {active_segment}
 - Document Format: {document_format}
 - Document Panel Open: {document_panel_open}
 - Structure Items: {structure_items_count} sections available
+- Available Sections: {structure_items_summary}
 - Canvas Nodes: {canvas_nodes_count} nodes on canvas
 
-Create a detailed plan to fulfill this request.
-Break it down into clear, executable steps with dependencies.
-If information is missing or ambiguous, set clarification_needed=true."""
+CRITICAL: If user says "this chapter", "this section", or similar:
+- If Active Segment is set → Use Active Segment's ID as sectionId
+- If NO Active Segment → Set clarification_needed=true
+
+Create a MINIMAL plan to fulfill this request.
+- "Write this chapter" with active segment → 1 step: generate_content with activeSegment.id
+- "Write chapter 5" → 1 step: generate_content with sectionId="chapter-5"
+- If unclear which chapter → clarification_needed=true"""
 
 
 class PlannerAgent:
@@ -180,6 +204,9 @@ class PlannerAgent:
         """
         print(f"🧠 [Planner] Creating plan for: {user_message[:50]}...")
         
+        # Store context for later use in clarification enrichment
+        self._current_context = context
+        
         # ============================================================
         # PHASE 5: LOAD MEMORY (PREFERENCES & PATTERNS)
         # ============================================================
@@ -222,10 +249,20 @@ class PlannerAgent:
         
         # Format context for prompt
         active_segment = context.get("active_segment")
-        active_segment_str = f"{active_segment.get('name')} (id: {active_segment.get('id')})" if active_segment else "None"
+        active_segment_str = f"{active_segment.get('name')} (id: {active_segment.get('id')})" if active_segment else "None (no chapter selected)"
         
-        structure_items = context.get("structure_items", [])
-        canvas_nodes = context.get("canvas_nodes", [])
+        structure_items = context.get("structure_items", []) or []
+        canvas_nodes = context.get("canvas_nodes", []) or []
+        
+        # Create a summary of available sections for context
+        structure_items_summary = "None"
+        if structure_items:
+            summaries = []
+            for item in structure_items[:10]:  # Limit to first 10
+                name = item.get("name") or item.get("title") or item.get("label") or "Unnamed"
+                item_id = item.get("id") or "unknown"
+                summaries.append(f"- {name} (id: {item_id})")
+            structure_items_summary = "\n".join(summaries)
         
         user_prompt = PLANNER_USER_PROMPT.format(
             user_message=user_message,
@@ -237,19 +274,21 @@ class PlannerAgent:
             document_format=context.get("document_format", "novel"),
             document_panel_open=context.get("document_panel_open", False),
             structure_items_count=len(structure_items),
+            structure_items_summary=structure_items_summary,
             canvas_nodes_count=len(canvas_nodes)
         )
         
-        # Create prompt template
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", PLANNER_SYSTEM_PROMPT),
-            ("human", user_prompt)
-        ])
+        # Build messages directly (avoid ChatPromptTemplate parsing JSON examples as variables)
+        # The system prompt contains JSON examples with {} braces that would be misinterpreted
+        from langchain_core.messages import SystemMessage, HumanMessage
+        messages = [
+            SystemMessage(content=PLANNER_SYSTEM_PROMPT),
+            HumanMessage(content=user_prompt)
+        ]
         
         # Generate plan using LLM
         try:
-            chain = prompt | self.llm
-            response = await chain.ainvoke({})
+            response = await self.llm.ainvoke(messages)
             
             # Extract plan from response
             plan_text = response.content if hasattr(response, 'content') else str(response)
@@ -345,17 +384,30 @@ class PlannerAgent:
             if "id" not in step:
                 step["id"] = f"step_{i+1}"
             
-            if "action_type" not in step:
-                # Infer from description
-                desc = step.get("description", "").lower()
-                if "structure" in desc or "outline" in desc:
-                    step["action_type"] = "generate_structure"
-                elif "content" in desc or "write" in desc:
-                    step["action_type"] = "generate_content"
-                elif "navigate" in desc or "select" in desc:
-                    step["action_type"] = "select_section"
-                else:
-                    step["action_type"] = "general_task"
+            # Normalize action_type to standard types
+            # The LLM may return custom types like "write_intro" - normalize to standard types
+            action_type = step.get("action_type", "").lower()
+            desc = step.get("description", "").lower()
+            
+            # Normalize structure-related actions
+            if "structure" in action_type or "outline" in action_type:
+                step["action_type"] = "generate_structure"
+            elif "structure" in desc or "outline" in desc or "create document" in desc:
+                step["action_type"] = "generate_structure"
+            # Normalize content-related actions - CRITICAL for write requests
+            elif any(kw in action_type for kw in ["write", "content", "draft", "compose", "author"]):
+                step["action_type"] = "generate_content"
+            elif any(kw in desc for kw in ["write", "content", "draft", "compose", "author", "create text"]):
+                step["action_type"] = "generate_content"
+            # Normalize navigation actions
+            elif "navigate" in action_type or "select" in action_type:
+                step["action_type"] = "select_section"
+            elif "navigate" in desc or "select" in desc or "go to" in desc:
+                step["action_type"] = "select_section"
+            # Default if no action_type
+            elif not action_type:
+                step["action_type"] = "general_task"
+            # Otherwise keep the LLM's action_type (but warn)
             
             if "dependencies" not in step:
                 step["dependencies"] = []
@@ -378,6 +430,30 @@ class PlannerAgent:
         
         if "clarification_options" not in plan:
             plan["clarification_options"] = []
+        
+        # ============================================================
+        # ENRICH CLARIFICATION OPTIONS
+        # ============================================================
+        # If clarification is needed and options are empty, 
+        # try to provide useful options from context
+        if plan.get("clarification_needed") and not plan.get("clarification_options"):
+            context = getattr(self, '_current_context', {}) or {}
+            structure_items = context.get("structure_items", []) or []
+            clarification_msg = (plan.get("clarification_message") or "").lower()
+            
+            # If asking about chapters/sections and we have structure items
+            if any(word in clarification_msg for word in ["chapter", "section", "which"]):
+                if structure_items:
+                    # Convert structure items to clarification options
+                    plan["clarification_options"] = [
+                        {
+                            "id": item.get("id", f"item-{i}"),
+                            "label": item.get("name") or item.get("title") or f"Item {i+1}",
+                            "description": item.get("description", "")[:50] if item.get("description") else None
+                        }
+                        for i, item in enumerate(structure_items[:10])  # Limit to 10 options
+                    ]
+                    print(f"✅ [Planner] Enriched clarification with {len(plan['clarification_options'])} options from structure")
         
         return plan
     

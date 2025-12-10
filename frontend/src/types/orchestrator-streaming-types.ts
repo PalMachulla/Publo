@@ -5,6 +5,7 @@
 
 export type OrchestratorEventType =
   | 'INTENT'
+  | 'PLAN'        // Planner created a task plan
   | 'STRATEGY'
   | 'MESSAGE'
   | 'ACTION'
@@ -15,7 +16,9 @@ export type OrchestratorEventType =
   | 'SECTION_WRITING'
   | 'SECTION_COMPLETE'
   | 'PROGRESS'
-  | 'REASONING_TOKEN'  // NEW: Token-by-token reasoning streaming (like Claude.ai)
+  | 'REASONING_TOKEN'  // Token-by-token reasoning streaming (like Claude.ai)
+  | 'OPEN_DOCUMENT'    // Navigation: Open a document node
+  | 'SELECT_SECTION'   // Navigation: Navigate to a section
   | 'DONE'
   | 'ERROR';
 
@@ -24,6 +27,21 @@ export interface IntentEvent {
   intent: string;
   confidence: number;
   reasoning?: string;
+}
+
+// Plan created by Deep Agent Planner
+export interface PlanEvent {
+  task: string;                    // What the user asked for
+  intent: string;                  // Detected intent
+  step_count: number;              // Number of steps in the plan
+  steps: PlanStep[];               // The actual steps
+}
+
+export interface PlanStep {
+  id: string;
+  description: string;
+  action_type: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'skipped';
 }
 
 // Strategy selection
@@ -117,6 +135,22 @@ export interface SectionCompleteEvent {
   word_count: number;
 }
 
+// ============================================================
+// NAVIGATION EVENTS
+// ============================================================
+
+// Emitted when user requests to open a document node
+export interface OpenDocumentEvent {
+  node_id: string;
+  node_name: string;
+}
+
+// Emitted when user requests to navigate to a section
+export interface SelectSectionEvent {
+  section_id: string;
+  section_name: string;
+}
+
 // Overall progress
 export interface ProgressEvent {
   percent: number;
@@ -140,6 +174,7 @@ export interface ErrorEvent {
 
 export type OrchestratorEvent =
   | { type: 'INTENT'; data: IntentEvent }
+  | { type: 'PLAN'; data: PlanEvent }
   | { type: 'STRATEGY'; data: StrategyEvent }
   | { type: 'MESSAGE'; data: MessageEvent }
   | { type: 'ACTION'; data: ActionEvent }
@@ -150,7 +185,9 @@ export type OrchestratorEvent =
   | { type: 'SECTION_WRITING'; data: SectionWritingEvent }
   | { type: 'SECTION_COMPLETE'; data: SectionCompleteEvent }
   | { type: 'PROGRESS'; data: ProgressEvent }
-  | { type: 'REASONING_TOKEN'; data: ReasoningTokenEvent }  // NEW: Token-by-token reasoning
+  | { type: 'REASONING_TOKEN'; data: ReasoningTokenEvent }  // Token-by-token reasoning
+  | { type: 'OPEN_DOCUMENT'; data: OpenDocumentEvent }      // Navigation: open document
+  | { type: 'SELECT_SECTION'; data: SelectSectionEvent }    // Navigation: select section
   | { type: 'DONE'; data: DoneEvent }
   | { type: 'ERROR'; data: ErrorEvent };
 

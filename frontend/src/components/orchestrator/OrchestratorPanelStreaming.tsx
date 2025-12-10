@@ -33,6 +33,10 @@ export interface OrchestratorPanelStreamingProps {
   onClarificationNeeded?: (clarification: ClarificationEvent) => void
   onCreateStoryNode?: (structure: any) => void
   
+  // Navigation callbacks - triggered when user asks to open/navigate
+  onOpenDocument?: (nodeId: string, nodeName: string) => void
+  onSelectSection?: (sectionId: string, sectionName: string) => void
+  
   // Context from parent
   activeSegment?: any
   documentPanelOpen?: boolean
@@ -57,6 +61,8 @@ export function OrchestratorPanelStreaming({
   onSectionComplete,
   onClarificationNeeded,
   onCreateStoryNode,
+  onOpenDocument,
+  onSelectSection,
   activeSegment,
   documentPanelOpen,
   canvasContext,
@@ -68,6 +74,14 @@ export function OrchestratorPanelStreaming({
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  
+  // Track pending clarification state - when system asks a question
+  // Options can be string array or object array depending on backend response
+  const [pendingClarification, setPendingClarification] = useState<{
+    originalAction: string;
+    message: string;
+    options?: unknown[];  // Can be strings or {id, label} objects
+  } | null>(null)
 
   // ========== PERSISTENCE HOOK ==========
   // Load persisted dialogue messages (scoped to canvas/story)
@@ -193,15 +207,19 @@ export function OrchestratorPanelStreaming({
     },
     
     onStructureComplete: (structure) => {
-      console.log('📐 [Streaming] Structure created:', structure.title)
+      console.log('📐 [Streaming] Structure created:', structure.title, 'with', structure.sections?.length, 'sections')
       onStructureComplete?.(structure)
       
       // Also trigger canvas node creation if callback provided
+      // IMPORTANT: Use the field names expected by handleCreateStoryNode:
+      //   - label (not title) - Node display name
+      //   - items (not sections) - Array of structure items
+      //   - format - Document type (novel, podcast, etc.)
       if (onCreateStoryNode) {
         onCreateStoryNode({
-          title: structure.title,
-          sections: structure.sections,
-          format: structure.format,
+          label: structure.title,           // ← "label" for node display
+          items: structure.sections || [],  // ← "items" for structure data
+          format: structure.format || 'novel',
         })
       }
     },
@@ -213,7 +231,26 @@ export function OrchestratorPanelStreaming({
     
     onClarificationNeeded: (clarification) => {
       console.log('❓ [Streaming] Clarification needed:', clarification.options)
+      
+      // Track the clarification state so typed responses are handled correctly
+      setPendingClarification({
+        originalAction: clarification.originalAction || 'create_structure',
+        message: clarification.message || 'Please choose an option',
+        options: clarification.options || []
+      })
+      
       onClarificationNeeded?.(clarification)
+    },
+    
+    // Navigation callbacks
+    onOpenDocument: (nodeId, nodeName) => {
+      console.log('📂 [Streaming] Opening document:', nodeName, nodeId)
+      onOpenDocument?.(nodeId, nodeName)
+    },
+    
+    onSelectSection: (sectionId, sectionName) => {
+      console.log('📍 [Streaming] Selecting section:', sectionName, sectionId)
+      onSelectSection?.(sectionId, sectionName)
     },
     
     onComplete: () => {
@@ -270,7 +307,33 @@ export function OrchestratorPanelStreaming({
     const message = input.trim()
     setInput('')
 
-    // Start the stream with full context
+    // Check if we're responding to a pending clarification
+    if (pendingClarification) {
+      console.log('🔘 [Clarification] Treating typed response as clarification:', message)
+      
+      // Clear pending clarification
+      const { originalAction } = pendingClarification
+      setPendingClarification(null)
+      
+      // Send as clarification response
+      startStream({
+        message,
+        userId,
+        sessionId,
+        documentFormat,
+        activeSegment,
+        documentPanelOpen,
+        canvasContext,
+        structureItems,
+        canvasNodes,
+        conversationHistory,
+        clarificationResponse: message,  // User's typed response
+        originalAction,
+      })
+      return
+    }
+
+    // Normal message - start the stream with full context
     startStream({
       message,
       userId,
@@ -296,6 +359,7 @@ export function OrchestratorPanelStreaming({
     structureItems,
     canvasNodes,
     conversationHistory,
+    pendingClarification,
   ])
 
   // Handle keyboard shortcuts

@@ -82,6 +82,9 @@ export interface CanvasPanelsProps {
    */
   storyId: string
   
+  /** User ID for saving nodes to database */
+  userId?: string
+  
   // ─────────────────────────────────────────────────────────────────────────
   // Node Selection & Panel State
   // ─────────────────────────────────────────────────────────────────────────
@@ -260,6 +263,7 @@ export interface CanvasPanelsProps {
 export default function CanvasPanels(props: CanvasPanelsProps) {
   const {
     storyId,
+    userId,  // ✅ FIX: Add userId to destructuring
     selectedNode,
     isPanelOpen,
     onClosePanel,
@@ -334,7 +338,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
    *   - template: Template used (e.g., "heros-journey")
    *   - logline: Story summary
    */
-  const handleCreateStoryNode = useCallback((data: CreateStoryNodeData) => {
+  const handleCreateStoryNode = useCallback(async (data: CreateStoryNodeData) => {
     console.log('📐 [CanvasPanels] Creating story node:', data)
     
     // ─────────────────────────────────────────────────────────────────────
@@ -425,18 +429,78 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     console.log('✅ [CanvasPanels] Adding node and edge:', { newNodeId, edgeId: newEdge.id })
     
     // ─────────────────────────────────────────────────────────────────────
-    // Step 5: Add to canvas and notify parent
+    // Step 5: Add to canvas (React state)
     // ─────────────────────────────────────────────────────────────────────
     
     // These call canvasState.setNodes/setEdges in page.tsx
     onAddNode(newNode)
     onAddEdge(newEdge)
     
-    // Notify page.tsx so it can open AIDocumentPanel with the new document
-    onStoryNodeCreated?.(newNodeId, data)
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 6: Save node to database IMMEDIATELY (before opening document panel)
+    // ─────────────────────────────────────────────────────────────────────
+    // This ensures the node exists when useHierarchicalDocument tries to fetch it
     
-    return newNodeId  // Add this line to return the node ID
-  }, [nodes, orchestratorNodeId, onAddNode, onAddEdge, onStoryNodeCreated, onSelectNode, onUpdateStructure])
+    if (userId && storyId) {
+      // Use async IIFE to handle the async save without blocking
+      ;(async () => {
+        try {
+          console.log('💾 [CanvasPanels] Saving node to database immediately...')
+          
+          // Initialize document_data for the node
+          const { DocumentManager } = await import('@/lib/document/DocumentManager')
+          const docManager = DocumentManager.fromStructureItems(
+            data.items || [],
+            (data.format as 'novel' | 'screenplay' | 'report') || 'novel'
+          )
+          
+          // Save via API endpoint (bypasses RLS)
+          const response = await fetch('/api/node/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nodeId: newNodeId,
+              storyId,
+              nodeType: 'storyStructure',
+              data: newNode.data,
+              documentData: docManager.getData(),
+              positionX: newPosition.x,
+              positionY: newPosition.y,
+              userId
+            })
+          })
+          
+          const result = await response.json()
+          
+          if (!response.ok || !result.success) {
+            console.error('❌ [CanvasPanels] Failed to save node:', result.error)
+            throw new Error(`Failed to save node: ${result.error}`)
+          }
+          
+          console.log('✅ [CanvasPanels] Node saved to database:', newNodeId)
+          
+          // ─────────────────────────────────────────────────────────────────────
+          // Step 7: Notify parent (opens document panel AFTER node is saved)
+          // ─────────────────────────────────────────────────────────────────────
+          
+          // Notify page.tsx so it can open AIDocumentPanel with the new document
+          // Node is now in database, so useHierarchicalDocument can fetch it
+          onStoryNodeCreated?.(newNodeId, data)
+        } catch (error) {
+          console.error('❌ [CanvasPanels] Error saving node:', error)
+          // Continue anyway - node is in React state, will be saved on next canvas save
+          // Still notify parent so UI can update
+          onStoryNodeCreated?.(newNodeId, data)
+        }
+      })()
+    } else {
+      console.warn('⚠️ [CanvasPanels] userId or storyId missing - node not saved to DB yet')
+      // Still notify parent even if we can't save yet
+      onStoryNodeCreated?.(newNodeId, data)
+    }
+    
+    return newNodeId
+  }, [nodes, orchestratorNodeId, onAddNode, onAddEdge, onStoryNodeCreated, onSelectNode, onUpdateStructure, userId, storyId])
   
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER

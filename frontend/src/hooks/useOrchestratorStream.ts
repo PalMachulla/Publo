@@ -13,6 +13,11 @@ import type {
   SectionCompleteEvent,
   MessageEvent,
   ClarificationEvent,
+  IntentEvent,
+  PlanEvent,
+  StrategyEvent,
+  OpenDocumentEvent,
+  SelectSectionEvent,
 } from '@/types/orchestrator-streaming-types';
 
 // Chat message for display
@@ -28,6 +33,8 @@ interface UseOrchestratorStreamOptions {
   onStructureComplete?: (structure: StructureCreatedEvent) => void;
   onSectionComplete?: (sectionId: string, content: string) => void;
   onClarificationNeeded?: (clarification: ClarificationEvent) => void;
+  onOpenDocument?: (nodeId: string, nodeName: string) => void;  // Navigation: open document
+  onSelectSection?: (sectionId: string, sectionName: string) => void;  // Navigation: select section
   onError?: (error: string) => void;
   onComplete?: () => void;
   streamUrl?: string;
@@ -40,6 +47,8 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     onStructureComplete,
     onSectionComplete,
     onClarificationNeeded,
+    onOpenDocument,
+    onSelectSection,
     onError,
     onComplete,
     streamUrl = '/api/orchestrator/orchestrate/stream',
@@ -113,53 +122,82 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     switch (event.type) {
       case 'REASONING_TOKEN':
         /**
-         * Token-by-token reasoning streaming (like Claude.ai/Cursor)
+         * Token-by-token reasoning streaming
          * 
-         * This event is sent as the LLM generates reasoning tokens.
-         * We accumulate tokens and update a single "thinking" message
-         * to show progressive reasoning in real-time.
+         * IMPORTANT: We NO LONGER display raw reasoning tokens to users.
+         * The raw JSON from LLM analysis is too technical and confusing.
+         * Instead, we just log to console for debugging and wait for
+         * the formatted INTENT event to display a user-friendly summary.
          */
-        const tokenData = event.data as { token: string; is_complete?: boolean };
-        
-        if (!reasoningMessageIdRef.current) {
-          // Create new reasoning message on first token
-          const messageId = addMessage('thinking', `💭 ${tokenData.token}`);
-          reasoningMessageIdRef.current = messageId;
-          console.log('🧠 [Stream] Started reasoning stream');
-        } else {
-          // Update existing reasoning message with accumulated tokens
-          updateMessage(reasoningMessageIdRef.current, {
-            content: `💭 ${tokenData.token}`
-          });
-        }
-        
-        // If reasoning is complete, clear the ref for next stream
-        if (tokenData.is_complete) {
-          console.log('✅ [Stream] Reasoning stream complete');
-          reasoningMessageIdRef.current = null;
-        }
+        // Only log to console - don't show raw JSON/reasoning to users
+        console.log('💭 [Reasoning]', (event.data as { token: string }).token?.substring(0, 50) + '...');
         break;
 
       case 'INTENT':
         /**
-         * Intent analysis complete
-         * 
-         * Clear reasoning message ref since intent analysis is done.
-         * The reasoning tokens have already been streamed via REASONING_TOKEN events.
+         * Intent analysis complete - show user-friendly summary
          */
         console.log('🎯 Intent:', event.data);
-        reasoningMessageIdRef.current = null;  // Clear reasoning ref
+        reasoningMessageIdRef.current = null;
+        
+        // Only show a brief, friendly summary - not the raw JSON
+        const intentData = event.data as IntentEvent;
+        // Don't show intent to users - it's internal. Skip this message.
+        // The PLAN or actions will communicate what's happening.
+        break;
+
+      case 'PLAN':
+        /**
+         * Plan created by Deep Agent Planner
+         * Show a clean, user-friendly summary of what will happen
+         */
+        const planData = event.data as PlanEvent;
+        console.log('📋 Plan:', planData);
+        
+        // Skip if no steps
+        if (!planData.steps || planData.steps.length === 0) break;
+        
+        // Create a clean, user-friendly plan message
+        const stepsFormatted = planData.steps
+          .slice(0, 5)  // Limit to first 5 steps for brevity
+          .map((step, i) => {
+            const icon = step.action_type === 'generate_structure' ? '📐' :
+                        step.action_type === 'generate_content' ? '✍️' :
+                        step.action_type === 'select_section' ? '📍' :
+                        step.action_type === 'open_document' ? '📂' : '•';
+            // Clean up the description - truncate if too long
+            const desc = step.description.length > 60 
+              ? step.description.substring(0, 57) + '...'
+              : step.description;
+            return `${icon} ${desc}`;
+          })
+          .join('\n');
+        
+        addMessage('thinking', `📋 **Plan:**\n${stepsFormatted}`);
         break;
 
       case 'STRATEGY':
-        // Silent - internal
-        console.log('📋 Strategy:', event.data.strategy);
+        // Silent - don't show strategy to users, it's internal
+        console.log('📋 [Internal] Strategy:', event.data.strategy);
         break;
 
       case 'MESSAGE':
         const msgData = event.data as MessageEvent;
+        // Filter out internal "thinking" messages with technical content
         if (msgData.type === 'thinking') {
-          addMessage('thinking', msgData.content);
+          // Only show if it's a user-friendly message, not internal details
+          const content = msgData.content.toLowerCase();
+          const isInternal = content.includes('created plan') || 
+                            content.includes('generated') ||
+                            content.includes('action(s)') ||
+                            content.includes('strategy:') ||
+                            content.includes('intent:') ||
+                            content.startsWith('```');
+          if (!isInternal) {
+            addMessage('thinking', msgData.content);
+          } else {
+            console.log('💭 [Internal]', msgData.content);
+          }
         } else {
           addMessage('assistant', msgData.content);
         }
@@ -198,6 +236,12 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       case 'SECTION_WRITING':
         const writingData = event.data as SectionWritingEvent;
         
+        // Skip if no valid section info
+        if (!writingData.title || writingData.title === 'Section') {
+          console.log('⏭️ [Stream] Skipping generic section writing event');
+          break;
+        }
+        
         // Update section status
         setProgress(prev => {
           if (!prev.structure) return prev;
@@ -224,12 +268,30 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           };
         });
 
-        // Add visual message
-        addMessage(
-          'section-progress',
-          `✍️ Writing "${writingData.title}"...`,
-          { sectionId: writingData.section_id }
-        );
+        // Only show one writing message (update existing instead of creating new)
+        // Find existing section-progress message and update it
+        setMessages(prev => {
+          const existingIdx = prev.findIndex(m => m.type === 'section-progress');
+          if (existingIdx >= 0) {
+            // Update existing message
+            const updated = [...prev];
+            updated[existingIdx] = {
+              ...updated[existingIdx],
+              content: `✍️ Writing "${writingData.title}"...`,
+              metadata: { sectionId: writingData.section_id }
+            };
+            return updated;
+          } else {
+            // Create new message
+            return [...prev, {
+              id: `msg_section_${Date.now()}`,
+              type: 'section-progress' as const,
+              content: `✍️ Writing "${writingData.title}"...`,
+              timestamp: new Date(),
+              metadata: { sectionId: writingData.section_id }
+            }];
+          }
+        });
         break;
 
       case 'SECTION_COMPLETE':
@@ -295,6 +357,42 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         onClarificationNeeded?.(clarificationData);
         
         // Stop streaming - we're waiting for user input
+        break;
+
+      // ============================================================
+      // NAVIGATION EVENTS - Trigger UI actions
+      // ============================================================
+
+      case 'OPEN_DOCUMENT':
+        /**
+         * Backend requests to open a document node on the canvas.
+         * This triggers the parent component to:
+         * 1. Select the node
+         * 2. Open the document panel
+         */
+        const openDocData = event.data as OpenDocumentEvent;
+        console.log('📂 [Stream] Opening document:', openDocData.node_name, openDocData.node_id);
+        
+        // Show friendly message
+        addMessage('assistant', `📂 Opening "${openDocData.node_name}"...`);
+        
+        // Trigger the callback to actually open the document
+        onOpenDocument?.(openDocData.node_id, openDocData.node_name);
+        break;
+
+      case 'SELECT_SECTION':
+        /**
+         * Backend requests to navigate to a specific section.
+         * This triggers the parent component to scroll/focus the section.
+         */
+        const selectData = event.data as SelectSectionEvent;
+        console.log('📍 [Stream] Selecting section:', selectData.section_name, selectData.section_id);
+        
+        // Show friendly message
+        addMessage('assistant', `📍 Navigating to "${selectData.section_name}"...`);
+        
+        // Trigger the callback to actually select the section
+        onSelectSection?.(selectData.section_id, selectData.section_name);
         setIsStreaming(false);
         setProgress(prev => ({
           ...prev,

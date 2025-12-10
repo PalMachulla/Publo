@@ -317,6 +317,13 @@ class OrchestratorState(TypedDict, total=False):
     # Using Annotated with reducer for append behavior (new actions added, not replaced)
     actions: Annotated[list, add_actions]  # List of Action dicts
     
+    # ========== PLAN SUMMARY (for UI display) ==========
+    # Written by: generate_actions_node (when using Deep Agents planner)
+    # Contains: {task, intent, step_count, steps: [{id, description, action_type, status}]}
+    # Sent to: Frontend via SSE PLAN event (for visual progress display)
+    # Note: This is transient - only used for streaming, not persisted
+    plan_summary: Optional[dict]  # PlanSummary for UI display
+    
     # ========== RESULTS ==========
     # Written by: writer_node, tool_executor_node (orchestrator/graph/nodes.py)
     # Contains: {section_id: content, structure: {...}, ...}

@@ -133,6 +133,11 @@ def needs_action(state: OrchestratorState) -> str:
     # PRIORITY: Check if any actions need writer execution BEFORE checking intent
     # This ensures clarification responses get executed even when intent is ambiguous
     # Both content generation AND structure generation use the writer
+    print(f"🔍 [Workflow] Checking {len(actions)} action(s) for writer tasks...")
+    for i, a in enumerate(actions):
+        action_type = a.get("type", "unknown")
+        print(f"   Action {i}: type='{action_type}' payload={list(a.get('payload', {}).keys())}")
+    
     writer_actions = [
         a for a in actions 
         if a.get("type") in ["generate_content", "generate_structure"]
@@ -140,6 +145,8 @@ def needs_action(state: OrchestratorState) -> str:
     if len(writer_actions) > 0:
         print(f"✅ [Workflow] Found {len(writer_actions)} writer action(s), routing to execute")
         return "execute"
+    
+    print(f"⚠️ [Workflow] No writer actions found (expected generate_content or generate_structure)")
     
     # Only skip to merge for chat/clarify if no actions were generated
     intent_type = intent.get("intent", "")

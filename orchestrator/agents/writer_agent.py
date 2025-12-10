@@ -241,7 +241,10 @@ class WriterAgent:
         
         payload = action.get("payload", {})
         prompt = payload.get("prompt", "")
-        format_type = payload.get("format", "novel")
+        # CRITICAL: Use plan's format if available, not hardcoded "novel"
+        # This ensures podcast requests generate podcast structures
+        plan_format = plan.get("document_format") if plan else None
+        format_type = payload.get("format") or plan_format or "novel"
         template_id = payload.get("template")
         
         # Load context from filesystem

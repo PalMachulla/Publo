@@ -689,9 +689,9 @@ export default function NodeDetailsPanel({
               <OrchestratorPanel
               userId={user?.id || ''}
               node={node as any} 
-              storyId={storyId}                           // ← ADD
-      orchestratorNodeId={orchestratorNodeId}     // ← ADD  
-      onCreateStoryNode={onCreateStoryNode}       // ← ADD
+              storyId={storyId}
+              orchestratorNodeId={orchestratorNodeId}
+              onCreateStoryNode={onCreateStoryNode}
               onCreateStory={onCreateStory || (() => console.warn('onCreateStory not provided'))} 
               onClose={onClose}
               onUpdate={onUpdate}
@@ -709,6 +709,18 @@ export default function NodeDetailsPanel({
               canvasEdges={edges}
               currentStoryStructureNodeId={currentStoryStructureNodeId}
               onSelectNode={onSelectNode}
+              // Navigation callbacks - open document = select the node
+              onOpenDocument={(nodeId: string, nodeName: string) => {
+                console.log('📂 [NodeDetailsPanel] Opening document:', nodeName, nodeId)
+                onSelectNode?.(nodeId)
+              }}
+              onSelectSection={(sectionId: string, sectionName: string) => {
+                console.log('📍 [NodeDetailsPanel] Selecting section:', sectionName, sectionId)
+                // If we have a current story structure node, select it with the section
+                if (currentStoryStructureNodeId) {
+                  onSelectNode?.(currentStoryStructureNodeId, sectionId)
+                }
+              }}
               onDeleteNode={async (nodeId: string) => {
                 await onDelete(nodeId)
               }}
