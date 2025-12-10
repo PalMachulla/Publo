@@ -17,6 +17,10 @@ from typing import Optional, AsyncIterator, Any, List
 from langsmith import traceable
 import json
 import asyncio
+import os
+
+# Deep Agents filesystem integration (Phase 1)
+USE_DEEP_AGENTS_FILESYSTEM = os.getenv("USE_DEEP_AGENTS_FILESYSTEM", "false").lower() == "true"
 
 router = APIRouter()
 
@@ -485,6 +489,34 @@ async def orchestrate_stream(request: OrchestrateRequest):
                 "fixed_model_id": request.fixed_model_id,
             }
             
+            # ============================================================
+            # PHASE 1: Deep Agents Filesystem Integration
+            # ============================================================
+            # Store state to filesystem if feature flag enabled
+            # This prepares for Phase 2-5 where nodes will read from filesystem
+            if USE_DEEP_AGENTS_FILESYSTEM:
+                try:
+                    from orchestrator.agents.migration_utils import initialize_filesystem_for_session
+                    
+                    session_id = request.session_id or f"session-{request.user_id}"
+                    backend = initialize_filesystem_for_session(session_id, initial_state)
+                    
+                    print(f"💾 [Filesystem] Initialized for session: {session_id}")
+                    print(f"💾 [Filesystem] Base path: {backend.get_project_path()}")
+                    
+                    # Add filesystem metadata to state (for debugging)
+                    initial_state["_filesystem"] = {
+                        "enabled": True,
+                        "project_id": session_id,
+                        "base_path": str(backend.get_project_path())
+                    }
+                except Exception as e:
+                    # Don't fail if filesystem setup fails - fallback to normal operation
+                    print(f"⚠️ [Filesystem] Failed to initialize (non-fatal): {e}")
+                    import traceback
+                    traceback.print_exc()
+                    initial_state["_filesystem"] = {"enabled": False, "error": str(e)}
+            
             # Track what we've sent to avoid duplicates
             sent_messages = set()
             sent_actions = set()
@@ -626,67 +658,67 @@ async def orchestrate_stream(request: OrchestrateRequest):
                     
                     # Process graph event (node outputs)
                     for node_name, node_output in event_data.items():
-                    
-                    # Stream intent analysis (deduplicated - only send once)
-                    if "intent" in node_output and node_output["intent"] and not sent_intent:
-                        sent_intent = True
-                        yield f"event: INTENT\ndata: {json.dumps(node_output['intent'])}\n\n"
-                    
-                    # Stream strategy (deduplicated - only send once)
-                    if "strategy" in node_output and node_output["strategy"] and not sent_strategy:
-                        sent_strategy = True
-                        yield f"event: STRATEGY\ndata: {json.dumps({'strategy': node_output['strategy']})}\n\n"
-                    
-                            # Stream clarification needed - STOP and wait for user response
-                    if node_output.get("needs_clarification"):
-                        yield f"event: CLARIFICATION\ndata: {json.dumps({'options': node_output.get('clarification_options', []), 'message': node_output.get('clarification_message'), 'originalAction': node_output.get('original_action', 'create_structure')})}\n\n"
-                                # Stop processing - user must respond before continuing
-                                print("⏸️ [Stream] Pausing for clarification - waiting for user response")
-                                return
-                    
-                    # Stream messages (deduplicated)
-                    if "messages" in node_output:
-                        for msg in node_output["messages"]:
-                            msg_key = f"{msg['role']}:{msg['content'][:50]}"
-                            if msg_key not in sent_messages:
-                                sent_messages.add(msg_key)
-                                yield f"event: MESSAGE\ndata: {json.dumps(msg)}\n\n"
-                    
-                            # Stream actions (deduplicated) + announce section writing
-                    if "actions" in node_output:
-                        for action in node_output["actions"]:
-                            action_key = f"{action['type']}:{action.get('payload', {}).get('sectionId', '')}"
-                            if action_key not in sent_actions:
-                                sent_actions.add(action_key)
-                                yield f"event: ACTION\ndata: {json.dumps(action)}\n\n"
-                    
-                                        # If this is a generate_content action, emit SECTION_WRITING
-                                        if action['type'] == 'generate_content':
-                                            section_id = action.get('payload', {}).get('sectionId', '')
-                                            section_title = action.get('payload', {}).get('title', 'Section')
-                                            if section_id and section_id not in sections_announced:
-                                                sections_announced.add(section_id)
-                                                yield f"event: SECTION_WRITING\ndata: {json.dumps({'section_id': section_id, 'title': section_title})}\n\n"
-                            
-                            # Stream results (deduplicated) with enhanced structure events
-                    if "results" in node_output and node_output["results"]:
-                        for section_id, content in node_output["results"].items():
-                            if section_id not in sent_results:
-                                sent_results.add(section_id)
-                                        
-                                        # Special handling for structure result
-                                        if section_id == "structure" and not sent_structure_created:
-                                            sent_structure_created = True
-                                            structure_info = parse_structure_for_events(content)
-                                            if structure_info:
-                                                yield f"event: STRUCTURE_CREATED\ndata: {json.dumps(structure_info)}\n\n"
-                                            # Also send the raw result for canvas creation
-                                            yield f"event: RESULT\ndata: {json.dumps({'section_id': section_id, 'content': content})}\n\n"
-                                        else:
-                                            # Regular section content - emit completion
-                                            preview = content[:100] + "..." if len(content) > 100 else content
-                                            yield f"event: SECTION_COMPLETE\ndata: {json.dumps({'section_id': section_id, 'preview': preview, 'word_count': len(content.split())})}\n\n"
-                                yield f"event: RESULT\ndata: {json.dumps({'section_id': section_id, 'content': content})}\n\n"
+                        
+                        # Stream intent analysis (deduplicated - only send once)
+                        if "intent" in node_output and node_output["intent"] and not sent_intent:
+                            sent_intent = True
+                            yield f"event: INTENT\ndata: {json.dumps(node_output['intent'])}\n\n"
+                        
+                        # Stream strategy (deduplicated - only send once)
+                        if "strategy" in node_output and node_output["strategy"] and not sent_strategy:
+                            sent_strategy = True
+                            yield f"event: STRATEGY\ndata: {json.dumps({'strategy': node_output['strategy']})}\n\n"
+                        
+                        # Stream clarification needed - STOP and wait for user response
+                        if node_output.get("needs_clarification"):
+                            yield f"event: CLARIFICATION\ndata: {json.dumps({'options': node_output.get('clarification_options', []), 'message': node_output.get('clarification_message'), 'originalAction': node_output.get('original_action', 'create_structure')})}\n\n"
+                            # Stop processing - user must respond before continuing
+                            print("⏸️ [Stream] Pausing for clarification - waiting for user response")
+                            return
+                        
+                        # Stream messages (deduplicated)
+                        if "messages" in node_output:
+                            for msg in node_output["messages"]:
+                                msg_key = f"{msg['role']}:{msg['content'][:50]}"
+                                if msg_key not in sent_messages:
+                                    sent_messages.add(msg_key)
+                                    yield f"event: MESSAGE\ndata: {json.dumps(msg)}\n\n"
+                        
+                        # Stream actions (deduplicated) + announce section writing
+                        if "actions" in node_output:
+                            for action in node_output["actions"]:
+                                action_key = f"{action['type']}:{action.get('payload', {}).get('sectionId', '')}"
+                                if action_key not in sent_actions:
+                                    sent_actions.add(action_key)
+                                    yield f"event: ACTION\ndata: {json.dumps(action)}\n\n"
+                                    
+                                    # If this is a generate_content action, emit SECTION_WRITING
+                                    if action['type'] == 'generate_content':
+                                        section_id = action.get('payload', {}).get('sectionId', '')
+                                        section_title = action.get('payload', {}).get('title', 'Section')
+                                        if section_id and section_id not in sections_announced:
+                                            sections_announced.add(section_id)
+                                            yield f"event: SECTION_WRITING\ndata: {json.dumps({'section_id': section_id, 'title': section_title})}\n\n"
+                        
+                        # Stream results (deduplicated) with enhanced structure events
+                        if "results" in node_output and node_output["results"]:
+                            for section_id, content in node_output["results"].items():
+                                if section_id not in sent_results:
+                                    sent_results.add(section_id)
+                                    
+                                    # Special handling for structure result
+                                    if section_id == "structure" and not sent_structure_created:
+                                        sent_structure_created = True
+                                        structure_info = parse_structure_for_events(content)
+                                        if structure_info:
+                                            yield f"event: STRUCTURE_CREATED\ndata: {json.dumps(structure_info)}\n\n"
+                                        # Also send the raw result for canvas creation
+                                        yield f"event: RESULT\ndata: {json.dumps({'section_id': section_id, 'content': content})}\n\n"
+                                    else:
+                                        # Regular section content - emit completion
+                                        preview = content[:100] + "..." if len(content) > 100 else content
+                                        yield f"event: SECTION_COMPLETE\ndata: {json.dumps({'section_id': section_id, 'preview': preview, 'word_count': len(content.split())})}\n\n"
+                                        yield f"event: RESULT\ndata: {json.dumps({'section_id': section_id, 'content': content})}\n\n"
                     
                     # Stream critic approval
                     if "critic_approved" in node_output:
