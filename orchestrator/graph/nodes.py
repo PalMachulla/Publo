@@ -1457,8 +1457,41 @@ async def writer_node(state: OrchestratorState) -> Dict[str, Any]:
                     session_id = state.get("session_id") or f"session-{state.get('user_id', 'default')}"
                     backend = initialize_filesystem_for_session(session_id, state)
                 
-                # Create writer agent
-                writer_agent = WriterAgent(backend)
+                # ============================================================
+                # LIBRARIAN INTEGRATION: Get node_id and Supabase client
+                # ============================================================
+                # The Librarian needs the node_id to scope entities to the story
+                # and a Supabase client to persist section cards and entities.
+                node_id = None
+                supabase_client = None
+                
+                # Get node_id from canvas_nodes (the story structure node)
+                canvas_nodes = state.get("canvas_nodes", []) or []
+                for node in canvas_nodes:
+                    if node.get("nodeType") == "storyStructure" or node.get("type") == "storyStructureNode":
+                        node_id = node.get("id") or node.get("nodeId")
+                        break
+                
+                # Create async Supabase client for Librarian
+                if node_id and os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_KEY"):
+                    try:
+                        from supabase import create_client, Client
+                        supabase_client = create_client(
+                            os.getenv("SUPABASE_URL"),
+                            os.getenv("SUPABASE_SERVICE_KEY")
+                        )
+                        print(f"📚 [Writer] Librarian enabled for node: {node_id[:20]}...")
+                    except Exception as e:
+                        print(f"⚠️ [Writer] Failed to create Supabase client: {e}")
+                else:
+                    print(f"📚 [Writer] Librarian disabled (node_id={bool(node_id)}, supabase={bool(os.getenv('SUPABASE_URL'))})")
+                
+                # Create writer agent with Librarian integration
+                writer_agent = WriterAgent(
+                    backend=backend,
+                    node_id=node_id,
+                    supabase_client=supabase_client
+                )
                 
                 # Get actions and plan
                 actions = state.get("actions", []) or []

@@ -5,10 +5,22 @@ Replaces writer_node with a Deep Agent that spawns subagents
 for parallel content generation.
 
 Phase 4: Subagent Spawning
+Phase 6: Librarian Integration - Analyzes content after generation
+
+LIBRARIAN INTEGRATION:
+    After content is generated, the writer agent calls the Librarian
+    to analyze the content and update section cards. This extracts:
+    - Characters (name, role, traits, appearances)
+    - Places (name, type, atmosphere)
+    - Events (what happened, who was involved)
+    
+    The Librarian also checks for coherency issues and flags them
+    on the section cards for the user to review.
 """
 
 from typing import Dict, Any, List, Optional
 import asyncio
+import os
 from .deep_agent_backend import OrchestratorFilesystemBackend
 from .file_storage import load_context_from_filesystem
 
@@ -20,19 +32,36 @@ class WriterAgent:
     This agent coordinates content generation by spawning specialized
     subagents for each section/chapter that needs to be written.
     
+    After content is generated, the Librarian Agent is called to:
+    - Extract characters, places, and events
+    - Update section cards with summaries
+    - Detect coherency issues
+    
     Usage:
-        agent = WriterAgent(backend)
+        agent = WriterAgent(backend, node_id, supabase_client)
         results = await agent.generate_content(actions, plan)
     """
     
-    def __init__(self, backend: OrchestratorFilesystemBackend):
+    def __init__(
+        self, 
+        backend: OrchestratorFilesystemBackend,
+        node_id: Optional[str] = None,
+        supabase_client: Optional[Any] = None
+    ):
         """
         Initialize writer agent.
         
         Args:
             backend: Filesystem backend for storing content
+            node_id: Story node ID for Librarian integration (optional)
+            supabase_client: Async Supabase client for Librarian (optional)
         """
         self.backend = backend
+        self.node_id = node_id
+        self.supabase = supabase_client
+        
+        # Librarian agent for coherency tracking (lazy loaded)
+        self._librarian = None
     
     async def generate_content(
         self,
@@ -214,7 +243,86 @@ class WriterAgent:
         
         print(f"✅ [Subagent] {section_name} completed: {len(content)} chars")
         
+        # ============================================================
+        # LIBRARIAN INTEGRATION: Analyze content and update cards
+        # ============================================================
+        # After content is generated, the Librarian analyzes it to:
+        # - Extract characters, places, events
+        # - Generate section summary
+        # - Detect coherency issues
+        # This happens asynchronously and doesn't block content delivery
+        await self._analyze_with_librarian(section_id, section_name, content)
+        
         return content
+    
+    async def _get_librarian(self):
+        """
+        Get or create the Librarian Agent instance.
+        
+        Returns None if node_id or supabase client is not available.
+        """
+        if self._librarian is not None:
+            return self._librarian
+        
+        if not self.node_id or not self.supabase:
+            return None
+        
+        try:
+            from .librarian_agent import LibrarianAgent
+            self._librarian = LibrarianAgent(self.node_id, self.supabase)
+            return self._librarian
+        except Exception as e:
+            print(f"⚠️ [WriterAgent] Failed to initialize Librarian: {e}")
+            return None
+    
+    async def _analyze_with_librarian(
+        self,
+        section_id: str,
+        section_name: str,
+        content: str
+    ):
+        """
+        Analyze generated content with the Librarian Agent.
+        
+        This extracts entities (characters, places, events), generates
+        a section summary, and detects coherency issues.
+        
+        Args:
+            section_id: The section identifier
+            section_name: Human-readable section name
+            content: The generated content text
+        """
+        librarian = await self._get_librarian()
+        if not librarian:
+            print("📚 [WriterAgent] Librarian not available - skipping analysis")
+            return
+        
+        try:
+            print(f"📚 [WriterAgent] Analyzing content with Librarian: {section_name}")
+            
+            # Analyze content and update section card
+            card = await librarian.analyze_and_update(
+                section_id=section_id,
+                content=content,
+                section_name=section_name
+            )
+            
+            if card:
+                print(f"📚 [WriterAgent] Section card updated: {card.section_name}")
+                print(f"   Characters: {len(card.characters_present)}")
+                print(f"   Places: {len(card.places_visited)}")
+                print(f"   Events: {len(card.events_occurring)}")
+                
+                # Check for coherency issues
+                issues = await librarian.get_coherency_issues(section_id)
+                if issues:
+                    print(f"⚠️ [WriterAgent] {len(issues)} coherency issue(s) detected")
+                    for issue in issues:
+                        print(f"   - {issue.severity}: {issue.description}")
+        except Exception as e:
+            print(f"⚠️ [WriterAgent] Librarian analysis failed (non-fatal): {e}")
+            import traceback
+            traceback.print_exc()
     
     async def generate_structure(
         self,
@@ -265,5 +373,45 @@ class WriterAgent:
         # Store structure in filesystem
         self.backend.write_file("content/structure.json", structure)
         
+        # ============================================================
+        # LIBRARIAN INTEGRATION: Create initial section cards
+        # ============================================================
+        # When a structure is created, the Librarian creates empty
+        # section cards for each section. These will be populated
+        # when content is written.
+        await self._create_initial_cards(structure)
+        
         return structure
+    
+    async def _create_initial_cards(self, structure: Dict[str, Any]):
+        """
+        Create initial section cards for a new structure.
+        
+        Cards are created empty (analyzed=False) and will be populated
+        when content is written for each section.
+        
+        Args:
+            structure: The generated structure dictionary
+        """
+        librarian = await self._get_librarian()
+        if not librarian:
+            print("📚 [WriterAgent] Librarian not available - skipping card creation")
+            return
+        
+        try:
+            # Extract items from structure
+            items = structure.get("items", []) or structure.get("sections", [])
+            
+            if not items:
+                print("📚 [WriterAgent] No items in structure - skipping card creation")
+                return
+            
+            print(f"📚 [WriterAgent] Creating initial cards for {len(items)} sections")
+            
+            # Create cards for each section
+            cards = await librarian.create_initial_cards(items)
+            
+            print(f"📚 [WriterAgent] Created {len(cards)} section cards")
+        except Exception as e:
+            print(f"⚠️ [WriterAgent] Failed to create initial cards (non-fatal): {e}")
 
