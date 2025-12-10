@@ -728,8 +728,55 @@ async def orchestrate_stream(request: OrchestrateRequest):
             # This ensures both tasks finish even if one completes first
             await asyncio.gather(graph_task, reasoning_task, return_exceptions=True)
             
-            # Send completion
-            yield f"event: DONE\ndata: {json.dumps({'success': True})}\n\n"
+                  # ============================================================
+                  # PHASE 5: PERSISTENT MEMORY - Learn from Success
+                  # ============================================================
+                  # After successful completion, learn from the interaction
+                  try:
+                      from orchestrator.agents.memory_manager import MemoryManager
+                      from orchestrator.agents.preference_learner import PreferenceLearner
+                      from orchestrator.agents.pattern_learner import PatternLearner
+                      from orchestrator.agents.deep_agent_backend import OrchestratorFilesystemBackend
+                      
+                      # Initialize memory if filesystem is enabled
+                      if USE_DEEP_AGENTS_FILESYSTEM:
+                          session_id = request.session_id or f"session-{request.user_id}"
+                          backend = OrchestratorFilesystemBackend(project_id=session_id)
+                          memory = MemoryManager(backend)
+                          preference_learner = PreferenceLearner(memory)
+                          pattern_learner = PatternLearner(memory)
+                          
+                          # Collect results for learning
+                          final_results = {}
+                          for section_id in sent_results:
+                              # Results are already sent, but we can learn from the action types
+                              final_results[section_id] = "completed"
+                          
+                          # Learn from interaction
+                          if final_results:
+                              pattern_learner.learn_from_success(
+                                  result={"results": final_results},
+                                  metrics={"completion_time": None},  # TODO: Track actual time
+                                  context={
+                                      "user_message": request.message,
+                                      "intent": None,  # TODO: Get from state
+                                      "strategy": None  # TODO: Get from state
+                                  }
+                              )
+                              
+                              preference_learner.learn_from_interaction(
+                                  user_message=request.message,
+                                  result={"results": final_results}
+                              )
+                              
+                              print(f"🧠 [Memory] Learned from successful interaction")
+                  
+                  except Exception as e:
+                      # Don't fail if learning fails
+                      print(f"⚠️ [Memory] Learning failed (non-fatal): {e}")
+                  
+                  # Send completion
+                  yield f"event: DONE\ndata: {json.dumps({'success': True})}\n\n"
             
         except Exception as e:
             print(f"❌ [Stream] Error: {e}")

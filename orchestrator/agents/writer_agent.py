@@ -141,6 +141,29 @@ class WriterAgent:
             if data:
                 context_data[context_file] = data
         
+        # ============================================================
+        # PHASE 5: LOAD MEMORY (STYLE GUIDE & PREFERENCES)
+        # ============================================================
+        # Load style guide and preferences for personalization
+        try:
+            from orchestrator.agents.memory_manager import MemoryManager
+            memory = MemoryManager(self.backend)
+            
+            style_guide = memory.load_style_guide()
+            preferences = memory.load_preferences()
+            
+            if style_guide:
+                context_data["style_guide"] = style_guide
+            
+            if preferences:
+                context_data["preferences"] = preferences
+            
+            if style_guide or preferences:
+                print(f"💾 [Subagent] Loaded memory: style_guide={bool(style_guide)}, preferences={len(preferences)}")
+        
+        except Exception as e:
+            print(f"⚠️ [Subagent] Failed to load memory (non-fatal): {e}")
+        
         # Get prompt and metadata from action
         payload = action.get("payload", {})
         prompt = payload.get("prompt", "")
@@ -157,6 +180,17 @@ class WriterAgent:
         if "document_structure.json" in context_data:
             doc_structure = context_data["document_structure.json"]
             context_parts.append(f"Document Structure: {len(doc_structure.get('items', []))} sections")
+        
+        # Add style guide and preferences to context (Phase 5)
+        if "style_guide" in context_data:
+            import json
+            style_guide = context_data["style_guide"]
+            context_parts.append(f"Writing Style Guide: {json.dumps(style_guide, indent=2)}")
+        
+        if "preferences" in context_data:
+            import json
+            preferences = context_data["preferences"]
+            context_parts.append(f"User Preferences: {json.dumps(preferences, indent=2)}")
         
         context_str = "\n".join(context_parts) if context_parts else None
         

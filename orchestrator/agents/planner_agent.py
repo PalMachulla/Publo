@@ -180,6 +180,40 @@ class PlannerAgent:
         """
         print(f"🧠 [Planner] Creating plan for: {user_message[:50]}...")
         
+        # ============================================================
+        # PHASE 5: LOAD MEMORY (PREFERENCES & PATTERNS)
+        # ============================================================
+        # Load user preferences and successful patterns to inform planning
+        memory_context = ""
+        try:
+            from orchestrator.agents.memory_manager import MemoryManager
+            memory = MemoryManager(self.backend)
+            
+            # Load preferences
+            preferences = memory.load_preferences()
+            if preferences:
+                memory_context += f"\n\nUser Preferences:\n{json.dumps(preferences, indent=2)}"
+            
+            # Load relevant patterns
+            intent_type = intent.get("intent", "")
+            patterns = memory.find_similar_patterns(intent_type)
+            if patterns:
+                memory_context += f"\n\nSuccessful Patterns (similar to '{intent_type}'):\n"
+                for pattern in patterns[:3]:  # Top 3 patterns
+                    memory_context += f"- {pattern.get('description', 'Unknown')}\n"
+            
+            # Load style guide
+            style_guide = memory.load_style_guide()
+            if style_guide:
+                memory_context += f"\n\nWriting Style Guide:\n{json.dumps(style_guide, indent=2)}"
+            
+            if memory_context:
+                print(f"💾 [Planner] Loaded memory: {len(preferences)} preference(s), {len(patterns)} pattern(s)")
+        
+        except Exception as e:
+            print(f"⚠️ [Planner] Failed to load memory (non-fatal): {e}")
+            memory_context = ""
+        
         # Build prompt
         intent_type = intent.get("intent", "")
         confidence = intent.get("confidence", 0.0)
