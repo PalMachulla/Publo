@@ -203,12 +203,17 @@ def select_strategy_node(state: OrchestratorState) -> Dict[str, Any]:
     }
 
 
-def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
+@traceable(name="generate_actions")
+async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
     """
     Node 2: Generate actions based on analyzed intent.
     
     This node converts the intent into concrete actions that can be executed.
     It's like a "planning" step - "what do we need to do?"
+    
+    PHASE 2: Now supports Deep Agent Planner (optional, feature flag)
+    - If USE_DEEP_AGENTS_PLANNER=true, uses PlannerAgent for dynamic planning
+    - Otherwise, uses original rule-based action generation
     
     Input (from state):
         - intent: Intent classification from analyze_intent_node
@@ -216,6 +221,7 @@ def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
         - active_segment: Currently selected section
         - structure_items: Available sections in document
         - canvas_nodes: Nodes on the canvas
+        - _filesystem: Filesystem metadata (if Phase 1 enabled)
     
     Output (updates state):
         - actions: List of actions to execute, e.g.:
@@ -226,6 +232,7 @@ def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
                 priority: "high" | "normal" | "low"
                 status: "pending"
             }
+        - plan: Deep Agent plan (if planner used)
         - needs_clarification: true if user needs to choose an option
         - clarification_options: List of options for user to choose
         - clarification_message: Question to ask user
@@ -249,9 +256,93 @@ def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
     
     Next node: select_strategy_node (always)
     """
+    import os
+    
     # ============================================================
-    # EXTRACT INTENT DATA
+    # PHASE 2: DEEP AGENT PLANNER (OPTIONAL)
     # ============================================================
+    # Use Deep Agent planner if feature flag enabled
+    USE_DEEP_AGENTS_PLANNER = os.getenv("USE_DEEP_AGENTS_PLANNER", "false").lower() == "true"
+    
+    if USE_DEEP_AGENTS_PLANNER:
+        try:
+            from orchestrator.agents.planner_agent import PlannerAgent
+            from orchestrator.agents.plan_converter import convert_plan_to_actions, extract_clarification_from_plan
+            from orchestrator.agents.deep_agent_backend import OrchestratorFilesystemBackend
+            from orchestrator.agents.migration_utils import initialize_filesystem_for_session
+            
+            # Initialize filesystem if not already done (Phase 1)
+            filesystem_meta = state.get("_filesystem", {})
+            if filesystem_meta.get("enabled"):
+                session_id = filesystem_meta.get("project_id")
+                backend = OrchestratorFilesystemBackend(project_id=session_id)
+            else:
+                # Initialize filesystem for this session
+                session_id = state.get("session_id") or f"session-{state.get('user_id', 'default')}"
+                backend = initialize_filesystem_for_session(session_id, state)
+            
+            # Create planner
+            planner = PlannerAgent(backend)
+            
+            # Get intent and context
+            intent = state.get("intent", {}) or {}
+            context = {
+                "active_segment": state.get("active_segment"),
+                "document_format": state.get("document_format"),
+                "document_panel_open": state.get("document_panel_open", False),
+                "structure_items": state.get("structure_items", []),
+                "canvas_nodes": state.get("canvas_nodes", [])
+            }
+            
+            # Create plan
+            plan = await planner.create_plan(
+                user_message=state.get("user_message", ""),
+                intent=intent,
+                context=context
+            )
+            
+            # Convert plan to actions (backward compatibility)
+            actions = convert_plan_to_actions(plan)
+            
+            # Extract clarification if needed
+            clarification = extract_clarification_from_plan(plan)
+            
+            print(f"✅ [Actions] Planner generated {len(actions)} action(s) from plan")
+            
+            # Return result with plan and actions
+            result = {
+                "actions": actions,
+                "plan": plan,  # Store plan for future reference
+                "messages": [{
+                    "role": "orchestrator",
+                    "content": f"Created plan with {len(plan.get('steps', []))} steps, generated {len(actions)} action(s)",
+                    "type": "thinking"
+                }]
+            }
+            
+            # Add clarification if needed
+            if clarification:
+                result.update(clarification)
+                result["messages"].append({
+                    "role": "orchestrator",
+                    "content": clarification.get("clarification_message", "Please choose an option"),
+                    "type": "options",
+                    "options": clarification.get("clarification_options", [])
+                })
+            
+            return result
+            
+        except Exception as e:
+            # Fallback to original logic if planner fails
+            print(f"⚠️ [Actions] Planner failed (falling back to original): {e}")
+            import traceback
+            traceback.print_exc()
+            # Continue to original logic below
+    
+    # ============================================================
+    # ORIGINAL ACTION GENERATION LOGIC (FALLBACK)
+    # ============================================================
+    # Extract intent data
     intent = state.get("intent", {}) or {}
     intent_type = intent.get("intent", "")
     entities = intent.get("extractedEntities", {}) or {}  # Extracted info (format, section, etc.)
