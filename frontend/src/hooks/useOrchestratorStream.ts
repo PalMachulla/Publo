@@ -150,10 +150,6 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         
         // Accumulate in ref (always succeeds, no batching issues)
         accumulatedContentRef.current += tokenContent;
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/590edda1-d2cc-4e7e-b43e-dfdf13ca907f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOrchestratorStream.ts:145',message:'TOKEN received',data:{tokenLength:tokenContent.length,accumulatedLength:accumulatedContentRef.current.length,hasAssistantMsg:!!assistantMessageIdRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
-        // #endregion
 
         if (!assistantMessageIdRef.current) {
           // First token - create placeholder message
@@ -577,9 +573,6 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         break;
 
       case 'DONE':
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/590edda1-d2cc-4e7e-b43e-dfdf13ca907f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOrchestratorStream.ts:580',message:'DONE event received',data:{hasAssistantMsg:!!assistantMessageIdRef.current,eventDataKeys:Object.keys(event.data || {}),rawFinalResponse:(event.data as { final_response?: string })?.final_response?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'L'})}).catch(()=>{});
-        // #endregion
         // Finalize streaming assistant message if exists
         if (assistantMessageIdRef.current) {
           // Use final_response from server if available (more reliable than accumulated content)
@@ -587,10 +580,6 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           const serverFinalResponse = doneData.final_response || '';
           const finalContent = serverFinalResponse || accumulatedContentRef.current;
           const msgId = assistantMessageIdRef.current;
-          
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/590edda1-d2cc-4e7e-b43e-dfdf13ca907f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOrchestratorStream.ts:583',message:'DONE - setting final content',data:{finalContentLength:finalContent.length,serverResponseLength:serverFinalResponse.length,accumulatedLength:accumulatedContentRef.current.length,msgId:msgId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'J'})}).catch(()=>{});
-          // #endregion
           
           setMessages(prev => prev.map(msg =>
             msg.id === msgId
@@ -727,9 +716,6 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           } else if (line.startsWith('data: ') && currentEventType) {
             try {
               const data = JSON.parse(line.slice(6));
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/590edda1-d2cc-4e7e-b43e-dfdf13ca907f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOrchestratorStream.ts:705',message:'SSE event parsed',data:{eventType:currentEventType,dataKeys:Object.keys(data)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
-              // #endregion
               handleEvent({ type: currentEventType as any, data });
             } catch (e) {
               console.error('Failed to parse event data:', e);

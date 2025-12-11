@@ -7,14 +7,6 @@ Create document structures from templates or descriptions.
 from typing import Optional, Dict, Any, List
 from langchain_core.tools import tool
 import json
-import time
-
-# #region agent log
-LOG_PATH = "/Users/palmac/Aiakaki/Code/publo/.cursor/debug.log"
-def debug_log(hyp: str, loc: str, msg: str, data: dict = None):
-    with open(LOG_PATH, "a") as f:
-        f.write(json.dumps({"hypothesisId": hyp, "location": loc, "message": msg, "data": data or {}, "timestamp": int(time.time()*1000), "sessionId": "debug-session"}) + "\n")
-# #endregion
 
 
 @tool
@@ -42,10 +34,6 @@ async def create_structure(
     """
     from config import get_model_for_task
     
-    # #region agent log
-    debug_log("N", "structure.py:45", "create_structure called", {"prompt_preview": prompt[:100] if prompt else "", "template_id": template_id, "format_type": format_type})
-    # #endregion
-    
     # Get template if specified
     template_guidance = ""
     if template_id:
@@ -58,26 +46,14 @@ async def create_structure(
         template_guidance=template_guidance,
     )
     
-    # #region agent log
-    debug_log("N", "structure.py:58", "structure prompt built", {"prompt_length": len(structure_prompt), "has_template": bool(template_guidance)})
-    # #endregion
-    
     # Generate structure using LLM
     model = get_model_for_task("general")
     
     response = await model.ainvoke(structure_prompt)
     response_text = response.content if hasattr(response, 'content') else str(response)
     
-    # #region agent log
-    debug_log("N", "structure.py:68", "LLM response received", {"response_length": len(response_text), "response_preview": response_text[:200] if response_text else ""})
-    # #endregion
-    
     # Parse the JSON response
     structure = _parse_structure_response(response_text)
-    
-    # #region agent log
-    debug_log("N", "structure.py:75", "structure parsed", {"title": structure.get("title"), "items_count": len(structure.get("items", []))})
-    # #endregion
     
     # Ensure required fields
     if "title" not in structure:

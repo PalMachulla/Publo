@@ -12,7 +12,7 @@ from typing import Optional, List, Dict, Any, AsyncIterator
 from langsmith import traceable
 import json
 
-from agent import create_publo_agent_with_mcp, run_agent_streaming, debug_log
+from agent import create_publo_agent_with_mcp, run_agent_streaming
 from streaming import format_sse, SSEEventType
 from config import settings
 
@@ -84,9 +84,6 @@ async def chat(request: ChatRequest):
     
     async def generate() -> AsyncIterator[str]:
         """Generate SSE events from agent execution."""
-        # #region agent log
-        debug_log("M", "chat.py:87", "generate() called", {"message_preview": request.message[:50] if request.message else ""})
-        # #endregion
         try:
             # Create agent with MCP tools
             agent = await create_publo_agent_with_mcp(
@@ -96,9 +93,6 @@ async def chat(request: ChatRequest):
                 user_preferences=request.user_preferences,
                 enable_memory=True,
             )
-            # #region agent log
-            debug_log("M", "chat.py:99", "agent created", {"agent_type": type(agent).__name__})
-            # #endregion
             
             # Build messages list
             messages = []
@@ -177,22 +171,11 @@ async def chat(request: ChatRequest):
                         })
                 
                 elif event_type == "done":
-                    # #region agent log
-                    debug_log("K", "chat.py:174", "DONE event data", {
-                        "has_final_response": "final_response" in data,
-                        "final_response_length": len(data.get("final_response", "")) if data.get("final_response") else 0,
-                        "data_keys": list(data.keys()) if isinstance(data, dict) else str(type(data))
-                    })
-                    # #endregion
                     yield format_sse(SSEEventType.DONE, data)
         
         except Exception as e:
             print(f"❌ [Chat] Error: {e}")
             import traceback
-            tb = traceback.format_exc()
-            # #region agent log
-            debug_log("C", "chat.py:168", "streaming error caught", {"error": str(e), "traceback": tb[:500]})
-            # #endregion
             traceback.print_exc()
             yield format_sse(SSEEventType.ERROR, {"error": str(e)})
     

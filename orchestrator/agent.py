@@ -23,14 +23,6 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 import json
-import time
-
-# #region agent log
-LOG_PATH = "/Users/palmac/Aiakaki/Code/publo/.cursor/debug.log"
-def debug_log(hyp: str, loc: str, msg: str, data: dict = None):
-    with open(LOG_PATH, "a") as f:
-        f.write(json.dumps({"hypothesisId": hyp, "location": loc, "message": msg, "data": data or {}, "timestamp": int(time.time()*1000), "sessionId": "debug-session"}) + "\n")
-# #endregion
 
 from tools import (
     get_story_context,
@@ -109,10 +101,6 @@ class PubloAgent:
             # We simulate streaming by yielding the content in chunks
             response = await self.model_with_tools.ainvoke(current_messages)
             
-            # #region agent log
-            debug_log("E", "agent.py:112", "ainvoke response", {"content_type": str(type(response.content)), "has_tool_calls": bool(response.tool_calls), "tool_calls_count": len(response.tool_calls) if response.tool_calls else 0, "content_length": len(str(response.content)), "content_preview": str(response.content)[:200]})
-            # #endregion
-            
             # Extract text content
             response_content = ""
             if isinstance(response.content, str):
@@ -127,9 +115,6 @@ class PubloAgent:
             
             # Simulate streaming by yielding content in chunks
             if response_content:
-                # #region agent log
-                debug_log("F", "agent.py:130", "starting chunk yield", {"total_length": len(response_content), "chunk_size": 50, "num_chunks": (len(response_content) + 49) // 50})
-                # #endregion
                 # Yield content in small chunks for streaming effect
                 chunk_size = 50
                 chunks_yielded = 0
@@ -140,9 +125,6 @@ class PubloAgent:
                         "event": "on_chat_model_stream",
                         "data": {"chunk": type('Chunk', (), {'content': chunk_text})()}
                     }
-                # #region agent log
-                debug_log("F", "agent.py:145", "finished chunk yield", {"chunks_yielded": chunks_yielded})
-                # #endregion
             
             # Get complete tool calls with full args
             tool_calls = response.tool_calls or []
@@ -151,9 +133,6 @@ class PubloAgent:
             if not tool_calls:
                 # Add final response to messages
                 current_messages.append(AIMessage(content=response_content))
-                # #region agent log
-                debug_log("G", "agent.py:155", "yielding on_chain_end", {"response_length": len(response_content)})
-                # #endregion
                 yield {
                     "event": "on_chain_end",
                     "name": "LangGraph",
@@ -185,21 +164,12 @@ class PubloAgent:
                         if "node_id" in tool_args or hasattr(tool, 'args_schema'):
                             tool_args["node_id"] = node_id
                         
-                        # #region agent log
-                        debug_log("O", "agent.py:188", "executing tool", {"tool_name": tool_name, "args_keys": list(tool_args.keys())})
-                        # #endregion
-                        
                         # Execute
                         result = await tool.ainvoke(tool_args)
                         # Keep dict for events, convert to string for messages
                         result_for_event = result if isinstance(result, dict) else str(result)
                         result_str = json.dumps(result) if isinstance(result, dict) else str(result)
                     except Exception as e:
-                        import traceback
-                        tb = traceback.format_exc()
-                        # #region agent log
-                        debug_log("O", "agent.py:194", "tool execution error", {"tool_name": tool_name, "error": str(e), "traceback": tb[:500]})
-                        # #endregion
                         result_for_event = {"error": str(e)}
                         result_str = f"Error: {str(e)}"
                 else:
