@@ -15,6 +15,8 @@ import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { useOrchestratorStream, ChatMessage } from '@/hooks/useOrchestratorStream'
 import { StructureCreatedEvent, ClarificationEvent, CreationProgress } from '@/types/orchestrator-streaming-types'
 import { useOrchestratorSession } from '@/lib/orchestrator/hooks/useOrchestratorSession'
+import { ThinkingBlock } from '@/components/ui/molecules/ThinkingBlock'
+import { MarkdownContent } from '@/components/ui/atoms/MarkdownContent'
 
 // ============================================================
 // Props Interface
@@ -276,6 +278,7 @@ export function OrchestratorPanelStreaming({
       message: optionId,  // Show what was selected
       userId,
       sessionId,
+      storyId,  // Canvas/project ID for context
       documentFormat,
       activeSegment,
       documentPanelOpen,
@@ -290,6 +293,7 @@ export function OrchestratorPanelStreaming({
     startStream,
     userId,
     sessionId,
+    storyId,
     documentFormat,
     activeSegment,
     documentPanelOpen,
@@ -320,6 +324,7 @@ export function OrchestratorPanelStreaming({
         message,
         userId,
         sessionId,
+        storyId,  // Canvas/project ID for context
         documentFormat,
         activeSegment,
         documentPanelOpen,
@@ -338,6 +343,7 @@ export function OrchestratorPanelStreaming({
       message,
       userId,
       sessionId,
+      storyId,  // Canvas/project ID for context
       documentFormat,
       activeSegment,
       documentPanelOpen,
@@ -351,7 +357,8 @@ export function OrchestratorPanelStreaming({
     isStreaming, 
     startStream, 
     userId, 
-    sessionId, 
+    sessionId,
+    storyId,
     documentFormat,
     activeSegment,
     documentPanelOpen,
@@ -518,7 +525,7 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
       return (
         <div className="flex justify-start">
           <div className={`${baseClasses} bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100`}>
-            <div>{message.content}</div>
+            <MarkdownContent compact>{message.content}</MarkdownContent>
             {isClarification && options.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {options.map((option, idx) => {
@@ -585,6 +592,30 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
         </div>
       )
 
+    case 'reasoning':
+      // Cursor-style collapsible thinking block using atomic design
+      const startTime = message.metadata?.startTime 
+        ? new Date(message.metadata.startTime as string) 
+        : message.timestamp;
+      const endTime = message.metadata?.endTime 
+        ? new Date(message.metadata.endTime as string) 
+        : undefined;
+      const isActiveReasoning = message.metadata?.isStreaming as boolean || false;
+      
+      return (
+        <div className="flex justify-start w-full">
+          <div className="w-full">
+            <ThinkingBlock
+              content={message.content}
+              startTime={startTime}
+              endTime={endTime}
+              isStreaming={isActiveReasoning}
+              defaultCollapsed={!isActiveReasoning}
+            />
+          </div>
+        </div>
+      )
+
     case 'error':
       return (
         <div className="flex justify-start">
@@ -597,8 +628,8 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
     default:
       return (
         <div className="flex justify-start">
-          <div className={`${baseClasses} bg-gray-100 dark:bg-gray-800`}>
-            {message.content}
+          <div className={`${baseClasses} bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100`}>
+            <MarkdownContent compact>{message.content}</MarkdownContent>
           </div>
         </div>
       )

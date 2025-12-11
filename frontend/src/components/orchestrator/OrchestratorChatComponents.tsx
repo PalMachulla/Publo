@@ -6,6 +6,8 @@
 import React from 'react';
 import type { ChatMessage } from '../../hooks/useOrchestratorStream';
 import type { StructureCreatedEvent } from '../../types/orchestrator-streaming-types';
+import { ThinkingBlock } from '../ui/molecules/ThinkingBlock';
+import { MarkdownContent } from '../ui/atoms/MarkdownContent';
 
 interface OrchestratorChatMessageProps {
   message: ChatMessage;
@@ -28,7 +30,9 @@ export function OrchestratorChatMessage({ message }: OrchestratorChatMessageProp
       return (
         <div className="flex justify-start">
           <div className={`${baseClasses} bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100`}>
-            {message.content}
+            <MarkdownContent compact>
+              {message.content}
+            </MarkdownContent>
           </div>
         </div>
       );
@@ -87,6 +91,30 @@ export function OrchestratorChatMessage({ message }: OrchestratorChatMessageProp
         </div>
       );
 
+    case 'reasoning':
+      // Cursor-style collapsible thinking block
+      const startTime = message.metadata?.startTime 
+        ? new Date(message.metadata.startTime as string) 
+        : message.timestamp;
+      const endTime = message.metadata?.endTime 
+        ? new Date(message.metadata.endTime as string) 
+        : undefined;
+      const isStreaming = message.metadata?.isStreaming as boolean || false;
+      
+      return (
+        <div className="flex justify-start w-full">
+          <div className="w-full max-w-[95%]">
+            <ThinkingBlock
+              content={message.content}
+              startTime={startTime}
+              endTime={endTime}
+              isStreaming={isStreaming}
+              defaultCollapsed={!isStreaming}
+            />
+          </div>
+        </div>
+      );
+
     case 'error':
       return (
         <div className="flex justify-start">
@@ -99,8 +127,10 @@ export function OrchestratorChatMessage({ message }: OrchestratorChatMessageProp
     default:
       return (
         <div className="flex justify-start">
-          <div className={`${baseClasses} bg-gray-100 dark:bg-gray-800`}>
-            {message.content}
+          <div className={`${baseClasses} bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100`}>
+            <MarkdownContent compact>
+              {message.content}
+            </MarkdownContent>
           </div>
         </div>
       );

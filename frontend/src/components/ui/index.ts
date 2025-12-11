@@ -46,6 +46,18 @@ export type { MessageTimestampProps } from './atoms/MessageTimestamp'
 export { ChatOptionPill } from './atoms/ChatOptionPill'
 export type { ChatOptionPillProps } from './atoms/ChatOptionPill'
 
+export { DurationBadge } from './atoms/DurationBadge'
+export type { DurationBadgeProps } from './atoms/DurationBadge'
+
+export { ProcessStepIcon } from './atoms/ProcessStepIcon'
+export type { ProcessStepIconProps, ProcessStepType } from './atoms/ProcessStepIcon'
+
+export { StreamingCursor } from './atoms/StreamingCursor'
+export type { StreamingCursorProps } from './atoms/StreamingCursor'
+
+export { MarkdownContent } from './atoms/MarkdownContent'
+export type { MarkdownContentProps } from './atoms/MarkdownContent'
+
 export { 
   Card, 
   CardHeader, 
@@ -82,6 +94,12 @@ export type { ChatOptionsSelectorProps, ChatOption } from './molecules/ChatOptio
 
 export { VendorFilterDropdown } from './molecules/VendorFilterDropdown'
 export type { VendorFilterDropdownProps } from './molecules/VendorFilterDropdown'
+
+export { ThinkingBlock } from './molecules/ThinkingBlock'
+export type { ThinkingBlockProps } from './molecules/ThinkingBlock'
+
+export { ProcessStep, ProcessStepList } from './molecules/ProcessStep'
+export type { ProcessStepProps, ProcessStepListProps, ProcessStepStatus } from './molecules/ProcessStep'
 
 // Organisms
 export { ChatAccordion } from './organisms/ChatAccordion'

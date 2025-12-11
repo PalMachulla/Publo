@@ -18,12 +18,20 @@ import type {
   StrategyEvent,
   OpenDocumentEvent,
   SelectSectionEvent,
+  // Deep Agent events
+  TokenEvent,
+  ToolStartEvent,
+  ToolEndEvent,
+  ContentChunkEvent,
+  ContentCompleteEvent,
+  NavigateEvent,
+  PresentOptionsEvent,
 } from '@/types/orchestrator-streaming-types';
 
 // Chat message for display
 export interface ChatMessage {
   id: string;
-  type: 'user' | 'assistant' | 'progress' | 'structure' | 'section-progress' | 'error' | 'thinking';
+  type: 'user' | 'assistant' | 'progress' | 'structure' | 'section-progress' | 'error' | 'thinking' | 'reasoning';
   content: string;
   timestamp: Date;
   metadata?: Record<string, unknown>;
@@ -117,33 +125,194 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     ));
   }, []);
 
+  // Track streaming assistant message (for token-by-token updates)
+  const assistantMessageIdRef = useRef<string | null>(null);
+  
+  // Accumulate content to avoid React batching issues
+  const accumulatedContentRef = useRef<string>('');
+  
   // Handle incoming events
   const handleEvent = useCallback((event: OrchestratorEvent) => {
     switch (event.type) {
+      // ============================================================
+      // DEEP AGENT EVENTS (New Architecture)
+      // ============================================================
+      
+      case 'TOKEN':
+        /**
+         * Streaming text token from Deep Agent
+         * 
+         * FIX: Only accumulate in ref during streaming.
+         * State updates happen on DONE to avoid React batching issues.
+         * Show placeholder during streaming for UX.
+         */
+        const tokenContent = (event.data as TokenEvent).content || '';
+        
+        // Accumulate in ref (always succeeds, no batching issues)
+        accumulatedContentRef.current += tokenContent;
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/590edda1-d2cc-4e7e-b43e-dfdf13ca907f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOrchestratorStream.ts:145',message:'TOKEN received',data:{tokenLength:tokenContent.length,accumulatedLength:accumulatedContentRef.current.length,hasAssistantMsg:!!assistantMessageIdRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+        // #endregion
+
+        if (!assistantMessageIdRef.current) {
+          // First token - create placeholder message
+          const messageId = generateId();
+          assistantMessageIdRef.current = messageId;
+
+          const assistantMessage: ChatMessage = {
+            id: messageId,
+            type: 'assistant',
+            content: accumulatedContentRef.current,
+            timestamp: new Date(),
+            metadata: { isStreaming: true }
+          };
+          setMessages(prev => [...prev, assistantMessage]);
+        }
+        // Don't update state on every token - wait for DONE
+        break;
+      
+      case 'TOOL_START':
+        /**
+         * Tool execution starting
+         */
+        const toolStartData = event.data as ToolStartEvent;
+        console.log('🔧 [Tool Start]', toolStartData.tool);
+        
+        // Show thinking indicator for long-running tools
+        if (['write_section', 'create_structure'].includes(toolStartData.tool)) {
+          addMessage('thinking', `🔧 ${toolStartData.tool === 'write_section' ? 'Writing content...' : 'Creating structure...'}`);
+        }
+        break;
+      
+      case 'TOOL_END':
+        /**
+         * Tool execution complete
+         */
+        const toolEndData = event.data as ToolEndEvent;
+        console.log('✅ [Tool End]', toolEndData.tool);
+        break;
+      
+      case 'CONTENT_CHUNK':
+        /**
+         * Streaming content chunk from write_section
+         */
+        const chunkData = event.data as ContentChunkEvent;
+        // Content chunks are handled separately in the editor
+        // Just log for debugging
+        console.log('📝 [Content Chunk]', chunkData.section_id, chunkData.chunk.length, 'chars');
+        break;
+      
+      case 'CONTENT_COMPLETE':
+        /**
+         * Section writing complete
+         */
+        const contentCompleteData = event.data as ContentCompleteEvent;
+        console.log('✅ [Content Complete]', contentCompleteData.section_id, contentCompleteData.word_count, 'words');
+        
+        // Update progress
+        setProgress(prev => {
+          if (!prev.structure) return prev;
+          
+          return {
+            ...prev,
+            structure: {
+              ...prev.structure,
+              sections: prev.structure.sections.map(s =>
+                s.id === contentCompleteData.section_id
+                  ? { ...s, status: 'complete' as const, wordCount: contentCompleteData.word_count }
+                  : s
+              ),
+            },
+          };
+        });
+        break;
+      
+      case 'NAVIGATE':
+        /**
+         * Navigate to a section (Deep Agent version)
+         */
+        const navigateData = event.data as NavigateEvent;
+        console.log('📍 [Navigate]', navigateData.section_name || navigateData.section_id);
+        
+        addMessage('assistant', `📍 Navigating to "${navigateData.section_name || navigateData.section_id}"...`);
+        onSelectSection?.(navigateData.section_id, navigateData.section_name || '');
+        break;
+      
+      case 'PRESENT_OPTIONS':
+        /**
+         * Present options to user (Deep Agent version)
+         */
+        const optionsData = event.data as PresentOptionsEvent;
+        console.log('❓ [Present Options]', optionsData.prompt, optionsData.options.length, 'options');
+        
+        // Add as clarification message
+        addMessage(
+          'assistant',
+          optionsData.prompt,
+          {
+            type: 'clarification',
+            options: optionsData.options,
+          }
+        );
+        break;
+      
+      // ============================================================
+      // LEGACY EVENTS (Backwards Compatibility)
+      // ============================================================
+      
       case 'REASONING_TOKEN':
         /**
          * Token-by-token reasoning streaming
          * 
-         * IMPORTANT: We NO LONGER display raw reasoning tokens to users.
-         * The raw JSON from LLM analysis is too technical and confusing.
-         * Instead, we just log to console for debugging and wait for
-         * the formatted INTENT event to display a user-friendly summary.
+         * Stream reasoning tokens to UI in a collapsible ThinkingBlock.
+         * Creates a 'reasoning' message on first token, appends on subsequent tokens.
          */
-        // Only log to console - don't show raw JSON/reasoning to users
-        console.log('💭 [Reasoning]', (event.data as { token: string }).token?.substring(0, 50) + '...');
+        const token = (event.data as { token: string }).token || '';
+        
+        if (!reasoningMessageIdRef.current) {
+          // First token - create new reasoning message
+          const messageId = generateId();
+          reasoningMessageIdRef.current = messageId;
+          
+          const reasoningMessage: ChatMessage = {
+            id: messageId,
+            type: 'reasoning',
+            content: token,
+            timestamp: new Date(),
+            metadata: {
+              startTime: new Date().toISOString(),
+              isStreaming: true
+            }
+          };
+          setMessages(prev => [...prev, reasoningMessage]);
+        } else {
+          // Subsequent tokens - append to existing message
+          updateMessage(reasoningMessageIdRef.current, {
+            content: token,  // Backend sends accumulated content, not just new token
+            metadata: { isStreaming: true }
+          });
+        }
         break;
 
       case 'INTENT':
         /**
-         * Intent analysis complete - show user-friendly summary
+         * Intent analysis complete - mark reasoning as finished
          */
         console.log('🎯 Intent:', event.data);
-        reasoningMessageIdRef.current = null;
         
-        // Only show a brief, friendly summary - not the raw JSON
-        const intentData = event.data as IntentEvent;
-        // Don't show intent to users - it's internal. Skip this message.
-        // The PLAN or actions will communicate what's happening.
+        // Mark reasoning message as complete
+        if (reasoningMessageIdRef.current) {
+          updateMessage(reasoningMessageIdRef.current, {
+            metadata: { 
+              isStreaming: false,
+              endTime: new Date().toISOString()
+            }
+          });
+          reasoningMessageIdRef.current = null;
+        }
+        
+        // Don't show intent to users - it's internal
         break;
 
       case 'PLAN':
@@ -408,12 +577,41 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         break;
 
       case 'DONE':
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/590edda1-d2cc-4e7e-b43e-dfdf13ca907f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOrchestratorStream.ts:580',message:'DONE event received',data:{hasAssistantMsg:!!assistantMessageIdRef.current,eventDataKeys:Object.keys(event.data || {}),rawFinalResponse:(event.data as { final_response?: string })?.final_response?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'L'})}).catch(()=>{});
+        // #endregion
+        // Finalize streaming assistant message if exists
+        if (assistantMessageIdRef.current) {
+          // Use final_response from server if available (more reliable than accumulated content)
+          const doneData = event.data as { final_response?: string };
+          const serverFinalResponse = doneData.final_response || '';
+          const finalContent = serverFinalResponse || accumulatedContentRef.current;
+          const msgId = assistantMessageIdRef.current;
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/590edda1-d2cc-4e7e-b43e-dfdf13ca907f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOrchestratorStream.ts:583',message:'DONE - setting final content',data:{finalContentLength:finalContent.length,serverResponseLength:serverFinalResponse.length,accumulatedLength:accumulatedContentRef.current.length,msgId:msgId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'J'})}).catch(()=>{});
+          // #endregion
+          
+          setMessages(prev => prev.map(msg =>
+            msg.id === msgId
+              ? { ...msg, content: finalContent, metadata: { isStreaming: false } }
+              : msg
+          ));
+          assistantMessageIdRef.current = null;
+          accumulatedContentRef.current = '';
+        }
+        
         setProgress(prev => ({
           ...prev,
           stage: 'complete',
           percentComplete: 100,
         }));
-        addMessage('assistant', '✅ Structure ready!');
+        
+        // Only add "Structure ready!" if we actually created a structure
+        if (progress.structure) {
+          addMessage('assistant', '✅ Structure ready!');
+        }
+        
         onComplete?.();
         break;
 
@@ -427,13 +625,14 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         onError?.(event.data.error);
         break;
     }
-  }, [addMessage, onStructureComplete, onSectionComplete, onClarificationNeeded, onError, onComplete]);
+  }, [addMessage, updateMessage, progress.structure, onStructureComplete, onSectionComplete, onClarificationNeeded, onOpenDocument, onSelectSection, onError, onComplete]);
 
   // Start streaming
   const startStream = useCallback(async (request: {
     message: string;
     userId: string;
     sessionId?: string;
+    storyId?: string;  // Canvas/project ID (same as canvasId in URL)
     documentFormat?: string;
     activeSegment?: unknown;
     documentPanelOpen?: boolean;
@@ -450,6 +649,8 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     abortControllerRef.current = new AbortController();
     clarificationSentRef.current = false;  // Reset for new stream
     reasoningMessageIdRef.current = null;  // Reset reasoning message ref for new stream
+    assistantMessageIdRef.current = null;  // Reset assistant message ref for new stream
+    accumulatedContentRef.current = '';    // Reset accumulated content for new stream
 
     // Reset state
     setIsStreaming(true);
@@ -470,6 +671,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       message: request.message,
       user_id: request.userId,
       session_id: request.sessionId,
+      story_id: request.storyId,  // Canvas/project ID for persistence and context
       document_format: request.documentFormat,
       active_segment: request.activeSegment,
       document_panel_open: request.documentPanelOpen,
@@ -525,6 +727,9 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           } else if (line.startsWith('data: ') && currentEventType) {
             try {
               const data = JSON.parse(line.slice(6));
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/590edda1-d2cc-4e7e-b43e-dfdf13ca907f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOrchestratorStream.ts:705',message:'SSE event parsed',data:{eventType:currentEventType,dataKeys:Object.keys(data)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
+              // #endregion
               handleEvent({ type: currentEventType as any, data });
             } catch (e) {
               console.error('Failed to parse event data:', e);
