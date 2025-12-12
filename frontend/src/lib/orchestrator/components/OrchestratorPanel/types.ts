@@ -130,6 +130,7 @@ export interface CreateStoryNodeData {
   logline?: string
   template?: string
   isGenerating?: boolean
+  nodeId?: string  // Backend-generated node ID for content storage alignment
 }
 
 // ============================================================

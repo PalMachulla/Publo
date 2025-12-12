@@ -11,12 +11,14 @@
  */
 'use client'
 
-import React, { useRef, useEffect, useState, useCallback } from 'react'
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { useOrchestratorStream, ChatMessage } from '@/hooks/useOrchestratorStream'
 import { StructureCreatedEvent, ClarificationEvent, CreationProgress } from '@/types/orchestrator-streaming-types'
 import { useOrchestratorSession } from '@/lib/orchestrator/hooks/useOrchestratorSession'
 import { ThinkingBlock } from '@/components/ui/molecules/ThinkingBlock'
 import { MarkdownContent } from '@/components/ui/atoms/MarkdownContent'
+import { TodoPanel } from '@/components/ui/organisms/TodoPanel'
+import { SubagentActivity } from '@/components/ui/organisms/SubagentActivity'
 
 // ============================================================
 // Props Interface
@@ -33,11 +35,14 @@ export interface OrchestratorPanelStreamingProps {
   onStructureComplete?: (structure: StructureCreatedEvent) => void
   onSectionComplete?: (sectionId: string, content: string) => void
   onClarificationNeeded?: (clarification: ClarificationEvent) => void
-  onCreateStoryNode?: (structure: any) => void
+  onCreateStoryNode?: (structure: any) => string | Promise<string> | void
   
   // Navigation callbacks - triggered when user asks to open/navigate
   onOpenDocument?: (nodeId: string, nodeName: string) => void
   onSelectSection?: (sectionId: string, sectionName: string) => void
+  
+  // Content complete callback - triggers document refresh after write
+  onContentComplete?: (sectionId: string, wordCount: number) => void
   
   // Context from parent
   activeSegment?: any
@@ -46,6 +51,7 @@ export interface OrchestratorPanelStreamingProps {
   structureItems?: any[]
   canvasNodes?: any[]
   conversationHistory?: any[]
+  currentStoryStructureNodeId?: string  // Active structure node for Librarian context
   
   className?: string
 }
@@ -65,17 +71,23 @@ export function OrchestratorPanelStreaming({
   onCreateStoryNode,
   onOpenDocument,
   onSelectSection,
+  onContentComplete,
   activeSegment,
   documentPanelOpen,
   canvasContext,
   structureItems,
   canvasNodes,
   conversationHistory,
+  currentStoryStructureNodeId,
   className = '',
 }: OrchestratorPanelStreamingProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  
+  // Track the most recently created structure node ID (updated synchronously)
+  // This is used as a fallback when effectiveStoryStructureNodeId hasn't updated yet
+  const lastCreatedStructureNodeIdRef = useRef<string | null>(null)
   
   // Track pending clarification state - when system asks a question
   // Options can be string array or object array depending on backend response
@@ -144,6 +156,8 @@ export function OrchestratorPanelStreaming({
   const {
     messages,
     progress,
+    todos,
+    subagentActivities,
     isStreaming,
     startStream,
     clearMessages,
@@ -208,7 +222,7 @@ export function OrchestratorPanelStreaming({
         })
     },
     
-    onStructureComplete: (structure) => {
+    onStructureComplete: async (structure) => {
       console.log('📐 [Streaming] Structure created:', structure.title, 'with', structure.sections?.length, 'sections')
       onStructureComplete?.(structure)
       
@@ -217,12 +231,23 @@ export function OrchestratorPanelStreaming({
       //   - label (not title) - Node display name
       //   - items (not sections) - Array of structure items
       //   - format - Document type (novel, podcast, etc.)
+      //   - nodeId - Backend-generated ID for content storage alignment
       if (onCreateStoryNode) {
-        onCreateStoryNode({
+        const result = onCreateStoryNode({
           label: structure.title,           // ← "label" for node display
           items: structure.sections || [],  // ← "items" for structure data
           format: structure.format || 'novel',
+          nodeId: structure.node_id,        // ← Backend-provided node ID
         })
+        // Handle both sync and async returns
+        const newNodeId = result instanceof Promise ? await result : result
+        // Store the new node ID immediately for use in onOpenDocument
+        // Use backend-provided ID if available, otherwise use returned ID
+        const capturedNodeId = structure.node_id || (newNodeId && typeof newNodeId === 'string' ? newNodeId : null)
+        if (capturedNodeId) {
+          console.log('📌 [Streaming] Captured new structure node ID:', capturedNodeId)
+          lastCreatedStructureNodeIdRef.current = capturedNodeId
+        }
       }
     },
     
@@ -247,12 +272,40 @@ export function OrchestratorPanelStreaming({
     // Navigation callbacks
     onOpenDocument: (nodeId, nodeName) => {
       console.log('📂 [Streaming] Opening document:', nodeName, nodeId)
-      onOpenDocument?.(nodeId, nodeName)
+      
+      // Fix: If this node was just created in this session (via create_structure),
+      // skip the onSelectNode call. The document panel is already being opened
+      // via onStoryNodeCreated, and React Flow's nodes state hasn't updated yet.
+      // This prevents the race condition where onSelectNode fails to find the node.
+      if (nodeId === lastCreatedStructureNodeIdRef.current) {
+        console.log('⏭️ [Streaming] Skipping onSelectNode for just-created node:', nodeId)
+        // Clear the ref so subsequent OPEN_DOCUMENT calls work normally
+        lastCreatedStructureNodeIdRef.current = null
+        return
+      }
+      
+      // Also handle canvas ID fallback (for backward compatibility)
+      let resolvedNodeId = nodeId;
+      if (nodeId && !nodeId.startsWith('story-structure-')) {
+        const fallbackNodeId = effectiveStoryStructureNodeId || lastCreatedStructureNodeIdRef.current;
+        if (fallbackNodeId) {
+          console.log('🔄 [Streaming] Resolving canvas ID to structure node:', nodeId, '->', fallbackNodeId)
+          resolvedNodeId = fallbackNodeId;
+        }
+      }
+      
+      onOpenDocument?.(resolvedNodeId, nodeName)
     },
     
     onSelectSection: (sectionId, sectionName) => {
       console.log('📍 [Streaming] Selecting section:', sectionName, sectionId)
       onSelectSection?.(sectionId, sectionName)
+    },
+    
+    // Content complete - triggers document refresh after content is written to DB
+    onContentComplete: (sectionId, wordCount) => {
+      console.log('🔄 [Streaming] Content complete, triggering refresh for:', sectionId, wordCount, 'words')
+      onContentComplete?.(sectionId, wordCount)
     },
     
     onComplete: () => {
@@ -269,6 +322,46 @@ export function OrchestratorPanelStreaming({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, progress])
 
+  // Auto-detect story structure node if not explicitly set
+  // This handles the case where user opens orchestrator panel without clicking on a story node first
+  const { effectiveStoryStructureNodeId, effectiveStructureItems } = useMemo(() => {
+    // If we have explicit values, use them
+    if (currentStoryStructureNodeId && structureItems && structureItems.length > 0) {
+      return { 
+        effectiveStoryStructureNodeId: currentStoryStructureNodeId, 
+        effectiveStructureItems: structureItems 
+      }
+    }
+    
+    // Find story structure nodes on canvas
+    const storyNodes = canvasNodes?.filter((n: any) => 
+      n.type === 'storyStructureNode' || n.data?.nodeType === 'story-structure'
+    ) || []
+    
+    // If there's exactly one story structure, use it
+    if (storyNodes.length === 1) {
+      const node = storyNodes[0]
+      const nodeItems = node.data?.items || []
+      // NOTE: Don't console.log here - causes React state update during render
+      return { 
+        effectiveStoryStructureNodeId: node.id, 
+        effectiveStructureItems: nodeItems 
+      }
+    }
+    
+    return { effectiveStoryStructureNodeId: null, effectiveStructureItems: [] }
+  }, [currentStoryStructureNodeId, canvasNodes, structureItems])
+
+  // #region agent log - Debug effective values
+  useEffect(() => {
+    console.log('📊 [Streaming] Effective values:', {
+      effectiveStoryStructureNodeId,
+      effectiveStructureItemsCount: effectiveStructureItems?.length || 0,
+      sampleEffectiveIds: effectiveStructureItems?.slice(0, 3).map((i: any) => i?.id),
+    })
+  }, [effectiveStoryStructureNodeId, effectiveStructureItems])
+  // #endregion
+
   // Handle clarification option selection
   const handleOptionSelect = useCallback((optionId: string, originalAction?: string) => {
     console.log('🔘 [Clarification] Option selected:', { optionId, originalAction })
@@ -279,11 +372,12 @@ export function OrchestratorPanelStreaming({
       userId,
       sessionId,
       storyId,  // Canvas/project ID for context
+      storyStructureNodeId: effectiveStoryStructureNodeId,  // Auto-detected or explicit
       documentFormat,
       activeSegment,
       documentPanelOpen,
       canvasContext,
-      structureItems,
+      structureItems: effectiveStructureItems,
       canvasNodes,
       conversationHistory,
       clarificationResponse: optionId,  // The option ID
@@ -294,11 +388,12 @@ export function OrchestratorPanelStreaming({
     userId,
     sessionId,
     storyId,
+    effectiveStoryStructureNodeId,
     documentFormat,
     activeSegment,
     documentPanelOpen,
     canvasContext,
-    structureItems,
+    effectiveStructureItems,
     canvasNodes,
     conversationHistory,
   ])
@@ -325,11 +420,12 @@ export function OrchestratorPanelStreaming({
         userId,
         sessionId,
         storyId,  // Canvas/project ID for context
+        storyStructureNodeId: effectiveStoryStructureNodeId,  // Auto-detected or explicit
         documentFormat,
         activeSegment,
         documentPanelOpen,
         canvasContext,
-        structureItems,
+        structureItems: effectiveStructureItems,
         canvasNodes,
         conversationHistory,
         clarificationResponse: message,  // User's typed response
@@ -344,11 +440,12 @@ export function OrchestratorPanelStreaming({
       userId,
       sessionId,
       storyId,  // Canvas/project ID for context
+      storyStructureNodeId: effectiveStoryStructureNodeId,  // Auto-detected or explicit
       documentFormat,
       activeSegment,
       documentPanelOpen,
       canvasContext,
-      structureItems,
+      structureItems: effectiveStructureItems,
       canvasNodes,
       conversationHistory,
     })
@@ -359,11 +456,12 @@ export function OrchestratorPanelStreaming({
     userId, 
     sessionId,
     storyId,
+    effectiveStoryStructureNodeId,
     documentFormat,
     activeSegment,
     documentPanelOpen,
     canvasContext,
-    structureItems,
+    effectiveStructureItems,
     canvasNodes,
     conversationHistory,
     pendingClarification,
@@ -420,6 +518,28 @@ export function OrchestratorPanelStreaming({
         {/* Progress Panel - shows during creation */}
         {progress.isActive && progress.structure && (
           <ProgressPanel progress={progress} />
+        )}
+        
+        {/* Todo Panel - shows agent's task plan */}
+        {todos && todos.length > 0 && (
+          <TodoPanel 
+            todos={todos}
+            title="Task Plan"
+            collapsible={true}
+            defaultExpanded={true}
+            className="mb-3"
+          />
+        )}
+        
+        {/* Subagent Activity Panel - shows subagent invocations */}
+        {subagentActivities && subagentActivities.length > 0 && (
+          <SubagentActivity 
+            activities={subagentActivities}
+            title="Agent Activity"
+            collapsible={true}
+            defaultExpanded={true}
+            className="mb-3"
+          />
         )}
         
         <div ref={messagesEndRef} />

@@ -6,6 +6,8 @@ Tools for content generation (write_section, edit_section).
 
 from typing import Optional, Dict, Any
 from langchain_core.tools import tool
+import json
+import time
 
 
 @tool
@@ -35,20 +37,32 @@ async def write_section(
         - word_count: Word count
         - status: "complete"
     """
-    from librarian import get_librarian
-    from config import get_supabase_client, get_model_for_task
-    from streaming import format_sse, SSEEventType
-    from .story_context import format_context_for_prompt
+    try:
+        from librarian import get_librarian
+        from config import get_supabase_client, get_model_for_task
+        from streaming import format_sse, SSEEventType
+        from .story_context import format_context_for_prompt
+    except Exception as e:
+        return {"error": f"Import error: {str(e)}", "status": "error"}
     
-    supabase = get_supabase_client()
-    librarian = get_librarian(node_id, supabase)
+    try:
+        supabase = get_supabase_client()
+        librarian = get_librarian(node_id, supabase)
+    except Exception as e:
+        return {"error": f"Failed to create librarian: {str(e)}", "status": "error"}
     
     # Get section metadata
-    section_info = await _get_section_info(section_id, supabase)
-    section_name = section_info.get("name", "Section")
+    try:
+        section_info = await _get_section_info(section_id, supabase)
+        section_name = section_info.get("name", "Section")
+    except Exception as e:
+        section_name = "Section"
     
     # Get context from Librarian
-    context = await librarian.get_writer_context(section_id)
+    try:
+        context = await librarian.get_writer_context(section_id)
+    except Exception as e:
+        context = {}
     
     # Build generation prompt
     prompt = _build_writing_prompt(
@@ -60,22 +74,28 @@ async def write_section(
     )
     
     # Generate with streaming
-    model = get_model_for_task("writing")
-    
-    content_chunks = []
-    async for chunk in model.astream(prompt):
-        chunk_text = chunk.content if hasattr(chunk, 'content') else str(chunk)
-        content_chunks.append(chunk_text)
-        # Note: SSE events are streamed through the API layer
-    
-    full_content = "".join(content_chunks)
+    try:
+        model = get_model_for_task("writing")
+        
+        content_chunks = []
+        async for chunk in model.astream(prompt):
+            chunk_text = chunk.content if hasattr(chunk, 'content') else str(chunk)
+            content_chunks.append(chunk_text)
+            # Note: SSE events are streamed through the API layer
+        
+        full_content = "".join(content_chunks)
+    except Exception as e:
+        return {"error": f"Content generation failed: {str(e)}", "status": "error"}
     
     # Update Librarian with new content
-    await librarian.analyze_and_update(section_id, full_content, section_name)
+    try:
+        await librarian.analyze_and_update(section_id, full_content, section_name)
+    except Exception as e:
+        pass  # Non-critical: Librarian update failure shouldn't block content
     
     # Store content in database
-    await _store_section_content(section_id, full_content, supabase)
-    
+    await _store_section_content(section_id, full_content, supabase, node_id)
+
     return {
         "section_id": section_id,
         "content": full_content,
@@ -153,8 +173,8 @@ async def edit_section(
     await librarian.analyze_and_update(section_id, full_content, section_name)
     
     # Store
-    await _store_section_content(section_id, full_content, supabase)
-    
+    await _store_section_content(section_id, full_content, supabase, node_id)
+
     return {
         "section_id": section_id,
         "content": full_content,
@@ -201,15 +221,124 @@ async def _get_section_content(section_id: str, supabase) -> Optional[str]:
         return None
 
 
-async def _store_section_content(section_id: str, content: str, supabase):
-    """Store section content in database."""
+async def _store_section_content(section_id: str, content: str, supabase, node_id: str = ""):
+    """
+    Store section content in database.
+    
+    Content is stored inside the document_data.structure nodes.
+    The document_data structure is:
+    {
+        version: 1,
+        format: "novel",
+        structure: [
+            { id: "ch-1", name: "Chapter 1", content: "...", wordCount: 123, ... },
+            { id: "ch-2", name: "Chapter 2", content: "...", wordCount: 456, ... }
+        ],
+        fullDocument: "...",
+        totalWordCount: 1234
+    }
+    """
+    if not node_id:
+        print(f"❌ [Writing] No node_id provided, cannot store content")
+        return
+        
     try:
-        supabase.table("document_sections") \
-            .update({"content": content}) \
-            .eq("id", section_id) \
+        # Get current document_data
+        result = supabase.table("nodes") \
+            .select("document_data") \
+            .eq("id", node_id) \
+            .limit(1) \
             .execute()
+        
+        if not result.data:
+            print(f"❌ [Writing] Node not found: {node_id}")
+            return
+        
+        document_data = result.data[0].get("document_data") or {}
+        structure = document_data.get("structure", [])
+        
+        print(f"🔍 [Writing] Looking for section {section_id} in {len(structure)} structure items")
+        
+        # Find and update the section in the structure (recursive search)
+        def update_section_in_structure(items, target_id, new_content):
+            for item in items:
+                if item.get("id") == target_id:
+                    item["content"] = new_content
+                    item["wordCount"] = len(new_content.split())
+                    item["status"] = "in_progress"
+                    item["updatedAt"] = __import__('datetime').datetime.utcnow().isoformat() + "Z"
+                    print(f"✅ [Writing] Found and updated section: {item.get('name', target_id)}")
+                    return True
+                # Check children recursively
+                children = item.get("children", [])
+                if children and update_section_in_structure(children, target_id, new_content):
+                    return True
+            return False
+        
+        found = update_section_in_structure(structure, section_id, content)
+        
+        if not found:
+            print(f"⚠️ [Writing] Section {section_id} not found in structure, listing available IDs:")
+            for item in structure:
+                print(f"   - {item.get('id')}: {item.get('name')}")
+            return
+        
+        # Recalculate total word count
+        def calculate_total_words(items):
+            total = 0
+            for item in items:
+                total += item.get("wordCount", 0)
+                total += calculate_total_words(item.get("children", []))
+            return total
+        
+        document_data["totalWordCount"] = calculate_total_words(structure)
+        document_data["lastEditedAt"] = __import__('datetime').datetime.utcnow().isoformat() + "Z"
+        
+        # Rebuild full document
+        def build_full_document(items, depth=0):
+            parts = []
+            for item in items:
+                name = item.get("title") or item.get("name", "")
+                content_text = item.get("content", "")
+                
+                # Add section marker and heading
+                parts.append(f'<span id="section-{item.get("id")}"></span>')
+                parts.append(f'<!-- section-id: {item.get("id")} -->')
+                parts.append(f' {name}')
+                parts.append('')
+                
+                if content_text.strip():
+                    parts.append(content_text)
+                else:
+                    parts.append('')
+                    parts.append('*Content will appear here once generated.*')
+                
+                parts.append('')
+                parts.append('---')
+                parts.append('')
+                
+                # Add children
+                children = item.get("children", [])
+                if children:
+                    parts.append(build_full_document(children, depth + 1))
+            
+            return '\n'.join(parts)
+        
+        document_data["fullDocument"] = build_full_document(structure)
+        document_data["fullDocumentUpdatedAt"] = __import__('datetime').datetime.utcnow().isoformat() + "Z"
+        
+        # Save back to database
+        supabase.table("nodes") \
+            .update({"document_data": document_data}) \
+            .eq("id", node_id) \
+            .execute()
+        
+        print(f"✅ [Writing] Content stored for section {section_id} in node {node_id} ({len(content.split())} words)")
+        
     except Exception as e:
+        import traceback
         print(f"❌ [Writing] Failed to store content: {e}")
+        traceback.print_exc()
 
 
 def _build_writing_prompt(

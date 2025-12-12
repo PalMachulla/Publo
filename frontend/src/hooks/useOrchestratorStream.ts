@@ -26,7 +26,30 @@ import type {
   ContentCompleteEvent,
   NavigateEvent,
   PresentOptionsEvent,
+  PlanUpdateEvent,
+  SubagentStartEvent,
+  SubagentEndEvent,
+  MemoryUpdateEvent,
 } from '@/types/orchestrator-streaming-types';
+
+// Todo item for Deep Agent planning
+export interface TodoItem {
+  id: string;
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  updated_at?: string;
+}
+
+// Subagent activity for Deep Agent subagent spawning
+export interface SubagentActivity {
+  id: string;
+  name: 'critic' | 'researcher' | 'unknown';
+  task: string;
+  status: 'working' | 'complete' | 'error';
+  result?: unknown;
+  startTime: Date;
+  endTime?: Date;
+}
 
 // Chat message for display
 export interface ChatMessage {
@@ -43,6 +66,11 @@ interface UseOrchestratorStreamOptions {
   onClarificationNeeded?: (clarification: ClarificationEvent) => void;
   onOpenDocument?: (nodeId: string, nodeName: string) => void;  // Navigation: open document
   onSelectSection?: (sectionId: string, sectionName: string) => void;  // Navigation: select section
+  onContentComplete?: (sectionId: string, wordCount: number) => void;  // Content written - trigger refresh
+  onPlanUpdate?: (todos: TodoItem[]) => void;  // Deep Agent planning - todo updates
+  onSubagentStart?: (name: string, task: string) => void;  // Subagent spawned
+  onSubagentEnd?: (name: string, result: unknown) => void;  // Subagent completed
+  onMemoryUpdate?: (type: string, key: string, value: string) => void;  // Memory learned/updated
   onError?: (error: string) => void;
   onComplete?: () => void;
   streamUrl?: string;
@@ -57,6 +85,11 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     onClarificationNeeded,
     onOpenDocument,
     onSelectSection,
+    onContentComplete,
+    onPlanUpdate,
+    onSubagentStart,
+    onSubagentEnd,
+    onMemoryUpdate,
     onError,
     onComplete,
     streamUrl = '/api/orchestrator/orchestrate/stream',
@@ -70,6 +103,9 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     stage: 'idle',
     percentComplete: 0,
   });
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [subagentActivities, setSubagentActivities] = useState<SubagentActivity[]>([]);
+  const [memoryUpdates, setMemoryUpdates] = useState<Array<{type: string; key: string; value: string}>>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -201,7 +237,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       
       case 'CONTENT_COMPLETE':
         /**
-         * Section writing complete
+         * Section writing complete - TRIGGER DOCUMENT REFRESH
          */
         const contentCompleteData = event.data as ContentCompleteEvent;
         console.log('✅ [Content Complete]', contentCompleteData.section_id, contentCompleteData.word_count, 'words');
@@ -222,6 +258,13 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
             },
           };
         });
+        
+        // #region agent log - Trigger document refresh
+        console.log('🔄 [Content Complete] Triggering document refresh for section:', contentCompleteData.section_id);
+        // #endregion
+        
+        // Notify parent to refresh document from DB
+        onContentComplete?.(contentCompleteData.section_id, contentCompleteData.word_count);
         break;
       
       case 'NAVIGATE':
@@ -251,6 +294,78 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
             options: optionsData.options,
           }
         );
+        break;
+      
+      case 'PLAN_UPDATE':
+        /**
+         * Deep Agent planning - todo list updates
+         */
+        const planUpdateData = event.data as PlanUpdateEvent;
+        console.log('📋 [Plan Update]', planUpdateData.todos.length, 'todos,', planUpdateData.stats.percent_complete + '% complete');
+        
+        // Update todos state
+        setTodos(planUpdateData.todos);
+        
+        // Notify parent component
+        onPlanUpdate?.(planUpdateData.todos);
+        break;
+      
+      case 'SUBAGENT_START':
+        /**
+         * Subagent spawned - add to activities
+         */
+        const subagentStartData = event.data as SubagentStartEvent;
+        console.log('🤖 [Subagent Start]', subagentStartData.name, '-', subagentStartData.task);
+        
+        const newActivity: SubagentActivity = {
+          id: `subagent-${Date.now()}`,
+          name: (subagentStartData.name as SubagentActivity['name']) || 'unknown',
+          task: subagentStartData.task,
+          status: 'working',
+          startTime: new Date()
+        };
+        
+        setSubagentActivities(prev => [...prev, newActivity]);
+        onSubagentStart?.(subagentStartData.name, subagentStartData.task);
+        break;
+      
+      case 'SUBAGENT_END':
+        /**
+         * Subagent completed - update activity status
+         */
+        const subagentEndData = event.data as SubagentEndEvent;
+        console.log('✅ [Subagent End]', subagentEndData.name);
+        
+        setSubagentActivities(prev => {
+          // Find the most recent working activity with this name
+          const index = prev.findIndex(a => a.name === subagentEndData.name && a.status === 'working');
+          if (index === -1) return prev;
+          
+          const updated = [...prev];
+          updated[index] = {
+            ...updated[index],
+            status: 'complete',
+            result: subagentEndData.result,
+            endTime: new Date()
+          };
+          return updated;
+        });
+        onSubagentEnd?.(subagentEndData.name, subagentEndData.result);
+        break;
+      
+      case 'MEMORY_UPDATE':
+        /**
+         * Memory learned/updated
+         */
+        const memoryData = event.data as MemoryUpdateEvent;
+        console.log('🧠 [Memory Update]', memoryData.type, '-', memoryData.key);
+        
+        setMemoryUpdates(prev => [...prev, {
+          type: memoryData.type,
+          key: memoryData.key,
+          value: memoryData.value
+        }]);
+        onMemoryUpdate?.(memoryData.type, memoryData.key, memoryData.value);
         break;
       
       // ============================================================
@@ -534,14 +649,12 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
          * This triggers the parent component to:
          * 1. Select the node
          * 2. Open the document panel
+         * NOTE: No message shown - would be too noisy during writing
          */
         const openDocData = event.data as OpenDocumentEvent;
         console.log('📂 [Stream] Opening document:', openDocData.node_name, openDocData.node_id);
         
-        // Show friendly message
-        addMessage('assistant', `📂 Opening "${openDocData.node_name}"...`);
-        
-        // Trigger the callback to actually open the document
+        // Trigger the callback to actually open the document (no message - too noisy)
         onOpenDocument?.(openDocData.node_id, openDocData.node_name);
         break;
 
@@ -549,21 +662,14 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         /**
          * Backend requests to navigate to a specific section.
          * This triggers the parent component to scroll/focus the section.
+         * NOTE: Do NOT stop streaming here - writing continues after navigation!
          */
         const selectData = event.data as SelectSectionEvent;
         console.log('📍 [Stream] Selecting section:', selectData.section_name, selectData.section_id);
         
-        // Show friendly message
-        addMessage('assistant', `📍 Navigating to "${selectData.section_name}"...`);
-        
-        // Trigger the callback to actually select the section
+        // Trigger the callback to actually select the section (no message - too noisy)
         onSelectSection?.(selectData.section_id, selectData.section_name);
-        setIsStreaming(false);
-        setProgress(prev => ({
-          ...prev,
-          stage: 'idle',
-          isActive: false,
-        }));
+        // Do NOT setIsStreaming(false) - writing is in progress!
         break;
 
       case 'CRITIC':
@@ -622,6 +728,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     userId: string;
     sessionId?: string;
     storyId?: string;  // Canvas/project ID (same as canvasId in URL)
+    storyStructureNodeId?: string;  // Active structure node ID for Librarian context
     documentFormat?: string;
     activeSegment?: unknown;
     documentPanelOpen?: boolean;
@@ -661,6 +768,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       user_id: request.userId,
       session_id: request.sessionId,
       story_id: request.storyId,  // Canvas/project ID for persistence and context
+      story_structure_node_id: request.storyStructureNodeId,  // Active structure node ID
       document_format: request.documentFormat,
       active_segment: request.activeSegment,
       document_panel_open: request.documentPanelOpen,
@@ -757,6 +865,9 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
   return {
     messages,
     progress,
+    todos,
+    subagentActivities,
+    memoryUpdates,
     isStreaming,
     startStream,
     stopStream,

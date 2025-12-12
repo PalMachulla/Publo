@@ -31,6 +31,18 @@ from tools import (
     create_structure,
     navigate_to,
     present_options,
+    write_todos,
+    get_todos,
+    task,
+    list_subagents,
+    save_preference,
+    save_pattern,
+    get_preferences,
+    get_patterns,
+    read_context_file,
+    write_context_file,
+    list_context_files,
+    delete_context_file,
 )
 from tools.mcp_tools import get_configured_mcp_tools
 from prompts.main_agent import build_system_prompt, format_user_preferences
@@ -90,7 +102,9 @@ class PubloAgent:
         
         # Get configurable values
         configurable = (config or {}).get("configurable", {})
-        node_id = configurable.get("node_id", self.story_id)
+        # Use a mutable container so node_id can be updated dynamically
+        # (e.g., when create_structure generates a new node_id mid-stream)
+        node_id_ref = configurable.get("node_id_ref", {"value": configurable.get("node_id", self.story_id)})
         
         # Track conversation for multi-turn tool use
         current_messages = list(messages)
@@ -161,8 +175,10 @@ class PubloAgent:
                     tool = self.tool_map[tool_name]
                     try:
                         # Inject node_id if tool accepts it
+                        # Read from mutable ref so we get the latest value
+                        # (create_structure can update this mid-stream)
                         if "node_id" in tool_args or hasattr(tool, 'args_schema'):
-                            tool_args["node_id"] = node_id
+                            tool_args["node_id"] = node_id_ref.get("value", self.story_id)
                         
                         # Execute
                         result = await tool.ainvoke(tool_args)
@@ -245,6 +261,22 @@ def create_publo_agent(
         create_structure,
         navigate_to,
         present_options,
+        # Deep Agent planning
+        write_todos,
+        get_todos,
+        # Deep Agent subagent spawning
+        task,
+        list_subagents,
+        # Deep Agent memory
+        save_preference,
+        save_pattern,
+        get_preferences,
+        get_patterns,
+        # Deep Agent filesystem
+        read_context_file,
+        write_context_file,
+        list_context_files,
+        delete_context_file,
     ]
     
     return PubloAgent(
@@ -300,6 +332,22 @@ async def create_publo_agent_with_mcp(
         create_structure,
         navigate_to,
         present_options,
+        # Deep Agent planning
+        write_todos,
+        get_todos,
+        # Deep Agent subagent spawning
+        task,
+        list_subagents,
+        # Deep Agent memory
+        save_preference,
+        save_pattern,
+        get_preferences,
+        get_patterns,
+        # Deep Agent filesystem
+        read_context_file,
+        write_context_file,
+        list_context_files,
+        delete_context_file,
     ]
     
     # Add MCP tools if available

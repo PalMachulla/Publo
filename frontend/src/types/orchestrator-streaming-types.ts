@@ -2,10 +2,33 @@
 // ORCHESTRATOR STREAMING EVENT TYPES
 // ============================================================
 // Enhanced event types for progressive UI feedback
+// 
+// Architecture: Deep Agent (new) vs Legacy Workflow
+// - Deep Agent: TOKEN, TOOL_START, TOOL_END, CONTENT_CHUNK, etc.
+// - Legacy: INTENT, STRATEGY, ACTION, RESULT, etc.
+// 
+// Both are supported for backwards compatibility.
 
 export type OrchestratorEventType =
+  // ============================================
+  // Deep Agent Events (New Architecture)
+  // ============================================
+  | 'TOKEN'            // Streaming text token from LLM
+  | 'TOOL_START'       // Tool execution beginning
+  | 'TOOL_END'         // Tool execution complete
+  | 'CONTENT_CHUNK'    // Streaming content from write_section
+  | 'CONTENT_COMPLETE' // Section writing finished
+  | 'NAVIGATE'         // Navigate frontend to section
+  | 'PRESENT_OPTIONS'  // Show option selector UI
+  | 'PLAN_UPDATE'      // Todo list updated (for complex tasks)
+  | 'SUBAGENT_START'   // Subagent spawned
+  | 'SUBAGENT_END'     // Subagent completed
+  
+  // ============================================
+  // Legacy Events (Backwards Compatibility)
+  // ============================================
   | 'INTENT'
-  | 'PLAN'        // Planner created a task plan
+  | 'PLAN'             // Planner created a task plan
   | 'STRATEGY'
   | 'MESSAGE'
   | 'ACTION'
@@ -120,6 +143,7 @@ export interface StructureCreatedEvent {
     type?: string;
   }>;
   format?: string;
+  node_id?: string;  // Backend-generated node ID for content storage
 }
 
 // Emitted when starting to write a section
@@ -161,6 +185,7 @@ export interface ProgressEvent {
 // Done
 export interface DoneEvent {
   success: boolean;
+  final_response?: string;
 }
 
 // Error
@@ -169,10 +194,112 @@ export interface ErrorEvent {
 }
 
 // ============================================================
+// NEW: Deep Agent Events
+// ============================================================
+
+// Streaming token from LLM
+export interface TokenEvent {
+  content: string;
+}
+
+// Tool execution starting
+export interface ToolStartEvent {
+  tool: string;
+  input?: Record<string, unknown>;
+}
+
+// Tool execution complete
+export interface ToolEndEvent {
+  tool: string;
+  output?: unknown;
+}
+
+// Content chunk from write_section
+export interface ContentChunkEvent {
+  section_id: string;
+  chunk: string;
+}
+
+// Section content complete
+export interface ContentCompleteEvent {
+  section_id: string;
+  word_count: number;
+  preview?: string;  // Optional preview of the content
+}
+
+// Navigation event
+export interface NavigateEvent {
+  section_id: string;
+  section_name?: string;
+}
+
+// Present options to user
+export interface PresentOptionsEvent {
+  prompt: string;
+  options: Array<{
+    id: string;
+    label: string;
+    description?: string;
+  }>;
+  allow_multiple?: boolean;
+}
+
+// Subagent spawned
+export interface SubagentStartEvent {
+  name: string;
+  task: string;
+}
+
+// Subagent completed
+export interface SubagentEndEvent {
+  name: string;
+  result?: unknown;
+}
+
+// Plan update (Deep Agent todos)
+export interface PlanUpdateEvent {
+  todos: Array<{
+    id: string;
+    content: string;
+    status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+    updated_at?: string;
+  }>;
+  stats: {
+    total: number;
+    completed: number;
+    in_progress: number;
+    pending: number;
+    cancelled: number;
+    percent_complete: number;
+  };
+}
+
+// Memory update (Deep Agent learning)
+export interface MemoryUpdateEvent {
+  type: 'preference' | 'pattern';
+  key: string;
+  value: string;
+}
+
+// ============================================================
 // Union type for all events
 // ============================================================
 
 export type OrchestratorEvent =
+  // Deep Agent events
+  | { type: 'TOKEN'; data: TokenEvent }
+  | { type: 'TOOL_START'; data: ToolStartEvent }
+  | { type: 'TOOL_END'; data: ToolEndEvent }
+  | { type: 'CONTENT_CHUNK'; data: ContentChunkEvent }
+  | { type: 'CONTENT_COMPLETE'; data: ContentCompleteEvent }
+  | { type: 'NAVIGATE'; data: NavigateEvent }
+  | { type: 'PRESENT_OPTIONS'; data: PresentOptionsEvent }
+  | { type: 'PLAN_UPDATE'; data: PlanUpdateEvent }
+  | { type: 'MEMORY_UPDATE'; data: MemoryUpdateEvent }
+  | { type: 'SUBAGENT_START'; data: SubagentStartEvent }
+  | { type: 'SUBAGENT_END'; data: SubagentEndEvent }
+  
+  // Legacy events (backwards compatibility)
   | { type: 'INTENT'; data: IntentEvent }
   | { type: 'PLAN'; data: PlanEvent }
   | { type: 'STRATEGY'; data: StrategyEvent }
