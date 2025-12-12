@@ -2,6 +2,7 @@
 
 import { memo, useState } from 'react'
 import type { StoryStructureItem } from '@/types/nodes'
+import type { SectionCardDisplay } from '@/types/librarian'
 
 interface NarrationCardProps {
   item: StoryStructureItem
@@ -14,6 +15,8 @@ interface NarrationCardProps {
   onEdit?: (itemId: string) => void
   themeColor?: string
   indentLevel?: number
+  /** Section card from Librarian with resolved character details */
+  sectionCard?: SectionCardDisplay
 }
 
 function NarrationCard({ 
@@ -26,7 +29,8 @@ function NarrationCard({
   onAddSubAgent,
   onEdit,
   themeColor,
-  indentLevel = 0
+  indentLevel = 0,
+  sectionCard,
 }: NarrationCardProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
   
@@ -157,16 +161,72 @@ function NarrationCard({
         </div>
       </div>
       
-      {/* Summary */}
+      {/* Summary - prioritize section card data from Librarian */}
       <div onClick={onClick}>
-        {item.summary ? (
+        {sectionCard?.summary ? (
+          <p className="text-sm text-gray-600 mb-3">
+            {sectionCard.summary}
+          </p>
+        ) : item.summary ? (
           <p className="text-sm text-gray-600 mb-3 line-clamp-2">
             {item.summary}
+          </p>
+        ) : item.description ? (
+          <p className="text-sm text-gray-500 mb-3 italic">
+            {item.description}
           </p>
         ) : (
           <p className="text-sm text-gray-400 italic mb-3">
             No summary yet — Ask orchestrator to create one
           </p>
+        )}
+        
+        {/* Characters from section card (with resolved names) */}
+        {sectionCard?.characters && sectionCard.characters.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {sectionCard.characters.slice(0, 5).map((char) => (
+              <span 
+                key={char.id} 
+                className={`text-xs px-2 py-0.5 rounded-full ${
+                  char.role === 'protagonist' 
+                    ? 'bg-blue-100 text-blue-700' 
+                    : char.role === 'antagonist'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-purple-100 text-purple-700'
+                }`}
+                title={char.description || char.role}
+              >
+                {char.role === 'protagonist' ? '⭐' : char.role === 'antagonist' ? '💀' : '👤'} {char.name}
+              </span>
+            ))}
+            {sectionCard.characters.length > 5 && (
+              <span className="text-xs text-gray-400">
+                +{sectionCard.characters.length - 5} more
+              </span>
+            )}
+          </div>
+        )}
+        
+        {/* Key moments from section card */}
+        {sectionCard?.keyMoments && sectionCard.keyMoments.length > 0 && (
+          <div className="mb-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Key Moments</p>
+            <ul className="text-xs text-gray-600 space-y-0.5">
+              {sectionCard.keyMoments.slice(0, 3).map((moment, i) => (
+                <li key={i} className="flex items-start gap-1">
+                  <span className="text-gray-400">•</span>
+                  <span>{moment}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        
+        {/* Mood from section card */}
+        {sectionCard?.mood && (
+          <span className="inline-flex items-center text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full mr-2">
+            🎭 {sectionCard.mood}
+          </span>
         )}
       </div>
       

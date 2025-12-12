@@ -2,6 +2,7 @@
 
 import { memo, useMemo, useState } from 'react'
 import type { StoryStructureItem } from '@/types/nodes'
+import type { SectionCardDisplay } from '@/types/librarian'
 import CompactNarrationCard from './CompactNarrationCard'
 
 interface NarrationCardViewProps {
@@ -12,6 +13,8 @@ interface NarrationCardViewProps {
   onAddSubAgent?: (itemId: string) => void
   onEdit?: (itemId: string) => void
   themeColors?: Record<string, string>
+  /** Section cards from Librarian with resolved character details */
+  sectionCards?: SectionCardDisplay[]
 }
 
 function NarrationCardView({ 
@@ -21,7 +24,8 @@ function NarrationCardView({
   onColorChange,
   onAddSubAgent,
   onEdit,
-  themeColors = {}
+  themeColors = {},
+  sectionCards = [],
 }: NarrationCardViewProps) {
   
   // Track which items are collapsed
@@ -77,6 +81,9 @@ function NarrationCardView({
       // Use item's own color if set, otherwise inherit from parent
       const itemColor = themeColors[item.id] || parentColor
       
+      // Get the section card for this item (with resolved character details)
+      const sectionCard = sectionCards.find(card => card.structureItemId === item.id)
+      
       return [
         <CompactNarrationCard
           key={item.id}
@@ -90,6 +97,7 @@ function NarrationCardView({
           indentLevel={indentLevel}
           hasChildren={hasChildren}
           isCollapsed={isCollapsed}
+          sectionCard={sectionCard}
           onToggleCollapse={() => {
             setCollapsedItems(prev => {
               const newSet = new Set(prev)

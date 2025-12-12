@@ -2,6 +2,7 @@
 
 import { memo, useState } from 'react'
 import type { StoryStructureItem } from '@/types/nodes'
+import type { SectionCardDisplay } from '@/types/librarian'
 
 interface CompactNarrationCardProps {
   item: StoryStructureItem
@@ -15,6 +16,8 @@ interface CompactNarrationCardProps {
   hasChildren?: boolean
   isCollapsed?: boolean
   onToggleCollapse?: () => void
+  /** Section card from Librarian with resolved character details */
+  sectionCard?: SectionCardDisplay
 }
 
 function CompactNarrationCard({ 
@@ -28,7 +31,8 @@ function CompactNarrationCard({
   indentLevel = 0,
   hasChildren = false,
   isCollapsed = false,
-  onToggleCollapse
+  onToggleCollapse,
+  sectionCard,
 }: CompactNarrationCardProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
   
@@ -167,6 +171,43 @@ function CompactNarrationCard({
           <h3 className="font-medium text-sm truncate">
             {getCleanTitle()}
           </h3>
+          
+          {/* Section Card Summary (from Librarian) */}
+          {sectionCard?.summary ? (
+            <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+              {sectionCard.summary}
+            </p>
+          ) : item.description ? (
+            <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 italic">
+              {item.description}
+            </p>
+          ) : null}
+          
+          {/* Character badges with names from section card */}
+          {sectionCard?.characters && sectionCard.characters.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {sectionCard.characters.slice(0, 3).map((char) => (
+                <span 
+                  key={char.id} 
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                    char.role === 'protagonist' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : char.role === 'antagonist'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-purple-100 text-purple-700'
+                  }`}
+                  title={char.description || char.role}
+                >
+                  {char.role === 'protagonist' ? '⭐' : char.role === 'antagonist' ? '💀' : '👤'} {char.name}
+                </span>
+              ))}
+              {sectionCard.characters.length > 3 && (
+                <span className="text-[10px] text-gray-400">
+                  +{sectionCard.characters.length - 3} more
+                </span>
+              )}
+            </div>
+          )}
         </div>
         
         {/* Action Buttons (show on hover or when active) */}

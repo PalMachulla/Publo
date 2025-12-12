@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useDocumentSectionsAdapter as useDocumentSections } from '@/hooks/useDocumentSectionsAdapter'
 import { useDocumentEditor } from '@/hooks/useDocumentEditor'
+import { useSectionCards } from '@/hooks/useSectionCards'
 import MarkdownEditor from '../editor/MarkdownEditor'
 import SectionTreeView from '../document/SectionTreeView'
 import NarrationCardView from '../document/NarrationCardView'
@@ -84,6 +85,16 @@ export default function AIDocumentPanel({
       format: node.data?.format,
     }))
   }, [canvasNodes])
+  
+  // Load section cards from Librarian (with resolved character details)
+  const { 
+    cardsWithDetails: sectionCards, 
+    refreshCards: refreshSectionCards,
+    isLoading: cardsLoading 
+  } = useSectionCards({ 
+    nodeId: storyStructureNodeId || null,
+    autoRefresh: false 
+  })
   
   // Persist panel collapse states to localStorage
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
@@ -1049,6 +1060,7 @@ export default function AIDocumentPanel({
                       onAddSubAgent={handleAddSubAgent}
                       onEdit={handleEditSummary}
                       themeColors={themeColors}
+                      sectionCards={sectionCards}
                     />
                   )}
                 </div>
@@ -1081,6 +1093,7 @@ export default function AIDocumentPanel({
                       onAddSubAgent={handleAddSubAgent}
                       onEdit={handleEditSummary}
                       themeColors={themeColors}
+                      sectionCards={sectionCards}
                     />
                   ) : (
                     /* Tree View: Show full markdown content */
