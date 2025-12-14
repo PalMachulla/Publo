@@ -1,6 +1,8 @@
 'use client'
 
-import { memo, useState } from 'react'
+import { memo } from 'react'
+import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
+import { StarFilledIcon, LightningBoltIcon, PersonIcon, BellIcon } from '@radix-ui/react-icons'
 import type { StoryStructureItem } from '@/types/nodes'
 import type { SectionCardDisplay } from '@/types/librarian'
 
@@ -32,8 +34,6 @@ function NarrationCard({
   indentLevel = 0,
   sectionCard,
 }: NarrationCardProps) {
-  const [showColorPicker, setShowColorPicker] = useState(false)
-  
   const colors = [
     { name: 'Blue', value: '#3B82F6' },
     { name: 'Green', value: '#10B981' },
@@ -42,6 +42,7 @@ function NarrationCard({
     { name: 'Purple', value: '#8B5CF6' },
     { name: 'Pink', value: '#EC4899' },
     { name: 'Gray', value: '#6B7280' },
+    { name: 'White', value: '#FFFFFF' },
   ]
   
   const currentColor = themeColor || '#6B7280'
@@ -75,7 +76,7 @@ function NarrationCard({
         borderColor: borderColor
       }}
       className={`
-        group relative p-4 mb-2 rounded-lg border-2 transition-all cursor-pointer
+        group relative p-4 mb-2 rounded-lg  transition-all cursor-pointer
         ${isActive 
           ? 'shadow-md' 
           : 'hover:border-blue-300 hover:shadow-sm'
@@ -83,53 +84,56 @@ function NarrationCard({
       `}
     >
       {/* Header with Title and Action Buttons */}
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex items-start justify-between mb-2 border-b border-gray-500 border-dashed border-opacity-40 pb-2">
         <h3 
           onClick={onClick}
-          className={`font-semibold flex-1 ${isActive ? 'text-blue-900' : 'text-gray-900'}`}
+          className={`font-semibold flex-1 ${isActive ? 'text-gray-900' : 'text-gray-900'}`}
         >
           {item.title || item.name}
         </h3>
         
         {/* Action Buttons (show on hover or when active) */}
         <div className={`flex items-center gap-1 ml-2 ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
-          {/* Color Picker Button */}
-          <div className="relative">
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                setShowColorPicker(!showColorPicker)
-              }}
-              className="p-1 hover:bg-gray-100 rounded transition-colors"
-              title="Change color"
-            >
-              <div 
-                className="w-4 h-4 rounded-full border border-gray-300"
-                style={{ backgroundColor: currentColor }}
-              />
-            </button>
+          {/* Color Picker Button - Radix Dropdown */}
+          <DropdownMenuPrimitive.Root>
+            <DropdownMenuPrimitive.Trigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="p-1 hover:bg-gray-100 rounded transition-colors"
+                title="Change color"
+              >
+                <div 
+                  className="w-4 h-4 rounded-full border border-gray-300"
+                  style={{ backgroundColor: currentColor }}
+                />
+              </button>
+            </DropdownMenuPrimitive.Trigger>
             
-            {/* Color Picker Dropdown */}
-            {showColorPicker && (
-              <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-10">
-                <div className="grid grid-cols-4 gap-1">
+            <DropdownMenuPrimitive.Portal>
+              <DropdownMenuPrimitive.Content
+                align="end"
+                sideOffset={8}
+                className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="grid grid-cols-4 gap-2">
                   {colors.map((color) => (
-                    <button
+                    <DropdownMenuPrimitive.Item
                       key={color.value}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onColorChange?.(item.id, color.value)
-                        setShowColorPicker(false)
-                      }}
-                      className="w-6 h-6 rounded-full border-2 border-gray-200 hover:border-gray-400 transition-colors"
-                      style={{ backgroundColor: color.value }}
-                      title={color.name}
-                    />
+                      onSelect={() => onColorChange?.(item.id, color.value)}
+                      className="outline-none"
+                    >
+                      <div
+                        className="w-7 h-7 rounded-full border-2 border-gray-200 hover:border-gray-400 hover:scale-110 transition-all cursor-pointer"
+                        style={{ backgroundColor: color.value }}
+                        title={color.name}
+                      />
+                    </DropdownMenuPrimitive.Item>
                   ))}
                 </div>
-              </div>
-            )}
-          </div>
+              </DropdownMenuPrimitive.Content>
+            </DropdownMenuPrimitive.Portal>
+          </DropdownMenuPrimitive.Root>
           
           {/* Add Sub-Agent Button */}
           <button
@@ -183,20 +187,29 @@ function NarrationCard({
         
         {/* Characters from section card (with resolved names) */}
         {sectionCard?.characters && sectionCard.characters.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
+          <div className="mb-5">
+            <p className="text-xs font-semibold text-gray-800 bg-gray-800/5 px-2 py-1 w-fit rounded-md uppercase tracking-wide mb-2">People Gallery</p>
+            <div className="flex flex-wrap gap-1.5 mb-3">
             {sectionCard.characters.slice(0, 5).map((char) => (
               <span 
                 key={char.id} 
-                className={`text-xs px-2 py-0.5 rounded-full ${
+                className={`inline-flex items-center gap-1.5 text-xs pr-3 pl-1.5 py-1.5 rounded-full ${
                   char.role === 'protagonist' 
-                    ? 'bg-blue-100 text-blue-700' 
+                    ? 'bg-blue-100/40 text-blue-700' 
                     : char.role === 'antagonist'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-purple-100 text-purple-700'
+                      ? 'bg-red-100/40 text-red-700'
+                      : 'bg-purple-100/40 text-purple-700'
                 }`}
                 title={char.description || char.role}
               >
-                {char.role === 'protagonist' ? '⭐' : char.role === 'antagonist' ? '💀' : '👤'} {char.name}
+                {char.role === 'protagonist' ? (
+                  <StarFilledIcon className="w-3.5 h-3.5 bg-black/5 -p-1 rounded-full" />
+                ) : char.role === 'antagonist' ? (
+                  <LightningBoltIcon className="w-3.5 h-3.5 bg-black/80 -p-1 rounded-full" />
+                ) : (
+                  <PersonIcon className="w-3.5 h-3.5 bg-black/5 -p-1 rounded-full" />
+                )}
+                {char.name}
               </span>
             ))}
             {sectionCard.characters.length > 5 && (
@@ -204,17 +217,18 @@ function NarrationCard({
                 +{sectionCard.characters.length - 5} more
               </span>
             )}
+            </div>
           </div>
         )}
         
         {/* Key moments from section card */}
         {sectionCard?.keyMoments && sectionCard.keyMoments.length > 0 && (
-          <div className="mb-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Key Moments</p>
-            <ul className="text-xs text-gray-600 space-y-0.5">
+          <div className="mb-5">
+            <p className="text-xs font-semibold text-gray-800 bg-gray-800/5 px-2 py-1 w-fit rounded-md uppercase tracking-wide mb-2">Key Moments</p>
+            <ul className="text-xs text-gray-600 space-y-1">
               {sectionCard.keyMoments.slice(0, 3).map((moment, i) => (
-                <li key={i} className="flex items-start gap-1">
-                  <span className="text-gray-400">•</span>
+                <li key={i} className="flex items-start gap-2">
+                  <BellIcon className="w-3.5 h-3.5 text-gray-800" />
                   <span>{moment}</span>
                 </li>
               ))}
@@ -224,9 +238,12 @@ function NarrationCard({
         
         {/* Mood from section card */}
         {sectionCard?.mood && (
+          <div className="mb-3">
+             <p className="text-xs font-semibold text-gray-800 bg-gray-800/5 px-2 py-1 w-fit rounded-md uppercase tracking-wide mb-2">Mood Swings</p>
           <span className="inline-flex items-center text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full mr-2">
             🎭 {sectionCard.mood}
           </span>
+          </div>
         )}
       </div>
       
@@ -251,12 +268,7 @@ function NarrationCard({
       </div>
       
       {/* Active indicator stripe (left edge) */}
-      {isActive && (
-        <div 
-          className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg" 
-          style={{ backgroundColor: currentColor }}
-        />
-      )}
+
     </div>
   )
 }

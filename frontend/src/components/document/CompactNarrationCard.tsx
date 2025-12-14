@@ -1,6 +1,7 @@
 'use client'
 
 import { memo, useState } from 'react'
+import { StarFilledIcon, LightningBoltIcon, PersonIcon } from '@radix-ui/react-icons'
 import type { StoryStructureItem } from '@/types/nodes'
 import type { SectionCardDisplay } from '@/types/librarian'
 
@@ -187,18 +188,25 @@ function CompactNarrationCard({
           {sectionCard?.characters && sectionCard.characters.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
               {sectionCard.characters.slice(0, 3).map((char) => (
-                <span 
-                  key={char.id} 
-                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                    char.role === 'protagonist' 
-                      ? 'bg-blue-100 text-blue-700' 
+                <span
+                  key={char.id}
+                  className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${
+                    char.role === 'protagonist'
+                      ? 'bg-blue-100/40 text-blue-700'
                       : char.role === 'antagonist'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-purple-100 text-purple-700'
+                        ? 'bg-red-100/40 text-red-700'
+                        : 'bg-purple-100/40 text-purple-700'
                   }`}
                   title={char.description || char.role}
                 >
-                  {char.role === 'protagonist' ? '⭐' : char.role === 'antagonist' ? '💀' : '👤'} {char.name}
+                  {char.role === 'protagonist' ? (
+                    <StarFilledIcon className="w-2.5 h-2.5" />
+                  ) : char.role === 'antagonist' ? (
+                    <LightningBoltIcon className="w-2.5 h-2.5" />
+                  ) : (
+                    <PersonIcon className="w-2.5 h-2.5" />
+                  )}
+                  {char.name}
                 </span>
               ))}
               {sectionCard.characters.length > 3 && (

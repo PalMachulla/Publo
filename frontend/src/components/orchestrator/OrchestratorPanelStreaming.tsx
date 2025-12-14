@@ -12,13 +12,23 @@
 'use client'
 
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react'
+import { 
+  ChevronDownIcon, 
+  SpeakerLoudIcon, 
+  PaperPlaneIcon,
+  MixerHorizontalIcon,
+  LightningBoltIcon,
+  GlobeIcon
+} from '@radix-ui/react-icons'
 import { useOrchestratorStream, ChatMessage } from '@/hooks/useOrchestratorStream'
 import { StructureCreatedEvent, ClarificationEvent, CreationProgress } from '@/types/orchestrator-streaming-types'
 import { useOrchestratorSession } from '@/lib/orchestrator/hooks/useOrchestratorSession'
 import { ThinkingBlock } from '@/components/ui/molecules/ThinkingBlock'
 import { MarkdownContent } from '@/components/ui/atoms/MarkdownContent'
+import { ChatOptionPill } from '@/components/ui/atoms/ChatOptionPill'
 import { TodoPanel } from '@/components/ui/organisms/TodoPanel'
 import { SubagentActivity } from '@/components/ui/organisms/SubagentActivity'
+import { ViewToggle, ViewToggleIcons } from '@/components/ui/atoms/ViewToggle'
 
 // ============================================================
 // Props Interface
@@ -52,6 +62,11 @@ export interface OrchestratorPanelStreamingProps {
   canvasNodes?: any[]
   conversationHistory?: any[]
   currentStoryStructureNodeId?: string  // Active structure node for Librarian context
+  activeSectionCard?: any  // Section card currently being viewed (for Librarian context)
+  
+  // Document panel toggle
+  isDocumentViewOpen?: boolean
+  onToggleDocumentView?: () => void
   
   className?: string
 }
@@ -79,11 +94,14 @@ export function OrchestratorPanelStreaming({
   canvasNodes,
   conversationHistory,
   currentStoryStructureNodeId,
+  activeSectionCard,
+  isDocumentViewOpen = false,
+  onToggleDocumentView,
   className = '',
 }: OrchestratorPanelStreamingProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   
   // Track the most recently created structure node ID (updated synchronously)
   // This is used as a fallback when effectiveStoryStructureNodeId hasn't updated yet
@@ -352,7 +370,7 @@ export function OrchestratorPanelStreaming({
     return { effectiveStoryStructureNodeId: null, effectiveStructureItems: [] }
   }, [currentStoryStructureNodeId, canvasNodes, structureItems])
 
-  // #region agent log - Debug effective values
+  // Debug effective values (development only)
   useEffect(() => {
     console.log('📊 [Streaming] Effective values:', {
       effectiveStoryStructureNodeId,
@@ -360,7 +378,6 @@ export function OrchestratorPanelStreaming({
       sampleEffectiveIds: effectiveStructureItems?.slice(0, 3).map((i: any) => i?.id),
     })
   }, [effectiveStoryStructureNodeId, effectiveStructureItems])
-  // #endregion
 
   // Handle clarification option selection
   const handleOptionSelect = useCallback((optionId: string, originalAction?: string) => {
@@ -382,6 +399,7 @@ export function OrchestratorPanelStreaming({
       conversationHistory,
       clarificationResponse: optionId,  // The option ID
       originalAction: originalAction || 'create_structure',  // Action that needed clarification
+      activeSectionCard,  // Section card being viewed
     })
   }, [
     startStream,
@@ -430,6 +448,7 @@ export function OrchestratorPanelStreaming({
         conversationHistory,
         clarificationResponse: message,  // User's typed response
         originalAction,
+        activeSectionCard,  // Section card being viewed
       })
       return
     }
@@ -448,6 +467,7 @@ export function OrchestratorPanelStreaming({
       structureItems: effectiveStructureItems,
       canvasNodes,
       conversationHistory,
+      activeSectionCard,  // Section card being viewed
     })
   }, [
     input, 
@@ -465,6 +485,7 @@ export function OrchestratorPanelStreaming({
     canvasNodes,
     conversationHistory,
     pendingClarification,
+    activeSectionCard,
   ])
 
   // Handle keyboard shortcuts
@@ -476,18 +497,32 @@ export function OrchestratorPanelStreaming({
   }
 
   return (
-    <div className={`flex flex-col h-full bg-white dark:bg-gray-900 ${className}`}>
+    <div className={`flex flex-col h-full bg-white dark:bg-zinc-950 ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">✨</span>
-          <span className="font-medium text-gray-900 dark:text-gray-100">
-            Crazy Assistant
-          </span>
+        <div className="flex items-center gap-3">
+        
+          
+          {/* View Toggle - Canvas/Document */}
+          {onToggleDocumentView && (
+            <ViewToggle
+              options={[
+                { id: 'canvas', label: 'Canvas', icon: ViewToggleIcons.Canvas },
+                { id: 'document', label: 'Document', icon: ViewToggleIcons.Document },
+              ]}
+              value={isDocumentViewOpen ? 'document' : 'canvas'}
+              onChange={(value) => {
+                if ((value === 'document') !== isDocumentViewOpen) {
+                  onToggleDocumentView()
+                }
+              }}
+            />
+          )}
+          
           {isStreaming && (
             <span className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-              Creating...
+              <span className="w-2 h-2 rounded-full bg-yellow-500 animate-ping" />
+              &nbsp;
             </span>
           )}
         </div>
@@ -502,7 +537,7 @@ export function OrchestratorPanelStreaming({
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="bg-gray-100 dark:bg-gray-800 flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 ? (
           <EmptyState />
         ) : (
@@ -548,45 +583,136 @@ export function OrchestratorPanelStreaming({
       {/* Input Area */}
       <form 
         onSubmit={handleSubmit}
-        className="p-4 border-t border-gray-200 dark:border-gray-700"
+        className="pb-8 bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 flex flex-col justify-end"
       >
-        <div className="flex gap-2">
-          <input
+        {/* Generating Indicator - tab above textarea */}
+        <div 
+          className={`flex justify-lefttransition-all duration-300 ease-out overflow-hidden
+                      ${isStreaming ? 'max-h-10 opacity-100' : 'max-h-0 opacity-0'}`}
+        >
+          <div className="ml-8 bg-zinc-200 dark:bg-gray-400 text-zinc-800 px-2 py-0.5  rounded-t-md text-[10px] font-medium tracking-wide uppercase">
+            <span className="flex items-center gap-2">
+              <svg className="w-2.5 h-2.5 animate-spin" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Generating
+            </span>
+          </div>
+        </div>
+        
+        <div className="px-2">
+          <textarea
             ref={inputRef}
-            type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value)
+              // Auto-resize: reset height then set to scrollHeight
+              e.target.style.height = 'auto'
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`
+            }}
             onKeyDown={handleKeyDown}
-            placeholder={isStreaming ? 'Creating your story...' : 'Create a story about...'}
+            rows={1}
+            placeholder={isStreaming ? 'Creating your story...' : 'Plan, @ for context, / for commands'}
             disabled={isStreaming}
-            className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 
+            className="border rounded-t-2xl border-b-0 w-full px-4 py-3 border-gray-300 dark:border-gray-600 
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
-                       placeholder-gray-400 dark:placeholder-gray-500
-                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                       placeholder-gray-200 dark:placeholder-gray-500
+                       placeholder-italic focus:outline-none
                        disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-all duration-200"
+                       transition-all duration-200 resize-none overflow-hidden
+                       min-h-[44px] max-h-[200px]"
           />
-          <button
-            type="submit"
-            disabled={isStreaming || !input.trim()}
-            className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-medium
-                       hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-                       disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-all duration-200"
-          >
-            {isStreaming ? (
-              <span className="flex items-center gap-2">
-                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              </span>
-            ) : (
-              'Create'
-            )}
-          </button>
+        </div>
+        
+        {/* Toolbar: Pills + Submit/Voice Button */}
+        <div className="flex items-center justify-between -mx-2 -mt-2 px-4 py-2 border-t border-gray-300 dark:border-gray-700">
+          {/* Left: Pill Selectors */}
+          <div className="flex items-center gap-1.5">
+            {/* Agent Mode Pill */}
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                         bg-gray-200 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
+                         text-xs font-medium text-gray-700 dark:text-gray-300
+                         transition-colors duration-150"
+            >
+              <LightningBoltIcon className="w-3 h-3" />
+              <span>Agent</span>
+              <ChevronDownIcon className="w-3 h-3 opacity-50" />
+            </button>
+            
+            {/* Model Pill */}
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                         bg-gray-200 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
+                         text-xs font-medium text-gray-700 dark:text-gray-300
+                         transition-colors duration-150"
+            >
+              <MixerHorizontalIcon className="w-3 h-3" />
+              <span>Model</span>
+              <ChevronDownIcon className="w-3 h-3 opacity-50" />
+            </button>
+            
+            
+          </div>
+          
+          {/* Right: Search + Voice/Submit */}
+          <div className="flex items-center gap-2">
+            {/* Web Search Icon */}
+            <button
+              type="button"
+              className="w-8 h-8 rounded-full flex items-center justify-center
+                         hover:bg-gray-200 dark:hover:bg-gray-700
+                         text-gray-500 dark:text-gray-400
+                         transition-colors duration-150"
+            >
+              <GlobeIcon className="w-4 h-4" />
+            </button>
+            
+            {/* Voice/Submit Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (input.trim()) {
+                  handleSubmit({ preventDefault: () => {} } as React.FormEvent)
+                }
+                // Voice functionality placeholder
+              }}
+              className={`w-9 h-9 rounded-full flex items-center justify-center
+                          transition-all duration-200 ${
+                            input.trim()
+                              ? 'bg-yellow-400 hover:bg-yellow-500 text-gray-700'
+                              : 'bg-gray-500 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-200 dark:text-gray-400'
+                          }`}
+            >
+              {input.trim() ? (
+                <PaperPlaneIcon className="w-4 h-4" />
+              ) : (
+                <SpeakerLoudIcon className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         </div>
       </form>
+      
+      <div 
+        className={`absolute bottom-0 left-0 right-0 flex justify-center items-center gap-1 pt-1 pb-2
+                    ${isStreaming ? '' : 'bg-zinc-200'}`}
+        style={isStreaming ? {
+          animation: 'pulseBg 1.5s ease-in-out infinite'
+        } : undefined}
+      >
+        <style>{`
+          @keyframes pulseBg {
+            0%, 100% { background-color: rgb(228, 228, 231); }
+            50% { background-color: rgb(250, 235, 177); }
+          }
+        `}</style>
+        <p className="text-zinc-600 text-[10px] uppercase tracking-wide">Intelligence Engineered by</p>
+        <img src="/aiakaki_logo.svg" alt="AIAKAKI" className="h-2" />
+      </div>
     </div>
   )
 }
@@ -622,13 +748,14 @@ function EmptyState() {
 }
 
 function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOptionSelect?: (option: string, originalAction?: string) => void }) {
-  const baseClasses = "px-4 py-3 rounded-2xl max-w-[85%] animate-fadeIn"
+  // User messages use bubble styling, everything else is full-width
+  const userBubbleClasses = "px-4 py-3 rounded-md border border-zinc-200 dark:border-zinc-700 w-full animate-fadeIn"
   
   switch (message.type) {
     case 'user':
       return (
-        <div className="flex justify-end">
-          <div className={`${baseClasses} bg-blue-600 text-white`}>
+        <div className="flex justify-start">
+          <div className={`${userBubbleClasses} bg-white text-zinc-700`}>
             {message.content}
           </div>
         </div>
@@ -642,73 +769,69 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
       const isClarification = clarificationMeta?.type === 'clarification';
       const options = clarificationMeta?.options || [];
       
-      return (
-        <div className="flex justify-start">
-          <div className={`${baseClasses} bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100`}>
-            <MarkdownContent compact>{message.content}</MarkdownContent>
-            {isClarification && options.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {options.map((option, idx) => {
-                  // Handle both object and string options
-                  const label = typeof option === 'string' ? option : option.label;
-                  const value = typeof option === 'string' ? option : option.id;
-                  const description = typeof option === 'string' ? undefined : option.description;
-                  const originalAction = (clarificationMeta as { originalAction?: string })?.originalAction;
-                  
-                  return (
-                    <button
-                      key={value || idx}
-                      onClick={() => onOptionSelect?.(value, originalAction)}
-                      title={description}
-                      className="px-3 py-1.5 text-sm bg-blue-100 dark:bg-blue-900/30 
-                                 text-blue-700 dark:text-blue-300 rounded-full
-                                 hover:bg-blue-200 dark:hover:bg-blue-900/50 
-                                 transition-colors cursor-pointer"
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+      // Use full-width clean styling for clarification messages, bubble for regular
+      if (isClarification && options.length > 0) {
+        return (
+          <div className="w-full animate-fadeIn">
+            <div className="text-gray-900 dark:text-gray-100 mb-3">
+              <MarkdownContent compact>{message.content}</MarkdownContent>
+            </div>
+            <div className="flex flex-col gap-2">
+              {options.map((option, idx) => {
+                const label = typeof option === 'string' ? option : option.label;
+                const value = typeof option === 'string' ? option : option.id;
+                const description = typeof option === 'string' ? undefined : option.description;
+                const originalAction = (clarificationMeta as { originalAction?: string })?.originalAction;
+                
+                return (
+                  <ChatOptionPill
+                    key={value || idx}
+                    number={idx + 1}
+                    title={label}
+                    description={description}
+                    onClick={() => onOptionSelect?.(value, originalAction)}
+                  />
+                );
+              })}
+            </div>
           </div>
+        )
+      }
+      
+      // Regular assistant message - full width, clean styling
+      return (
+        <div className="w-full animate-fadeIn text-gray-900 dark:text-gray-100">
+          <MarkdownContent compact>{message.content}</MarkdownContent>
         </div>
       )
 
     case 'progress':
       return (
-        <div className="flex justify-start">
-          <div className={`${baseClasses} bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800`}>
-            <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse mr-2" />
-            {message.content}
-          </div>
+        <div className="w-full animate-fadeIn flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm">
+          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
+          <span>{message.content}</span>
         </div>
       )
 
     case 'structure':
       return (
-        <div className="flex justify-start">
-          <div className={`${baseClasses} bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800`}>
-            {message.content}
-          </div>
+        <div className="w-full animate-fadeIn text-purple-700 dark:text-purple-300 text-sm">
+          {message.content}
         </div>
       )
 
     case 'section-progress':
       return (
-        <div className="flex justify-start">
-          <div className={`${baseClasses} bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-sm`}>
-            {message.content}
-          </div>
+        <div className="w-full animate-fadeIn text-amber-600 dark:text-amber-400 text-sm">
+          {message.content}
         </div>
       )
 
     case 'thinking':
       return (
-        <div className="flex justify-start">
-          <div className={`${baseClasses} bg-gray-50 dark:bg-gray-800/50 w-full text-gray-500 dark:text-gray-400 text-sm italic`}>
-            💭 {message.content}
-          </div>
+        <div className="w-full animate-fadeIn text-gray-500 dark:text-gray-400 text-sm italic flex items-start gap-2">
+          <span className="flex-shrink-0">🤖</span>
+          <span>{message.content}</span>
         </div>
       )
 
@@ -738,19 +861,15 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
 
     case 'error':
       return (
-        <div className="flex justify-start">
-          <div className={`${baseClasses} bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800`}>
-            {message.content}
-          </div>
+        <div className="w-full animate-fadeIn text-red-600 dark:text-red-400 text-sm">
+          ⚠️ {message.content}
         </div>
       )
 
     default:
       return (
-        <div className="flex justify-start">
-          <div className={`${baseClasses} bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100`}>
-            <MarkdownContent compact>{message.content}</MarkdownContent>
-          </div>
+        <div className="w-full animate-fadeIn text-gray-900 dark:text-gray-100">
+          <MarkdownContent compact>{message.content}</MarkdownContent>
         </div>
       )
   }
