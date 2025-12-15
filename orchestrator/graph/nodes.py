@@ -336,8 +336,52 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
         
         print(f"✅ [Actions] Processing clarification response: action={response_action}, option={selected_option}")
         
+        # Handle create_structure clarification (user selected a template)
+        if response_action == "create_structure":
+            # User selected a template - create structure with that template
+            # Detect format from original user message or state
+            format_type = None
+            original_message = state.get("user_message", "").lower()
+            available_formats = ["podcast", "novel", "screenplay", "article", "report"]
+            
+            for fmt in available_formats:
+                if fmt in original_message:
+                    format_type = fmt
+                    break
+            
+            if not format_type:
+                conversation_history = state.get("conversation_history", []) or []
+                for msg in reversed(conversation_history):
+                    msg_content = (msg.get("content") or "").lower()
+                    for fmt in available_formats:
+                        if fmt in msg_content:
+                            format_type = fmt
+                            break
+                    if format_type:
+                        break
+            
+            if not format_type:
+                format_type = state.get("document_format") or "novel"
+            
+            print(f"📝 [Actions] Creating structure: template={selected_option}, format={format_type}")
+            return {
+                "actions": [{
+                    "type": "generate_structure",
+                    "payload": {
+                        "format": format_type,
+                        "template": selected_option,
+                        "prompt": state.get("user_message", "")
+                    },
+                    "requiresUserInput": False,
+                    "priority": "high",
+                    "status": "pending"
+                }],
+                "needs_clarification": False,
+                "messages": [{"role": "orchestrator", "content": f"Creating {format_type} with template: {selected_option}", "type": "decision"}]
+            }
+        
         # Handle open_document clarification (user selected a document)
-        if response_action == "open_document":
+        elif response_action == "open_document":
             canvas_nodes = state.get("canvas_nodes", []) or []
             target_node = None
             response_lower = (selected_option or "").lower().strip()
@@ -413,6 +457,26 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
                     "needs_clarification": False,
                     "messages": [{"role": "orchestrator", "content": f"Opening: {node_name}", "type": "decision"}]
                 }
+            else:
+                # Could not find document - check if canvas_nodes is empty
+                if not canvas_nodes:
+                    print(f"❌ [Actions] No canvas nodes available for open_document")
+                    return {
+                        "actions": [],
+                        "needs_clarification": False,
+                        "messages": [{"role": "orchestrator", "content": "No documents found on the canvas.", "type": "error"}]
+                    }
+                else:
+                    # Document not found - re-ask with available options
+                    doc_nodes = [n for n in canvas_nodes if "story" in str(n.get("type", "")).lower()]
+                    print(f"❌ [Actions] Could not resolve document '{selected_option}' from {len(doc_nodes)} documents")
+                    return {
+                        "actions": [],
+                        "needs_clarification": True,
+                        "clarification_message": f"I couldn't find '{selected_option}'. Which document would you like to open?",
+                        "clarification_options": [{"id": n.get("id"), "label": n.get("label") or n.get("name") or n.get("data", {}).get("label", "Document")} for n in doc_nodes[:10]],
+                        "original_action": "open_document"
+                    }
         
         # Handle write_content clarification (user selected a chapter)
         elif response_action == "write_content":
@@ -437,13 +501,15 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
                         break
             
             if target_section:
-                print(f"✍️ [Actions] Writing chapter: {target_section.get('name')}")
+                # Get section name - check both 'name' and 'title' fields
+                section_name = target_section.get("name") or target_section.get("title") or f"Section {target_section.get('id')}"
+                print(f"✍️ [Actions] Writing chapter: {section_name}")
                 return {
                     "actions": [{
                         "type": "generate_content",
                         "payload": {
                             "sectionId": target_section.get("id"),
-                            "sectionName": target_section.get("name"),
+                            "sectionName": section_name,
                             "prompt": state.get("user_message", "")
                         },
                         "requiresUserInput": False,
@@ -453,6 +519,186 @@ async def generate_actions_node(state: OrchestratorState) -> Dict[str, Any]:
                     "needs_clarification": False,
                     "messages": [{"role": "orchestrator", "content": f"Writing: {target_section.get('name')}", "type": "decision"}]
                 }
+            else:
+                # Could not find section - check if structure_items is empty
+                if not structure_items:
+                    print(f"❌ [Actions] No structure items available for write_content")
+                    return {
+                        "actions": [],
+                        "needs_clarification": False,
+                        "messages": [{"role": "orchestrator", "content": "No chapters found. Please open a document first.", "type": "error"}]
+                    }
+                else:
+                    # Section not found - re-ask with available options
+                    print(f"❌ [Actions] Could not resolve chapter '{selected_option}' from {len(structure_items)} items")
+                    return {
+                        "actions": [],
+                        "needs_clarification": True,
+                        "clarification_message": f"I couldn't find '{selected_option}'. Which chapter would you like to write?",
+                        "clarification_options": [{"id": item.get("id"), "label": item.get("name") or item.get("title")} for item in structure_items[:10]],
+                        "original_action": "write_content"
+                    }
+        
+        # Handle navigate_section clarification (user selected a chapter to navigate to)
+        elif response_action == "navigate_section":
+            structure_items = state.get("structure_items", []) or []
+            target_section = None
+            response_lower = (selected_option or "").lower().strip()
+            
+            # Match by ID first (most reliable)
+            for item in structure_items:
+                if item.get("id", "").lower() == response_lower:
+                    target_section = item
+                    break
+            
+            # Match by name/title
+            if not target_section:
+                for item in structure_items:
+                    label = (item.get("name") or item.get("title") or "").lower()
+                    if label == response_lower or response_lower in label:
+                        target_section = item
+                        break
+            
+            # Match by ordinal ("first", "1", etc.)
+            if not target_section:
+                ordinal_map = {"first": 0, "1": 0, "second": 1, "2": 1, "third": 2, "3": 2, 
+                              "fourth": 3, "4": 3, "fifth": 4, "5": 4, "sixth": 5, "6": 5,
+                              "seventh": 6, "7": 6, "eighth": 7, "8": 7, "ninth": 8, "9": 8, "tenth": 9, "10": 9}
+                for ordinal, idx in ordinal_map.items():
+                    if ordinal in response_lower and idx < len(structure_items):
+                        target_section = structure_items[idx]
+                        break
+            
+            if target_section:
+                section_id = target_section.get("id")
+                section_name = target_section.get("name") or target_section.get("title")
+                print(f"📍 [Actions] Navigating to: {section_name}")
+                
+                actions = [{
+                    "type": "select_section",
+                    "payload": {"sectionId": section_id, "sectionName": section_name},
+                    "requiresUserInput": False,
+                    "priority": "normal",
+                    "status": "pending"
+                }]
+                
+                # Check if user also wanted to write content
+                user_message = (state.get("user_message") or "").lower()
+                if any(w in user_message for w in ["write", "writing", "draft", "create content"]):
+                    actions.append({
+                        "type": "generate_content",
+                        "payload": {
+                            "sectionId": section_id,
+                            "sectionName": section_name,
+                            "prompt": state.get("user_message", "")
+                        },
+                        "requiresUserInput": False,
+                        "priority": "normal",
+                        "status": "pending"
+                    })
+                    print(f"✍️ [Actions] Also writing content for: {section_name}")
+                
+                return {
+                    "actions": actions,
+                    "needs_clarification": False,
+                    "messages": [{"role": "orchestrator", "content": f"Navigating to: {section_name}", "type": "decision"}]
+                }
+            else:
+                # Could not find section - check if structure_items is empty
+                if not structure_items:
+                    print(f"❌ [Actions] No structure items available for navigate_section")
+                    return {
+                        "actions": [],
+                        "needs_clarification": False,
+                        "messages": [{"role": "orchestrator", "content": "No chapters found. Please open a document first.", "type": "error"}]
+                    }
+                else:
+                    # Section not found - re-ask with available options
+                    print(f"❌ [Actions] Could not resolve chapter '{selected_option}' from {len(structure_items)} items")
+                    return {
+                        "actions": [],
+                        "needs_clarification": True,
+                        "clarification_message": f"I couldn't find '{selected_option}'. Which chapter would you like to navigate to?",
+                        "clarification_options": [{"id": item.get("id"), "label": item.get("name") or item.get("title")} for item in structure_items[:10]],
+                        "original_action": "navigate_section"
+                    }
+        
+        # Handle open_and_write clarification (user selected a chapter to open and write)
+        elif response_action == "open_and_write":
+            structure_items = state.get("structure_items", []) or []
+            target_section = None
+            response_lower = (selected_option or "").lower().strip()
+            
+            # Match by ID first
+            for item in structure_items:
+                if item.get("id", "").lower() == response_lower:
+                    target_section = item
+                    break
+            
+            # Match by name/title
+            if not target_section:
+                for item in structure_items:
+                    label = (item.get("name") or item.get("title") or "").lower()
+                    if label == response_lower or response_lower in label:
+                        target_section = item
+                        break
+            
+            if target_section:
+                section_id = target_section.get("id")
+                section_name = target_section.get("name") or target_section.get("title")
+                print(f"📍✍️ [Actions] Opening and writing: {section_name}")
+                
+                return {
+                    "actions": [
+                        {
+                            "type": "select_section",
+                            "payload": {"sectionId": section_id, "sectionName": section_name},
+                            "requiresUserInput": False,
+                            "priority": "high",
+                            "status": "pending"
+                        },
+                        {
+                            "type": "generate_content",
+                            "payload": {
+                                "sectionId": section_id,
+                                "sectionName": section_name,
+                                "prompt": state.get("user_message", "")
+                            },
+                            "requiresUserInput": False,
+                            "priority": "normal",
+                            "status": "pending"
+                        }
+                    ],
+                    "needs_clarification": False,
+                    "messages": [{"role": "orchestrator", "content": f"Writing: {section_name}", "type": "decision"}]
+                }
+            else:
+                # Could not find section - check if structure_items is empty
+                if not structure_items:
+                    print(f"❌ [Actions] No structure items available for open_and_write")
+                    return {
+                        "actions": [],
+                        "needs_clarification": False,
+                        "messages": [{"role": "orchestrator", "content": "No chapters found. Please open a document with chapters first.", "type": "error"}]
+                    }
+                else:
+                    # Section not found - re-ask with available options
+                    print(f"❌ [Actions] Could not resolve chapter '{selected_option}' from {len(structure_items)} items")
+                    return {
+                        "actions": [],
+                        "needs_clarification": True,
+                        "clarification_message": f"I couldn't find '{selected_option}'. Which chapter would you like?",
+                        "clarification_options": [{"id": item.get("id"), "label": item.get("name") or item.get("title")} for item in structure_items[:10]],
+                        "original_action": "open_and_write"
+                    }
+        
+        # Fallback: Unhandled clarification - return empty to avoid infinite loop
+        print(f"⚠️ [Actions] Unhandled clarification: action={response_action}, option={selected_option}")
+        return {
+            "actions": [],
+            "needs_clarification": False,
+            "messages": [{"role": "orchestrator", "content": f"Acknowledged: {selected_option}", "type": "result"}]
+        }
     
     # ============================================================
     # PHASE 2: DEEP AGENT PLANNER (OPTIONAL)

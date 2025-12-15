@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     # ========================================
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""  # Service role key for backend
+    SUPABASE_SERVICE_KEY: str = ""  # Alternative name for service role key
     SUPABASE_ANON_KEY: str = ""  # Anon key (if needed)
     
     # ========================================
@@ -117,12 +118,15 @@ def get_supabase_client():
     """
     from supabase import create_client, Client
     
-    if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
+    # Accept either SUPABASE_KEY or SUPABASE_SERVICE_KEY
+    supabase_key = settings.SUPABASE_KEY or settings.SUPABASE_SERVICE_KEY
+    
+    if not settings.SUPABASE_URL or not supabase_key:
         raise ValueError(
-            "SUPABASE_URL and SUPABASE_KEY must be set in environment"
+            "SUPABASE_URL and SUPABASE_KEY (or SUPABASE_SERVICE_KEY) must be set in environment"
         )
     
-    return create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+    return create_client(settings.SUPABASE_URL, supabase_key)
 
 
 async def get_mcp_tools() -> List:

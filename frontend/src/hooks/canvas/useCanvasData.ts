@@ -29,6 +29,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
 import { getStory, saveCanvas, updateStory } from '@/lib/stories'
 import { getCanvasShares } from '@/lib/canvas-sharing'
+import { isOrchestratorNode } from '@/data/stories' // 2024-12-11: For checking both 'context' and 'context_*' formats
 import { Node, Edge } from 'reactflow'
 import { NodeType, StoryFormat } from '@/types/nodes'
 
@@ -344,9 +345,23 @@ export function useCanvasData(
         }
       }
       
+      // 2024-12-11: Deduplicate orchestrator nodes - keep only the first one found
+      let seenOrchestrator = false
+      let deduplicatedNodes = loadedNodes.filter(node => {
+        if (isOrchestratorNode(node.id)) {
+          if (seenOrchestrator) {
+            console.log(`🧹 Removing duplicate orchestrator node: ${node.id}`)
+            return false // Skip this duplicate
+          }
+          seenOrchestrator = true
+        }
+        return true
+      })
+      
       // Ensure orchestrator node always exists
-      const hasContextCanvas = loadedNodes.some(node => node.id === 'context')
-      let finalNodes = loadedNodes
+      // 2024-12-11: Use isOrchestratorNode to check both 'context' and 'context_*' formats
+      const hasContextCanvas = deduplicatedNodes.some(node => isOrchestratorNode(node.id))
+      let finalNodes = deduplicatedNodes
       
       if (!hasContextCanvas) {
         // Add Orchestrator node if it doesn't exist

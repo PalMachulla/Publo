@@ -15,6 +15,8 @@
  * 
  * @see ReactFlow for canvas library
  * @see canvas/page.tsx for original implementation
+ * 
+ * @updated 2024-12-11 - Removed WorldState prop (legacy frontend orchestration)
  */
 
 import React from 'react'
@@ -24,7 +26,6 @@ import ReactFlow, {
   BackgroundVariant,
   ConnectionMode,
   Connection,
-  addEdge,
   Node,
   Edge
 } from 'reactflow'
@@ -32,7 +33,6 @@ import 'reactflow/dist/style.css'
 import { CanvasProvider } from '@/contexts/CanvasContext'
 import NodeTypeMenu from '@/components/menus/NodeTypeMenu'
 import { nodeTypes } from '@/components/nodes'
-import type { WorldStateManager } from '@/lib/orchestrator/core/worldState'
 
 export interface CanvasViewportProps {
   // Filtered nodes and edges (for cluster node resource hiding)
@@ -50,7 +50,7 @@ export interface CanvasViewportProps {
   
   // Canvas context
   onPromptSubmit?: (prompt: string) => void
-  worldState?: WorldStateManager
+  // 2024-12-11: Removed worldState - was legacy frontend orchestration
 }
 
 /**
@@ -65,14 +65,14 @@ export default function CanvasViewport(props: CanvasViewportProps) {
     onConnect,
     onNodeClick,
     onAddNode,
-    onPromptSubmit,
-    worldState
+    onPromptSubmit
+    // 2024-12-11: Removed worldState
   } = props
   
   return (
     <CanvasProvider value={{ 
-      onPromptSubmit,
-      worldState
+      onPromptSubmit
+      // 2024-12-11: Removed worldState from context
     }}>
       {/* Canvas Area with React Flow */}
       <div className="flex-1 relative bg-gray-50">

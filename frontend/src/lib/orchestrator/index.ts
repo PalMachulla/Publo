@@ -57,13 +57,10 @@ export {
 } from './core/blackboard'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WORLD STATE - Frontend state management (for passing to Python backend)
 // ─────────────────────────────────────────────────────────────────────────────
-export {
-  WorldStateManager,
-  buildWorldStateFromReactFlow,
-  type WorldState
-} from './core/worldState'
+// WORLD STATE - DEPRECATED 2024-12-11 (moved to ./core/worldState.ts.deprecated)
+// Deep agent architecture uses SSE streaming, not frontend WorldState
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES - Keep types that are still referenced

@@ -13,6 +13,7 @@ import time
 @tool
 async def write_section(
     section_id: str,
+    section_name: str,
     guidance: str,
     style_notes: Optional[str] = None,
     target_length: str = "medium",
@@ -21,10 +22,14 @@ async def write_section(
     """
     Write content for a story section.
     
-    IMPORTANT: Call get_story_context first to understand established story elements.
+    IMPORTANT: 
+    - Call get_story_context first to understand established story elements.
+    - You MUST provide BOTH section_id AND section_name that match each other.
+    - Check the section table to ensure the ID matches the name.
     
     Args:
-        section_id: The section to write
+        section_id: The EXACT section ID from the sections table (e.g., "sec-2" for Introduction)
+        section_name: The section name (e.g., "Introduction") - must match the section_id
         guidance: What to write (e.g., "confrontation scene between Marcus and Elena")
         style_notes: Optional style guidance (e.g., "tense, short sentences")
         target_length: "short" (~500 words), "medium" (~1500 words), "long" (~3000 words)
@@ -37,6 +42,7 @@ async def write_section(
         - word_count: Word count
         - status: "complete"
     """
+    print(f"📝 [write_section] Called with section_id='{section_id}', section_name='{section_name}'")
     try:
         from librarian import get_librarian
         from config import get_supabase_client, get_model_for_task

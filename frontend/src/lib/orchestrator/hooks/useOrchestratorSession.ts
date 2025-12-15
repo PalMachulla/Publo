@@ -70,6 +70,7 @@ export function useOrchestratorSession({
   
   const supabaseRef = useRef(createClient())
   const initializingRef = useRef(false)
+  const previousStoryIdRef = useRef<string | undefined>(undefined)
 
   // ========== INITIALIZE SESSION ==========
   useEffect(() => {
@@ -159,8 +160,16 @@ export function useOrchestratorSession({
   
   // ========== RESET ON STORY CHANGE ==========
   useEffect(() => {
-    // When storyId changes, reset session to trigger re-initialization
-    if (storyId) {
+    // Only reset when storyId ACTUALLY CHANGES to a different value (not on first mount)
+    const previousStoryId = previousStoryIdRef.current
+    const storyIdChanged = previousStoryId !== undefined && previousStoryId !== storyId
+    
+    // Update the ref for next comparison
+    previousStoryIdRef.current = storyId
+    
+    // Only reset on ACTUAL story change (not first mount)
+    if (storyIdChanged && storyId) {
+      console.log('🔄 [Session] Story changed from', previousStoryId, 'to', storyId, '- resetting session')
       setSession(null)
       setMessages([])
       initializingRef.current = false

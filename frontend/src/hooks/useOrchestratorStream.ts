@@ -115,6 +115,9 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
   // Track streaming reasoning message (for token-by-token updates)
   const reasoningMessageIdRef = useRef<string | null>(null);
   
+  // Track tool thinking message (for updating on completion)
+  const toolThinkingMessageIdRef = useRef<string | null>(null);
+  
   // Track if we've loaded initial messages to avoid overwriting during active streams
   const hasLoadedInitialMessages = useRef(false);
   
@@ -213,7 +216,14 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         
         // Show thinking indicator for long-running tools
         if (['write_section', 'create_structure'].includes(toolStartData.tool)) {
-          addMessage('thinking', `🔧 ${toolStartData.tool === 'write_section' ? 'Writing content...' : 'Creating structure...'}`);
+          const thinkingContent = toolStartData.tool === 'write_section' 
+            ? 'Writing content...' 
+            : 'Creating structure...';
+          const msgId = addMessage('thinking', `${thinkingContent}`, { 
+            tool: toolStartData.tool,
+            isComplete: false 
+          });
+          toolThinkingMessageIdRef.current = msgId;
         }
         break;
       
@@ -223,6 +233,18 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
          */
         const toolEndData = event.data as ToolEndEvent;
         console.log('✅ [Tool End]', toolEndData.tool);
+        
+        // Update the thinking message to show completion
+        if (toolThinkingMessageIdRef.current && ['write_section', 'create_structure'].includes(toolEndData.tool)) {
+          const completionContent = toolEndData.tool === 'write_section'
+            ? '✅ Content written'
+            : '✅ Structure created';
+          updateMessage(toolThinkingMessageIdRef.current, {
+            content: completionContent,
+            metadata: { tool: toolEndData.tool, isComplete: true }
+          });
+          toolThinkingMessageIdRef.current = null;
+        }
         break;
       
       case 'CONTENT_CHUNK':
@@ -692,6 +714,19 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
               ? { ...msg, content: finalContent, metadata: { isStreaming: false } }
               : msg
           ));
+          
+          // Persist the finalized streaming message to database
+          if (onMessageAdded && finalContent.trim()) {
+            const finalMessage: ChatMessage = {
+              id: msgId,
+              type: 'assistant',
+              content: finalContent,
+              timestamp: new Date(),
+              metadata: { isStreaming: false }
+            };
+            onMessageAdded(finalMessage);
+          }
+          
           assistantMessageIdRef.current = null;
           accumulatedContentRef.current = '';
         }
@@ -738,6 +773,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     conversationHistory?: unknown[];
     clarificationResponse?: string;
     originalAction?: string;  // The action that needed clarification (e.g., 'create_structure')
+    activeSectionCard?: unknown;  // Section card currently being viewed (for Librarian context)
     [key: string]: unknown;
   }) => {
     // Abort any existing stream
@@ -778,6 +814,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       conversation_history: request.conversationHistory,
       clarification_response: request.clarificationResponse,
       original_action: request.originalAction,
+      active_section_card: request.activeSectionCard,  // Section card currently being viewed
     };
 
     // Debug: Log if this is a clarification response
@@ -853,6 +890,9 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
 
   // Clear messages (UI only - persisted messages will reload on refresh)
   const clearMessages = useCallback(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/590edda1-d2cc-4e7e-b43e-dfdf13ca907f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOrchestratorStream.ts:861',message:'clearMessages called',data:{currentMessagesCount:messages.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
     setMessages([]);
     setProgress({
       isActive: false,
@@ -860,7 +900,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       percentComplete: 0,
     });
     reasoningMessageIdRef.current = null;  // Reset reasoning message ref
-  }, []);
+  }, [messages.length]);
 
   return {
     messages,

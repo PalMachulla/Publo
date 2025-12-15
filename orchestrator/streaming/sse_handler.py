@@ -38,6 +38,12 @@ class SSEEventType(str, Enum):
     SUBAGENT_START = "SUBAGENT_START"  # Subagent spawned
     SUBAGENT_END = "SUBAGENT_END"  # Subagent completed
     
+    # Memory
+    MEMORY_UPDATE = "MEMORY_UPDATE"  # Preference or pattern saved
+    
+    # Filesystem
+    CONTEXT_FILE_UPDATED = "CONTEXT_FILE_UPDATED"  # Context file written/deleted
+    
     # Status
     ERROR = "ERROR"  # Error occurred
     DONE = "DONE"  # Agent finished

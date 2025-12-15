@@ -14,12 +14,14 @@
  * 
  * @see DocumentManager for hierarchical document management
  * @see canvas/page.tsx for original implementation
+ * 
+ * @updated 2024-12-11 - Removed WorldState dependency (legacy frontend orchestration)
+ * Deep agent architecture uses SSE streaming for chat, not WorldState
  */
 
 import { Node } from 'reactflow'
 import { createClient } from '@/lib/supabase/client'
 import { StoryFormat, StoryStructureNodeData } from '@/types/nodes'
-import type { WorldStateManager } from '@/lib/orchestrator/core/worldState'
 
 export interface DocumentServiceDependencies {
   // State setters
@@ -45,7 +47,7 @@ export interface DocumentServiceDependencies {
   // Refs
   hasUnsavedChangesRef: React.MutableRefObject<boolean>
   isLoadingRef: React.MutableRefObject<boolean>
-  worldStateRef: React.MutableRefObject<WorldStateManager | null>
+  // 2024-12-11: Removed worldStateRef - was legacy frontend orchestration
 }
 
 /**
@@ -170,8 +172,8 @@ export async function writeContent(
     currentSections,
     currentContentMap,
     currentStructureFormat,
-    refreshSectionsRef,
-    worldStateRef
+    refreshSectionsRef
+    // 2024-12-11: Removed worldStateRef
   } = dependencies
   
   console.log('📝 handleWriteContent:', { segmentId, prompt })
@@ -200,14 +202,7 @@ export async function writeContent(
     hasPreviousContent: currentStructureItems.findIndex((item: any) => item.id === segmentId) > 0
   })
   
-  // ✅ MIGRATION: Add reasoning message via WorldState
-  if (worldStateRef.current) {
-    worldStateRef.current.addMessage({
-      content: `📝 Orchestrator delegating to writer model with full story context...`,
-      type: 'task',
-      role: 'orchestrator'
-    })
-  }
+  // 2024-12-11: Removed WorldState message - deep agent uses SSE streaming for chat
   
   try {
     // Call API with FULL orchestrator context
@@ -322,25 +317,12 @@ export async function writeContent(
       // Don't throw - content is still in local contentMap
     }
     
-    // ✅ MIGRATION: Add success message via WorldState
-    if (worldStateRef.current) {
-      worldStateRef.current.addMessage({
-        content: `✅ Content generated and saved for segment: ${segmentId}`,
-        type: 'result',
-        role: 'orchestrator'
-      })
-    }
+    // 2024-12-11: Removed WorldState message - deep agent uses SSE streaming
+    console.log(`✅ Content generated and saved for segment: ${segmentId}`)
     
   } catch (error) {
     console.error('Failed to write content:', error)
-    // ✅ MIGRATION: Add error message via WorldState
-    if (worldStateRef.current) {
-      worldStateRef.current.addMessage({
-        content: `❌ Failed to generate content: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        type: 'error',
-        role: 'orchestrator'
-      })
-    }
+    // 2024-12-11: Removed WorldState message - errors shown in SSE stream
   }
 }
 

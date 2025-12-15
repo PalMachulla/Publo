@@ -344,7 +344,8 @@ class LibrarianAgent:
     async def get_all_section_cards(self) -> List[SectionCard]:
         """Get all section cards for this story node."""
         try:
-            result = await self.supabase.table("section_cards") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            result = self.supabase.table("section_cards") \
                 .select("*") \
                 .eq("node_id", self.node_id) \
                 .execute()
@@ -380,7 +381,8 @@ class LibrarianAgent:
             query = query.eq("section_cards.node_id", self.node_id)
             query = query.eq("status", status)
             
-            result = await query.execute()
+            # NOTE: Supabase Python client is synchronous - no await needed
+            result = query.execute()
             
             return [self._row_to_issue(row) for row in result.data]
         except Exception as e:
@@ -758,7 +760,8 @@ SUMMARY (2-3 sentences only):"""
             return self._cards_cache[section_id]
         
         try:
-            result = await self.supabase.table("section_cards") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            result = self.supabase.table("section_cards") \
                 .select("*") \
                 .eq("node_id", self.node_id) \
                 .eq("structure_item_id", section_id) \
@@ -799,15 +802,16 @@ SUMMARY (2-3 sentences only):"""
                 "analyzed_at": card.analyzed_at
             }
             
+            # NOTE: Supabase Python client is synchronous - no await needed
             if card.id:
                 # Update
-                result = await self.supabase.table("section_cards") \
+                result = self.supabase.table("section_cards") \
                     .update(data) \
                     .eq("id", card.id) \
                     .execute()
             else:
                 # Insert
-                result = await self.supabase.table("section_cards") \
+                result = self.supabase.table("section_cards") \
                     .upsert(data, on_conflict="node_id,structure_item_id") \
                     .execute()
             
@@ -823,7 +827,8 @@ SUMMARY (2-3 sentences only):"""
     async def _find_character_by_name(self, name: str) -> Optional[Character]:
         """Find character by name (case-insensitive)."""
         try:
-            result = await self.supabase.table("story_characters") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            result = self.supabase.table("story_characters") \
                 .select("*") \
                 .eq("node_id", self.node_id) \
                 .ilike("name", name) \
@@ -858,7 +863,8 @@ SUMMARY (2-3 sentences only):"""
                 "status_changed_in": character.status_changed_in
             }
             
-            result = await self.supabase.table("story_characters") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            result = self.supabase.table("story_characters") \
                 .insert(data) \
                 .execute()
             
@@ -872,7 +878,8 @@ SUMMARY (2-3 sentences only):"""
     async def _update_character_appearances(self, character_id: str, appearances: List[str]):
         """Update character appearances list."""
         try:
-            await self.supabase.table("story_characters") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            self.supabase.table("story_characters") \
                 .update({"appearances": json.dumps(appearances)}) \
                 .eq("id", character_id) \
                 .execute()
@@ -882,7 +889,8 @@ SUMMARY (2-3 sentences only):"""
     async def _get_all_characters(self) -> List[Character]:
         """Get all characters for this story."""
         try:
-            result = await self.supabase.table("story_characters") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            result = self.supabase.table("story_characters") \
                 .select("*") \
                 .eq("node_id", self.node_id) \
                 .execute()
@@ -895,7 +903,8 @@ SUMMARY (2-3 sentences only):"""
     async def _find_place_by_name(self, name: str) -> Optional[Place]:
         """Find place by name."""
         try:
-            result = await self.supabase.table("story_places") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            result = self.supabase.table("story_places") \
                 .select("*") \
                 .eq("node_id", self.node_id) \
                 .ilike("name", name) \
@@ -924,7 +933,8 @@ SUMMARY (2-3 sentences only):"""
                 "significance": place.significance
             }
             
-            result = await self.supabase.table("story_places") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            result = self.supabase.table("story_places") \
                 .insert(data) \
                 .execute()
             
@@ -938,7 +948,8 @@ SUMMARY (2-3 sentences only):"""
     async def _update_place_appearances(self, place_id: str, appearances: List[str]):
         """Update place appearances list."""
         try:
-            await self.supabase.table("story_places") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            self.supabase.table("story_places") \
                 .update({"appearances": json.dumps(appearances)}) \
                 .eq("id", place_id) \
                 .execute()
@@ -963,7 +974,8 @@ SUMMARY (2-3 sentences only):"""
                 "enables": json.dumps(event.enables)
             }
             
-            result = await self.supabase.table("story_events") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            result = self.supabase.table("story_events") \
                 .insert(data) \
                 .execute()
             
@@ -990,7 +1002,8 @@ SUMMARY (2-3 sentences only):"""
                 "status": "open"
             }
             
-            await self.supabase.table("coherency_issues") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            self.supabase.table("coherency_issues") \
                 .insert(data) \
                 .execute()
                 
@@ -1026,7 +1039,8 @@ SUMMARY (2-3 sentences only):"""
         characters = []
         for char_id in card.characters_present:
             try:
-                result = await self.supabase.table("story_characters") \
+                # NOTE: Supabase Python client is synchronous - no await needed
+                result = self.supabase.table("story_characters") \
                     .select("*") \
                     .eq("id", char_id) \
                     .limit(1) \
@@ -1051,7 +1065,8 @@ SUMMARY (2-3 sentences only):"""
         places = []
         for place_id in card.places_visited:
             try:
-                result = await self.supabase.table("story_places") \
+                # NOTE: Supabase Python client is synchronous - no await needed
+                result = self.supabase.table("story_places") \
                     .select("*") \
                     .eq("id", place_id) \
                     .limit(1) \
@@ -1089,7 +1104,8 @@ SUMMARY (2-3 sentences only):"""
         """Get foreshadowing hooks that should be planted in this section."""
         # Look for hooks from other sections that target this section
         try:
-            result = await self.supabase.table("section_cards") \
+            # NOTE: Supabase Python client is synchronous - no await needed
+            result = self.supabase.table("section_cards") \
                 .select("hooks, section_name") \
                 .eq("node_id", self.node_id) \
                 .execute()

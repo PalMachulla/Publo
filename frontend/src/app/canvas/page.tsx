@@ -25,7 +25,7 @@ import { createStory, deleteStory } from '@/lib/stories'
 
 // Hooks
 import { useCanvasState } from '@/hooks/canvas/useCanvasState'
-import { useWorldStateSync } from '@/hooks/canvas/useWorldStateSync'
+// 2024-12-11: Removed useWorldStateSync - was legacy frontend orchestration
 import { useDocumentState } from '@/hooks/canvas/useDocumentState'
 import { useCanvasData } from '@/hooks/canvas/useCanvasData'
 import { useCanvasSharing } from '@/hooks/canvas/useCanvasSharing'
@@ -153,21 +153,8 @@ export default function CanvasPage() {
   // Note: This is a limitation - ideally hooks would share refs
   // For now, we'll handle unsaved changes in the callbacks directly
   
-  // WorldState sync
-  const { worldStateRef, worldStateInstance } = useWorldStateSync({
-    nodes: canvasState.nodes,
-    edges: canvasState.edges,
-    currentStoryStructureNodeId: documentState.currentStoryStructureNodeId,
-    isAIDocPanelOpen: documentState.isAIDocPanelOpen,
-    userId: canvasData.userId || '',
-    availableProviders: [],
-    availableModels: [],
-    modelPreferences: {
-      modelMode: 'automatic',
-      fixedModelId: null,
-      fixedModeStrategy: 'loose'
-    }
-  })
+  // 2024-12-11: Removed useWorldStateSync - was legacy frontend orchestration
+  // Deep agent architecture uses SSE streaming for state, not WorldState
   
   // ============================================================
   // CALLBACKS: Document Operations
@@ -234,10 +221,10 @@ export default function CanvasPage() {
       handleStructureItemClick: handleStructureItemClick || undefined,
       refreshSectionsRef: documentState.refreshSectionsRef,
       hasUnsavedChangesRef: canvasData.hasUnsavedChangesRef,
-      isLoadingRef: canvasData.isLoadingRef,
-      worldStateRef
+      isLoadingRef: canvasData.isLoadingRef
+      // 2024-12-11: Removed worldStateRef
     })
-  }, [canvasState.setNodes, documentState, handleStructureItemClick, canvasData, worldStateRef])
+  }, [canvasState.setNodes, documentState, handleStructureItemClick, canvasData])
   
   // Update callback ref
   callbacksRef.current.handleStructureItemsUpdate = handleStructureItemsUpdate
@@ -260,10 +247,10 @@ export default function CanvasPage() {
       handleStructureItemClick: handleStructureItemClick || undefined,
       refreshSectionsRef: documentState.refreshSectionsRef,
       hasUnsavedChangesRef: canvasData.hasUnsavedChangesRef,
-      isLoadingRef: canvasData.isLoadingRef,
-      worldStateRef
+      isLoadingRef: canvasData.isLoadingRef
+      // 2024-12-11: Removed worldStateRef
     })
-  }, [canvasState.setNodes, documentState, handleStructureItemClick, canvasData, worldStateRef])
+  }, [canvasState.setNodes, documentState, handleStructureItemClick, canvasData])
   
   // Handle write content
   const handleWriteContent = useCallback(async (segmentId: string, prompt: string) => {
@@ -282,10 +269,10 @@ export default function CanvasPage() {
       handleStructureItemClick: handleStructureItemClick || undefined,
       refreshSectionsRef: documentState.refreshSectionsRef,
       hasUnsavedChangesRef: canvasData.hasUnsavedChangesRef,
-      isLoadingRef: canvasData.isLoadingRef,
-      worldStateRef
+      isLoadingRef: canvasData.isLoadingRef
+      // 2024-12-11: Removed worldStateRef
     })
-  }, [canvasState.setNodes, documentState, handleStructureItemClick, canvasData, worldStateRef])
+  }, [canvasState.setNodes, documentState, handleStructureItemClick, canvasData])
   
   // Handle answer question
   const handleAnswerQuestion = useCallback(async (question: string): Promise<string> => {
@@ -304,10 +291,10 @@ export default function CanvasPage() {
       handleStructureItemClick,
       refreshSectionsRef: documentState.refreshSectionsRef,
       hasUnsavedChangesRef: canvasData.hasUnsavedChangesRef,
-      isLoadingRef: canvasData.isLoadingRef,
-      worldStateRef
+      isLoadingRef: canvasData.isLoadingRef
+      // 2024-12-11: Removed worldStateRef
     })
-  }, [canvasState.setNodes, documentState, handleStructureItemClick, canvasData, worldStateRef])
+  }, [canvasState.setNodes, documentState, handleStructureItemClick, canvasData])
   
   // ============================================================
   // CALLBACKS: Node Operations
@@ -431,7 +418,13 @@ export default function CanvasPage() {
       setSelectedNode: canvasState.setSelectedNode,
       selectedNode: canvasState.selectedNode
     })
-  }, [canvasState])
+    
+    // Persist deletion to database
+    // Use setTimeout to allow React state to update first
+    setTimeout(() => {
+      canvasData.handleSave()
+    }, 100)
+  }, [canvasState, canvasData])
   
   // Handle create story
   const handleCreateStory = useCallback(async (format: StoryFormat, template?: string, userPromptDirect?: string, plan?: any) => {
@@ -570,11 +563,8 @@ export default function CanvasPage() {
     if (!loading && user && storyId && storyId !== canvasData.lastLoadedStoryIdRef.current) {
       console.log('Loading story:', storyId)
       
-      // Clear chat history when switching canvases
-      if (worldStateRef.current) {
-        worldStateRef.current.clearConversation()
-        console.log('🗑️ Chat history cleared for new canvas')
-      }
+      // 2024-12-11: Removed WorldState chat clearing
+      // Chat history is now persisted per session via useOrchestratorSession (Supabase)
       
       canvasData.isLoadingRef.current = true
       canvasData.currentStoryIdRef.current = storyId
@@ -582,7 +572,7 @@ export default function CanvasPage() {
       
       canvasData.loadStoryData(storyId)
     }
-  }, [user, loading, storyId, canvasData, worldStateRef])
+  }, [user, loading, storyId, canvasData])
   
   // ============================================================
   // RENDER
@@ -647,7 +637,7 @@ export default function CanvasPage() {
           onNodeClick={onNodeClick}
           onAddNode={handleAddNewNode}
           onPromptSubmit={handlePromptSubmit}
-          worldState={worldStateInstance || undefined}
+          // 2024-12-11: Removed worldState
         />
 
         {/* Panels */}
@@ -710,7 +700,7 @@ export default function CanvasPage() {
           onAddEdge={(newEdge) => canvasState.setEdges((eds) => [...eds, newEdge])}
           edges={canvasState.edges}
           nodes={canvasState.nodes}
-          worldState={worldStateInstance || undefined}
+          // 2024-12-11: Removed worldState
           onSelectNode={(nodeId: string, sectionId?: string) => {
             const node = canvasState.nodes.find(n => n.id === nodeId)
             if (!node) {
@@ -746,35 +736,15 @@ export default function CanvasPage() {
               format?: 'progress_list' | 'simple_list' | 'steps'
             }
           ) => {
-            // ✅ NEW: Support structured content metadata for rich message formatting
-            // 
-            // Metadata allows messages to include structured data (e.g., progress lists)
-            // that can be rendered with icons and better formatting in the UI.
-            // 
-            // Example: Structure generation heartbeat messages use structured content
-            // to show a progress list with icons (spinner for current, checkmark for completed).
-            // 
-            // See:
-            // - StatusMessage component for structured content rendering logic
-            // - orchestratorEngine.structure.ts for structured content creation
-            // - blackboard.ts ConversationMessage interface for metadata type definition
-            if (worldStateRef.current) {
-              worldStateRef.current.addMessage({
-                content: message,
-                type: type || 'user',
-                role: role || 'user',
-                // Pass metadata if provided (for structured content like progress lists)
-                // This enables the UI to parse and render structured content with icons
-                ...(metadata && { metadata })
-              })
-            }
+            // 2024-12-11: Removed WorldState message handling
+            // Chat history is now managed by useOrchestratorSession (Supabase persistence)
+            // and OrchestratorPanelStreaming (SSE streaming UI)
+            console.log('📨 [CanvasPanels] Chat message (legacy callback):', { message, type, role })
           }}
           onClearChat={() => {
-            if (confirm('Clear all chat history? This cannot be undone.')) {
-              if (worldStateRef.current) {
-                worldStateRef.current.clearConversation()
-              }
-            }
+            // 2024-12-11: Removed WorldState conversation clearing
+            // Chat is now persisted per session via useOrchestratorSession
+            console.log('🗑️ [CanvasPanels] Clear chat requested (legacy callback)')
           }}
           isDocumentViewOpen={documentState.isAIDocPanelOpen}
           onToggleDocumentView={() => documentState.setIsAIDocPanelOpen(!documentState.isAIDocPanelOpen)}
@@ -807,14 +777,44 @@ export default function CanvasPage() {
           onSetContext={documentState.setActiveContext}
           onSectionsLoaded={documentState.handleSectionsLoaded}
           onRefreshSections={documentState.handleRefreshSectionsCallback}
+          refreshSectionsRef={documentState.refreshSectionsRef}
+          // Handle content generated by orchestrator for a specific section
+          onSectionComplete={(sectionId: string, content: string) => {
+            console.log(`✅ [page.tsx] Section ${sectionId} content received (${content.length} chars)`)
+            
+            // Update the content map with new content
+            documentState.setCurrentContentMap((prev: Record<string, string>) => ({
+              ...prev,
+              [sectionId]: content
+            }))
+            
+            // Also update the node's contentMap if we have a current structure node
+            if (documentState.currentStoryStructureNodeId) {
+              const nodeId = documentState.currentStoryStructureNodeId
+              canvasState.setNodes((nodes) => 
+                nodes.map((n) => {
+                  if (n.id === nodeId) {
+                    const nodeData = n.data as StoryStructureNodeData
+                    return {
+                      ...n,
+                      data: {
+                        ...nodeData,
+                        contentMap: {
+                          ...(nodeData.contentMap || {}),
+                          [sectionId]: content
+                        }
+                      }
+                    }
+                  }
+                  return n
+                })
+              )
+            }
+          }}
         />
       </div>
 
-      {/* Fixed Footer */}
-      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-2">
-        <p className="text-gray-400 text-sm">Intelligence Engineered by</p>
-        <img src="/aiakaki_logo.svg" alt="AIAKAKI" className="h-3.5" />
-      </div>
+
     </div>
   )
 }

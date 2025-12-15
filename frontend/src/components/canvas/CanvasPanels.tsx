@@ -57,11 +57,15 @@
  * @see canvas/page.tsx for the parent component and state management
  */
 
-import React, { useCallback } from 'react'
+/**
+ * @updated 2024-12-11 - Removed WorldState (legacy frontend orchestration)
+ * Deep agent architecture uses SSE streaming, not frontend WorldState
+ */
+
+import React, { useCallback, useMemo } from 'react'
 import { Node, Edge } from 'reactflow'
 import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
 import AIDocumentPanel from '@/components/panels/AIDocumentPanel'
-import type { WorldStateManager } from '@/lib/orchestrator/core/worldState'
 import { StoryFormat } from '@/types/nodes'
 import { getOrchestratorNodeId, isOrchestratorNode } from '@/data/stories'
 import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
@@ -130,8 +134,7 @@ export interface CanvasPanelsProps {
   /** Current nodes (for finding orchestrator position, etc.) */
   nodes: Node[]
   
-  /** WorldState instance for unified state management */
-  worldState?: WorldStateManager
+  // 2024-12-11: Removed worldState - was legacy frontend orchestration
   
   // ─────────────────────────────────────────────────────────────────────────
   // Document Selection & Navigation
@@ -280,7 +283,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     onAddEdge,
     edges,
     nodes,
-    worldState,
+    // 2024-12-11: Removed worldState
     onSelectNode,
     onAddChatMessage,
     onClearChat,
@@ -320,6 +323,37 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
    * preventing primary key conflicts in the database.
    */
   const orchestratorNodeId = getOrchestratorNodeId(storyId)
+  
+  /**
+   * Compute the active section card from the active context.
+   * This provides the Librarian context to the orchestrator chat.
+   */
+  const activeSectionCard = useMemo(() => {
+    if (!activeContext || activeContext.type !== 'section') {
+      return null
+    }
+    
+    // Find the structure item for the active section
+    const item = structureItems.find(i => i.id === activeContext.id)
+    if (!item) {
+      return null
+    }
+    
+    // Construct a section card object from the structure item
+    // This matches the SectionCardDisplay type expected by the backend
+    return {
+      sectionId: item.id,
+      sectionName: item.name || item.title || 'Section',
+      summary: item.description || null,  // From structure generation
+      wordCount: item.wordCount || 0,
+      mood: null,  // Will be populated by Librarian after analysis
+      characters: [],  // Will be populated by Librarian
+      keyMoments: [],  // Will be populated by Librarian
+      dependencies: [],  // Will be populated by Librarian
+      issues: [],  // Will be populated by Librarian
+      analyzed: false,  // Not yet analyzed
+    }
+  }, [activeContext, structureItems])
   
   // ─────────────────────────────────────────────────────────────────────────
   // Story Node Creation
@@ -536,7 +570,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
         onAddEdge={onAddEdge}
         edges={edges}
         nodes={nodes}
-        worldState={worldState}
+        // 2024-12-11: Removed worldState
         onSelectNode={onSelectNode}
         onAddChatMessage={onAddChatMessage}
         onClearChat={onClearChat}
@@ -550,6 +584,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
         structureItems={structureItems}
         contentMap={contentMap}
         currentStoryStructureNodeId={currentStoryStructureNodeId}
+        activeSectionCard={activeSectionCard}
         // New props for orchestrator integration
         storyId={storyId}
         orchestratorNodeId={orchestratorNodeId}

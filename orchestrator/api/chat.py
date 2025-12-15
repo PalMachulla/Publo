@@ -44,6 +44,9 @@ class ChatRequest(BaseModel):
     canvas_nodes: Optional[List[Dict[str, Any]]] = None  # All nodes on canvas
     structure_items: Optional[List[Dict[str, Any]]] = None  # Current structure's sections
     
+    # Librarian context - active section card being viewed
+    active_section_card: Optional[Dict[str, Any]] = None  # Section card currently in view
+    
     # Conversation
     conversation_history: Optional[List[Dict[str, str]]] = None
     
@@ -126,12 +129,55 @@ async def chat(request: ChatRequest):
             # Add current structure items if available
             if request.structure_items and len(request.structure_items) > 0:
                 sections_msg = "## Current Document Sections\n\n"
-                sections_msg += "⚠️ **CRITICAL:** When calling ANY tool (`write_section`, `get_story_context`, `navigate_to`), you MUST use the EXACT section ID as shown below. Do NOT make up IDs like 'chapter_4' - use the exact IDs like 'ch-4'.\n\n"
-                sections_msg += "| Section Name | EXACT Section ID |\n|--------------|------------------|\n"
-                for item in request.structure_items[:20]:  # Limit to first 20
-                    sections_msg += f"| {item.get('name', 'Section')} | `{item.get('id')}` |\n"
-                sections_msg += "\n**Example:** To write 'Shadows and Alibis', call `write_section(section_id='ch-4', ...)`\n"
+                sections_msg += "⚠️ **CRITICAL:** When calling `write_section`, you MUST provide BOTH:\n"
+                sections_msg += "1. The EXACT `section_id` from the table below\n"
+                sections_msg += "2. The matching `section_name`\n\n"
+                sections_msg += "| # | Section Name | section_id | section_name |\n|---|--------------|------------|---------------|\n"
+                for idx, item in enumerate(request.structure_items[:20], 1):  # Limit to first 20
+                    # FIX: Read from 'title' OR 'name' (frontend uses 'title')
+                    name = item.get('title') or item.get('name') or 'Section'
+                    sid = item.get('id', '')
+                    sections_msg += f"| {idx} | {name} | `{sid}` | `{name}` |\n"
+                sections_msg += "\n**Example:** To write 'Introduction', call:\n"
+                sections_msg += "`write_section(section_id='sec-2', section_name='Introduction', guidance='...')`\n"
                 messages.append({"role": "system", "content": sections_msg})
+            
+            # Add active section card context if user is viewing a specific card
+            if request.active_section_card:
+                card = request.active_section_card
+                card_msg = "## 🃏 Active Section Card (User is viewing this)\n\n"
+                card_msg += f"**Section:** {card.get('sectionName', card.get('section_name', 'Unknown'))}\n"
+                
+                if card.get('summary'):
+                    card_msg += f"**Summary:** {card.get('summary')}\n"
+                else:
+                    card_msg += "**Summary:** Not yet written\n"
+                
+                if card.get('characters') and len(card.get('characters', [])) > 0:
+                    char_names = [c.get('name', 'Unknown') for c in card.get('characters', [])]
+                    card_msg += f"**Characters:** {', '.join(char_names)}\n"
+                
+                if card.get('keyMoments') or card.get('key_moments'):
+                    moments = card.get('keyMoments') or card.get('key_moments', [])
+                    if moments:
+                        card_msg += f"**Key Moments:** {'; '.join(moments[:3])}\n"
+                
+                if card.get('mood'):
+                    card_msg += f"**Mood:** {card.get('mood')}\n"
+                
+                if card.get('dependencies') and len(card.get('dependencies', [])) > 0:
+                    deps = card.get('dependencies', [])
+                    dep_strs = [d.get('description', str(d)) for d in deps[:3]]
+                    card_msg += f"**Dependencies:** {'; '.join(dep_strs)}\n"
+                
+                if card.get('issues') and len(card.get('issues', [])) > 0:
+                    issues = card.get('issues', [])
+                    card_msg += f"**⚠️ Coherency Issues:** {len(issues)} issue(s) detected\n"
+                    for issue in issues[:2]:
+                        card_msg += f"  - {issue.get('type', 'Issue')}: {issue.get('description', '')}\n"
+                
+                card_msg += "\n**When the user talks about 'this section' or 'this card', they mean the section above.**\n"
+                messages.append({"role": "system", "content": card_msg})
             
             if request.conversation_history:
                 messages.extend(request.conversation_history)
@@ -193,14 +239,23 @@ async def chat(request: ChatRequest):
                     elif tool_name == "write_section":
                         # Tell frontend to open document and scroll to section
                         section_id = tool_input.get("section_id", "")
+                        llm_section_name = tool_input.get("section_name", "")
                         
-                        # Find section name from structure_items
-                        section_name = "Section"
+                        # Find actual section name from structure_items and validate
+                        # FIX: Read from 'title' OR 'name' (frontend uses 'title')
+                        actual_section_name = "Section"
                         if request.structure_items:
                             for item in request.structure_items:
                                 if item.get("id") == section_id:
-                                    section_name = item.get("name", "Section")
+                                    actual_section_name = item.get("title") or item.get("name") or "Section"
                                     break
+                        
+                        # Log for debugging ID/name mismatches
+                        if llm_section_name and llm_section_name != actual_section_name:
+                            print(f"⚠️ [write_section] MISMATCH: LLM said '{llm_section_name}' but ID '{section_id}' maps to '{actual_section_name}'")
+                        
+                        # Use actual name from structure (authoritative)
+                        section_name = actual_section_name
                         
                         # 1. Open the document panel
                         yield format_sse(SSEEventType.OPEN_DOCUMENT, {

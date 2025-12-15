@@ -42,42 +42,51 @@ async def get_story_context(
         - section_card: Current section's intelligence card
         - coherency_issues: Any flagged issues for this section
     """
-    from librarian import get_librarian
-    from config import get_supabase_client
+    try:
+        from librarian import get_librarian
+        from config import get_supabase_client
+    except Exception as e:
+        return {"error": f"Import error: {str(e)}"}
     
     # Get librarian instance
-    supabase = get_supabase_client()
-    librarian = get_librarian(node_id, supabase)
+    try:
+        supabase = get_supabase_client()
+        librarian = get_librarian(node_id, supabase)
+    except Exception as e:
+        return {"error": f"Failed to create librarian: {str(e)}"}
     
     context = {}
     
-    if include_characters:
-        context["characters"] = await librarian.get_characters(
-            relevant_to_section=section_id
-        )
-    
-    if include_places:
-        context["places"] = await librarian.get_places(
-            relevant_to_section=section_id
-        )
-    
-    if include_events:
-        context["events"] = await librarian.get_events(
-            up_to_section=section_id
-        )
-    
-    if include_nearby_summaries and section_id:
-        context["nearby_sections"] = await librarian.get_nearby_summaries(
-            section_id=section_id,
-            window=2
-        )
-    
-    if section_id:
-        card = await librarian.get_section_card(section_id)
-        if card:
-            from dataclasses import asdict
-            context["section_card"] = asdict(card)
-        context["coherency_issues"] = await librarian.get_coherency_issues(section_id)
+    try:
+        if include_characters:
+            context["characters"] = await librarian.get_characters(
+                relevant_to_section=section_id
+            )
+        
+        if include_places:
+            context["places"] = await librarian.get_places(
+                relevant_to_section=section_id
+            )
+        
+        if include_events:
+            context["events"] = await librarian.get_events(
+                up_to_section=section_id
+            )
+        
+        if include_nearby_summaries and section_id:
+            context["nearby_sections"] = await librarian.get_nearby_summaries(
+                section_id=section_id,
+                window=2
+            )
+        
+        if section_id:
+            card = await librarian.get_section_card(section_id)
+            if card:
+                from dataclasses import asdict
+                context["section_card"] = asdict(card)
+            context["coherency_issues"] = await librarian.get_coherency_issues(section_id)
+    except Exception as e:
+        return {"error": f"Failed to get context: {str(e)}"}
     
     return context
 

@@ -23,9 +23,10 @@ export function getOrchestratorNodeId(storyId: string): string {
 
 /**
  * Check if a node ID is an orchestrator node
+ * 2024-12-11: Updated to handle both underscore and hyphen separators
  */
 export function isOrchestratorNode(nodeId: string): boolean {
-  return nodeId === 'context' || nodeId.startsWith('context_')
+  return nodeId === 'context' || nodeId.startsWith('context_') || nodeId.startsWith('context-')
 }
 
 /**

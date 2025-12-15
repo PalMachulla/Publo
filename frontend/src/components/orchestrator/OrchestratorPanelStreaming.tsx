@@ -497,9 +497,9 @@ export function OrchestratorPanelStreaming({
   }
 
   return (
-    <div className={`flex flex-col h-full bg-white dark:bg-zinc-950 ${className}`}>
+    <div className={`flex flex-col h-full  dark:bg-gray-900 ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex items-center justify-between px-4 py-1.5 border-b-2 border-zinc-200 dark:border-gray-700">
         <div className="flex items-center gap-3">
         
           
@@ -537,7 +537,7 @@ export function OrchestratorPanelStreaming({
       </div>
 
       {/* Messages Area */}
-      <div className="bg-gray-100 dark:bg-gray-800 flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="bg-white bg-opacity-50 dark:bg-gray-800 flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 ? (
           <EmptyState />
         ) : (
@@ -583,7 +583,7 @@ export function OrchestratorPanelStreaming({
       {/* Input Area */}
       <form 
         onSubmit={handleSubmit}
-        className="pb-8 bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 flex flex-col justify-end"
+        className="pb-8 bg-zinc-50 dark:bg-gray-800 border-zinc-200 dark:border-gray-700 flex flex-col justify-end"
       >
         {/* Generating Indicator - tab above textarea */}
         <div 
@@ -755,7 +755,7 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
     case 'user':
       return (
         <div className="flex justify-start">
-          <div className={`${userBubbleClasses} bg-white text-zinc-700`}>
+          <div className={`${userBubbleClasses} bg-white text-zinc-700 text-sm`}>
             {message.content}
           </div>
         </div>
@@ -828,10 +828,17 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
       )
 
     case 'thinking':
+      const isToolComplete = message.metadata?.isComplete === true;
       return (
-        <div className="w-full animate-fadeIn text-gray-500 dark:text-gray-400 text-sm italic flex items-start gap-2">
+        <div className={`w-full animate-fadeIn text-sm flex items-start gap-2 ${
+          isToolComplete 
+            ? 'text-green-600 dark:text-green-400' 
+            : 'text-gray-500 dark:text-gray-400 italic'
+        }`}>
           <span className="flex-shrink-0">🤖</span>
-          <span>{message.content}</span>
+          <span className={isToolComplete ? '' : 'animate-shimmer bg-gradient-to-r from-gray-500 via-gray-300 to-gray-500 dark:from-gray-400 dark:via-gray-200 dark:to-gray-400 bg-[length:200%_100%] bg-clip-text text-transparent'}>
+            {message.content}
+          </span>
         </div>
       )
 

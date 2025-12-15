@@ -1,63 +1,39 @@
 'use client'
 
+/**
+ * OrchestratorNode - Visual node representing the AI orchestrator on the canvas
+ * 
+ * @updated 2024-12-11 - Removed WorldState dependency, now uses node data props only
+ * WorldState was part of legacy frontend orchestration; deep agent uses SSE streaming
+ */
+
 import { memo, useMemo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { CreateStoryNodeData } from '@/types/nodes'
-import { useCanvas } from '@/contexts/CanvasContext'
-import { useWorldState } from '@/hooks/useWorldState'
 
 function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
-  const { isOrchestrating = false, orchestratorProgress = 0, loadingText = '' } = data
+  const { isOrchestrating = false, loadingText = '' } = data
   
-  // ✅ Connect to worldState via CanvasContext
-  const { worldState } = useCanvas()
-  const worldStateData = useWorldState(worldState || undefined)
-  
-  // Extract latest message type for visual representation
-  const latestMessage = useMemo(() => {
-    const messages = worldStateData?.conversation.messages || []
-    return messages[messages.length - 1] || null
-  }, [worldStateData])
-  
-  // Determine visual state from latest message type
+  // 2024-12-11: Simplified - removed WorldState, use node data directly
+  // Status can be updated via setNodes() when streaming state changes
   const visualState = useMemo(() => {
-    // If no worldState message, fallback to data prop
-    if (!latestMessage) {
-      const isInferring = loadingText.toLowerCase().includes('inference')
-      return {
-        displayText: loadingText || 'ORCHESTRATOR',
-        isActive: isOrchestrating,
-        color: isInferring ? '#ec4899' : '#fbbf24',
-        shouldAnimate: isOrchestrating
-      }
-    }
+    const isInferring = loadingText.toLowerCase().includes('inference')
+    const isThinking = loadingText.toLowerCase().includes('thinking')
+    const isGenerating = loadingText.toLowerCase().includes('generat')
     
-    const messageType = latestMessage.type
-    
-    // Map message types to display text and colors
-    const typeMap: Record<string, { text: string; color: string }> = {
-      'thinking': { text: 'THINKING', color: '#ec4899' }, // pink
-      'decision': { text: 'DECISION', color: '#3b82f6' }, // blue
-      'task': { text: 'TASK', color: '#10b981' }, // green
-      'progress': { text: 'PROGRESS', color: '#fbbf24' }, // yellow
-      'error': { text: 'ERROR', color: '#ef4444' }, // red
-      'result': { text: '\u00A0', color: '#9ca3af' }, // non-breaking space, gray
-      'user': { text: 'ORCHESTRATOR', color: '#fbbf24' },
-      'model': { text: 'ORCHESTRATOR', color: '#fbbf24' }
-    }
-    
-    const typeInfo = typeMap[messageType] || { text: 'ORCHESTRATOR', color: '#fbbf24' }
-    const isResult = messageType === 'result'
+    // Determine color based on activity type
+    let color = '#fbbf24' // default yellow
+    if (isInferring || isThinking) color = '#ec4899' // pink for thinking
+    if (isGenerating) color = '#10b981' // green for generating
     
     return {
-      displayText: typeInfo.text,
-      isActive: !isResult, // No animation for result
-      color: typeInfo.color,
-      shouldAnimate: !isResult // Only animate if not result
+      displayText: loadingText || 'ORCHESTRATOR',
+      isActive: isOrchestrating,
+      color,
+      shouldAnimate: isOrchestrating
     }
-  }, [latestMessage, loadingText, isOrchestrating])
+  }, [loadingText, isOrchestrating])
   
-  // Use visual state from worldState if available, fallback to data prop
   const displayText = visualState.displayText
   const shouldAnimate = visualState.shouldAnimate
   const spinnerColor = visualState.color

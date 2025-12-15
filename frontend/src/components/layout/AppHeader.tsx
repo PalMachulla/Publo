@@ -40,29 +40,29 @@ export default function AppHeader({ title, editable, centerActions }: AppHeaderP
         const { createClient } = await import('@/lib/supabase/client')
         const supabase = createClient()
         
-        // Fetch profile data including avatar and role
+        // Fetch profile data for role check only
+        // NOTE: avatar_url column may not exist in user_profiles - use metadata instead
         const { data, error } = await supabase
           .from('user_profiles')
-          .select('avatar_url, role')
+          .select('role')  // Only select 'role' - avatar comes from user metadata
           .eq('id', user.id)
           .maybeSingle() // Use maybeSingle() instead of single() to avoid error if no row
         
         if (error) {
-          console.error('[AppHeader] Error fetching profile:', error)
+          // Log as warning, not error - column might not exist yet
+          console.warn('[AppHeader] Profile fetch warning:', error.message)
         }
         
+        // Avatar always comes from user metadata (Supabase auth stores this)
+        const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture
+        setUserAvatar(avatar)
+        
         if (data) {
-          // Set avatar from profile or fallback to metadata
-          const avatar = data.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture
-          setUserAvatar(avatar)
-          
           // Check if user is admin
           setIsAdmin(data.role === 'admin' || isForceAdmin)
         } else {
-          // No profile row yet - use metadata fallback
-          console.log('[AppHeader] No profile found, using metadata')
-          const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture
-          setUserAvatar(avatar)
+          // No profile row yet - just use force admin check
+          console.log('[AppHeader] No profile found, using default role')
           setIsAdmin(isForceAdmin)
         }
       } catch (err) {

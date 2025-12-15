@@ -21,7 +21,17 @@
 
 import { Node, Edge } from 'reactflow'
 import { TemporalMemory, EventDelta } from '../context/temporalMemory'
-import type { WorldStateManager } from './worldState'
+
+// 2024-12-11: Removed WorldState import - was legacy frontend orchestration
+// Deep agent architecture uses SSE streaming, not WorldState
+// This interface is kept for backward compatibility with deprecated methods
+interface DeprecatedWorldState {
+  getState: () => {
+    canvas: { nodes: Map<string, unknown>; edges: Map<string, unknown>; selectedNodeId: string | null }
+    activeDocument: { nodeId: string | null; format: string | null; structure?: { items?: unknown[] }; content: Map<string, string> }
+    meta: { lastUpdated: number }
+  }
+}
 
 // ============================================================
 // TYPES
@@ -147,7 +157,8 @@ export class Blackboard {
   private state: BlackboardState
   private subscribers: Map<string, Set<(state: BlackboardState) => void>>
   private messageCallback?: (message: ConversationMessage) => void // Real-time UI callback
-  private worldState?: WorldStateManager // Optional reference to WorldState for reading canvas/document state
+  // 2024-12-11: Deprecated worldState - was legacy frontend orchestration
+  private worldState?: DeprecatedWorldState
   
   constructor(userId: string, messageCallback?: (message: ConversationMessage) => void) {
     this.messageCallback = messageCallback
@@ -177,10 +188,11 @@ export class Blackboard {
   
   /**
    * Set WorldState reference (enables reading canvas/document state for temporal logging)
+   * @deprecated 2024-12-11 - WorldState removed, deep agent uses SSE streaming
    */
-  setWorldState(worldState: WorldStateManager): void {
+  setWorldState(worldState: DeprecatedWorldState): void {
     this.worldState = worldState
-    console.log('🔗 [Blackboard] Connected to WorldState')
+    console.log('🔗 [Blackboard] Connected to WorldState (deprecated)')
   }
   
   // ============================================================

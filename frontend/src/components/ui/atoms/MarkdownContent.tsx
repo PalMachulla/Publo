@@ -37,19 +37,19 @@ export function MarkdownContent({
     
     // Headings
     h1: ({ children: h1Children, ...props }: React.HTMLAttributes<HTMLHeadingElement> & { children?: React.ReactNode }) => (
-      <h1 className="text-lg font-bold mb-2 mt-3 first:mt-0" {...props}>{h1Children}</h1>
+      <h1 className="text-2xl uppercase mb-2 mt-3 first:mt-0 " {...props}>{h1Children}</h1>
     ),
     h2: ({ children: h2Children, ...props }: React.HTMLAttributes<HTMLHeadingElement> & { children?: React.ReactNode }) => (
-      <h2 className="text-base font-bold mb-2 mt-3 first:mt-0" {...props}>{h2Children}</h2>
+      <h2 className=" text-lg font-bold mb-3 mt-4 first:mt-0 " {...props}>{h2Children}</h2>
     ),
     h3: ({ children: h3Children, ...props }: React.HTMLAttributes<HTMLHeadingElement> & { children?: React.ReactNode }) => (
-      <h3 className="text-sm font-bold mb-1 mt-2 first:mt-0" {...props}>{h3Children}</h3>
+      <h3 className="text-sm font-bold py-2 px-4  rounded-md mb-2 mt-2 first:mt-0 bg-zinc-200" {...props}>{h3Children}</h3>
     ),
     
     // Lists
     ul: ({ children: ulChildren, ...props }: React.HTMLAttributes<HTMLUListElement> & { children?: React.ReactNode }) => (
       <ul 
-        className={`list-disc list-inside space-y-1 ${compact ? 'mb-2' : 'mb-3'} last:mb-0`} 
+        className={`list-disc pl-4 space-y-1 ${compact ? 'mb-2' : 'mb-3'} last:mb-0`} 
         {...props}
       >
         {ulChildren}
@@ -57,14 +57,14 @@ export function MarkdownContent({
     ),
     ol: ({ children: olChildren, ...props }: React.HTMLAttributes<HTMLOListElement> & { children?: React.ReactNode }) => (
       <ol 
-        className={`list-decimal list-inside space-y-1 ${compact ? 'mb-2' : 'mb-3'} last:mb-0`} 
+        className={`list-decimal pl-4 space-y-1 ${compact ? 'mb-2' : 'mb-3'} last:mb-0`} 
         {...props}
       >
         {olChildren}
       </ol>
     ),
     li: ({ children: liChildren, ...props }: React.HTMLAttributes<HTMLLIElement> & { children?: React.ReactNode }) => (
-      <li className="leading-relaxed" {...props}>{liChildren}</li>
+      <li className="leading-relaxed text-sm" {...props}>{liChildren}</li>
     ),
     
     // Inline elements

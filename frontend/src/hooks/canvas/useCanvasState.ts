@@ -22,23 +22,9 @@
 import { useState, useCallback, useMemo, useRef } from 'react'
 import { Node, Edge, useNodesState, useEdgesState } from 'reactflow'
 
-// Initial nodes for fresh canvas
-const initialNodes: Node[] = [
-  {
-    id: 'context',
-    type: 'orchestratorNode',
-    position: { x: 250, y: 500 },
-    data: {
-      label: 'Orchestrator',
-      comments: [],
-      nodeType: 'create-story',
-      onCreateStory: (format: any) => {
-        // This will be replaced by the ref during render
-        console.warn('onCreateStory called before ref was set')
-      }
-    },
-  },
-]
+// 2024-12-11: Empty initial state - useCanvasData handles adding orchestrator node
+// This prevents duplicate orchestrator nodes when loading a story
+const initialNodes: Node[] = []
 
 // No edges on fresh canvas
 const initialEdges: Edge[] = []
