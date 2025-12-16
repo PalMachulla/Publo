@@ -189,6 +189,14 @@ def get_model_for_task(task_type: str = "general"):
             api_key=settings.ANTHROPIC_API_KEY,
         )
     
+    elif task_type == "librarian":
+        # Use fast model for Librarian tasks (summaries, analysis)
+        return ChatOpenAI(
+            model=settings.FAST_MODEL_NAME,
+            temperature=0.5,  # Balanced for structured + creative output
+            api_key=settings.OPENAI_API_KEY,
+        )
+    
     else:
         # Default: main model with standard temperature
         return ChatAnthropic(

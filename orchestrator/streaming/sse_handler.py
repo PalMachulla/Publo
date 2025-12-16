@@ -26,6 +26,7 @@ class SSEEventType(str, Enum):
     CONTENT_CHUNK = "CONTENT_CHUNK"  # Streaming content from write_section
     CONTENT_COMPLETE = "CONTENT_COMPLETE"  # Section writing finished
     STRUCTURE_CREATED = "STRUCTURE_CREATED"  # Structure generation complete
+    STRUCTURE_UPDATED = "STRUCTURE_UPDATED"  # Structure modified (sections added/removed/reordered)
     
     # Navigation/UI
     NAVIGATE = "NAVIGATE"  # Navigate frontend to section

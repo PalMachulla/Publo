@@ -36,6 +36,7 @@ export type OrchestratorEventType =
   | 'CLARIFICATION'
   | 'CRITIC'
   | 'STRUCTURE_CREATED'
+  | 'STRUCTURE_UPDATED'
   | 'SECTION_WRITING'
   | 'SECTION_COMPLETE'
   | 'PROGRESS'
@@ -144,6 +145,30 @@ export interface StructureCreatedEvent {
   }>;
   format?: string;
   node_id?: string;  // Backend-generated node ID for content storage
+}
+
+// Emitted when an existing structure is modified
+export interface StructureUpdatedEvent {
+  title: string;
+  section_count: number;
+  sections: Array<{
+    id: string;
+    title: string;
+    type?: string;
+  }>;
+  format?: string;
+  node_id: string;
+  changes_made: {
+    added?: string[];
+    removed?: string[];
+    modified?: string[];
+  };
+  sections_needing_revision: Array<{
+    id: string;
+    name: string;
+    reason: string;
+  }>;
+  storyline_impact?: string;
 }
 
 // Emitted when starting to write a section
@@ -309,6 +334,7 @@ export type OrchestratorEvent =
   | { type: 'CLARIFICATION'; data: ClarificationEvent }
   | { type: 'CRITIC'; data: CriticEvent }
   | { type: 'STRUCTURE_CREATED'; data: StructureCreatedEvent }
+  | { type: 'STRUCTURE_UPDATED'; data: StructureUpdatedEvent }
   | { type: 'SECTION_WRITING'; data: SectionWritingEvent }
   | { type: 'SECTION_COMPLETE'; data: SectionCompleteEvent }
   | { type: 'PROGRESS'; data: ProgressEvent }

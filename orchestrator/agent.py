@@ -29,6 +29,7 @@ from tools import (
     write_section,
     edit_section,
     create_structure,
+    update_structure,
     navigate_to,
     present_options,
     write_todos,
@@ -180,11 +181,49 @@ class PubloAgent:
                         if "node_id" in tool_args or hasattr(tool, 'args_schema'):
                             tool_args["node_id"] = node_id_ref.get("value", self.story_id)
                         
-                        # Execute
-                        result = await tool.ainvoke(tool_args)
-                        # Keep dict for events, convert to string for messages
-                        result_for_event = result if isinstance(result, dict) else str(result)
-                        result_str = json.dumps(result) if isinstance(result, dict) else str(result)
+                        # Special handling for write_section: use streaming version
+                        print(f"🔧 [Agent] Tool call: {tool_name}")
+                        if tool_name == "write_section":
+                            print(f"📝 [Agent] Using streaming version for write_section")
+                            from tools import write_section_streaming
+                            
+                            result = None
+                            chunk_count = 0
+                            async for event_type, event_data in write_section_streaming(
+                                section_id=tool_args.get("section_id", ""),
+                                section_name=tool_args.get("section_name", ""),
+                                guidance=tool_args.get("guidance", ""),
+                                style_notes=tool_args.get("style_notes"),
+                                target_length=tool_args.get("target_length", "medium"),
+                                node_id=tool_args.get("node_id", ""),
+                            ):
+                                if event_type == "content_chunk":
+                                    chunk_count += 1
+                                    print(f"📝 [Agent] Yielding chunk #{chunk_count}: {len(event_data.get('chunk', ''))} chars")
+                                    # Yield chunk event for frontend
+                                    yield {
+                                        "event": "on_content_chunk",
+                                        "data": event_data
+                                    }
+                                elif event_type == "content_complete":
+                                    print(f"✅ [Agent] Content complete: {chunk_count} chunks, {event_data.get('word_count')} words")
+                                    # Store result for tool message
+                                    result = {
+                                        "section_id": event_data.get("section_id"),
+                                        "word_count": event_data.get("word_count"),
+                                        "status": "complete",
+                                    }
+                                elif event_type == "error":
+                                    result = {"error": event_data.get("error"), "status": "error"}
+                            
+                            result_for_event = result or {"status": "complete"}
+                            result_str = json.dumps(result_for_event)
+                        else:
+                            # Standard tool execution
+                            result = await tool.ainvoke(tool_args)
+                            # Keep dict for events, convert to string for messages
+                            result_for_event = result if isinstance(result, dict) else str(result)
+                            result_str = json.dumps(result) if isinstance(result, dict) else str(result)
                     except Exception as e:
                         result_for_event = {"error": str(e)}
                         result_str = f"Error: {str(e)}"
@@ -259,6 +298,7 @@ def create_publo_agent(
         write_section,
         edit_section,
         create_structure,
+        update_structure,
         navigate_to,
         present_options,
         # Deep Agent planning
@@ -330,6 +370,7 @@ async def create_publo_agent_with_mcp(
         write_section,
         edit_section,
         create_structure,
+        update_structure,
         navigate_to,
         present_options,
         # Deep Agent planning
@@ -427,6 +468,13 @@ async def run_agent_streaming(
                     "tool": event.get("name", ""),
                     "output": event["data"].get("output"),
                 }
+            }
+        
+        elif kind == "on_content_chunk":
+            # Streaming content chunk from write_section
+            yield {
+                "type": "content_chunk",
+                "data": event.get("data", {})
             }
         
         elif kind == "on_chain_end":

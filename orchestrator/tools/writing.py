@@ -2,9 +2,10 @@
 Writing Tools
 
 Tools for content generation (write_section, edit_section).
+Supports streaming content chunks for real-time document updates.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, AsyncIterator, Tuple
 from langchain_core.tools import tool
 import json
 import time
@@ -108,6 +109,99 @@ async def write_section(
         "word_count": len(full_content.split()),
         "status": "complete",
     }
+
+
+async def write_section_streaming(
+    section_id: str,
+    section_name: str,
+    guidance: str,
+    style_notes: Optional[str] = None,
+    target_length: str = "medium",
+    node_id: str = "",
+) -> AsyncIterator[Tuple[str, Dict[str, Any]]]:
+    """
+    Streaming version of write_section that yields chunks as they're generated.
+    
+    This is NOT a @tool - it's called internally by the agent when streaming is needed.
+    
+    Yields:
+        Tuples of (event_type, data):
+        - ("content_chunk", {"section_id": str, "chunk": str})
+        - ("content_complete", {"section_id": str, "word_count": int, "content": str})
+        - ("error", {"error": str})
+    """
+    print(f"📝 [write_section_streaming] Called with section_id='{section_id}', section_name='{section_name}'")
+    
+    try:
+        from librarian import get_librarian
+        from config import get_supabase_client, get_model_for_task
+    except Exception as e:
+        yield ("error", {"error": f"Import error: {str(e)}"})
+        return
+    
+    try:
+        supabase = get_supabase_client()
+        librarian = get_librarian(node_id, supabase)
+    except Exception as e:
+        yield ("error", {"error": f"Failed to create librarian: {str(e)}"})
+        return
+    
+    # Get section metadata
+    try:
+        section_info = await _get_section_info(section_id, supabase)
+        actual_section_name = section_info.get("name", section_name)
+    except Exception as e:
+        actual_section_name = section_name
+    
+    # Get context from Librarian
+    try:
+        context = await librarian.get_writer_context(section_id)
+    except Exception as e:
+        context = {}
+    
+    # Build generation prompt
+    prompt = _build_writing_prompt(
+        section_name=actual_section_name,
+        guidance=guidance,
+        context=context,
+        style_notes=style_notes,
+        target_length=target_length,
+    )
+    
+    # Generate with streaming - yield chunks as they come
+    try:
+        model = get_model_for_task("writing")
+        
+        content_chunks = []
+        async for chunk in model.astream(prompt):
+            chunk_text = chunk.content if hasattr(chunk, 'content') else str(chunk)
+            if chunk_text:  # Only yield non-empty chunks
+                content_chunks.append(chunk_text)
+                yield ("content_chunk", {
+                    "section_id": section_id,
+                    "chunk": chunk_text
+                })
+        
+        full_content = "".join(content_chunks)
+    except Exception as e:
+        yield ("error", {"error": f"Content generation failed: {str(e)}"})
+        return
+    
+    # Update Librarian with new content (non-blocking)
+    try:
+        await librarian.analyze_and_update(section_id, full_content, actual_section_name)
+    except Exception as e:
+        pass  # Non-critical
+    
+    # Store content in database
+    await _store_section_content(section_id, full_content, supabase, node_id)
+    
+    # Yield completion event
+    yield ("content_complete", {
+        "section_id": section_id,
+        "word_count": len(full_content.split()),
+        "content": full_content,
+    })
 
 
 @tool
@@ -384,6 +478,10 @@ Write the section now. Focus on engaging prose that advances the story.
 Use proper formatting (paragraphs, dialogue formatting, etc.).
 Include sensory details and emotional depth.
 Maintain pacing appropriate to the scene.
+
+IMPORTANT: Do NOT include the section title/heading at the start of your response.
+The heading "{section_name}" is already displayed in the document structure.
+Start directly with the content (narrative prose, dialogue, etc.).
 """
 
 

@@ -140,24 +140,90 @@ export function useSectionCards(options: UseSectionCardsOptions): UseSectionCard
   }, [nodeId])
   
   // ========================================================================
-  // AUTO-REFRESH
+  // REALTIME SUBSCRIPTION
   // ========================================================================
   
+  // Use ref to avoid infinite loops with fetchCards in subscription callback
+  const fetchCardsRef = useRef(fetchCards)
+  fetchCardsRef.current = fetchCards
+  
+  // Track if we're currently fetching to prevent duplicate calls
+  const isFetchingRef = useRef(false)
+  
+  const debouncedFetch = useCallback(() => {
+    if (isFetchingRef.current) return
+    isFetchingRef.current = true
+    
+    // Debounce multiple rapid updates
+    setTimeout(() => {
+      fetchCardsRef.current().finally(() => {
+        isFetchingRef.current = false
+      })
+    }, 200)
+  }, [])
+  
+  // Initial fetch - only when nodeId changes
   useEffect(() => {
-    // Initial fetch
     fetchCards()
-    
-    // Set up auto-refresh if enabled
+  }, [nodeId]) // eslint-disable-line react-hooks/exhaustive-deps
+  
+  // Auto-refresh interval
+  useEffect(() => {
     if (autoRefresh && refreshInterval > 0) {
-      refreshTimeoutRef.current = setInterval(fetchCards, refreshInterval)
-    }
-    
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearInterval(refreshTimeoutRef.current)
+      refreshTimeoutRef.current = setInterval(debouncedFetch, refreshInterval)
+      return () => {
+        if (refreshTimeoutRef.current) {
+          clearInterval(refreshTimeoutRef.current)
+        }
       }
     }
-  }, [fetchCards, autoRefresh, refreshInterval])
+  }, [autoRefresh, refreshInterval, debouncedFetch])
+  
+  // Real-time subscription - separate from fetch to avoid loops
+  useEffect(() => {
+    if (!nodeId) return
+    
+    const supabase = supabaseRef.current
+    
+    const cardsChannel = supabase
+      .channel(`section_cards:${nodeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'section_cards',
+          filter: `node_id=eq.${nodeId}`,
+        },
+        (payload) => {
+          console.log('📚 [useSectionCards] Real-time card update:', payload.eventType)
+          debouncedFetch()
+        }
+      )
+      .subscribe()
+    
+    const charsChannel = supabase
+      .channel(`story_characters:${nodeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'story_characters',
+          filter: `node_id=eq.${nodeId}`,
+        },
+        (payload) => {
+          console.log('📚 [useSectionCards] Real-time character update:', payload.eventType)
+          debouncedFetch()
+        }
+      )
+      .subscribe()
+    
+    return () => {
+      supabase.removeChannel(cardsChannel)
+      supabase.removeChannel(charsChannel)
+    }
+  }, [nodeId, debouncedFetch])
   
   // ========================================================================
   // DERIVED DATA

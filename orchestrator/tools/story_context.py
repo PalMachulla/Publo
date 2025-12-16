@@ -103,6 +103,55 @@ def format_context_for_prompt(context: Dict[str, Any]) -> str:
     """
     sections = []
     
+    # =========================================================================
+    # SECTION CARD - THE LIBRARIAN'S VISION FOR THIS SECTION
+    # =========================================================================
+    # This is the most important context! The Librarian's plan for what should
+    # happen in this section, the mood, any hooks to plant, and constraints.
+    section_card = context.get("section_card")
+    if section_card:
+        card_lines = []
+        
+        # Section name and summary (the Librarian's vision)
+        section_name = section_card.get("section_name", "This section")
+        summary = section_card.get("summary")
+        if summary:
+            card_lines.append(f"**What should happen:** {summary}")
+        
+        # Mood/tone guidance
+        mood = section_card.get("mood")
+        if mood:
+            card_lines.append(f"**Mood/Tone:** {mood}")
+        
+        # Hooks to plant (foreshadowing for later sections)
+        hooks = section_card.get("hooks", [])
+        if hooks:
+            card_lines.append(f"**Foreshadowing to plant:** {', '.join(hooks)}")
+        
+        # Constraints (things to avoid or be careful about)
+        constraints = section_card.get("constraints", [])
+        if constraints:
+            card_lines.append(f"**Constraints:** {', '.join(constraints)}")
+        
+        # Must include/exclude
+        must_include = section_card.get("must_include", [])
+        if must_include:
+            card_lines.append(f"**Must include:** {', '.join(must_include)}")
+        
+        must_not_include = section_card.get("must_not_include", [])
+        if must_not_include:
+            card_lines.append(f"**Avoid/Don't include:** {', '.join(must_not_include)}")
+        
+        # Dependencies (what happened before that matters)
+        dependencies = section_card.get("dependencies", [])
+        if dependencies:
+            dep_lines = [d.get("description", d.get("section_name", "")) for d in dependencies if isinstance(d, dict)]
+            if dep_lines:
+                card_lines.append(f"**Follows from:** {'; '.join(dep_lines)}")
+        
+        if card_lines:
+            sections.append(f"### 📋 Librarian's Plan for \"{section_name}\"\n" + "\n".join(card_lines))
+    
     # Characters
     characters = context.get("characters", [])
     if characters:

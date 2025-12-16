@@ -9,6 +9,7 @@ import type {
   CreationProgress,
   initialCreationProgress,
   StructureCreatedEvent,
+  StructureUpdatedEvent,
   SectionWritingEvent,
   SectionCompleteEvent,
   MessageEvent,
@@ -60,12 +61,21 @@ export interface ChatMessage {
   metadata?: Record<string, unknown>;
 }
 
+// Streaming content for a section (accumulated chunks)
+export interface StreamingContent {
+  sectionId: string;
+  content: string;
+  isComplete: boolean;
+}
+
 interface UseOrchestratorStreamOptions {
   onStructureComplete?: (structure: StructureCreatedEvent) => void;
+  onStructureUpdated?: (structure: StructureUpdatedEvent) => void;
   onSectionComplete?: (sectionId: string, content: string) => void;
   onClarificationNeeded?: (clarification: ClarificationEvent) => void;
   onOpenDocument?: (nodeId: string, nodeName: string) => void;  // Navigation: open document
   onSelectSection?: (sectionId: string, sectionName: string) => void;  // Navigation: select section
+  onContentChunk?: (sectionId: string, chunk: string, accumulated: string) => void;  // Streaming content chunk
   onContentComplete?: (sectionId: string, wordCount: number) => void;  // Content written - trigger refresh
   onPlanUpdate?: (todos: TodoItem[]) => void;  // Deep Agent planning - todo updates
   onSubagentStart?: (name: string, task: string) => void;  // Subagent spawned
@@ -81,10 +91,12 @@ interface UseOrchestratorStreamOptions {
 export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}) {
   const {
     onStructureComplete,
+    onStructureUpdated,
     onSectionComplete,
     onClarificationNeeded,
     onOpenDocument,
     onSelectSection,
+    onContentChunk,
     onContentComplete,
     onPlanUpdate,
     onSubagentStart,
@@ -107,6 +119,9 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
   const [subagentActivities, setSubagentActivities] = useState<SubagentActivity[]>([]);
   const [memoryUpdates, setMemoryUpdates] = useState<Array<{type: string; key: string; value: string}>>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  
+  // Streaming content state - tracks content being written in real-time
+  const [streamingContent, setStreamingContent] = useState<Record<string, StreamingContent>>({});
   
   const abortControllerRef = useRef<AbortController | null>(null);
   const messageIdCounter = useRef(0);
@@ -250,11 +265,37 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       case 'CONTENT_CHUNK':
         /**
          * Streaming content chunk from write_section
+         * Accumulate chunks and notify parent for real-time display
          */
         const chunkData = event.data as ContentChunkEvent;
-        // Content chunks are handled separately in the editor
-        // Just log for debugging
-        console.log('📝 [Content Chunk]', chunkData.section_id, chunkData.chunk.length, 'chars');
+        console.log('📝 [CONTENT_CHUNK] Received:', {
+          sectionId: chunkData.section_id,
+          chunkLength: chunkData.chunk?.length,
+          chunk: chunkData.chunk?.substring(0, 50)
+        });
+        
+        // Accumulate content for this section
+        setStreamingContent(prev => {
+          const existing = prev[chunkData.section_id] || { sectionId: chunkData.section_id, content: '', isComplete: false };
+          const newContent = existing.content + chunkData.chunk;
+          
+          console.log('📝 [CONTENT_CHUNK] Accumulated:', {
+            sectionId: chunkData.section_id,
+            totalLength: newContent.length
+          });
+          
+          // Call callback with the new chunk and accumulated content
+          onContentChunk?.(chunkData.section_id, chunkData.chunk, newContent);
+          
+          return {
+            ...prev,
+            [chunkData.section_id]: {
+              sectionId: chunkData.section_id,
+              content: newContent,
+              isComplete: false,
+            }
+          };
+        });
         break;
       
       case 'CONTENT_COMPLETE':
@@ -263,6 +304,21 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
          */
         const contentCompleteData = event.data as ContentCompleteEvent;
         console.log('✅ [Content Complete]', contentCompleteData.section_id, contentCompleteData.word_count, 'words');
+        
+        // Mark streaming content as complete
+        setStreamingContent(prev => {
+          const existing = prev[contentCompleteData.section_id];
+          if (existing) {
+            return {
+              ...prev,
+              [contentCompleteData.section_id]: {
+                ...existing,
+                isComplete: true,
+              }
+            };
+          }
+          return prev;
+        });
         
         // Update progress
         setProgress(prev => {
@@ -535,6 +591,40 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         onStructureComplete?.(structureData);
         break;
 
+      case 'STRUCTURE_UPDATED':
+        const updatedStructureData = event.data as StructureUpdatedEvent;
+        
+        // Add message showing what changed
+        const changes = updatedStructureData.changes_made || {};
+        const addedCount = changes.added?.length || 0;
+        const removedCount = changes.removed?.length || 0;
+        const modifiedCount = changes.modified?.length || 0;
+        
+        let changesSummary = `📝 Updated "${updatedStructureData.title}"`;
+        if (addedCount > 0) changesSummary += ` (+${addedCount} new)`;
+        if (removedCount > 0) changesSummary += ` (-${removedCount} removed)`;
+        if (modifiedCount > 0) changesSummary += ` (~${modifiedCount} modified)`;
+        
+        addMessage('structure', changesSummary, { structure: updatedStructureData });
+        
+        // Show sections needing revision
+        const needsRevision = updatedStructureData.sections_needing_revision || [];
+        if (needsRevision.length > 0) {
+          const revisionList = needsRevision
+            .map(s => `• **${s.name}**: ${s.reason}`)
+            .join('\n');
+          addMessage('assistant', `⚠️ **Sections that may need revision:**\n${revisionList}`);
+        }
+        
+        // Show storyline impact
+        if (updatedStructureData.storyline_impact) {
+          addMessage('assistant', `📖 **Impact:** ${updatedStructureData.storyline_impact}`);
+        }
+        
+        // Callback to refresh canvas
+        onStructureUpdated?.(updatedStructureData);
+        break;
+
       case 'SECTION_WRITING':
         const writingData = event.data as SectionWritingEvent;
         
@@ -755,7 +845,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         onError?.(event.data.error);
         break;
     }
-  }, [addMessage, updateMessage, progress.structure, onStructureComplete, onSectionComplete, onClarificationNeeded, onOpenDocument, onSelectSection, onError, onComplete]);
+  }, [addMessage, updateMessage, progress.structure, onStructureComplete, onStructureUpdated, onSectionComplete, onClarificationNeeded, onOpenDocument, onSelectSection, onError, onComplete]);
 
   // Start streaming
   const startStream = useCallback(async (request: {
@@ -798,6 +888,44 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     // Add initial progress message
     addMessage('progress', '🤖 Let me help you with that...');
 
+    // Build conversation history from internal messages state
+    // Filter for user and assistant messages, convert to backend format
+    const builtConversationHistory = messages
+      .filter(msg => msg.type === 'user' || msg.type === 'assistant')
+      .map(msg => ({
+        role: msg.type === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }));
+    
+    // Use built history if no explicit history was passed
+    const conversationHistory = request.conversationHistory || builtConversationHistory;
+    
+    console.log('📜 [Stream] Conversation history:', {
+      builtCount: builtConversationHistory.length,
+      passedCount: Array.isArray(request.conversationHistory) ? request.conversationHistory.length : undefined,
+      usingBuilt: !Array.isArray(request.conversationHistory),
+      lastMessages: Array.isArray(conversationHistory)
+        ? conversationHistory.slice(-3).map(m => {
+            // Null safety for unknown array element type
+            if (
+              typeof m === 'object' &&
+              m !== null &&
+              'role' in m &&
+              'content' in m &&
+              typeof (m as { role: unknown }).role === 'string' &&
+              typeof (m as { content: unknown }).content === 'string'
+            ) {
+              return {
+                role: (m as { role: string }).role,
+                preview: (m as { content: string }).content.slice(0, 50),
+              }
+            } else {
+              return { role: 'unknown', preview: '[Invalid message]' }
+            }
+          })
+        : [],
+    });
+
     // Convert camelCase to snake_case for Python backend
     const snakeCaseRequest = {
       message: request.message,
@@ -811,7 +939,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       canvas_context: request.canvasContext,
       structure_items: request.structureItems,
       canvas_nodes: request.canvasNodes,
-      conversation_history: request.conversationHistory,
+      conversation_history: conversationHistory,
       clarification_response: request.clarificationResponse,
       original_action: request.originalAction,
       active_section_card: request.activeSectionCard,  // Section card currently being viewed
@@ -902,6 +1030,14 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     reasoningMessageIdRef.current = null;  // Reset reasoning message ref
   }, [messages.length]);
 
+  // Clear streaming content for a section (after it's been saved to DB)
+  const clearStreamingContent = useCallback((sectionId: string) => {
+    setStreamingContent(prev => {
+      const { [sectionId]: _, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
   return {
     messages,
     progress,
@@ -909,9 +1045,11 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     subagentActivities,
     memoryUpdates,
     isStreaming,
+    streamingContent,  // Real-time streaming content by section ID
     startStream,
     stopStream,
     clearMessages,
+    clearStreamingContent,  // Clear after content is saved
     addMessage,
   };
 }

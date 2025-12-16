@@ -15,6 +15,8 @@ interface NarrationCardViewProps {
   themeColors?: Record<string, string>
   /** Section cards from Librarian with resolved character details */
   sectionCards?: SectionCardDisplay[]
+  /** Section IDs currently being written (will show shimmer effect) */
+  writingSectionIds?: string[]
 }
 
 function NarrationCardView({ 
@@ -26,6 +28,7 @@ function NarrationCardView({
   onEdit,
   themeColors = {},
   sectionCards = [],
+  writingSectionIds = [],
 }: NarrationCardViewProps) {
   
   // Track which items are collapsed
@@ -84,6 +87,9 @@ function NarrationCardView({
       // Get the section card for this item (with resolved character details)
       const sectionCard = sectionCards.find(card => card.structureItemId === item.id)
       
+      // Check if this section is currently being written
+      const isWriting = writingSectionIds.includes(item.id)
+      
       return [
         <CompactNarrationCard
           key={item.id}
@@ -98,6 +104,7 @@ function NarrationCardView({
           hasChildren={hasChildren}
           isCollapsed={isCollapsed}
           sectionCard={sectionCard}
+          isWriting={isWriting}
           onToggleCollapse={() => {
             setCollapsedItems(prev => {
               const newSet = new Set(prev)

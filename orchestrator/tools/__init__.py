@@ -7,8 +7,8 @@ them to the Deep Agent for natural tool selection.
 """
 
 from .story_context import get_story_context
-from .writing import write_section, edit_section
-from .structure import create_structure
+from .writing import write_section, edit_section, write_section_streaming
+from .structure import create_structure, update_structure
 from .navigation import navigate_to, present_options
 from .planning import write_todos, get_todos
 from .task import task, list_subagents
@@ -20,9 +20,11 @@ __all__ = [
     "get_story_context",
     # Writing
     "write_section", 
+    "write_section_streaming",  # Streaming version for real-time updates
     "edit_section",
     # Structure
     "create_structure",
+    "update_structure",
     # Navigation
     "navigate_to",
     "present_options",

@@ -19,6 +19,8 @@ interface CompactNarrationCardProps {
   onToggleCollapse?: () => void
   /** Section card from Librarian with resolved character details */
   sectionCard?: SectionCardDisplay
+  /** Whether this section is currently being written (shows shimmer effect) */
+  isWriting?: boolean
 }
 
 function CompactNarrationCard({ 
@@ -34,6 +36,7 @@ function CompactNarrationCard({
   isCollapsed = false,
   onToggleCollapse,
   sectionCard,
+  isWriting = false,
 }: CompactNarrationCardProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
   
@@ -128,11 +131,12 @@ function CompactNarrationCard({
     <div
       style={{ 
         borderLeft: `${getBorderWidth()} solid ${borderColor}`,
-        backgroundColor: backgroundColor,
+        backgroundColor: isWriting ? undefined : backgroundColor,
       }}
       className={`
         group relative pl-2 pr-2 py-1.5 transition-all cursor-pointer
         ${isActive ? 'text-gray-900' : 'text-gray-700 hover:bg-gray-100/50'}
+        ${isWriting ? 'animate-shimmer bg-gradient-to-r from-blue-50 via-white to-blue-50 bg-[length:200%_100%]' : ''}
       `}
     >
       <div className="flex items-start gap-1.5">

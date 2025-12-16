@@ -51,7 +51,8 @@ export interface OrchestratorPanelStreamingProps {
   onOpenDocument?: (nodeId: string, nodeName: string) => void
   onSelectSection?: (sectionId: string, sectionName: string) => void
   
-  // Content complete callback - triggers document refresh after write
+  // Content streaming callbacks - for real-time document updates
+  onContentChunk?: (sectionId: string, chunk: string, accumulated: string) => void
   onContentComplete?: (sectionId: string, wordCount: number) => void
   
   // Context from parent
@@ -86,6 +87,7 @@ export function OrchestratorPanelStreaming({
   onCreateStoryNode,
   onOpenDocument,
   onSelectSection,
+  onContentChunk,
   onContentComplete,
   activeSegment,
   documentPanelOpen,
@@ -318,6 +320,12 @@ export function OrchestratorPanelStreaming({
     onSelectSection: (sectionId, sectionName) => {
       console.log('📍 [Streaming] Selecting section:', sectionName, sectionId)
       onSelectSection?.(sectionId, sectionName)
+    },
+    
+    // Content streaming - for real-time document updates
+    onContentChunk: (sectionId, chunk, accumulated) => {
+      // Forward chunk to parent for document panel display
+      onContentChunk?.(sectionId, chunk, accumulated)
     },
     
     // Content complete - triggers document refresh after content is written to DB

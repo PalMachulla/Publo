@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useDocumentSectionsAdapter as useDocumentSections } from '@/hooks/useDocumentSectionsAdapter'
 import { useDocumentEditor } from '@/hooks/useDocumentEditor'
 import { useSectionCards } from '@/hooks/useSectionCards'
-import MarkdownEditor from '../editor/MarkdownEditor'
+import { MarkdownContent } from '../ui/atoms/MarkdownContent'
 import SectionTreeView from '../document/SectionTreeView'
 import NarrationCardView from '../document/NarrationCardView'
 import DocumentCardView from '../document/DocumentCardView'
@@ -12,6 +12,13 @@ import SidebarViewToggle, { type SidebarView } from '../document/SidebarViewTogg
 import type { StoryStructureItem, TestNodeData } from '@/types/nodes'
 import type { DocumentSection } from '@/types/document'
 import type { Edge, Node } from 'reactflow'
+
+// Streaming content from orchestrator (real-time writing)
+interface StreamingContentState {
+  sectionId: string
+  content: string
+  isComplete: boolean
+}
 
 interface AIDocumentPanelProps {
   isOpen: boolean
@@ -23,6 +30,7 @@ interface AIDocumentPanelProps {
   canvasEdges?: Edge[]
   canvasNodes?: Node[]
   contentMap?: Record<string, string> // Map of structure item ID to markdown content
+  streamingContent?: Record<string, StreamingContentState> // Real-time streaming content by section ID
   orchestratorPanelWidth?: number // Width of the orchestrator panel in pixels
   onSwitchDocument?: (nodeId: string) => void // Switch to a different document
   onSetContext?: (context: { type: 'section' | 'segment', id: string, name: string, title?: string, level?: number, description?: string }) => void // Set active context for orchestrator
@@ -40,6 +48,7 @@ export default function AIDocumentPanel({
   canvasEdges = [],
   canvasNodes = [],
   contentMap = {},
+  streamingContent = {},
   orchestratorPanelWidth = 384,
   onSwitchDocument,
   onSetContext,
@@ -239,7 +248,7 @@ export default function AIDocumentPanel({
       
       // Only refresh if the saved content is for the currently open document
       if (nodeId === storyStructureNodeId) {
-        console.log('🔄 [AIDocumentPanel] Auto-refreshing sections...')
+        console.log('🔄 [AIDocumentPanel] Auto-refreshing sections and cards...')
         
         // Remove from generating set
         setGeneratingSections(prev => {
@@ -248,7 +257,15 @@ export default function AIDocumentPanel({
           return newSet
         })
         
+        // Refresh document sections
         refreshSections()
+        
+        // Also refresh Librarian cards (they update after content is analyzed)
+        // Add a small delay to let the Librarian finish analyzing
+        setTimeout(() => {
+          console.log('📚 [AIDocumentPanel] Refreshing Librarian cards...')
+          refreshSectionCards()
+        }, 1000)
       }
     }
     
@@ -257,7 +274,33 @@ export default function AIDocumentPanel({
     return () => {
       window.removeEventListener('content-saved', handleContentSaved)
     }
-  }, [storyStructureNodeId, refreshSections])
+  }, [storyStructureNodeId, refreshSections, refreshSectionCards])
+  
+  // ✅ NEW: Track completed sections from streaming and refresh cards
+  const prevStreamingRef = useRef<Record<string, boolean>>({})
+  useEffect(() => {
+    // Check for newly completed streaming content
+    const newlyCompleted: string[] = []
+    
+    Object.entries(streamingContent).forEach(([sectionId, state]) => {
+      const wasComplete = prevStreamingRef.current[sectionId] ?? false
+      const isNowComplete = state.isComplete ?? false
+      
+      if (!wasComplete && isNowComplete) {
+        newlyCompleted.push(sectionId)
+      }
+      
+      prevStreamingRef.current[sectionId] = isNowComplete
+    })
+    
+    if (newlyCompleted.length > 0) {
+      console.log('📚 [AIDocumentPanel] Streaming completed for sections:', newlyCompleted)
+      // Refresh cards after a delay to let Librarian finish analyzing
+      setTimeout(() => {
+        refreshSectionCards()
+      }, 1500)
+    }
+  }, [streamingContent, refreshSectionCards])
 
   // Persist sections sidebar collapse state
   useEffect(() => {
@@ -497,6 +540,33 @@ export default function AIDocumentPanel({
   }, [activeSectionId])
 
 
+  // Helper: Strip duplicate heading from content if it matches section name
+  // LLM sometimes generates "# Section Name" at the start even when told not to
+  const stripDuplicateHeading = (content: string, sectionName: string): string => {
+    if (!content || !sectionName) return content
+    
+    // Match markdown headings at start: # Title, ## Title, ### Title, etc.
+    // Also match bold titles like **Title** or centered titles
+    const headingPatterns = [
+      // Markdown headings: # Title or ## Title (with optional whitespace)
+      new RegExp(`^\\s*#{1,6}\\s*${sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\n+`, 'i'),
+      // Centered headings with dividers: Title\n---
+      new RegExp(`^\\s*${sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\n+[-=]+\\s*\\n+`, 'i'),
+      // Bold headings: **Title**
+      new RegExp(`^\\s*\\*\\*${sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\*\\*\\s*\\n+`, 'i'),
+    ]
+    
+    for (const pattern of headingPatterns) {
+      if (pattern.test(content)) {
+        const stripped = content.replace(pattern, '')
+        console.log(`🧹 [AIDocumentPanel] Stripped duplicate heading "${sectionName}" from content`)
+        return stripped
+      }
+    }
+    
+    return content
+  }
+
   // Aggregate content hierarchically for a structure item
   const aggregateHierarchicalContent = (itemId: string, includeHeaders: boolean = true): string => {
     const item = structureItems.find(i => i.id === itemId)
@@ -509,32 +579,56 @@ export default function AIDocumentPanel({
     // Build the aggregated content
     const aggregatedContent: string[] = []
     
-    // Add header for this item if requested (with anchor ID for TOC linking)
+    // Add header for this item if requested
     if (includeHeaders) {
       const headerLevel = Math.min(item.level, 6)
       const headerTag = '#'.repeat(headerLevel)
       const headerText = item.title ? `${item.title}` : item.name
       
-      // ✅ Use markdown headers with HTML comment for ID (prevents editable HTML)
-      const headingWithId = `<span id="section-${itemId}"></span>\n<!-- section-id: ${itemId} -->\n${headerTag} ${headerText}`
-      aggregatedContent.push(headingWithId)
+      // Pure markdown header (no HTML - MarkdownContent doesn't parse raw HTML)
+      aggregatedContent.push(`${headerTag} ${headerText}`)
       aggregatedContent.push('') // Add blank line for proper markdown spacing
     }
     
     // If no children, return the section's own content
     if (children.length === 0) {
+      // Check for streaming content first (real-time writing)
+      const streaming = streamingContent[itemId]
+      
+      // Debug: Log available streaming content keys
+      const streamingKeys = Object.keys(streamingContent)
+      if (streamingKeys.length > 0) {
+        console.log('📝 [AIDocumentPanel] Streaming content check:', {
+          itemId,
+          hasStreaming: !!streaming,
+          availableKeys: streamingKeys,
+          streamingContentForItem: streaming ? { length: streaming.content?.length, isComplete: streaming.isComplete } : null
+        })
+      }
+      
+      if (streaming && !streaming.isComplete) {
+        // Show streaming content with a typing cursor indicator (use unicode block cursor)
+        console.log('📝 [AIDocumentPanel] Rendering streaming content for:', itemId)
+        const cleanedContent = stripDuplicateHeading(streaming.content, item.name)
+        aggregatedContent.push(cleanedContent + '▌') // Unicode block cursor
+        return aggregatedContent.join('\n\n')
+      }
+      
       // First try contentMap (from test markdown), then Supabase section
       const contentFromMap = contentMap[itemId]
       if (contentFromMap) {
-        aggregatedContent.push(contentFromMap)
+        aggregatedContent.push(stripDuplicateHeading(contentFromMap, item.name))
         return aggregatedContent.join('\n\n')
       }
       
       const section = sections.find(s => s.structure_item_id === itemId)
       const isGenerating = generatingSections.has(itemId)
       
-      if (section?.content && section.content.trim()) {
-        aggregatedContent.push(section.content)
+      // Also show streaming content if complete but not yet saved to DB
+      if (streaming?.isComplete && streaming.content) {
+        aggregatedContent.push(stripDuplicateHeading(streaming.content, item.name))
+      } else if (section?.content && section.content.trim()) {
+        aggregatedContent.push(stripDuplicateHeading(section.content, item.name))
       } else if (isGenerating) {
         // ✅ Show progress indicator for sections currently being generated
         aggregatedContent.push(`<div class="text-purple-600 italic animate-pulse flex items-center gap-2">
@@ -559,12 +653,12 @@ export default function AIDocumentPanel({
     // Include this item's content if it exists (for parent items with children)
     const parentContent = contentMap[itemId]
     if (parentContent) {
-      aggregatedContent.push(parentContent)
+      aggregatedContent.push(stripDuplicateHeading(parentContent, item.name))
     } else {
       // Check if parent has section content
       const parentSection = sections.find(s => s.structure_item_id === itemId)
       if (parentSection?.content) {
-        aggregatedContent.push(parentSection.content)
+        aggregatedContent.push(stripDuplicateHeading(parentSection.content, item.name))
       }
     }
     
@@ -890,7 +984,7 @@ export default function AIDocumentPanel({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, sidebarView, structureItems, sections, contentMap])
+  }, [isOpen, sidebarView, structureItems, sections, contentMap, streamingContent])
 
   // Reset loaded flag when panel closes
   useEffect(() => {
@@ -1061,6 +1155,9 @@ export default function AIDocumentPanel({
                       onEdit={handleEditSummary}
                       themeColors={themeColors}
                       sectionCards={sectionCards}
+                      writingSectionIds={Object.entries(streamingContent)
+                        .filter(([_, state]) => !state.isComplete)
+                        .map(([sectionId]) => sectionId)}
                     />
                   )}
                 </div>
@@ -1098,13 +1195,14 @@ export default function AIDocumentPanel({
                   ) : (
                     /* Tree View: Show full markdown content */
                     <div className="p-8">
-                      <div className="max-w-7xl mx-auto bg-white shadow-lg rounded-lg">
-                        <MarkdownEditor
-                          content={content}
-                          onUpdate={handleEditorUpdate}
-                          placeholder="Click to start writing..."
-                          className="min-h-[calc(100vh-8rem)]"
-                        />
+                      <div className="max-w-7xl mx-auto bg-white shadow-lg rounded-lg p-6">
+                        {content ? (
+                          <MarkdownContent className="min-h-[calc(100vh-8rem)]">
+                            {content}
+                          </MarkdownContent>
+                        ) : (
+                          <p className="text-gray-400 italic">No content yet. Ask the orchestrator to write something.</p>
+                        )}
                       </div>
                     </div>
                   )}

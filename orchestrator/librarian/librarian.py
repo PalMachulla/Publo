@@ -408,11 +408,18 @@ class Librarian:
         place_ids = await self._process_places(extracted.get("places", []), section_id)
         event_ids = await self._process_events(extracted.get("events", []), section_id)
         
-        # Generate summary
-        summary = await self._generate_summary(content, extracted)
-        
-        # Update card
-        card.summary = summary
+        # Generate content analysis summary
+        content_summary = await self._generate_summary(content, extracted)
+
+        # =========================================================================
+        # PRESERVE LIBRARIAN'S VISION
+        # =========================================================================
+        # The initial summary (from create_initial_cards_with_planning) is the
+        # Librarian's VISION for what should happen in this section.
+        # We should NOT overwrite it with post-analysis of what was written.
+        # Only set summary if there wasn't one initially.
+        if not card.summary:
+            card.summary = content_summary
         card.key_moments = extracted.get("key_moments", [])
         card.characters_present = character_ids
         card.places_visited = place_ids
@@ -446,13 +453,14 @@ class Librarian:
         planning_context: Dict[str, Any]
     ) -> List[SectionCard]:
         """
-        Create section cards with planning context from structure creation.
+        Create section cards with intelligent summaries from structure creation.
         
-        Unlike basic card creation, this populates cards with:
-        - Expected content based on section description
-        - Inferred dependencies between sections
-        - Mood/tone from the overall format
-        - Potential characters/places from the prompt
+        Uses LLM to generate expectations for each section based on:
+        - Section name and position in the narrative
+        - Overall story prompt and format
+        - Narrative structure conventions
+        
+        This gives writers context and the Librarian control from the get-go.
         
         Args:
             items: Structure items from create_structure
@@ -465,7 +473,19 @@ class Librarian:
         format_type = planning_context.get("format", "novel")
         title = planning_context.get("title", "Untitled")
         
-        print(f"📚 [Librarian] Creating {len(items)} cards with planning context for '{title}'")
+        print(f"📚 [Librarian] Generating intelligent summaries for {len(items)} sections...")
+        print(f"📚 [Librarian] Planning context: title={title}, format={format_type}")
+        print(f"📚 [Librarian] Items: {[i.get('name') or i.get('title') for i in items[:5]]}...")
+        
+        # Generate summaries for all sections in one LLM call
+        section_summaries = await self._generate_section_summaries(
+            items=items,
+            story_prompt=prompt,
+            format_type=format_type,
+            title=title
+        )
+        
+        print(f"📚 [Librarian] Summary keys returned: {list(section_summaries.keys())[:5]}...")
         
         cards = []
         previous_item = None
@@ -474,6 +494,18 @@ class Librarian:
             section_id = item.get("id", f"sec-{idx+1}")
             section_name = item.get("name") or item.get("title", f"Section {idx+1}")
             section_desc = item.get("description", "")
+            
+            # Use LLM-generated summary, fall back to description
+            # Try exact match first, then case-insensitive
+            generated_summary = (
+                section_summaries.get(section_name) or 
+                section_summaries.get(section_id) or
+                next((v for k, v in section_summaries.items() if k.lower() == section_name.lower()), None)
+            )
+            summary = generated_summary or section_desc or None
+            
+            if idx < 3:  # Log first 3 for debugging
+                print(f"📚 [Librarian] Section '{section_name}': summary={'✅ found' if generated_summary else '❌ not found'}")
             
             # Build dependencies (each section depends on previous)
             dependencies = []
@@ -485,16 +517,16 @@ class Librarian:
                     "description": f"Follows from {previous_item.get('name', 'previous section')}"
                 })
             
-            # Infer mood from format
-            default_mood = self._infer_mood_from_format(format_type)
+            # Infer mood from format and position
+            mood = self._infer_mood_from_position(format_type, idx, len(items))
             
             card = SectionCard(
                 node_id=self.node_id,
                 structure_item_id=section_id,
                 section_name=section_name,
-                summary=section_desc if section_desc else None,  # Use description as initial summary
+                summary=summary,
                 dependencies=dependencies,
-                mood=default_mood,
+                mood=mood,
                 analyzed=False  # Not yet analyzed - content hasn't been written
             )
             
@@ -502,8 +534,115 @@ class Librarian:
             cards.append(saved_card)
             previous_item = item
         
-        print(f"📚 [Librarian] Created {len(cards)} section cards with dependencies")
+        print(f"📚 [Librarian] Created {len(cards)} section cards with intelligent summaries")
         return cards
+    
+    async def _generate_section_summaries(
+        self,
+        items: List[Dict],
+        story_prompt: str,
+        format_type: str,
+        title: str
+    ) -> Dict[str, str]:
+        """
+        Use LLM to generate intelligent summaries for each section.
+        
+        Returns dict mapping section_id/section_name to summary.
+        """
+        from config import get_model_for_task
+        
+        # Build the section list for the prompt
+        section_list = "\n".join([
+            f"{idx+1}. {item.get('name') or item.get('title', f'Section {idx+1}')}"
+            for idx, item in enumerate(items)
+        ])
+        
+        prompt_text = f"""You are the Librarian for a creative writing project. Your job is to create helpful summaries for each section that will guide the writers.
+
+## Story Information
+- **Title**: {title}
+- **Format**: {format_type}
+- **User's Vision**: {story_prompt}
+
+## Sections to Summarize
+{section_list}
+
+## Your Task
+For each section, write a brief (2-3 sentence) summary that:
+1. Describes what should happen in this section based on its name and position
+2. Considers the overall story arc (beginning/middle/end)
+3. Notes any setup or payoff opportunities
+4. Captures the expected mood/tone
+
+Return your response as JSON with section names as keys:
+```json
+{{
+  "Section Name": "Summary of what should happen...",
+  ...
+}}
+```
+
+Be specific to THIS story, not generic advice. Reference the user's vision."""
+
+        try:
+            model = get_model_for_task("librarian")
+            response = await model.ainvoke(prompt_text)
+            content = response.content if hasattr(response, 'content') else str(response)
+            
+            # Extract JSON from response
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', content)
+            if json_match:
+                summaries = json.loads(json_match.group())
+                print(f"📚 [Librarian] Generated summaries for {len(summaries)} sections")
+                return summaries
+            else:
+                print(f"⚠️ [Librarian] Could not parse summaries from LLM response")
+                return {}
+                
+        except Exception as e:
+            print(f"⚠️ [Librarian] Summary generation failed: {e}")
+            return {}
+    
+    def _infer_mood_from_position(self, format_type: str, position: int, total: int) -> str:
+        """Infer mood based on format and narrative position."""
+        # Calculate position as percentage
+        progress = position / max(total - 1, 1) if total > 1 else 0
+        
+        # Beginning (first 25%)
+        if progress < 0.25:
+            moods = {
+                "novel": "establishing, intriguing",
+                "screenplay": "visual, engaging",
+                "podcast": "welcoming, curious",
+                "report": "professional, clear",
+            }
+        # Rising action (25-50%)
+        elif progress < 0.5:
+            moods = {
+                "novel": "building tension, deepening",
+                "screenplay": "escalating, dramatic",
+                "podcast": "exploratory, revealing",
+                "report": "analytical, detailed",
+            }
+        # Climax area (50-75%)
+        elif progress < 0.75:
+            moods = {
+                "novel": "intense, pivotal",
+                "screenplay": "climactic, high-stakes",
+                "podcast": "insightful, impactful",
+                "report": "comprehensive, conclusive",
+            }
+        # Resolution (75-100%)
+        else:
+            moods = {
+                "novel": "resolving, reflective",
+                "screenplay": "satisfying, memorable",
+                "podcast": "summarizing, forward-looking",
+                "report": "concluding, actionable",
+            }
+        
+        return moods.get(format_type, moods.get("novel", "engaging"))
     
     async def _check_ripple_effects(
         self,

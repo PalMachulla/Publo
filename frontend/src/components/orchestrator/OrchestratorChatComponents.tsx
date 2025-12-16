@@ -157,9 +157,9 @@ export function StructureProgressPanel({ progress, className = '' }: StructurePr
   const { structure, percentComplete, stage, currentSection } = progress;
 
   return (
-    <div className={`bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg overflow-hidden ${className}`}>
+    <div className={`bg-white dark:bg-gray-900 rounded-md border border-zinc-200 dark:border-gray-700 overflow-hidden ${className}`}>
       {/* Header */}
-      <div className="px-4 py-3 bg-gradient-to-r from-purple-500 to-blue-500 text-white">
+      <div className="px-4 py-3 ">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-xl">📖</span>
