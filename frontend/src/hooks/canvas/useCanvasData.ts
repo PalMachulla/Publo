@@ -131,7 +131,8 @@ export function useCanvasData(
   
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
-  
+  // Change made 14.Dec.2025: Added userId to return object
+  const userId = user?.id
   // ─────────────────────────────────────────────────────────────────────────
   // REFS FOR CURRENT STATE
   // ─────────────────────────────────────────────────────────────────────────
@@ -239,10 +240,10 @@ export function useCanvasData(
       }
     }
 
-    if (!loading && user) {
+    if (!loading && userId) {
       checkAccess()
     }
-  }, [user, loading])
+  }, [userId, loading])
   
   /**
    * Handle authentication and routing
@@ -297,7 +298,7 @@ export function useCanvasData(
       }
       checkUserRole()
     }
-  }, [user, loading, router, storyId, checkingAccess, hasAccess])
+  }, [userId, loading, router, storyId, checkingAccess, hasAccess])
   
   /**
    * Load story data from database

@@ -1,14 +1,17 @@
 /**
- * OrchestratorPanel - Wrapper Component
+ * OrchestratorPanel - DEPRECATED WRAPPER
  * 
  * =============================================================================
- * STREAMING UI ONLY (Legacy panel deprecated)
+ * 2024-12-14: DEPRECATED - Use OrchestratorPanelStreaming directly
  * =============================================================================
  * 
- * This component now only uses the streaming UI.
- * The legacy panel has been deprecated and moved to:
- * - @/lib/orchestrator/components/OrchestratorPanel/index.tsx.deprecated
+ * This wrapper is now vestigial. NodeDetailsPanel.tsx imports
+ * OrchestratorPanelStreaming directly ("leapfrogging" this wrapper).
  * 
+ * Keeping this file for backwards compatibility with any other consumers.
+ * New code should import OrchestratorPanelStreaming directly.
+ * 
+ * @deprecated Use OrchestratorPanelStreaming directly
  * @see components/orchestrator/OrchestratorPanelStreaming for implementation
  */
 'use client'
@@ -28,6 +31,9 @@ export interface OrchestratorPanelProps {
   [key: string]: any
 }
 
+/**
+ * @deprecated Use OrchestratorPanelStreaming directly instead
+ */
 export default function OrchestratorPanel(props: OrchestratorPanelProps) {
   // Always use streaming UI - legacy panel is deprecated
   return <OrchestratorPanelStreaming {...props} />

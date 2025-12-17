@@ -115,6 +115,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     stage: 'idle',
     percentComplete: 0,
   });
+  // Todos are ephemeral - cleared on refresh
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [subagentActivities, setSubagentActivities] = useState<SubagentActivity[]>([]);
   const [memoryUpdates, setMemoryUpdates] = useState<Array<{type: string; key: string; value: string}>>([]);
@@ -122,6 +123,9 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
   
   // Streaming content state - tracks content being written in real-time
   const [streamingContent, setStreamingContent] = useState<Record<string, StreamingContent>>({});
+  // Accumulate content in a ref so callbacks can run outside React state updaters
+  // (prevents setState-during-render warnings when parent updates canvas state).
+  const streamingContentAccumRef = useRef<Record<string, string>>({});
   
   const abortControllerRef = useRef<AbortController | null>(null);
   const messageIdCounter = useRef(0);
@@ -132,6 +136,13 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
   
   // Track tool thinking message (for updating on completion)
   const toolThinkingMessageIdRef = useRef<string | null>(null);
+  
+  // Track initial progress message (for updating to "Done!" on completion)
+  const progressMessageIdRef = useRef<string | null>(null);
+  
+  // Track simulated thinking indicator (shows time before first token)
+  const thinkingIndicatorIdRef = useRef<string | null>(null);
+  const thinkingStartTimeRef = useRef<Date | null>(null);
   
   // Track if we've loaded initial messages to avoid overwriting during active streams
   const hasLoadedInitialMessages = useRef(false);
@@ -149,14 +160,15 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
   // Generate unique message ID
   const generateId = () => `msg-${++messageIdCounter.current}-${Date.now()}`;
 
-  // Add a message to the chat
+  // Add a message to the chat (returns the message ID for tracking)
   const addMessage = useCallback((
     type: ChatMessage['type'],
     content: string,
     metadata?: Record<string, unknown>
-  ) => {
+  ): string => {
+    const id = generateId();
     const message: ChatMessage = {
-      id: generateId(),
+      id,
       type,
       content,
       timestamp: new Date(),
@@ -169,7 +181,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       onMessageAdded(message);
     }
     
-    return message.id;
+    return id;
   }, [onMessageAdded]);
 
   // Update an existing message
@@ -218,6 +230,17 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
             metadata: { isStreaming: true }
           };
           setMessages(prev => [...prev, assistantMessage]);
+          
+          // Mark thinking indicator as complete (first token received)
+          if (thinkingIndicatorIdRef.current) {
+            updateMessage(thinkingIndicatorIdRef.current, {
+              metadata: {
+                isStreaming: false,
+                endTime: new Date().toISOString()
+              }
+            });
+            thinkingIndicatorIdRef.current = null;
+          }
         }
         // Don't update state on every token - wait for DONE
         break;
@@ -228,6 +251,30 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
          */
         const toolStartData = event.data as ToolStartEvent;
         console.log('🔧 [Tool Start]', toolStartData.tool);
+        
+        // CRITICAL: Flush accumulated content before tool starts
+        // This prevents the assistant message from being cut off mid-sentence
+        if (assistantMessageIdRef.current && accumulatedContentRef.current) {
+          const msgId = assistantMessageIdRef.current;
+          const flushedContent = accumulatedContentRef.current;
+          setMessages(prev => prev.map(msg =>
+            msg.id === msgId
+              ? { ...msg, content: flushedContent, metadata: { isStreaming: false } }
+              : msg
+          ));
+          // Don't clear refs yet - DONE will finalize
+        }
+        
+        // Mark thinking indicator as complete (tool starting means thinking is done)
+        if (thinkingIndicatorIdRef.current) {
+          updateMessage(thinkingIndicatorIdRef.current, {
+            metadata: {
+              isStreaming: false,
+              endTime: new Date().toISOString()
+            }
+          });
+          thinkingIndicatorIdRef.current = null;
+        }
         
         // Show thinking indicator for long-running tools
         if (['write_section', 'create_structure'].includes(toolStartData.tool)) {
@@ -252,8 +299,8 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         // Update the thinking message to show completion
         if (toolThinkingMessageIdRef.current && ['write_section', 'create_structure'].includes(toolEndData.tool)) {
           const completionContent = toolEndData.tool === 'write_section'
-            ? '✅ Content written'
-            : '✅ Structure created';
+            ? 'Content written'
+            : 'Structure created';
           updateMessage(toolThinkingMessageIdRef.current, {
             content: completionContent,
             metadata: { tool: toolEndData.tool, isComplete: true }
@@ -274,28 +321,29 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           chunk: chunkData.chunk?.substring(0, 50)
         });
         
-        // Accumulate content for this section
-        setStreamingContent(prev => {
-          const existing = prev[chunkData.section_id] || { sectionId: chunkData.section_id, content: '', isComplete: false };
-          const newContent = existing.content + chunkData.chunk;
-          
-          console.log('📝 [CONTENT_CHUNK] Accumulated:', {
-            sectionId: chunkData.section_id,
-            totalLength: newContent.length
-          });
-          
-          // Call callback with the new chunk and accumulated content
-          onContentChunk?.(chunkData.section_id, chunkData.chunk, newContent);
-          
-          return {
-            ...prev,
-            [chunkData.section_id]: {
-              sectionId: chunkData.section_id,
-              content: newContent,
-              isComplete: false,
-            }
-          };
+        // Accumulate content in a ref (stable + synchronous), then update React state.
+        const prevContent = streamingContentAccumRef.current[chunkData.section_id] || '';
+        const newContent = prevContent + chunkData.chunk;
+        streamingContentAccumRef.current[chunkData.section_id] = newContent;
+
+        console.log('📝 [CONTENT_CHUNK] Accumulated:', {
+          sectionId: chunkData.section_id,
+          totalLength: newContent.length
         });
+
+        setStreamingContent(prev => ({
+          ...prev,
+          [chunkData.section_id]: {
+            sectionId: chunkData.section_id,
+            content: newContent,
+            isComplete: false,
+          }
+        }));
+
+        // Defer callback to avoid updating parent state during a React render flush.
+        if (onContentChunk) {
+          setTimeout(() => onContentChunk(chunkData.section_id, chunkData.chunk, newContent), 0);
+        }
         break;
       
       case 'CONTENT_COMPLETE':
@@ -319,6 +367,9 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           }
           return prev;
         });
+
+        // Keep the accumulator ref in sync (optional cleanup)
+        delete streamingContentAccumRef.current[contentCompleteData.section_id];
         
         // Update progress
         setProgress(prev => {
@@ -337,10 +388,6 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           };
         });
         
-        // #region agent log - Trigger document refresh
-        console.log('🔄 [Content Complete] Triggering document refresh for section:', contentCompleteData.section_id);
-        // #endregion
-        
         // Notify parent to refresh document from DB
         onContentComplete?.(contentCompleteData.section_id, contentCompleteData.word_count);
         break;
@@ -352,7 +399,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         const navigateData = event.data as NavigateEvent;
         console.log('📍 [Navigate]', navigateData.section_name || navigateData.section_id);
         
-        addMessage('assistant', `📍 Navigating to "${navigateData.section_name || navigateData.section_id}"...`);
+        addMessage('assistant', `Navigating to "${navigateData.section_name || navigateData.section_id}"...`);
         onSelectSection?.(navigateData.section_id, navigateData.section_name || '');
         break;
       
@@ -455,9 +502,16 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
          * Token-by-token reasoning streaming
          * 
          * Stream reasoning tokens to UI in a collapsible ThinkingBlock.
-         * Creates a 'reasoning' message on first token, appends on subsequent tokens.
+         * If we have a simulated thinking indicator, reuse it. Otherwise create new.
          */
         const token = (event.data as { token: string }).token || '';
+        const isComplete = (event.data as { is_complete?: boolean }).is_complete || false;
+        
+        // If we have a simulated thinking indicator, reuse it for real reasoning
+        if (thinkingIndicatorIdRef.current && !reasoningMessageIdRef.current) {
+          reasoningMessageIdRef.current = thinkingIndicatorIdRef.current;
+          thinkingIndicatorIdRef.current = null;  // Hand off to reasoning ref
+        }
         
         if (!reasoningMessageIdRef.current) {
           // First token - create new reasoning message
@@ -476,11 +530,19 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           };
           setMessages(prev => [...prev, reasoningMessage]);
         } else {
-          // Subsequent tokens - append to existing message
+          // Update existing message with accumulated content
           updateMessage(reasoningMessageIdRef.current, {
-            content: token,  // Backend sends accumulated content, not just new token
-            metadata: { isStreaming: true }
+            content: token,  // Backend sends accumulated content
+            metadata: { 
+              isStreaming: !isComplete,
+              ...(isComplete ? { endTime: new Date().toISOString() } : {})
+            }
           });
+        }
+        
+        // If complete, clear the ref
+        if (isComplete) {
+          reasoningMessageIdRef.current = null;
         }
         break;
 
@@ -587,8 +649,10 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           { structure: structureData }
         );
 
-        // Callback
-        onStructureComplete?.(structureData);
+        // Callback (defer to avoid setState-during-render warnings when parent updates canvas state)
+        if (onStructureComplete) {
+          setTimeout(() => onStructureComplete(structureData), 0);
+        }
         break;
 
       case 'STRUCTURE_UPDATED':
@@ -613,12 +677,12 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           const revisionList = needsRevision
             .map(s => `• **${s.name}**: ${s.reason}`)
             .join('\n');
-          addMessage('assistant', `⚠️ **Sections that may need revision:**\n${revisionList}`);
+          addMessage('assistant', `**Sections that may need revision:**\n${revisionList}`);
         }
         
         // Show storyline impact
         if (updatedStructureData.storyline_impact) {
-          addMessage('assistant', `📖 **Impact:** ${updatedStructureData.storyline_impact}`);
+          addMessage('assistant', `**Impact:** ${updatedStructureData.storyline_impact}`);
         }
         
         // Callback to refresh canvas
@@ -660,30 +724,15 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           };
         });
 
-        // Only show one writing message (update existing instead of creating new)
-        // Find existing section-progress message and update it
-        setMessages(prev => {
-          const existingIdx = prev.findIndex(m => m.type === 'section-progress');
-          if (existingIdx >= 0) {
-            // Update existing message
-            const updated = [...prev];
-            updated[existingIdx] = {
-              ...updated[existingIdx],
-              content: `✍️ Writing "${writingData.title}"...`,
-              metadata: { sectionId: writingData.section_id }
-            };
-            return updated;
-          } else {
-            // Create new message
-            return [...prev, {
-              id: `msg_section_${Date.now()}`,
-              type: 'section-progress' as const,
-              content: `✍️ Writing "${writingData.title}"...`,
-              timestamp: new Date(),
-              metadata: { sectionId: writingData.section_id }
-            }];
-          }
-        });
+        // Update the existing thinking message with section-specific content
+        // This consolidates "Writing content..." + "Writing 'Section'" into one message
+        if (toolThinkingMessageIdRef.current) {
+          updateMessage(toolThinkingMessageIdRef.current, {
+            type: 'section-progress',
+            content: `Writing "${writingData.title}"...`,
+            metadata: { sectionId: writingData.section_id, isComplete: false }
+          });
+        }
         break;
 
       case 'SECTION_COMPLETE':
@@ -767,7 +816,10 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         console.log('📂 [Stream] Opening document:', openDocData.node_name, openDocData.node_id);
         
         // Trigger the callback to actually open the document (no message - too noisy)
-        onOpenDocument?.(openDocData.node_id, openDocData.node_name);
+        // Defer to avoid setState-during-render if this arrives during a render flush.
+        if (onOpenDocument) {
+          setTimeout(() => onOpenDocument(openDocData.node_id, openDocData.node_name), 0);
+        }
         break;
 
       case 'SELECT_SECTION':
@@ -780,7 +832,9 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         console.log('📍 [Stream] Selecting section:', selectData.section_name, selectData.section_id);
         
         // Trigger the callback to actually select the section (no message - too noisy)
-        onSelectSection?.(selectData.section_id, selectData.section_name);
+        if (onSelectSection) {
+          setTimeout(() => onSelectSection(selectData.section_id, selectData.section_name), 0);
+        }
         // Do NOT setIsStreaming(false) - writing is in progress!
         break;
 
@@ -791,6 +845,17 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         break;
 
       case 'DONE':
+        // Mark thinking indicator as complete if still active
+        if (thinkingIndicatorIdRef.current) {
+          updateMessage(thinkingIndicatorIdRef.current, {
+            metadata: {
+              isStreaming: false,
+              endTime: new Date().toISOString()
+            }
+          });
+          thinkingIndicatorIdRef.current = null;
+        }
+        
         // Finalize streaming assistant message if exists
         if (assistantMessageIdRef.current) {
           // Use final_response from server if available (more reliable than accumulated content)
@@ -827,21 +892,48 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           percentComplete: 100,
         }));
         
-        // Only add "Structure ready!" if we actually created a structure
-        if (progress.structure) {
-          addMessage('assistant', '✅ Structure ready!');
+        // Update initial progress message to show completion
+        if (progressMessageIdRef.current) {
+          updateMessage(progressMessageIdRef.current, {
+            type: 'thinking',  // Reuse thinking type which shows checkmark when complete
+            content: 'Done!',
+            metadata: { isComplete: true }
+          });
+          progressMessageIdRef.current = null;
         }
         
         onComplete?.();
         break;
 
       case 'ERROR':
+        // Mark thinking indicator as complete on error
+        if (thinkingIndicatorIdRef.current) {
+          updateMessage(thinkingIndicatorIdRef.current, {
+            metadata: {
+              isStreaming: false,
+              endTime: new Date().toISOString()
+            }
+          });
+          thinkingIndicatorIdRef.current = null;
+        }
+        
         setProgress(prev => ({
           ...prev,
           stage: 'error',
           error: event.data.error,
         }));
-        addMessage('error', `❌ ${event.data.error}`);
+        
+        // Clear the progress message on error (error message will show instead)
+        if (progressMessageIdRef.current) {
+          updateMessage(progressMessageIdRef.current, {
+            type: 'error',
+            content: event.data.error,
+          });
+          progressMessageIdRef.current = null;
+        } else {
+          addMessage('error', event.data.error);
+        }
+        
         onError?.(event.data.error);
         break;
     }
@@ -853,6 +945,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     userId: string;
     sessionId?: string;
     storyId?: string;  // Canvas/project ID (same as canvasId in URL)
+    orchestratorNodeId?: string;  // Orchestrator node ID (for connection-based context)
     storyStructureNodeId?: string;  // Active structure node ID for Librarian context
     documentFormat?: string;
     activeSegment?: unknown;
@@ -860,6 +953,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     canvasContext?: unknown;
     structureItems?: unknown[];
     canvasNodes?: unknown[];
+    canvasEdges?: unknown[];
     conversationHistory?: unknown[];
     clarificationResponse?: string;
     originalAction?: string;  // The action that needed clarification (e.g., 'create_structure')
@@ -873,6 +967,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     reasoningMessageIdRef.current = null;  // Reset reasoning message ref for new stream
     assistantMessageIdRef.current = null;  // Reset assistant message ref for new stream
     accumulatedContentRef.current = '';    // Reset accumulated content for new stream
+    thinkingIndicatorIdRef.current = null; // Reset thinking indicator for new stream
 
     // Reset state
     setIsStreaming(true);
@@ -881,12 +976,31 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       stage: 'planning',
       percentComplete: 0,
     });
+    streamingContentAccumRef.current = {};
 
     // Add user message
     addMessage('user', request.message);
     
-    // Add initial progress message
-    addMessage('progress', '🤖 Let me help you with that...');
+    // Add initial progress message first (shows above thinking)
+    progressMessageIdRef.current = addMessage('progress', 'Working on that...');
+    
+    // Create thinking indicator (shows below progress)
+    const thinkingStartTime = new Date();
+    thinkingStartTimeRef.current = thinkingStartTime;
+    const thinkingId = generateId();
+    thinkingIndicatorIdRef.current = thinkingId;
+    
+    const thinkingMessage: ChatMessage = {
+      id: thinkingId,
+      type: 'reasoning',
+      content: '',  // Empty content - just shows "Thinking..."
+      timestamp: thinkingStartTime,
+      metadata: {
+        startTime: thinkingStartTime.toISOString(),
+        isStreaming: true
+      }
+    };
+    setMessages(prev => [...prev, thinkingMessage]);
 
     // Build conversation history from internal messages state
     // Filter for user and assistant messages, convert to backend format
@@ -926,12 +1040,38 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         : [],
     });
 
+    // Debug canvas snapshot being sent (helps verify character nodes are present)
+    try {
+      const nodes = Array.isArray(request.canvasNodes) ? request.canvasNodes : []
+      const edges = Array.isArray(request.canvasEdges) ? request.canvasEdges : []
+      const characterNodes = nodes.filter((n: any) => {
+        const nodeType = n?.data?.nodeType
+        return nodeType === 'character'
+      })
+      console.log('🧩 [Stream] Canvas snapshot:', {
+        orchestratorNodeId: request.orchestratorNodeId,
+        nodes: nodes.length,
+        edges: edges.length,
+        characterNodes: characterNodes.length,
+        sampleCharacters: characterNodes.slice(0, 5).map((n: any) => ({
+          id: n?.id,
+          label: n?.data?.label,
+          characterId: n?.data?.characterId,
+          role: n?.data?.role,
+          hasBio: !!n?.data?.bio,
+        })),
+      })
+    } catch (e) {
+      console.warn('🧩 [Stream] Canvas snapshot debug failed:', e)
+    }
+
     // Convert camelCase to snake_case for Python backend
     const snakeCaseRequest = {
       message: request.message,
       user_id: request.userId,
       session_id: request.sessionId,
       story_id: request.storyId,  // Canvas/project ID for persistence and context
+      orchestrator_node_id: request.orchestratorNodeId,
       story_structure_node_id: request.storyStructureNodeId,  // Active structure node ID
       document_format: request.documentFormat,
       active_segment: request.activeSegment,
@@ -939,10 +1079,12 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       canvas_context: request.canvasContext,
       structure_items: request.structureItems,
       canvas_nodes: request.canvasNodes,
+      canvas_edges: request.canvasEdges,
       conversation_history: conversationHistory,
       clarification_response: request.clarificationResponse,
       original_action: request.originalAction,
       active_section_card: request.activeSectionCard,  // Section card currently being viewed
+      extended_thinking: request.extendedThinking,  // Enable Claude's chain-of-thought reasoning
     };
 
     // Debug: Log if this is a clarification response
@@ -1018,9 +1160,6 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
 
   // Clear messages (UI only - persisted messages will reload on refresh)
   const clearMessages = useCallback(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/590edda1-d2cc-4e7e-b43e-dfdf13ca907f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOrchestratorStream.ts:861',message:'clearMessages called',data:{currentMessagesCount:messages.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
     setMessages([]);
     setProgress({
       isActive: false,
@@ -1028,6 +1167,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       percentComplete: 0,
     });
     reasoningMessageIdRef.current = null;  // Reset reasoning message ref
+    thinkingIndicatorIdRef.current = null; // Reset thinking indicator ref
   }, [messages.length]);
 
   // Clear streaming content for a section (after it's been saved to DB)
@@ -1036,6 +1176,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       const { [sectionId]: _, ...rest } = prev;
       return rest;
     });
+    delete streamingContentAccumRef.current[sectionId];
   }, []);
 
   return {

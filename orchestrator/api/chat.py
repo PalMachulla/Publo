@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any, AsyncIterator
 from langsmith import traceable
 import json
+import os
 
 from agent import create_publo_agent_with_mcp, run_agent_streaming
 from streaming import format_sse, SSEEventType
@@ -42,7 +43,9 @@ class ChatRequest(BaseModel):
     
     # Canvas context - what structures exist
     canvas_nodes: Optional[List[Dict[str, Any]]] = None  # All nodes on canvas
+    canvas_edges: Optional[List[Dict[str, Any]]] = None  # All edges on canvas (ReactFlow)
     structure_items: Optional[List[Dict[str, Any]]] = None  # Current structure's sections
+    orchestrator_node_id: Optional[str] = None  # Orchestrator node ID (for connection-based context)
     
     # Librarian context - active section card being viewed
     active_section_card: Optional[Dict[str, Any]] = None  # Section card currently in view
@@ -54,6 +57,9 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = None
     session_id: Optional[str] = None
     thread_id: Optional[str] = None  # For memory continuity
+    
+    # Extended thinking - stream Claude's chain-of-thought reasoning
+    extended_thinking: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -93,6 +99,62 @@ async def chat(request: ChatRequest):
     async def generate() -> AsyncIterator[str]:
         """Generate SSE events from agent execution."""
         try:
+            print(f"🧠 [Chat] Extended thinking: {request.extended_thinking}", flush=True)
+            
+            # Stream extended thinking if enabled
+            if request.extended_thinking:
+                try:
+                    import anthropic
+                    import os
+                    
+                    # Only stream thinking if we have Anthropic key
+                    if os.getenv("ANTHROPIC_API_KEY"):
+                        # Use async client for proper streaming in async context
+                        client = anthropic.AsyncAnthropic()
+                        
+                        # Simple thinking prompt based on user message
+                        thinking_prompt = f"Analyze this request and plan your response: {request.message}"
+                        
+                        print("🧠 [Chat] Starting extended thinking stream...", flush=True)
+                        accumulated_thinking = ""
+                        token_count = 0
+                        
+                        # Use async beta messages API with extended thinking
+                        async with client.beta.messages.stream(
+                            model="claude-sonnet-4-20250514",
+                            max_tokens=4000,
+                            thinking={
+                                "type": "enabled",
+                                "budget_tokens": 2000
+                            },
+                            messages=[{"role": "user", "content": thinking_prompt}],
+                            betas=["interleaved-thinking-2025-05-14"]
+                        ) as stream:
+                            async for event in stream:
+                                if hasattr(event, 'type') and event.type == 'content_block_delta':
+                                    delta = getattr(event, 'delta', None)
+                                    if delta and hasattr(delta, 'type') and delta.type == 'thinking_delta':
+                                        token = getattr(delta, 'thinking', '')
+                                        accumulated_thinking += token
+                                        token_count += 1
+                                        # Stream every token
+                                        yield format_sse(SSEEventType.REASONING_TOKEN, {
+                                            'token': accumulated_thinking,
+                                            'is_complete': False
+                                        })
+                        
+                        if accumulated_thinking:
+                            yield format_sse(SSEEventType.REASONING_TOKEN, {
+                                'token': accumulated_thinking,
+                                'is_complete': True
+                            })
+                            print(f"✅ [Chat] Extended thinking complete ({len(accumulated_thinking)} chars, {token_count} tokens)", flush=True)
+                
+                except Exception as e:
+                    print(f"⚠️ [Chat] Extended thinking error (non-fatal): {e}", flush=True)
+                    import traceback
+                    traceback.print_exc()
+            
             # Create agent with MCP tools
             agent = await create_publo_agent_with_mcp(
                 story_id=request.story_id,
@@ -105,13 +167,86 @@ async def chat(request: ChatRequest):
             # Build messages list
             messages = []
             
+            # ============================================================
+            # Connection-based canvas context (preferred)
+            # ============================================================
+            connected_nodes: List[Dict[str, Any]] = []
+            if request.canvas_nodes and request.canvas_edges and request.orchestrator_node_id:
+                try:
+                    node_by_id = {n.get("id"): n for n in request.canvas_nodes if isinstance(n, dict)}
+                    connected_ids = set()
+                    for e in request.canvas_edges:
+                        if not isinstance(e, dict):
+                            continue
+                        src = e.get("source")
+                        tgt = e.get("target")
+                        if src == request.orchestrator_node_id and tgt:
+                            connected_ids.add(tgt)
+                        elif tgt == request.orchestrator_node_id and src:
+                            connected_ids.add(src)
+                    connected_nodes = [node_by_id[nid] for nid in connected_ids if nid in node_by_id]
+                    print(
+                        "🧩 [Chat] Canvas connection context:",
+                        {
+                            "orchestrator_node_id": request.orchestrator_node_id,
+                            "canvas_nodes": len(request.canvas_nodes or []),
+                            "canvas_edges": len(request.canvas_edges or []),
+                            "connected_nodes": len(connected_nodes),
+                        },
+                        flush=True,
+                    )
+                    if len(connected_nodes) == 0:
+                        sample_edges = []
+                        for e in (request.canvas_edges or [])[:5]:
+                            if isinstance(e, dict):
+                                sample_edges.append({"source": e.get("source"), "target": e.get("target")})
+                        print("🧩 [Chat] No connected nodes. Sample edges:", sample_edges, flush=True)
+                except Exception as e:
+                    print(f"⚠️ [Chat] Failed to compute connected nodes: {e}", flush=True)
+
+            # ============================================================
+            # Connected Sources Summary (FIRST system message)
+            # ============================================================
+            # Tells the AI upfront what's connected so thinking reflects it
+            if connected_nodes:
+                try:
+                    char_names = []
+                    story_names = []
+                    for node in connected_nodes:
+                        if not isinstance(node, dict):
+                            continue
+                        node_data = node.get("data") or {}
+                        node_type = node_data.get("nodeType") or node_data.get("node_type") or ""
+                        react_type = node.get("type", "")
+                        
+                        if react_type == "characterNode" or node_type == "character":
+                            name = node_data.get("characterName") or node_data.get("character_name") or node_data.get("label") or "Unnamed"
+                            char_names.append(name)
+                        elif react_type == "storyStructureNode" or node_type == "story-structure":
+                            name = node_data.get("label") or "Untitled Story"
+                            story_names.append(name)
+                    
+                    if char_names or story_names:
+                        summary = "## Connected Canvas Sources\n\n"
+                        summary += "The user has connected these nodes to this conversation:\n"
+                        if char_names:
+                            summary += f"- **{len(char_names)} Character(s):** {', '.join(char_names[:8])}\n"
+                        if story_names:
+                            summary += f"- **{len(story_names)} Story Structure(s):** {', '.join(story_names[:4])}\n"
+                        summary += "\nWhen the user asks about 'the characters' or 'the story', they mean these connected sources.\n"
+                        messages.append({"role": "system", "content": summary})
+                        print(f"🔗 [Chat] Sources summary: {len(char_names)} chars, {len(story_names)} stories", flush=True)
+                except Exception as e:
+                    print(f"⚠️ [Chat] Sources summary failed: {e}", flush=True)
+
             # Inject canvas context so agent knows what structures exist
             if request.canvas_nodes:
                 # Extract story structure nodes for context
                 story_nodes = []
                 for node in request.canvas_nodes:
                     node_data = node.get("data", {})
-                    if node.get("type") == "storyStructureNode" or node_data.get("nodeType") == "story-structure":
+                    node_type = node_data.get("nodeType") or node_data.get("node_type")
+                    if node.get("type") == "storyStructureNode" or node_type == "story-structure":
                         story_nodes.append({
                             "id": node.get("id"),
                             "name": node_data.get("label", "Untitled"),
@@ -125,6 +260,158 @@ async def chat(request: ChatRequest):
                         context_msg += f"- **{sn['name']}** ({sn['format']}, {sn['sections_count']} sections) - Node ID: {sn['id']}\n"
                     context_msg += "\nYou can work with any of these existing stories or create a new one."
                     messages.append({"role": "system", "content": context_msg})
+
+            # Inject connected character personas (when wired to orchestrator)
+            if connected_nodes:
+                try:
+                    character_nodes: List[Dict[str, Any]] = []
+                    for node in connected_nodes:
+                        if not isinstance(node, dict):
+                            continue
+                        node_data = node.get("data", {}) or {}
+                        node_type = node_data.get("nodeType") or node_data.get("node_type")
+                        if node.get("type") == "characterNode" or node_type == "character":
+                            character_nodes.append(node)
+
+                    if character_nodes:
+                        try:
+                            print(
+                                "🧑‍🎭 [Chat] Connected character nodes (raw):",
+                                [
+                                    {
+                                        "id": (n.get("id") if isinstance(n, dict) else None),
+                                        "label": ((n.get("data", {}) or {}).get("label") if isinstance(n, dict) else None),
+                                        "character_id": ((n.get("data", {}) or {}).get("characterId") if isinstance(n, dict) else None)
+                                                      or ((n.get("data", {}) or {}).get("character_id") if isinstance(n, dict) else None),
+                                        "node_type": ((n.get("data", {}) or {}).get("nodeType") if isinstance(n, dict) else None)
+                                                     or ((n.get("data", {}) or {}).get("node_type") if isinstance(n, dict) else None),
+                                    }
+                                    for n in character_nodes[:8]
+                                    if isinstance(n, dict)
+                                ],
+                                flush=True,
+                            )
+                        except Exception:
+                            pass
+
+                        # Fetch missing character details from Supabase if needed
+                        # (some canvas nodes only store characterId)
+                        supabase_rows_by_id: Dict[str, Dict[str, Any]] = {}
+                        try:
+                            from config import get_supabase_client
+                            supabase = get_supabase_client()
+
+                            ids_to_fetch = []
+                            for n in character_nodes:
+                                d = (n.get("data", {}) or {})
+                                cid = d.get("characterId") or d.get("character_id")
+                                if cid and (not d.get("bio")):
+                                    ids_to_fetch.append(cid)
+
+                            ids_to_fetch = list({cid for cid in ids_to_fetch if isinstance(cid, str) and cid})
+                            if ids_to_fetch:
+                                res = supabase.table("characters") \
+                                    .select("id,user_id,name,bio,role,visibility,photo_url,updated_at") \
+                                    .in_("id", ids_to_fetch) \
+                                    .execute()
+
+                                for row in (res.data or []):
+                                    if isinstance(row, dict) and row.get("id"):
+                                        supabase_rows_by_id[row["id"]] = row
+                        except Exception as e:
+                            # Non-fatal: we'll fall back to node data
+                            print(f"⚠️ [Chat] Character enrichment skipped: {e}", flush=True)
+
+                        # Build personas list for system prompt
+                        personas: List[Dict[str, Any]] = []
+                        for n in character_nodes[:12]:  # Hard cap
+                            d = (n.get("data", {}) or {})
+                            cid = d.get("characterId") or d.get("character_id") or ""
+                            row = supabase_rows_by_id.get(cid) if cid else None
+
+                            name = d.get("characterName") or d.get("character_name") or d.get("label")
+                            if not name and row:
+                                name = row.get("name")
+                            name = name or "Unnamed Character"
+
+                            role = d.get("role") or (row.get("role") if row else None)
+                            bio = d.get("bio") or (row.get("bio") if row else None) or ""
+
+                            # Enforce basic visibility when user_id is provided
+                            if row and request.user_id:
+                                visibility = row.get("visibility")
+                                owner_id = row.get("user_id")
+                                if visibility == "private" and owner_id != request.user_id:
+                                    continue
+
+                            attributes = d.get("attributes") if isinstance(d.get("attributes"), dict) else None
+                            profiler_chat = d.get("profilerChat") or d.get("profiler_chat")
+                            if not isinstance(profiler_chat, list):
+                                profiler_chat = None
+
+                            personas.append({
+                                "name": name,
+                                "role": role,
+                                "bio": bio,
+                                "attributes": attributes,
+                                "profilerChat": profiler_chat,
+                            })
+
+                        if personas:
+                            personas_msg = "## Connected Character Personas (HIGH PRIORITY)\n\n"
+                            personas_msg += "These character profiles come from canvas Character nodes connected to the Orchestrator.\n"
+                            personas_msg += "Treat them as canonical guidance for voice, behavior, relationships, and presence in generated story content.\n\n"
+                            personas_msg += "### Role semantics (interpretation rules)\n"
+                            personas_msg += "- **Main**: Core protagonist/antagonist. Should appear frequently and materially drive plot/choices.\n"
+                            personas_msg += "- **Active**: Key supporting cast with agency. Should influence scenes/decisions and have distinct voice.\n"
+                            personas_msg += "- **Included**: Supporting presence. May appear or be referenced; adds texture but rarely drives plot.\n"
+                            personas_msg += "- **Involved**: Contextual/cultural/semiotic influence. Use for worldview, norms, slang, social dynamics, stakes.\n"
+                            personas_msg += "- **Passive**: Background influence. Use for ambience, constraints, setting realism; avoid centering scenes on them unless asked.\n\n"
+                            personas_msg += "### Identity & voice rules\n"
+                            personas_msg += "- Use the **exact character name** as canonical. Do not rename.\n"
+                            personas_msg += "- If bio/profile implies a way of speaking (slang, formality, cadence), reflect it consistently.\n"
+                            personas_msg += "- If the user asks to change who a character is, suggest updating the Character node rather than silently changing the persona.\n\n"
+
+                            for p in personas:
+                                personas_msg += f"- **{p['name']}**"
+                                if p.get("role"):
+                                    personas_msg += f" (Role: {p['role']})"
+                                personas_msg += "\n"
+                                if p.get("bio"):
+                                    trimmed = str(p["bio"]).strip()
+                                    if len(trimmed) > 900:
+                                        trimmed = trimmed[:900].rstrip() + "…"
+                                    personas_msg += f"  - Bio: {trimmed}\n"
+                                else:
+                                    personas_msg += f"  - Bio: (none provided) — treat name as identity anchor.\n"
+                                if p.get("attributes"):
+                                    # Keep attributes compact
+                                    try:
+                                        attrs_json = json.dumps(p["attributes"], ensure_ascii=False)
+                                        if len(attrs_json) > 600:
+                                            attrs_json = attrs_json[:600].rstrip() + "…"
+                                        personas_msg += f"  - Attributes: {attrs_json}\n"
+                                    except Exception:
+                                        pass
+                                if p.get("profilerChat"):
+                                    # Include a tiny sample of Q/A pairs (if present)
+                                    try:
+                                        qa_pairs = []
+                                        for qa in (p.get("profilerChat") or [])[:3]:
+                                            if not isinstance(qa, dict):
+                                                continue
+                                            q = str(qa.get("question", "")).strip()
+                                            a = str(qa.get("answer", "")).strip()
+                                            if q and a:
+                                                qa_pairs.append({"q": q[:120], "a": a[:220]})
+                                        if qa_pairs:
+                                            personas_msg += f"  - Profile Q/A (signals for voice/reactions): {json.dumps(qa_pairs, ensure_ascii=False)}\n"
+                                    except Exception:
+                                        pass
+
+                            messages.append({"role": "system", "content": personas_msg})
+                except Exception as e:
+                    print(f"⚠️ [Chat] Failed to inject character personas: {e}", flush=True)
             
             # Add current structure items if available
             if request.structure_items and len(request.structure_items) > 0:
@@ -133,11 +420,15 @@ async def chat(request: ChatRequest):
                 sections_msg += "1. The EXACT `section_id` from the table below\n"
                 sections_msg += "2. The matching `section_name`\n\n"
                 sections_msg += "| # | Section Name | section_id | section_name |\n|---|--------------|------------|---------------|\n"
-                for idx, item in enumerate(request.structure_items[:20], 1):  # Limit to first 20
+                # Include more than 20 so "write act one" can reference later scenes.
+                # Still cap to avoid blowing up the prompt.
+                for idx, item in enumerate(request.structure_items[:60], 1):  # Limit to first 60
                     # FIX: Read from 'title' OR 'name' (frontend uses 'title')
                     name = item.get('title') or item.get('name') or 'Section'
                     sid = item.get('id', '')
                     sections_msg += f"| {idx} | {name} | `{sid}` | `{name}` |\n"
+                if len(request.structure_items) > 60:
+                    sections_msg += f"\n(Showing first 60 of {len(request.structure_items)} sections.)\n"
                 sections_msg += "\n**Example:** To write 'Introduction', call:\n"
                 sections_msg += "`write_section(section_id='sec-2', section_name='Introduction', guidance='...')`\n"
                 messages.append({"role": "system", "content": sections_msg})
@@ -184,9 +475,15 @@ async def chat(request: ChatRequest):
             messages.append({"role": "user", "content": request.message})
             
             # Config for the agent
-            # Use story_structure_node_id for Librarian context if provided,
-            # otherwise fall back to story_id
-            initial_node_id = request.story_structure_node_id or request.story_id
+            #
+            # IMPORTANT:
+            # - `story_id` is the canvas/project id (used for thread_id and persistence context)
+            # - `story_structure_node_id` is the *actual* structure node id used for Librarian + writing tools
+            #
+            # Never fall back to `story_id` for tool node_id.
+            # If no structure is selected yet, keep node_id empty so `create_structure`
+            # can generate a new node id.
+            initial_node_id = request.story_structure_node_id or ""
             
             # Mutable container so we can update node_id mid-stream
             # (when create_structure generates a new node_id)

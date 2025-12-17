@@ -108,6 +108,8 @@ export interface CreateStoryNodeData extends BaseNodeData {
   isOrchestrating?: boolean // Whether the orchestrator is active
   orchestratorProgress?: number // Progress percentage (0-100)
   loadingText?: string // Text to show below logo during operations
+  /** Optional explicit stage (preferred over parsing loadingText) */
+  orchestratorStage?: 'idle' | 'thinking' | 'structuring' | 'writing' | 'done' | 'error'
   chatPrompt?: string // User's prompt from the chat input
   reasoningMessages?: Array<{ // Orchestrator's reasoning messages
     timestamp: string

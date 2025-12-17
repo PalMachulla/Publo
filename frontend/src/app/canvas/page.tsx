@@ -22,6 +22,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Node, Edge, Connection, addEdge } from 'reactflow'
 import type { StoryFormat, StoryStructureNodeData, NodeType } from '@/types/nodes'
 import { createStory, deleteStory } from '@/lib/stories'
+import { isOrchestratorNode } from '@/data/stories'
 
 // Hooks
 import { useCanvasState } from '@/hooks/canvas/useCanvasState'
@@ -588,6 +589,16 @@ export default function CanvasPage() {
       canvasData.loadStoryData(storyId)
     }
   }, [user, loading, storyId, canvasData])
+
+  // Default: auto-select orchestrator node and keep panel open.
+  // NodeDetailsPanel renders nothing when `selectedNode` is null.
+  useEffect(() => {
+    if (canvasState.selectedNode) return
+    const orchestrator = canvasState.nodes.find(n => isOrchestratorNode(n.id))
+    if (!orchestrator) return
+    canvasState.setSelectedNode(orchestrator)
+    canvasState.setIsPanelOpen(true)
+  }, [canvasState.nodes, canvasState.selectedNode, canvasState.setSelectedNode, canvasState.setIsPanelOpen])
   
   // ============================================================
   // RENDER
@@ -711,8 +722,12 @@ export default function CanvasPage() {
           onNodeUpdate={handleNodeUpdate}
           onNodeDelete={handleNodeDelete}
           onCreateStory={handleCreateStory}
-          onAddNode={(newNode) => canvasState.setNodes((nds) => [...nds, newNode])}
-          onAddEdge={(newEdge) => canvasState.setEdges((eds) => [...eds, newEdge])}
+          onAddNode={(newNode) =>
+            canvasState.setNodes((nds) => (nds.some((n) => n.id === newNode.id) ? nds : [...nds, newNode]))
+          }
+          onAddEdge={(newEdge) =>
+            canvasState.setEdges((eds) => (eds.some((e) => e.id === newEdge.id) ? eds : [...eds, newEdge]))
+          }
           edges={canvasState.edges}
           nodes={canvasState.nodes}
           // 2024-12-11: Removed worldState

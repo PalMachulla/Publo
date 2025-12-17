@@ -85,7 +85,8 @@ export function useCanvasState(
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   
   // Panel visibility state
-  const [isPanelOpen, setIsPanelOpen] = useState(false)
+  // Default open so Orchestrator panel is visible immediately.
+  const [isPanelOpen, setIsPanelOpen] = useState(true)
   
   /**
    * Handle node changes with context node protection and cluster node dragging

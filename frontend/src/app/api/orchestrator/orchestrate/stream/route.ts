@@ -44,14 +44,24 @@ export async function POST(request: NextRequest) {
     console.log('🔄 [StreamProxy] Request:', {
       message: snakeCaseBody.message?.slice(0, 50),
       userId: snakeCaseBody.user_id,
-      storyId: snakeCaseBody.story_id
+      storyId: snakeCaseBody.story_id,
+      orchestratorNodeId: snakeCaseBody.orchestrator_node_id || '❌ MISSING',
+      canvasEdges: snakeCaseBody.canvas_edges?.length ?? '❌ MISSING',
+      canvasNodes: snakeCaseBody.canvas_nodes?.length ?? '❌ MISSING',
     })
     
     // Call Python streaming endpoint
+    // Note: Don't set Accept-Encoding to prevent compression buffering
     const response = await fetch(`${BACKEND_URL}/api/orchestrator/orchestrate/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+      },
       body: JSON.stringify(snakeCaseBody),
+      // @ts-ignore - duplex is needed for streaming in Node.js
+      duplex: 'half',
     })
     
     if (!response.ok) {
@@ -77,35 +87,21 @@ export async function POST(request: NextRequest) {
       })
     }
     
-    // Stream the response through
-    const stream = new ReadableStream({
-      async start(controller) {
-        const reader = response.body?.getReader()
-        if (!reader) {
-          controller.close()
-          return
-        }
-        
-        try {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            controller.enqueue(value)
-          }
-        } catch (error) {
-          console.error('❌ [StreamProxy] Stream error:', error)
-        } finally {
-          controller.close()
-        }
-      }
+    // Stream the response through using TransformStream for immediate passthrough
+    const { readable, writable } = new TransformStream()
+    
+    // Pipe in the background
+    response.body?.pipeTo(writable).catch((error) => {
+      console.error('❌ [StreamProxy] Pipe error:', error)
     })
     
-    return new Response(stream, {
+    return new Response(readable, {
       headers: {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no',
+        'Transfer-Encoding': 'chunked',
       }
     })
     

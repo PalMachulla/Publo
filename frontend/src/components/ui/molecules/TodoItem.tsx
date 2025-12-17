@@ -36,7 +36,7 @@ export function TodoItem({ todo, isActive = false, className }: TodoItemProps) {
       className={cn(
         'flex items-start gap-3 py-2 px-3 rounded-md',
         'transition-colors duration-150',
-        isInProgress && 'bg-indigo-50/50',
+        isInProgress && 'bg-gradient-to-r from-indigo-50 via-white to-indigo-50 bg-[length:200%_100%] animate-shimmer',
         isCompleted && 'bg-green-50/30',
         isCancelled && 'opacity-50',
         isActive && 'ring-1 ring-indigo-200',

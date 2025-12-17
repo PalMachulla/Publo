@@ -12,19 +12,26 @@ import { Handle, Position, NodeProps } from 'reactflow'
 import { CreateStoryNodeData } from '@/types/nodes'
 
 function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
-  const { isOrchestrating = false, loadingText = '' } = data
+  const { isOrchestrating = false, loadingText = '', orchestratorProgress, orchestratorStage } = data
   
   // 2024-12-11: Simplified - removed WorldState, use node data directly
   // Status can be updated via setNodes() when streaming state changes
   const visualState = useMemo(() => {
-    const isInferring = loadingText.toLowerCase().includes('inference')
-    const isThinking = loadingText.toLowerCase().includes('thinking')
-    const isGenerating = loadingText.toLowerCase().includes('generat')
+    const text = (loadingText || '').toLowerCase()
+    const stage = orchestratorStage
+    const isInferring = text.includes('inference')
+    const isThinking = stage === 'thinking' || text.includes('thinking') || text.includes('planning')
+    const isStructuring = stage === 'structuring' || text.includes('structur')
+    const isWriting = stage === 'writing' || text.includes('writing')
+    const isGenerating = text.includes('generat')
+    const isError = stage === 'error' || text.includes('error')
     
     // Determine color based on activity type
-    let color = '#fbbf24' // default yellow
-    if (isInferring || isThinking) color = '#ec4899' // pink for thinking
-    if (isGenerating) color = '#10b981' // green for generating
+    let color = '#a1a1aa' // zinc-400 default
+    if (isInferring || isThinking) color = '#e11d48' // rose-600
+    if (isStructuring) color = '#3b82f6' // blue-500
+    if (isWriting || isGenerating) color = '#10b981' // emerald-500
+    if (isError) color = '#ef4444' // red-500
     
     return {
       displayText: loadingText || 'ORCHESTRATOR',
@@ -32,7 +39,7 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
       color,
       shouldAnimate: isOrchestrating
     }
-  }, [loadingText, isOrchestrating])
+  }, [loadingText, isOrchestrating, orchestratorStage])
   
   const displayText = visualState.displayText
   const shouldAnimate = visualState.shouldAnimate
@@ -94,6 +101,22 @@ function OrchestratorNode({ data, selected }: NodeProps<CreateStoryNodeData>) {
             stroke="#9ca3af"
             strokeWidth="8"
           />
+
+          {/* Progress ring (only when we have a percentage) */}
+          {typeof orchestratorProgress === 'number' && orchestratorProgress >= 0 && (
+            <circle
+              cx="90"
+              cy="90"
+              r="85"
+              fill="none"
+              stroke={spinnerColor}
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={`${2 * Math.PI * 85}`}
+              strokeDashoffset={`${2 * Math.PI * 85 * (1 - Math.min(100, Math.max(0, orchestratorProgress)) / 100)}`}
+              opacity={0.9}
+            />
+          )}
           
           {/* White inner circle */}
           <circle

@@ -7,7 +7,7 @@
  * Composes: TodoItem, TodoProgress
  */
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { TodoItem, TodoItemData } from '../molecules/TodoItem'
 import { TodoProgress, TodoStats } from '../molecules/TodoProgress'
@@ -30,11 +30,8 @@ export function TodoPanel({
   className 
 }: TodoPanelProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
-  
-  // Don't render if no todos
-  if (!todos || todos.length === 0) {
-    return null
-  }
+  const wasCompleteRef = useRef(false)
+  const hasTodos = Array.isArray(todos) && todos.length > 0
   
   // Calculate stats if not provided
   const computedStats: TodoStats = stats || {
@@ -49,6 +46,24 @@ export function TodoPanel({
   }
   
   const isComplete = computedStats.completed === computedStats.total
+  
+  // Auto-collapse when transitioning from incomplete to complete
+  useEffect(() => {
+    if (!hasTodos) return
+    if (isComplete && !wasCompleteRef.current) {
+      // Just became complete - auto-collapse after a short delay
+      const timer = setTimeout(() => {
+        setIsExpanded(false)
+      }, 1500) // Brief delay so user sees the completion
+      return () => clearTimeout(timer)
+    }
+    wasCompleteRef.current = isComplete
+  }, [hasTodos, isComplete])
+
+  // Don't render if no todos
+  if (!hasTodos) {
+    return null
+  }
   
   return (
     <div 

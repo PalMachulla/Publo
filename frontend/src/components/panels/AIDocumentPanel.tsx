@@ -528,7 +528,7 @@ export default function AIDocumentPanel({
       
       // If element not found, wait a bit for the document to render, then retry
       if (!scrolled) {
-        console.log('⏳ [AIDocumentPanel] Section not found yet, waiting for render...')
+        console.log('⏳ [AIDocumentPanel] Section anchor not found yet, waiting for render...')
         setTimeout(() => {
           const retried = scrollToSection()
           if (!retried) {
@@ -595,20 +595,8 @@ export default function AIDocumentPanel({
       // Check for streaming content first (real-time writing)
       const streaming = streamingContent[itemId]
       
-      // Debug: Log available streaming content keys
-      const streamingKeys = Object.keys(streamingContent)
-      if (streamingKeys.length > 0) {
-        console.log('📝 [AIDocumentPanel] Streaming content check:', {
-          itemId,
-          hasStreaming: !!streaming,
-          availableKeys: streamingKeys,
-          streamingContentForItem: streaming ? { length: streaming.content?.length, isComplete: streaming.isComplete } : null
-        })
-      }
-      
       if (streaming && !streaming.isComplete) {
         // Show streaming content with a typing cursor indicator (use unicode block cursor)
-        console.log('📝 [AIDocumentPanel] Rendering streaming content for:', itemId)
         const cleanedContent = stripDuplicateHeading(streaming.content, item.name)
         aggregatedContent.push(cleanedContent + '▌') // Unicode block cursor
         return aggregatedContent.join('\n\n')
@@ -630,14 +618,8 @@ export default function AIDocumentPanel({
       } else if (section?.content && section.content.trim()) {
         aggregatedContent.push(stripDuplicateHeading(section.content, item.name))
       } else if (isGenerating) {
-        // ✅ Show progress indicator for sections currently being generated
-        aggregatedContent.push(`<div class="text-purple-600 italic animate-pulse flex items-center gap-2">
-  <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-  </svg>
-  ✍️ Writing in progress...
-</div>`)
+        // Show a simple placeholder while writing (MarkdownContent does not render raw HTML)
+        aggregatedContent.push('*Writing in progress...*')
       } else {
         // Add placeholder for empty sections (non-actionable)
         const itemSummary = item.summary
@@ -671,6 +653,70 @@ export default function AIDocumentPanel({
     }
     
     return aggregatedContent.join('\n\n')
+  }
+
+  /**
+   * Render the Tree view as real React nodes (not one huge markdown blob).
+   * This prevents runaway full-document rebuilds during streaming and creates
+   * stable DOM anchors (`id="section-..."`) for scroll-to-section behavior.
+   */
+  const renderTreeItem = (item: StoryStructureItem): JSX.Element => {
+    const children = structureItems
+      .filter(i => i.parentId === item.id)
+      .sort((a, b) => a.order - b.order)
+
+    const headerText = item.title || item.name || 'Section'
+    const level = Math.max(1, Math.min(item.level || 1, 6))
+
+    const HeaderTag = (level === 1 ? 'h1' : level === 2 ? 'h2' : 'h3') as keyof JSX.IntrinsicElements
+    const headerClass =
+      level === 1
+        ? 'text-2xl uppercase mb-2 mt-3 first:mt-0'
+        : level === 2
+          ? 'text-lg font-bold mb-3 mt-4 first:mt-0'
+          : 'text-sm font-bold py-2 px-4 rounded-md mb-2 mt-2 first:mt-0 bg-zinc-200'
+
+    // Leaf content resolution
+    const streaming = streamingContent[item.id]
+    const section = sections.find(s => s.structure_item_id === item.id)
+    const isGenerating = generatingSections.has(item.id)
+    const contentFromMap = contentMap[item.id]
+
+    let body = ''
+    if (streaming && !streaming.isComplete) {
+      body = stripDuplicateHeading(streaming.content, item.name) + '▌'
+    } else if (streaming?.isComplete && streaming.content) {
+      body = stripDuplicateHeading(streaming.content, item.name)
+    } else if (contentFromMap) {
+      body = stripDuplicateHeading(contentFromMap, item.name)
+    } else if (section?.content && section.content.trim()) {
+      body = stripDuplicateHeading(section.content, item.name)
+    } else if (isGenerating) {
+      body = '*Writing in progress...*'
+    } else if (item.summary) {
+      body = `*${item.summary}*\n\n---\n\n*Awaiting content generation...*`
+    } else {
+      body = '*Content will appear here once generated.*'
+    }
+
+    return (
+      <div key={item.id} id={`section-${item.id}`} className="py-4 border-b border-gray-200 last:border-b-0">
+        <HeaderTag className={headerClass}>{headerText}</HeaderTag>
+        {children.length === 0 ? (
+          <MarkdownContent>{body}</MarkdownContent>
+        ) : (
+          <div className="space-y-6">
+            {/* Optional parent content */}
+            {body && body !== '*Content will appear here once generated.*' && (
+              <MarkdownContent>{body}</MarkdownContent>
+            )}
+            <div className="space-y-6">
+              {children.map(child => renderTreeItem(child))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
   }
 
   // Handle section click (from sidebar or NarrationArrangementView)
@@ -950,48 +996,8 @@ export default function AIDocumentPanel({
     )
   }
 
-  // Load full document when in Tree view (not Cards view)
-  useEffect(() => {
-    // Only load full document in Tree view
-    if (isOpen && sidebarView === 'tree' && structureItems.length > 0) {
-      console.log('📄 [AIDocumentPanel] Loading full document for Tree view:', {
-        structureItemsCount: structureItems.length,
-        sectionsCount: sections.length,
-        contentMapSize: Object.keys(contentMap).length,
-        sections: sections.map(s => ({ id: s.id, structure_item_id: s.structure_item_id, hasContent: !!s.content }))
-      })
-      
-      // Build the complete document from all root-level structure items
-      const rootItems = structureItems.filter(item => !item.parentId)
-      const fullDocument = rootItems
-        .sort((a, b) => a.order - b.order)
-        .map(item => {
-          const content = aggregateHierarchicalContent(item.id, true)
-          console.log(`📝 Content for ${item.name}:`, content.substring(0, 100))
-          return content
-        })
-        .filter(Boolean)
-        .join('\n\n---\n\n') // Add visual separators between major sections
-      
-      if (fullDocument && fullDocument.length > 10) {
-        console.log('✅ [AIDocumentPanel] Full document loaded:', fullDocument.length, 'chars')
-        setContent(fullDocument)
-        setHasLoadedFullDocument(true)
-      } else {
-        console.warn('⚠️ [AIDocumentPanel] No full document content generated or content is empty')
-        // Set placeholder if no content
-        setContent('# Document\n\nNo content yet. Click a section to start writing.')
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, sidebarView, structureItems, sections, contentMap, streamingContent])
-
-  // Reset loaded flag when panel closes
-  useEffect(() => {
-    if (!isOpen) {
-      setHasLoadedFullDocument(false)
-    }
-  }, [isOpen])
+  // NOTE: Tree view rendering is now direct React nodes via renderTreeItem()
+  // (no full-document markdown string building).
   
   // 🔧 FIX: Refresh sections when panel opens OR when switching documents (to load saved content)
   // Use a ref to prevent infinite loops
@@ -1028,7 +1034,7 @@ export default function AIDocumentPanel({
         }}
       >
         {/* Header with Tabs */}
-        <div className="flex flex-col bg-gray-50 border-b border-gray-200">
+        <div className="flex flex-col bg-gray-50 border-b border-zinc-200">
           {/* Tabs Bar - Cursor Style */}
           {storyStructureNodes.length > 0 && (
             <div className="flex items-center justify-between pr-2">
@@ -1080,29 +1086,9 @@ export default function AIDocumentPanel({
               </div>
 
               {/* Actions on Right */}
-              <div className="flex items-center gap-2 pb-1">
-                <div className="text-xs text-gray-400 font-mono mr-2">{wordCount} words</div>
-                <button
-                  onClick={saveNow}
-                  disabled={!isDirty || saveStatus === 'saving'}
-                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    isDirty
-                      ? 'bg-yellow-400 hover:bg-yellow-500 text-gray-900'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  } ${saveStatus === 'saving' ? 'opacity-50' : ''}`}
-                >
-                  {saveStatus === 'saving' ? 'Saving...' : isDirty ? 'Save' : 'Saved'}
-                </button>
-                <button
-                  onClick={onClose}
-                  className="p-1.5 hover:bg-gray-200 rounded transition-colors text-gray-500"
-                  aria-label="Hide document view"
-                  title="Hide document view"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+              <div className="flex items-center gap-2 px-1">
+                <div className="text-xs text-gray-400 font-mono ">{wordCount} words</div>
+               
               </div>
             </div>
           )}
@@ -1196,12 +1182,17 @@ export default function AIDocumentPanel({
                     /* Tree View: Show full markdown content */
                     <div className="p-8">
                       <div className="max-w-7xl mx-auto bg-white shadow-lg rounded-lg p-6">
-                        {content ? (
-                          <MarkdownContent className="min-h-[calc(100vh-8rem)]">
-                            {content}
-                          </MarkdownContent>
+                        {structureItems.length > 0 ? (
+                          <div className="min-h-[calc(100vh-8rem)]">
+                            {structureItems
+                              .filter(item => !item.parentId)
+                              .sort((a, b) => a.order - b.order)
+                              .map(item => renderTreeItem(item))}
+                          </div>
                         ) : (
-                          <p className="text-gray-400 italic">No content yet. Ask the orchestrator to write something.</p>
+                          <p className="text-gray-400 italic">
+                            No structure yet. Ask the orchestrator to create a structure first.
+                          </p>
                         )}
                       </div>
                     </div>

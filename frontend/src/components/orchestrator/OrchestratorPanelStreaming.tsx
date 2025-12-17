@@ -18,12 +18,19 @@ import {
   PaperPlaneIcon,
   MixerHorizontalIcon,
   LightningBoltIcon,
-  GlobeIcon
+  CheckCircledIcon,
+  FileTextIcon,
+  Pencil1Icon,
+  CursorArrowIcon,
+  GearIcon,
+  ExclamationTriangleIcon,
+  MagicWandIcon,
 } from '@radix-ui/react-icons'
 import { useOrchestratorStream, ChatMessage } from '@/hooks/useOrchestratorStream'
 import { StructureCreatedEvent, ClarificationEvent, CreationProgress } from '@/types/orchestrator-streaming-types'
 import { useOrchestratorSession } from '@/lib/orchestrator/hooks/useOrchestratorSession'
 import { ThinkingBlock } from '@/components/ui/molecules/ThinkingBlock'
+import { StructureProgress } from '@/components/ui/molecules/StructureProgress'
 import { MarkdownContent } from '@/components/ui/atoms/MarkdownContent'
 import { ChatOptionPill } from '@/components/ui/atoms/ChatOptionPill'
 import { TodoPanel } from '@/components/ui/organisms/TodoPanel'
@@ -40,6 +47,7 @@ export interface OrchestratorPanelStreamingProps {
   storyId?: string  // Canvas/project ID (from URL: /canvas?id=...)
                    // All story nodes on the same canvas share this orchestrator chat
   documentFormat?: string
+  orchestratorNodeId?: string
   
   // Canvas/editor integration callbacks
   onStructureComplete?: (structure: StructureCreatedEvent) => void
@@ -61,6 +69,7 @@ export interface OrchestratorPanelStreamingProps {
   canvasContext?: any
   structureItems?: any[]
   canvasNodes?: any[]
+  canvasEdges?: any[]
   conversationHistory?: any[]
   currentStoryStructureNodeId?: string  // Active structure node for Librarian context
   activeSectionCard?: any  // Section card currently being viewed (for Librarian context)
@@ -70,6 +79,17 @@ export interface OrchestratorPanelStreamingProps {
   onToggleDocumentView?: () => void
   
   className?: string
+
+  /**
+   * Optional: update the orchestrator canvas node UI (spinner/progress/status)
+   * while streaming is running.
+   */
+  onOrchestratorNodeUpdate?: (updates: {
+    isOrchestrating?: boolean
+    orchestratorProgress?: number
+    loadingText?: string
+    orchestratorStage?: 'idle' | 'thinking' | 'structuring' | 'writing' | 'done' | 'error'
+  }) => void
 }
 
 // ============================================================
@@ -81,6 +101,7 @@ export function OrchestratorPanelStreaming({
   sessionId,
   storyId,  // Canvas/project ID for persistence
   documentFormat = 'novel',
+  orchestratorNodeId,
   onStructureComplete,
   onSectionComplete,
   onClarificationNeeded,
@@ -94,12 +115,14 @@ export function OrchestratorPanelStreaming({
   canvasContext,
   structureItems,
   canvasNodes,
+  canvasEdges,
   conversationHistory,
   currentStoryStructureNodeId,
   activeSectionCard,
   isDocumentViewOpen = false,
   onToggleDocumentView,
   className = '',
+  onOrchestratorNodeUpdate,
 }: OrchestratorPanelStreamingProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -116,6 +139,9 @@ export function OrchestratorPanelStreaming({
     message: string;
     options?: unknown[];  // Can be strings or {id, label} objects
   } | null>(null)
+  
+  // Extended thinking toggle - shows Claude's chain-of-thought reasoning
+  const [extendedThinkingEnabled, setExtendedThinkingEnabled] = useState(false)
 
   // ========== PERSISTENCE HOOK ==========
   // Load persisted dialogue messages (scoped to canvas/story)
@@ -246,6 +272,11 @@ export function OrchestratorPanelStreaming({
       console.log('📐 [Streaming] Structure created:', structure.title, 'with', structure.sections?.length, 'sections')
       onStructureComplete?.(structure)
       
+      // Capture backend-provided structure node id immediately (prevents OPEN_DOCUMENT race)
+      if (structure.node_id) {
+        lastCreatedStructureNodeIdRef.current = structure.node_id
+      }
+
       // Also trigger canvas node creation if callback provided
       // IMPORTANT: Use the field names expected by handleCreateStoryNode:
       //   - label (not title) - Node display name
@@ -343,6 +374,60 @@ export function OrchestratorPanelStreaming({
     },
   })
 
+  // ======================================================================
+  // Canvas node status beacon (OrchestratorNode)
+  // ======================================================================
+  const lastNodeStatusRef = useRef<string>('')
+  useEffect(() => {
+    if (!onOrchestratorNodeUpdate) return
+
+    const stage = progress?.stage || 'idle'
+    const percent = typeof progress?.percentComplete === 'number' ? progress.percentComplete : 0
+    const isActive = !!isStreaming
+
+    let orchestratorStage: 'idle' | 'thinking' | 'structuring' | 'writing' | 'done' | 'error' = 'idle'
+    let loadingText = 'ORCHESTRATOR'
+
+    if (stage === 'error') {
+      orchestratorStage = 'error'
+      loadingText = 'ERROR'
+    } else if (stage === 'complete') {
+      orchestratorStage = 'done'
+      loadingText = 'DONE'
+    } else if (isActive || stage !== 'idle') {
+      if (stage === 'planning') {
+        orchestratorStage = 'thinking'
+        loadingText = 'THINKING'
+      } else if (stage === 'structuring') {
+        orchestratorStage = 'structuring'
+        loadingText = 'CREATING STRUCTURE'
+      } else if (stage === 'writing') {
+        orchestratorStage = 'writing'
+        loadingText = progress?.currentSection ? `WRITING ${progress.currentSection}` : 'WRITING'
+      } else {
+        orchestratorStage = 'thinking'
+        loadingText = 'WORKING'
+      }
+    }
+
+    // Avoid spamming node updates; only update when something meaningful changed.
+    const key = JSON.stringify({
+      orchestratorStage,
+      loadingText,
+      isActive,
+      percent: Math.round(percent),
+    })
+    if (key === lastNodeStatusRef.current) return
+    lastNodeStatusRef.current = key
+
+    onOrchestratorNodeUpdate({
+      isOrchestrating: isActive,
+      orchestratorProgress: Math.round(percent),
+      loadingText: isActive || stage !== 'idle' ? loadingText : '',
+      orchestratorStage,
+    })
+  }, [onOrchestratorNodeUpdate, isStreaming, progress?.stage, progress?.percentComplete, progress?.currentSection])
+
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -397,6 +482,7 @@ export function OrchestratorPanelStreaming({
       userId,
       sessionId,
       storyId,  // Canvas/project ID for context
+      orchestratorNodeId,
       storyStructureNodeId: effectiveStoryStructureNodeId,  // Auto-detected or explicit
       documentFormat,
       activeSegment,
@@ -404,16 +490,19 @@ export function OrchestratorPanelStreaming({
       canvasContext,
       structureItems: effectiveStructureItems,
       canvasNodes,
+      canvasEdges,
       conversationHistory,
       clarificationResponse: optionId,  // The option ID
       originalAction: originalAction || 'create_structure',  // Action that needed clarification
       activeSectionCard,  // Section card being viewed
+      extendedThinking: extendedThinkingEnabled,  // Enable Claude's chain-of-thought
     })
   }, [
     startStream,
     userId,
     sessionId,
     storyId,
+    orchestratorNodeId,
     effectiveStoryStructureNodeId,
     documentFormat,
     activeSegment,
@@ -421,7 +510,9 @@ export function OrchestratorPanelStreaming({
     canvasContext,
     effectiveStructureItems,
     canvasNodes,
+    canvasEdges,
     conversationHistory,
+    extendedThinkingEnabled,
   ])
 
   // Handle form submission
@@ -446,6 +537,7 @@ export function OrchestratorPanelStreaming({
         userId,
         sessionId,
         storyId,  // Canvas/project ID for context
+        orchestratorNodeId,
         storyStructureNodeId: effectiveStoryStructureNodeId,  // Auto-detected or explicit
         documentFormat,
         activeSegment,
@@ -453,10 +545,12 @@ export function OrchestratorPanelStreaming({
         canvasContext,
         structureItems: effectiveStructureItems,
         canvasNodes,
+        canvasEdges,
         conversationHistory,
         clarificationResponse: message,  // User's typed response
         originalAction,
         activeSectionCard,  // Section card being viewed
+        extendedThinking: extendedThinkingEnabled,  // Enable Claude's chain-of-thought
       })
       return
     }
@@ -467,6 +561,7 @@ export function OrchestratorPanelStreaming({
       userId,
       sessionId,
       storyId,  // Canvas/project ID for context
+      orchestratorNodeId,
       storyStructureNodeId: effectiveStoryStructureNodeId,  // Auto-detected or explicit
       documentFormat,
       activeSegment,
@@ -474,8 +569,10 @@ export function OrchestratorPanelStreaming({
       canvasContext,
       structureItems: effectiveStructureItems,
       canvasNodes,
+      canvasEdges,
       conversationHistory,
       activeSectionCard,  // Section card being viewed
+      extendedThinking: extendedThinkingEnabled,  // Enable Claude's chain-of-thought
     })
   }, [
     input, 
@@ -484,6 +581,7 @@ export function OrchestratorPanelStreaming({
     userId, 
     sessionId,
     storyId,
+    orchestratorNodeId,
     effectiveStoryStructureNodeId,
     documentFormat,
     activeSegment,
@@ -491,9 +589,11 @@ export function OrchestratorPanelStreaming({
     canvasContext,
     effectiveStructureItems,
     canvasNodes,
+    canvasEdges,
     conversationHistory,
     pendingClarification,
     activeSectionCard,
+    extendedThinkingEnabled,
   ])
 
   // Handle keyboard shortcuts
@@ -549,33 +649,56 @@ export function OrchestratorPanelStreaming({
         {messages.length === 0 ? (
           <EmptyState />
         ) : (
-          messages.map((message) => (
-            <MessageBubble 
-              key={message.id} 
-              message={message} 
-              onOptionSelect={handleOptionSelect}
-            />
-          ))
+          messages
+            // Hide progress messages when TodoPanel is showing (avoids redundant indicators)
+            .filter(message => {
+              if (todos && todos.length > 0) {
+                // Hide section-progress and thinking messages when todos show progress
+                if (message.type === 'section-progress') return false
+                if (message.type === 'thinking') return false
+                if (message.type === 'progress') return false
+              }
+              return true
+            })
+            .map((message) => (
+              <MessageBubble 
+                key={message.id} 
+                message={message} 
+                onOptionSelect={handleOptionSelect}
+              />
+            ))
         )}
         
         {/* Progress Panel - shows during creation */}
         {progress.isActive && progress.structure && (
-          <ProgressPanel progress={progress} />
-        )}
-        
-        {/* Todo Panel - shows agent's task plan */}
-        {todos && todos.length > 0 && (
-          <TodoPanel 
-            todos={todos}
-            title="Task Plan"
-            collapsible={true}
-            defaultExpanded={true}
-            className="mb-3"
+          <StructureProgress
+            structure={progress.structure}
+            stage={progress.stage}
+            percentComplete={progress.percentComplete}
+            currentSection={progress.currentSection}
+            error={progress.error}
+            compact
           />
         )}
         
+        {/* Todo Panel - shows agent's task plan */}
+        {todos && todos.length > 0 && (() => {
+          // Only allow collapsing when ALL tasks are complete (not in progress)
+          const allComplete = todos.every(t => t.status === 'completed' || t.status === 'cancelled')
+          return (
+            <TodoPanel 
+              todos={todos}
+              title="Task Plan"
+              collapsible={allComplete}
+              defaultExpanded={true}
+              className="mb-3"
+            />
+          )
+        })()}
+        
         {/* Subagent Activity Panel - shows subagent invocations */}
-        {subagentActivities && subagentActivities.length > 0 && (
+        {/* Only show if there are no todos (avoid duplicate task display) */}
+        {(!todos || todos.length === 0) && subagentActivities && subagentActivities.length > 0 && (
           <SubagentActivity 
             activities={subagentActivities}
             title="Agent Activity"
@@ -593,21 +716,7 @@ export function OrchestratorPanelStreaming({
         onSubmit={handleSubmit}
         className="pb-8 bg-zinc-50 dark:bg-gray-800 border-zinc-200 dark:border-gray-700 flex flex-col justify-end"
       >
-        {/* Generating Indicator - tab above textarea */}
-        <div 
-          className={`flex justify-lefttransition-all duration-300 ease-out overflow-hidden
-                      ${isStreaming ? 'max-h-10 opacity-100' : 'max-h-0 opacity-0'}`}
-        >
-          <div className="ml-8 bg-zinc-200 dark:bg-gray-400 text-zinc-800 px-2 py-0.5  rounded-t-md text-[10px] font-medium tracking-wide uppercase">
-            <span className="flex items-center gap-2">
-              <svg className="w-2.5 h-2.5 animate-spin" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Generating
-            </span>
-          </div>
-        </div>
+       
         
         <div className="px-2">
           <textarea
@@ -666,17 +775,20 @@ export function OrchestratorPanelStreaming({
             
           </div>
           
-          {/* Right: Search + Voice/Submit */}
+          {/* Right: Extended Thinking Toggle + Voice/Submit */}
           <div className="flex items-center gap-2">
-            {/* Web Search Icon */}
+            {/* Extended Thinking Toggle */}
             <button
               type="button"
-              className="w-8 h-8 rounded-full flex items-center justify-center
-                         hover:bg-gray-200 dark:hover:bg-gray-700
-                         text-gray-500 dark:text-gray-400
-                         transition-colors duration-150"
+              onClick={() => setExtendedThinkingEnabled(!extendedThinkingEnabled)}
+              title={extendedThinkingEnabled ? 'Extended thinking ON - shows reasoning' : 'Extended thinking OFF'}
+              className={`w-8 h-8 rounded-full flex items-center justify-center
+                         transition-colors duration-150
+                         ${extendedThinkingEnabled 
+                           ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' 
+                           : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 dark:text-gray-500'}`}
             >
-              <GlobeIcon className="w-4 h-4" />
+              <MagicWandIcon className="w-4 h-4" />
             </button>
             
             {/* Voice/Submit Button */}
@@ -707,17 +819,10 @@ export function OrchestratorPanelStreaming({
       
       <div 
         className={`absolute bottom-0 left-0 right-0 flex justify-center items-center gap-1 pt-1 pb-2
-                    ${isStreaming ? '' : 'bg-zinc-200'}`}
-        style={isStreaming ? {
-          animation: 'pulseBg 1.5s ease-in-out infinite'
-        } : undefined}
+                    ${isStreaming 
+                      ? 'bg-gradient-to-r from-zinc-200 via-amber-100 to-zinc-200 bg-[length:200%_100%] animate-shimmer' 
+                      : 'bg-zinc-200'}`}
       >
-        <style>{`
-          @keyframes pulseBg {
-            0%, 100% { background-color: rgb(228, 228, 231); }
-            50% { background-color: rgb(250, 235, 177); }
-          }
-        `}</style>
         <p className="text-zinc-600 text-[10px] uppercase tracking-wide">Intelligence Engineered by</p>
         <img src="/aiakaki_logo.svg" alt="AIAKAKI" className="h-2" />
       </div>
@@ -732,12 +837,14 @@ export function OrchestratorPanelStreaming({
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center p-8">
-      <div className="text-4xl mb-4">📖</div>
+      <div className="w-12 h-12 mb-4 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+        <FileTextIcon className="w-6 h-6 text-indigo-500" />
+      </div>
       <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
         Ready to create
       </h3>
       <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">
-        Tell me what kind of story you'd like to create and I'll help bring it to life.
+        Tell me what kind of story you&apos;d like to create and I&apos;ll help bring it to life.
       </p>
       <div className="mt-6 flex flex-wrap gap-2 justify-center">
         {['A mystery thriller', 'A sci-fi adventure', 'A romantic comedy'].map((suggestion) => (
@@ -815,23 +922,25 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
 
     case 'progress':
       return (
-        <div className="w-full animate-fadeIn flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm">
-          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
+        <div className="w-full animate-fadeIn flex items-center gap-2 text-neutral-600 dark:text-neutral-400 text-sm">
+          <GearIcon className="w-4 h-4 flex-shrink-0 animate-spin text-indigo-500" />
           <span>{message.content}</span>
         </div>
       )
 
     case 'structure':
       return (
-        <div className="w-full animate-fadeIn text-purple-700 dark:text-purple-300 text-sm">
-          {message.content}
+        <div className="w-full animate-fadeIn flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-sm">
+          <FileTextIcon className="w-4 h-4 flex-shrink-0" />
+          <span>{message.content}</span>
         </div>
       )
 
     case 'section-progress':
       return (
-        <div className="w-full animate-fadeIn text-amber-600 dark:text-amber-400 text-sm">
-          {message.content}
+        <div className="w-full animate-fadeIn flex items-center gap-2 text-amber-600 dark:text-amber-400 text-sm">
+          <Pencil1Icon className="w-4 h-4 flex-shrink-0 animate-pulse" />
+          <span>{message.content}</span>
         </div>
       )
 
@@ -841,12 +950,14 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
         <div className={`w-full animate-fadeIn text-sm flex items-start gap-2 ${
           isToolComplete 
             ? 'text-green-600 dark:text-green-400' 
-            : 'text-gray-500 dark:text-gray-400 italic'
+            : 'text-neutral-500 dark:text-neutral-400'
         }`}>
-          <span className="flex-shrink-0">🤖</span>
-          <span className={isToolComplete ? '' : 'animate-shimmer bg-gradient-to-r from-gray-500 via-gray-300 to-gray-500 dark:from-gray-400 dark:via-gray-200 dark:to-gray-400 bg-[length:200%_100%] bg-clip-text text-transparent'}>
-            {message.content}
-          </span>
+          {isToolComplete ? (
+            <CheckCircledIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          ) : (
+            <GearIcon className="w-4 h-4 flex-shrink-0 mt-0.5 animate-spin" />
+          )}
+          <span>{message.content}</span>
         </div>
       )
 
@@ -876,8 +987,9 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
 
     case 'error':
       return (
-        <div className="w-full animate-fadeIn text-red-600 dark:text-red-400 text-sm">
-          ⚠️ {message.content}
+        <div className="w-full animate-fadeIn flex items-center gap-2 text-red-600 dark:text-red-400 text-sm">
+          <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0" />
+          <span>{message.content}</span>
         </div>
       )
 
@@ -888,96 +1000,6 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
         </div>
       )
   }
-}
-
-function ProgressPanel({ progress }: { progress: CreationProgress }) {
-  if (!progress.structure) return null
-
-  const { structure, percentComplete, stage, currentSection } = progress
-
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg overflow-hidden animate-fadeIn">
-      {/* Header */}
-      <div className="px-4 py-3 bg-gradient-to-r from-purple-500 to-blue-500 text-white">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">📖</span>
-            <span className="font-semibold">{structure.title}</span>
-          </div>
-          <span className="text-sm opacity-90">
-            {stage === 'complete' ? '✓ Complete' : `${Math.round(percentComplete)}%`}
-          </span>
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div className="h-1 bg-gray-200 dark:bg-gray-700">
-        <div
-          className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-500 ease-out"
-          style={{ width: `${percentComplete}%` }}
-        />
-      </div>
-
-      {/* Sections list */}
-      <div className="p-4 space-y-2 max-h-64 overflow-y-auto">
-        {structure.sections.map((section, index) => (
-          <div
-            key={section.id}
-            className={`
-              flex items-center gap-3 p-2 rounded-lg transition-all duration-300
-              ${section.status === 'complete' 
-                ? 'bg-green-50 dark:bg-green-900/20' 
-                : section.status === 'writing'
-                  ? 'bg-amber-50 dark:bg-amber-900/20'
-                  : 'bg-gray-50 dark:bg-gray-800/50'
-              }
-            `}
-          >
-            {/* Status icon */}
-            <div className={`
-              w-6 h-6 rounded-full flex items-center justify-center text-sm font-medium
-              ${section.status === 'complete'
-                ? 'text-green-600 dark:text-green-400'
-                : section.status === 'writing'
-                  ? 'text-amber-600 dark:text-amber-400'
-                  : 'text-gray-400'
-              }
-            `}>
-              {section.status === 'complete' && '✓'}
-              {section.status === 'writing' && <span className="animate-pulse">●</span>}
-              {section.status === 'pending' && '○'}
-            </div>
-
-            {/* Title */}
-            <span className={`flex-1 text-sm ${
-              section.status === 'pending' 
-                ? 'text-gray-400' 
-                : 'text-gray-900 dark:text-gray-100'
-            }`}>
-              {index + 1}. {section.title}
-            </span>
-
-            {/* Word count */}
-            {section.wordCount && (
-              <span className="text-xs text-gray-400">
-                {section.wordCount}w
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Footer */}
-      <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500">
-        {stage === 'planning' && '🤔 Planning structure...'}
-        {stage === 'structuring' && '📐 Building outline...'}
-        {stage === 'writing' && `✍️ Writing: ${currentSection || '...'}`}
-        {stage === 'reviewing' && '🔍 Reviewing...'}
-        {stage === 'complete' && '✅ All sections complete!'}
-        {stage === 'error' && `❌ ${progress.error}`}
-      </div>
-    </div>
-  )
 }
 
 export default OrchestratorPanelStreaming

@@ -106,14 +106,38 @@ class PubloAgent:
         # Use a mutable container so node_id can be updated dynamically
         # (e.g., when create_structure generates a new node_id mid-stream)
         node_id_ref = configurable.get("node_id_ref", {"value": configurable.get("node_id", self.story_id)})
+        canvas_story_id = configurable.get("story_id", "")
         
         # Track conversation for multi-turn tool use
         current_messages = list(messages)
-        max_iterations = 5  # Prevent infinite loops
+        # Prevent infinite loops, but allow enough turns for multi-section writing.
+        # The model often calls one `write_section` per iteration; writing an act/chapter
+        # may require many tool calls.
+        max_iterations = 8
+        try:
+            last_user = next((m for m in reversed(current_messages) if isinstance(m, HumanMessage)), None)
+            last_text = (last_user.content or "").lower() if last_user else ""
+            if any(
+                phrase in last_text
+                for phrase in (
+                    "write act",
+                    "write chapter",
+                    "write the act",
+                    "write the chapter",
+                    "write all",
+                    "write scenes",
+                    "finish act",
+                    "finish chapter",
+                    "continue writing",
+                )
+            ):
+                max_iterations = 25
+        except Exception:
+            # Keep defaults if inspection fails
+            pass
         
         for iteration in range(max_iterations):
-            # Use ainvoke for complete tool calls (streaming gave partial args)
-            # We simulate streaming by yielding the content in chunks
+            # Use ainvoke for reliable tool calls
             response = await self.model_with_tools.ainvoke(current_messages)
             
             # Extract text content
@@ -121,7 +145,6 @@ class PubloAgent:
             if isinstance(response.content, str):
                 response_content = response.content
             elif isinstance(response.content, list):
-                # Extract text from content blocks
                 for block in response.content:
                     if isinstance(block, dict) and block.get("type") == "text":
                         response_content += block.get("text", "")
@@ -130,18 +153,15 @@ class PubloAgent:
             
             # Simulate streaming by yielding content in chunks
             if response_content:
-                # Yield content in small chunks for streaming effect
                 chunk_size = 50
-                chunks_yielded = 0
                 for i in range(0, len(response_content), chunk_size):
                     chunk_text = response_content[i:i+chunk_size]
-                    chunks_yielded += 1
                     yield {
                         "event": "on_chat_model_stream",
                         "data": {"chunk": type('Chunk', (), {'content': chunk_text})()}
                     }
             
-            # Get complete tool calls with full args
+            # Get tool calls from response
             tool_calls = response.tool_calls or []
             
             # If no tool calls, we're done
@@ -175,11 +195,29 @@ class PubloAgent:
                 if tool_name in self.tool_map:
                     tool = self.tool_map[tool_name]
                     try:
+                        def _tool_accepts_arg(t: BaseTool, arg_name: str) -> bool:
+                            schema = getattr(t, "args_schema", None)
+                            if schema is None:
+                                return False
+                            # Pydantic v2
+                            model_fields = getattr(schema, "model_fields", None)
+                            if isinstance(model_fields, dict):
+                                return arg_name in model_fields
+                            # Pydantic v1
+                            fields = getattr(schema, "__fields__", None)
+                            if isinstance(fields, dict):
+                                return arg_name in fields
+                            return False
+
                         # Inject node_id if tool accepts it
                         # Read from mutable ref so we get the latest value
                         # (create_structure can update this mid-stream)
-                        if "node_id" in tool_args or hasattr(tool, 'args_schema'):
-                            tool_args["node_id"] = node_id_ref.get("value", self.story_id)
+                        if "node_id" in tool_args or _tool_accepts_arg(tool, "node_id"):
+                            tool_args["node_id"] = node_id_ref.get("value", "")
+
+                        # Inject canvas story_id for tools that persist nodes/cards
+                        if _tool_accepts_arg(tool, "story_id") and canvas_story_id:
+                            tool_args["story_id"] = canvas_story_id
                         
                         # Special handling for write_section: use streaming version
                         print(f"🔧 [Agent] Tool call: {tool_name}")
@@ -275,13 +313,14 @@ def create_publo_agent(
     Returns:
         A PubloAgent instance ready for invocation
     """
-    
-    # Initialize model
+
+    # Initialize model with streaming enabled
     model = ChatAnthropic(
         model=settings.MODEL_NAME,
         temperature=settings.TEMPERATURE,
         max_tokens=settings.MAX_TOKENS,
         api_key=settings.ANTHROPIC_API_KEY,
+        streaming=True,
     )
     
     # Build context-aware system prompt
@@ -348,12 +387,13 @@ async def create_publo_agent_with_mcp(
         Configured agent with MCP tools
     """
     
-    # Initialize model
+    # Initialize model with streaming enabled
     model = ChatAnthropic(
         model=settings.MODEL_NAME,
         temperature=settings.TEMPERATURE,
         max_tokens=settings.MAX_TOKENS,
         api_key=settings.ANTHROPIC_API_KEY,
+        streaming=True,
     )
     
     # Build system prompt

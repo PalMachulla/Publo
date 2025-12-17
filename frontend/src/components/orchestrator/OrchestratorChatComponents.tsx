@@ -8,6 +8,7 @@ import type { ChatMessage } from '../../hooks/useOrchestratorStream';
 import type { StructureCreatedEvent } from '../../types/orchestrator-streaming-types';
 import { ThinkingBlock } from '../ui/molecules/ThinkingBlock';
 import { MarkdownContent } from '../ui/atoms/MarkdownContent';
+import { GearIcon, Pencil1Icon, ChatBubbleIcon } from '@radix-ui/react-icons';
 
 interface OrchestratorChatMessageProps {
   message: ChatMessage;
@@ -75,9 +76,9 @@ export function OrchestratorChatMessage({ message }: OrchestratorChatMessageProp
     case 'section-progress':
       return (
         <div className="flex justify-start">
-          <div className={`${baseClasses} bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-sm`}>
-            <span className="inline-block animate-spin mr-2">⏳</span>
-            {message.content}
+          <div className={`${baseClasses} bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-sm flex items-center gap-2`}>
+            <Pencil1Icon className="w-4 h-4 animate-pulse flex-shrink-0" />
+            <span>{message.content}</span>
           </div>
         </div>
       );
@@ -85,8 +86,9 @@ export function OrchestratorChatMessage({ message }: OrchestratorChatMessageProp
     case 'thinking':
       return (
         <div className="flex justify-start">
-          <div className={`${baseClasses} bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-sm italic border border-gray-200 dark:border-gray-700`}>
-            💭 {message.content}
+          <div className={`${baseClasses} bg-neutral-50 dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 text-sm border border-neutral-200 dark:border-neutral-700 flex items-center gap-2`}>
+            <GearIcon className="w-4 h-4 animate-spin flex-shrink-0" />
+            <span>{message.content}</span>
           </div>
         </div>
       );
@@ -138,175 +140,36 @@ export function OrchestratorChatMessage({ message }: OrchestratorChatMessageProp
 }
 
 // ============================================================
-// StructureProgressPanel Component
+// StructureProgressPanel Component (Wrapper)
 // ============================================================
-// Shows the progressive creation with visual feedback
+// Re-exports StructureProgress from molecules with CreationProgress interface
 
 import type { CreationProgress } from '../../types/orchestrator-streaming-types';
+import { StructureProgress } from '../ui/molecules/StructureProgress';
 
 interface StructureProgressPanelProps {
   progress: CreationProgress;
   className?: string;
 }
 
+/**
+ * Wrapper component for backward compatibility.
+ * Uses the atomic StructureProgress component internally.
+ */
 export function StructureProgressPanel({ progress, className = '' }: StructureProgressPanelProps) {
   if (!progress.isActive || !progress.structure) {
     return null;
   }
 
-  const { structure, percentComplete, stage, currentSection } = progress;
-
   return (
-    <div className={`bg-white dark:bg-gray-900 rounded-md border border-zinc-200 dark:border-gray-700 overflow-hidden ${className}`}>
-      {/* Header */}
-      <div className="px-4 py-3 ">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">📖</span>
-            <span className="font-semibold">{structure.title}</span>
-          </div>
-          <span className="text-sm opacity-80">
-            {stage === 'complete' ? '✓ Complete' : `${Math.round(percentComplete)}%`}
-          </span>
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div className="h-1 bg-gray-200 dark:bg-gray-700">
-        <div
-          className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-500 ease-out"
-          style={{ width: `${percentComplete}%` }}
-        />
-      </div>
-
-      {/* Sections list */}
-      <div className="p-4 space-y-3 max-h-80 overflow-y-auto">
-        {structure.sections.map((section, index) => (
-          <SectionProgressItem
-            key={section.id}
-            title={section.title}
-            status={section.status}
-            preview={section.preview}
-            wordCount={section.wordCount}
-            isActive={section.title === currentSection}
-            index={index + 1}
-          />
-        ))}
-      </div>
-
-      {/* Footer status */}
-      <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 text-sm text-gray-500">
-        {stage === 'planning' && '🤔 Planning structure...'}
-        {stage === 'structuring' && '📐 Building outline...'}
-        {stage === 'writing' && `✍️ Writing: ${currentSection || '...'}`}
-        {stage === 'reviewing' && '🔍 Reviewing content...'}
-        {stage === 'complete' && '✅ All sections complete!'}
-        {stage === 'error' && `❌ Error: ${progress.error}`}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// SectionProgressItem Component
-// ============================================================
-
-interface SectionProgressItemProps {
-  title: string;
-  status: 'pending' | 'writing' | 'complete';
-  preview?: string;
-  wordCount?: number;
-  isActive: boolean;
-  index: number;
-}
-
-function SectionProgressItem({
-  title,
-  status,
-  preview,
-  wordCount,
-  isActive,
-  index,
-}: SectionProgressItemProps) {
-  const statusConfig = {
-    pending: {
-      icon: '○',
-      bg: 'bg-gray-50 dark:bg-gray-800',
-      border: 'border-gray-200 dark:border-gray-700',
-      text: 'text-gray-400',
-    },
-    writing: {
-      icon: '●',
-      bg: 'bg-amber-50 dark:bg-amber-900/20',
-      border: 'border-amber-300 dark:border-amber-700',
-      text: 'text-amber-600 dark:text-amber-400',
-    },
-    complete: {
-      icon: '✓',
-      bg: 'bg-green-50 dark:bg-green-900/20',
-      border: 'border-green-300 dark:border-green-700',
-      text: 'text-green-600 dark:text-green-400',
-    },
-  };
-
-  const config = statusConfig[status];
-
-  return (
-    <div
-      className={`
-        p-3 rounded-lg border transition-all duration-300
-        ${config.bg} ${config.border}
-        ${isActive ? 'ring-2 ring-amber-400 ring-offset-2' : ''}
-      `}
-    >
-      <div className="flex items-start gap-3">
-        {/* Status indicator */}
-        <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${config.text} font-medium text-sm`}>
-          {status === 'writing' ? (
-            <span className="animate-pulse">{config.icon}</span>
-          ) : (
-            config.icon
-          )}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <span className={`font-medium ${status === 'pending' ? 'text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>
-              {index}. {title}
-            </span>
-            {wordCount && (
-              <span className="text-xs text-gray-400 flex-shrink-0">
-                {wordCount} words
-              </span>
-            )}
-          </div>
-          
-          {/* Preview text */}
-          {preview && (
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
-              "{preview}"
-            </p>
-          )}
-          
-          {/* Loading state */}
-          {status === 'writing' && (
-            <div className="mt-2 flex gap-1">
-              <div className="w-2 h-2 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-2 h-2 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-2 h-2 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
-          )}
-          
-          {/* Pending state */}
-          {status === 'pending' && (
-            <p className="mt-1 text-xs text-gray-400 italic">
-              Waiting...
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
+    <StructureProgress
+      structure={progress.structure}
+      stage={progress.stage}
+      percentComplete={progress.percentComplete}
+      currentSection={progress.currentSection}
+      error={progress.error}
+      className={className}
+    />
   );
 }
 

@@ -14,6 +14,7 @@ async def create_structure(
     prompt: str,
     format_type: str,
     template_id: Optional[str] = None,
+    story_id: str = "",
     node_id: str = "",
 ) -> Dict[str, Any]:
     """
@@ -33,6 +34,7 @@ async def create_structure(
         format_type: REQUIRED - Document format. Detect from user's message.
                      Use "report" for reports, "article" for articles, etc.
         template_id: Optional template to use (e.g., "business", "research", "technical" for reports)
+        story_id: Canvas/project ID (used for nodes.story_id linkage)
         node_id: Story node ID (injected by agent)
     
     Returns:
@@ -114,8 +116,11 @@ async def create_structure(
         
         node_record = {
             "id": node_id,
-            "story_id": node_id,  # Use node_id as story_id for new canvases
-            "type": "storyStructureNode",
+            # Link the structure node to the owning canvas/project when available.
+            # (Frontend persists nodes with story_id=canvas id.)
+            "story_id": story_id or node_id,
+            # DB node type should match the API route `/api/node/create` payload.
+            "type": "storyStructure",
             "position_x": 400,  # Default position
             "position_y": 200,
             "data": {

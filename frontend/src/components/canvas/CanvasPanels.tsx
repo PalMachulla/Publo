@@ -414,6 +414,26 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     
     const newNodeId = data.nodeId || `story-structure-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
     console.log('📌 [CanvasPanels] Using node ID:', newNodeId, data.nodeId ? '(from backend)' : '(generated)')
+
+    // Guard: If this node ID already exists on canvas, do NOT create a duplicate.
+    // This can happen if the backend emits STRUCTURE_CREATED twice or the UI retries.
+    if (nodes.some(n => n.id === newNodeId)) {
+      console.warn('⚠️ [CanvasPanels] Story node already exists, skipping duplicate add:', newNodeId)
+
+      // Ensure the orchestrator→story edge exists (safe to add if missing)
+      const edgeId = `edge-${orchestratorNode.id}-${newNodeId}`
+      if (!edges.some(e => e.id === edgeId)) {
+        const dedupedEdge: Edge = {
+          id: edgeId,
+          source: orchestratorNode.id,
+          target: newNodeId,
+          type: 'smoothstep',
+        }
+        onAddEdge(dedupedEdge)
+      }
+
+      return newNodeId
+    }
     
     // Position below and slightly left of orchestrator
     const newPosition = {

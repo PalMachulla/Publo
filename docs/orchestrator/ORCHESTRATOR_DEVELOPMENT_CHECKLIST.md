@@ -3,6 +3,13 @@
 **Last Updated:** November 27, 2025  
 **Purpose:** Systematic checklist for adding features or modifying the orchestrator system
 
+> ⚠️ **Important (2025-12):** This checklist is scoped to the **legacy TypeScript orchestrator** implementation in `frontend/src/lib/orchestrator/` (many files now end with `.deprecated`).
+>
+> If you are modifying the **active Python Deep Agent** system (SSE streaming + `orchestrator/api/chat.py`), start with:
+> - `docs/orchestrator/DEEP_AGENT_CANVAS_SOURCES.md` (canvas nodes → agent context)
+> - `orchestrator/api/chat.py` (context injection into agent)
+> - `frontend/src/hooks/useOrchestratorStream.ts` (request payload to backend)
+
 ---
 
 ## 🎯 Quick Start

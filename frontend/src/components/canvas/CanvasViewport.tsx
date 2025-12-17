@@ -19,7 +19,7 @@
  * @updated 2024-12-11 - Removed WorldState prop (legacy frontend orchestration)
  */
 
-import React from 'react'
+import React, { useMemo } from 'react'
 import ReactFlow, {
   Background,
   Controls,
@@ -33,6 +33,9 @@ import 'reactflow/dist/style.css'
 import { CanvasProvider } from '@/contexts/CanvasContext'
 import NodeTypeMenu from '@/components/menus/NodeTypeMenu'
 import { nodeTypes } from '@/components/nodes'
+
+const defaultViewport = { x: 0, y: 0, zoom: 0.75 }
+const fitViewOptions = { padding: 0.2, maxZoom: 0.75 }
 
 export interface CanvasViewportProps {
   // Filtered nodes and edges (for cluster node resource hiding)
@@ -69,11 +72,19 @@ export default function CanvasViewport(props: CanvasViewportProps) {
     // 2024-12-11: Removed worldState
   } = props
   
+  const canvasContextValue = useMemo(() => ({ onPromptSubmit }), [onPromptSubmit])
+
+  const defaultEdgeOptions = useMemo(
+    () => ({
+      type: 'default', // Default type uses smooth bezier curves
+      animated: false,
+      style: { stroke: '#9ca3af', strokeWidth: 2 }, // Subtle edge thickness
+    }),
+    []
+  )
+
   return (
-    <CanvasProvider value={{ 
-      onPromptSubmit
-      // 2024-12-11: Removed worldState from context
-    }}>
+    <CanvasProvider value={canvasContextValue}>
       {/* Canvas Area with React Flow */}
       <div className="flex-1 relative bg-gray-50">
         {/* Floating Add Node Menu */}
@@ -90,15 +101,11 @@ export default function CanvasViewport(props: CanvasViewportProps) {
           onNodeClick={onNodeClick}
           nodeTypes={nodeTypes}
           fitView
-          defaultViewport={{ x: 0, y: 0, zoom: 0.75 }}
-          fitViewOptions={{ padding: 0.2, maxZoom: 0.75 }}
+          defaultViewport={defaultViewport}
+          fitViewOptions={fitViewOptions}
           className="bg-gray-50"
           connectionMode={ConnectionMode.Strict}
-          defaultEdgeOptions={{
-            type: 'default', // Default type uses smooth bezier curves
-            animated: false,
-            style: { stroke: '#9ca3af', strokeWidth: 2 } // Subtle edge thickness
-          }}
+          defaultEdgeOptions={defaultEdgeOptions}
           nodesDraggable={true}
           nodesConnectable={true}
           elementsSelectable={true}

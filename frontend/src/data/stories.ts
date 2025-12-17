@@ -206,13 +206,32 @@ export async function saveCanvas(
   nodes: Node[],
   edges: Edge[]
 ) {
-  console.log('💾 Saving canvas:', { storyId, nodeCount: nodes.length, edgeCount: edges.length })
+  // Dedupe by id to prevent PostgREST "ON CONFLICT ... cannot affect row a second time"
+  // when local state accidentally contains duplicates.
+  const dedupedNodes = Array.from(
+    nodes.reduce((acc, n) => acc.set(n.id, n), new Map<string, Node>()).values()
+  )
+  const dedupedEdges = Array.from(
+    edges.reduce((acc, e) => acc.set(e.id, e), new Map<string, Edge>()).values()
+  )
+
+  if (dedupedNodes.length !== nodes.length || dedupedEdges.length !== edges.length) {
+    console.warn('⚠️ [saveCanvas] Deduped canvas before save:', {
+      storyId,
+      nodesBefore: nodes.length,
+      nodesAfter: dedupedNodes.length,
+      edgesBefore: edges.length,
+      edgesAfter: dedupedEdges.length,
+    })
+  }
+
+  console.log('💾 Saving canvas:', { storyId, nodeCount: dedupedNodes.length, edgeCount: dedupedEdges.length })
   
   try {
     const upsertPromises = []
 
-    if (nodes.length > 0) {
-      const nodeRecords = nodes.map(node => ({
+    if (dedupedNodes.length > 0) {
+      const nodeRecords = dedupedNodes.map(node => ({
         id: node.id,
         story_id: storyId,
         type: node.type || 'storyNode',
@@ -226,8 +245,8 @@ export async function saveCanvas(
       )
     }
 
-    if (edges.length > 0) {
-      const edgeRecords = edges.map(edge => ({
+    if (dedupedEdges.length > 0) {
+      const edgeRecords = dedupedEdges.map(edge => ({
         id: edge.id,
         story_id: storyId,
         source: edge.source,
@@ -250,8 +269,8 @@ export async function saveCanvas(
     }
 
     // Clean up deleted nodes/edges
-    const currentNodeIds = nodes.map(n => n.id)
-    const currentEdgeIds = edges.map(e => e.id)
+    const currentNodeIds = dedupedNodes.map(n => n.id)
+    const currentEdgeIds = dedupedEdges.map(e => e.id)
 
     const { data: existingNodes } = await supabase
       .from('nodes')
