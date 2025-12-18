@@ -37,6 +37,7 @@ export type OrchestratorEventType =
   | 'CRITIC'
   | 'STRUCTURE_CREATED'
   | 'STRUCTURE_UPDATED'
+  | 'CHARACTER_CREATED'
   | 'SECTION_WRITING'
   | 'SECTION_COMPLETE'
   | 'PROGRESS'
@@ -169,6 +170,27 @@ export interface StructureUpdatedEvent {
     reason: string;
   }>;
   storyline_impact?: string;
+}
+
+// ============================================================
+// CHARACTER EVENTS
+// ============================================================
+
+// Emitted when a character is created or loaded onto the canvas
+export interface CharacterCreatedEvent {
+  character_id: string;
+  node_id: string;
+  name: string;
+  bio?: string;
+  role?: 'Main' | 'Active' | 'Included' | 'Involved' | 'Passive';
+  photo_url?: string | null;
+  visibility?: 'private' | 'shared' | 'public';
+  attributes?: Record<string, unknown>;
+  profilerChat?: Array<{
+    question: string;
+    answer: string;
+  }>;
+  is_existing?: boolean; // True if loaded from DB, false if newly created
 }
 
 // Emitted when starting to write a section
@@ -335,6 +357,7 @@ export type OrchestratorEvent =
   | { type: 'CRITIC'; data: CriticEvent }
   | { type: 'STRUCTURE_CREATED'; data: StructureCreatedEvent }
   | { type: 'STRUCTURE_UPDATED'; data: StructureUpdatedEvent }
+  | { type: 'CHARACTER_CREATED'; data: CharacterCreatedEvent }
   | { type: 'SECTION_WRITING'; data: SectionWritingEvent }
   | { type: 'SECTION_COMPLETE'; data: SectionCompleteEvent }
   | { type: 'PROGRESS'; data: ProgressEvent }

@@ -35,6 +35,7 @@ import GenericNodePanel from './GenericNodePanel'
 import { OrchestratorPanelStreaming } from '@/components/orchestrator/OrchestratorPanelStreaming'
 
 import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
+import type { CharacterCreatedEvent } from '@/types/orchestrator-streaming-types'
 
 // ============================================================================
 // TYPES
@@ -76,6 +77,7 @@ export interface NodeDetailsPanelProps {
   storyId?: string
   orchestratorNodeId?: string
   onCreateStoryNode?: (data: CreateStoryNodeData) => void
+  onCreateCharacterNode?: (data: CharacterCreatedEvent) => void
   onSectionComplete?: (sectionId: string, content: string) => void
   onContentChunk?: (sectionId: string, chunk: string, accumulated: string) => void
   onContentComplete?: (sectionId: string, wordCount: number) => void
@@ -113,6 +115,7 @@ export default function NodeDetailsPanel({
   storyId,
   orchestratorNodeId,
   onCreateStoryNode,
+  onCreateCharacterNode,
   onSectionComplete,
   onContentChunk,
   onContentComplete,
@@ -194,6 +197,7 @@ export default function NodeDetailsPanel({
             onUpdate(node.id, updates)
           }}
           onCreateStoryNode={onCreateStoryNode}
+          onCharacterComplete={onCreateCharacterNode}
           onToggleDocumentView={onToggleDocumentView}
           isDocumentViewOpen={isDocumentViewOpen}
           structureItems={structureItems}

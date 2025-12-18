@@ -19,6 +19,7 @@ import type {
   StrategyEvent,
   OpenDocumentEvent,
   SelectSectionEvent,
+  CharacterCreatedEvent,
   // Deep Agent events
   TokenEvent,
   ToolStartEvent,
@@ -71,6 +72,7 @@ export interface StreamingContent {
 interface UseOrchestratorStreamOptions {
   onStructureComplete?: (structure: StructureCreatedEvent) => void;
   onStructureUpdated?: (structure: StructureUpdatedEvent) => void;
+  onCharacterComplete?: (character: CharacterCreatedEvent) => void;  // Character created/loaded
   onSectionComplete?: (sectionId: string, content: string) => void;
   onClarificationNeeded?: (clarification: ClarificationEvent) => void;
   onOpenDocument?: (nodeId: string, nodeName: string) => void;  // Navigation: open document
@@ -92,6 +94,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
   const {
     onStructureComplete,
     onStructureUpdated,
+    onCharacterComplete,
     onSectionComplete,
     onClarificationNeeded,
     onOpenDocument,
@@ -689,6 +692,25 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         onStructureUpdated?.(updatedStructureData);
         break;
 
+      case 'CHARACTER_CREATED':
+        const characterData = event.data as CharacterCreatedEvent;
+        console.log('🎭 [Stream] CHARACTER_CREATED received:', characterData);
+        
+        // Add visual message
+        const charAction = characterData.is_existing ? 'Added' : 'Created';
+        addMessage(
+          'assistant',
+          `🎭 ${charAction} character **${characterData.name}** (${characterData.role || 'Active'})`
+        );
+        
+        // Callback to create node on canvas
+        console.log('🎭 [Stream] onCharacterComplete callback exists:', !!onCharacterComplete);
+        if (onCharacterComplete) {
+          console.log('🎭 [Stream] Calling onCharacterComplete with:', characterData.name, characterData.node_id);
+          setTimeout(() => onCharacterComplete(characterData), 0);
+        }
+        break;
+
       case 'SECTION_WRITING':
         const writingData = event.data as SectionWritingEvent;
         
@@ -937,7 +959,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         onError?.(event.data.error);
         break;
     }
-  }, [addMessage, updateMessage, progress.structure, onStructureComplete, onStructureUpdated, onSectionComplete, onClarificationNeeded, onOpenDocument, onSelectSection, onError, onComplete]);
+  }, [addMessage, updateMessage, progress.structure, onStructureComplete, onStructureUpdated, onCharacterComplete, onSectionComplete, onClarificationNeeded, onOpenDocument, onSelectSection, onError, onComplete]);
 
   // Start streaming
   const startStream = useCallback(async (request: {

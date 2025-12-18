@@ -27,7 +27,7 @@ import {
   MagicWandIcon,
 } from '@radix-ui/react-icons'
 import { useOrchestratorStream, ChatMessage } from '@/hooks/useOrchestratorStream'
-import { StructureCreatedEvent, ClarificationEvent, CreationProgress } from '@/types/orchestrator-streaming-types'
+import { StructureCreatedEvent, ClarificationEvent, CreationProgress, CharacterCreatedEvent } from '@/types/orchestrator-streaming-types'
 import { useOrchestratorSession } from '@/lib/orchestrator/hooks/useOrchestratorSession'
 import { ThinkingBlock } from '@/components/ui/molecules/ThinkingBlock'
 import { StructureProgress } from '@/components/ui/molecules/StructureProgress'
@@ -51,6 +51,7 @@ export interface OrchestratorPanelStreamingProps {
   
   // Canvas/editor integration callbacks
   onStructureComplete?: (structure: StructureCreatedEvent) => void
+  onCharacterComplete?: (character: CharacterCreatedEvent) => void
   onSectionComplete?: (sectionId: string, content: string) => void
   onClarificationNeeded?: (clarification: ClarificationEvent) => void
   onCreateStoryNode?: (structure: any) => string | Promise<string> | void
@@ -103,6 +104,7 @@ export function OrchestratorPanelStreaming({
   documentFormat = 'novel',
   orchestratorNodeId,
   onStructureComplete,
+  onCharacterComplete,
   onSectionComplete,
   onClarificationNeeded,
   onCreateStoryNode,
@@ -300,6 +302,11 @@ export function OrchestratorPanelStreaming({
           lastCreatedStructureNodeIdRef.current = capturedNodeId
         }
       }
+    },
+    
+    onCharacterComplete: (character) => {
+      console.log('🎭 [Streaming] Character created:', character.name, 'role:', character.role)
+      onCharacterComplete?.(character)
     },
     
     onSectionComplete: (sectionId, content) => {

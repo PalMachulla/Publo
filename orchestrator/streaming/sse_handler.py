@@ -28,6 +28,9 @@ class SSEEventType(str, Enum):
     STRUCTURE_CREATED = "STRUCTURE_CREATED"  # Structure generation complete
     STRUCTURE_UPDATED = "STRUCTURE_UPDATED"  # Structure modified (sections added/removed/reordered)
     
+    # Canvas node creation
+    CHARACTER_CREATED = "CHARACTER_CREATED"  # Character created/loaded onto canvas
+    
     # Navigation/UI
     NAVIGATE = "NAVIGATE"  # Navigate frontend to section
     PRESENT_OPTIONS = "PRESENT_OPTIONS"  # Show option selector UI
@@ -63,12 +66,12 @@ class SSEEventType(str, Enum):
     SELECT_SECTION = "SELECT_SECTION"
 
 
-def format_sse(event_type: str, data: Dict[str, Any]) -> str:
+def format_sse(event_type: str | SSEEventType, data: Dict[str, Any]) -> str:
     """
     Format data as an SSE event string.
     
     Args:
-        event_type: The event type (TOKEN, TOOL_START, etc.)
+        event_type: The event type (TOKEN, TOOL_START, etc.) - string or SSEEventType enum
         data: Dictionary of event data
     
     Returns:
@@ -78,7 +81,13 @@ def format_sse(event_type: str, data: Dict[str, Any]) -> str:
         >>> format_sse("TOKEN", {"content": "Hello"})
         'event: TOKEN\\ndata: {"content": "Hello"}\\n\\n'
     """
-    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+    # Handle SSEEventType enum - extract the string value
+    if isinstance(event_type, SSEEventType):
+        event_name = event_type.value
+    else:
+        event_name = str(event_type)
+    
+    return f"event: {event_name}\ndata: {json.dumps(data)}\n\n"
 
 
 # Global event queue for SSE streaming

@@ -20,7 +20,7 @@ Usage:
 
 from typing import Optional, List, Dict, Any, AsyncIterator
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage, trim_messages
 from langchain_core.tools import BaseTool
 import json
 
@@ -44,6 +44,11 @@ from tools import (
     write_context_file,
     list_context_files,
     delete_context_file,
+)
+from tools.character import (
+    create_character,
+    list_characters,
+    load_character,
 )
 from tools.mcp_tools import get_configured_mcp_tools
 from prompts.main_agent import build_system_prompt, format_user_preferences
@@ -137,8 +142,28 @@ class PubloAgent:
             pass
         
         for iteration in range(max_iterations):
+            # ============================================================
+            # PROPER LANGGRAPH PATTERN: trim_messages before each invocation
+            # ============================================================
+            # This prevents context window overflow even with long tool-use loops.
+            # Claude 3.5 Sonnet has 200k token limit; leave room for response.
+            try:
+                trimmed_messages = trim_messages(
+                    current_messages,
+                    max_tokens=150000,  # Leave 50k for response + tools
+                    strategy="last",    # Keep most recent messages
+                    token_counter=self.model,  # Use model's tokenizer
+                    include_system=True,  # Always keep system prompt
+                    allow_partial=False,  # Don't split messages
+                )
+                if len(trimmed_messages) < len(current_messages):
+                    print(f"✂️ [Agent] Trimmed messages: {len(current_messages)} → {len(trimmed_messages)}", flush=True)
+            except Exception as e:
+                print(f"⚠️ [Agent] trim_messages failed, using original: {e}", flush=True)
+                trimmed_messages = current_messages
+            
             # Use ainvoke for reliable tool calls
-            response = await self.model_with_tools.ainvoke(current_messages)
+            response = await self.model_with_tools.ainvoke(trimmed_messages)
             
             # Extract text content
             response_content = ""
@@ -218,6 +243,11 @@ class PubloAgent:
                         # Inject canvas story_id for tools that persist nodes/cards
                         if _tool_accepts_arg(tool, "story_id") and canvas_story_id:
                             tool_args["story_id"] = canvas_story_id
+                        
+                        # Inject user_id for tools that need it (e.g., create_character for DB save)
+                        user_id = config.get("configurable", {}).get("user_id") if config else None
+                        if _tool_accepts_arg(tool, "user_id") and user_id:
+                            tool_args["user_id"] = user_id
                         
                         # Special handling for write_section: use streaming version
                         print(f"🔧 [Agent] Tool call: {tool_name}")
@@ -356,6 +386,10 @@ def create_publo_agent(
         write_context_file,
         list_context_files,
         delete_context_file,
+        # Character/canvas node creation
+        create_character,
+        list_characters,
+        load_character,
     ]
     
     return PubloAgent(
@@ -429,6 +463,10 @@ async def create_publo_agent_with_mcp(
         write_context_file,
         list_context_files,
         delete_context_file,
+        # Character/canvas node creation
+        create_character,
+        list_characters,
+        load_character,
     ]
     
     # Add MCP tools if available

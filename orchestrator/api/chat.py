@@ -13,12 +13,95 @@ from langsmith import traceable
 import json
 import os
 
+# Use the new official deepagents-based agent
+from deep_agent import create_publo_deep_agent, run_deep_agent_streaming
+# Fallback to old agent if needed
 from agent import create_publo_agent_with_mcp, run_agent_streaming
 from streaming import format_sse, SSEEventType
 from config import settings
 
+# LangChain message utilities
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+
 
 router = APIRouter()
+
+
+# ============================================================
+# HELPER: Token-aware conversation history trimming
+# ============================================================
+
+def get_token_counter():
+    """Get a token counter function for Claude."""
+    # Use Claude's tokenizer for accurate counting
+    model = ChatAnthropic(model="claude-sonnet-4-20250514")
+    return model.get_num_tokens_from_messages
+
+
+def trim_conversation_history(
+    history: List[Dict[str, str]],
+    max_tokens: int = 80000,  # Leave room for system prompt + response
+) -> List[Dict[str, str]]:
+    """
+    Trim conversation history using LangChain's token-aware trimming.
+    
+    Uses the 'last' strategy to keep recent messages that fit within token budget.
+    
+    Args:
+        history: List of {"role": "user"|"assistant", "content": "..."} dicts
+        max_tokens: Maximum tokens to allow for conversation history
+    
+    Returns:
+        Trimmed history as list of dicts
+    """
+    if not history:
+        return []
+    
+    # Convert to LangChain messages
+    lc_messages = []
+    for msg in history:
+        if msg.get("role") == "user":
+            lc_messages.append(HumanMessage(content=msg.get("content", "")))
+        elif msg.get("role") == "system":
+            lc_messages.append(SystemMessage(content=msg.get("content", "")))
+        else:
+            lc_messages.append(AIMessage(content=msg.get("content", "")))
+    
+    original_count = len(lc_messages)
+    
+    try:
+        # Use LangChain's trim_messages with token counting
+        trimmed = trim_messages(
+            lc_messages,
+            max_tokens=max_tokens,
+            strategy="last",  # Keep most recent messages
+            token_counter=get_token_counter(),
+            include_system=True,  # Always keep system messages
+            allow_partial=False,  # Don't split messages
+        )
+        
+        if len(trimmed) < original_count:
+            print(f"✂️ [Chat] Trimmed history: {original_count} → {len(trimmed)} messages (max {max_tokens} tokens)", flush=True)
+        
+        # Convert back to dict format
+        result = []
+        for msg in trimmed:
+            if isinstance(msg, HumanMessage):
+                result.append({"role": "user", "content": msg.content})
+            elif isinstance(msg, SystemMessage):
+                result.append({"role": "system", "content": msg.content})
+            else:
+                result.append({"role": "assistant", "content": msg.content})
+        
+        return result
+        
+    except Exception as e:
+        # Fallback to simple message count limit if token counting fails
+        print(f"⚠️ [Chat] Token trimming failed, using fallback: {e}", flush=True)
+        max_messages = 30
+        if len(history) > max_messages:
+            return history[-max_messages:]
+        return history
 
 
 # ============================================================
@@ -155,13 +238,13 @@ async def chat(request: ChatRequest):
                     import traceback
                     traceback.print_exc()
             
-            # Create agent with MCP tools
-            agent = await create_publo_agent_with_mcp(
+            # Create deep agent using official deepagents library
+            # Note: deepagents includes context management middleware automatically
+            agent = create_publo_deep_agent(
                 story_id=request.story_id,
                 document_format=request.document_format,
                 active_section_id=request.active_section_id,
                 user_preferences=request.user_preferences,
-                enable_memory=True,
             )
             
             # Build messages list
@@ -364,9 +447,10 @@ async def chat(request: ChatRequest):
                             personas_msg += "### Role semantics (interpretation rules)\n"
                             personas_msg += "- **Main**: Core protagonist/antagonist. Should appear frequently and materially drive plot/choices.\n"
                             personas_msg += "- **Active**: Key supporting cast with agency. Should influence scenes/decisions and have distinct voice.\n"
-                            personas_msg += "- **Included**: Supporting presence. May appear or be referenced; adds texture but rarely drives plot.\n"
+                            personas_msg += "- **Included**: Supporting presence. MUST appear or be referenced in the story; adds texture.\n"
                             personas_msg += "- **Involved**: Contextual/cultural/semiotic influence. Use for worldview, norms, slang, social dynamics, stakes.\n"
-                            personas_msg += "- **Passive**: Background influence. Use for ambience, constraints, setting realism; avoid centering scenes on them unless asked.\n\n"
+                            personas_msg += "- **Passive**: Background influence. Use for ambience, constraints, setting realism.\n\n"
+                            personas_msg += "**⚠️ CRITICAL: When calling create_structure, you MUST include ALL connected characters below in your prompt - not just the ones user explicitly named. Canvas connections = intent to use.**\n\n"
                             personas_msg += "### Identity & voice rules\n"
                             personas_msg += "- Use the **exact character name** as canonical. Do not rename.\n"
                             personas_msg += "- If bio/profile implies a way of speaking (slang, formality, cadence), reflect it consistently.\n"
@@ -471,8 +555,47 @@ async def chat(request: ChatRequest):
                 messages.append({"role": "system", "content": card_msg})
             
             if request.conversation_history:
-                messages.extend(request.conversation_history)
+                # Token-aware trimming using LangChain (Claude max ~200k tokens)
+                # Leave ~50k for history (system prompts can be large!)
+                trimmed_history = trim_conversation_history(
+                    request.conversation_history,
+                    max_tokens=50000,
+                )
+                messages.extend(trimmed_history)
             messages.append({"role": "user", "content": request.message})
+            
+            # ============================================================
+            # FINAL SAFETY: Ensure total message size stays under limit
+            # ============================================================
+            # Claude max is 200k tokens. We estimate ~4 chars/token.
+            # Target 150k tokens = ~600k chars to leave room for response.
+            MAX_TOTAL_CHARS = 500000  # ~125k tokens, safe margin
+            total_chars = sum(len(m.get("content", "")) for m in messages)
+            
+            if total_chars > MAX_TOTAL_CHARS:
+                print(f"⚠️ [Chat] Messages too large: {total_chars} chars. Trimming...", flush=True)
+                
+                # Strategy: Keep system messages, aggressively trim conversation
+                system_msgs = [m for m in messages if m.get("role") == "system"]
+                conv_msgs = [m for m in messages if m.get("role") != "system"]
+                
+                system_chars = sum(len(m.get("content", "")) for m in system_msgs)
+                remaining_budget = MAX_TOTAL_CHARS - system_chars
+                
+                # Trim conversation from the beginning (keep recent)
+                trimmed_conv = []
+                conv_chars = 0
+                for msg in reversed(conv_msgs):
+                    msg_len = len(msg.get("content", ""))
+                    if conv_chars + msg_len <= remaining_budget:
+                        trimmed_conv.insert(0, msg)
+                        conv_chars += msg_len
+                    else:
+                        break
+                
+                messages = system_msgs + trimmed_conv
+                new_total = sum(len(m.get("content", "")) for m in messages)
+                print(f"✂️ [Chat] Trimmed to {new_total} chars ({len(messages)} messages)", flush=True)
             
             # Config for the agent
             #
@@ -505,8 +628,8 @@ async def chat(request: ChatRequest):
                 }
             }
             
-            # Stream events
-            async for event in run_agent_streaming(agent, messages, config):
+            # Stream events using deepagents
+            async for event in run_deep_agent_streaming(agent, messages, config):
                 event_type = event["type"]
                 data = event["data"]
                 
@@ -591,7 +714,9 @@ async def chat(request: ChatRequest):
                     
                     # Special handling for write_section completion
                     tool_name = data.get("tool", "")
+                    print(f"🔧 [Chat] Tool end: {tool_name}", flush=True)
                     output = data.get("output", {})
+                    print(f"🔍 [Chat] Tool output type: {type(output).__name__}, keys: {list(output.keys()) if isinstance(output, dict) else 'N/A'}", flush=True)
                     
                     # Handle string outputs (convert to dict if possible)
                     if isinstance(output, str):
@@ -677,6 +802,33 @@ async def chat(request: ChatRequest):
                                 "value": output.get("value") or output.get("description")
                             })
                     
+                    elif tool_name in ("create_character", "load_character"):
+                        # Character created or loaded - emit event for canvas node creation
+                        print(f"🔍 [Chat] Character tool - output is dict: {isinstance(output, dict)}", flush=True)
+                        if isinstance(output, dict):
+                            print(f"🔍 [Chat] Character tool output: success={output.get('success')}, has_character={bool(output.get('character'))}", flush=True)
+                        else:
+                            print(f"⚠️ [Chat] Character tool output is NOT dict: {type(output).__name__} = {str(output)[:100]}", flush=True)
+                        if isinstance(output, dict) and output.get("success"):
+                            char_data = output.get("character", {})
+                            print(f"🔍 [Chat] Character data: name={char_data.get('name')}, role={char_data.get('role')}", flush=True)
+                            sse_payload = {
+                                "character_id": output.get("character_id", ""),
+                                "node_id": output.get("node_id", ""),
+                                "name": char_data.get("name", ""),
+                                "bio": char_data.get("bio", ""),
+                                "role": char_data.get("role", "Active"),
+                                "photo_url": char_data.get("photo_url"),
+                                "visibility": char_data.get("visibility", "private"),
+                                "attributes": char_data.get("attributes", {}),
+                                "profilerChat": char_data.get("profilerChat", []),
+                                "is_existing": output.get("is_existing", False),
+                            }
+                            sse_event = format_sse(SSEEventType.CHARACTER_CREATED, sse_payload)
+                            print(f"🎭 [Chat] CHARACTER_CREATED SSE event (first 200 chars): {sse_event[:200]}", flush=True)
+                            yield sse_event
+                            print(f"✅ [Chat] Yielded CHARACTER_CREATED for: {char_data.get('name')}", flush=True)
+                    
                     elif tool_name in ("write_context_file", "delete_context_file") and isinstance(output, dict):
                         # Context file updated - emit event
                         if output.get("success"):
@@ -720,16 +872,15 @@ async def chat_sync(request: ChatRequest):
     try:
         from langchain_core.messages import HumanMessage, AIMessage
         
-        # Create agent
-        agent = await create_publo_agent_with_mcp(
+        # Create deep agent (handles context management automatically)
+        agent = create_publo_deep_agent(
             story_id=request.story_id,
             document_format=request.document_format,
             active_section_id=request.active_section_id,
             user_preferences=request.user_preferences,
-            enable_memory=True,
         )
         
-        # Build messages
+        # Build messages (deepagents handles context trimming automatically)
         lc_messages = []
         if request.conversation_history:
             for msg in request.conversation_history:

@@ -66,9 +66,10 @@ import React, { useCallback, useMemo } from 'react'
 import { Node, Edge } from 'reactflow'
 import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
 import AIDocumentPanel from '@/components/panels/AIDocumentPanel'
-import { StoryFormat } from '@/types/nodes'
+import { StoryFormat, CharacterRole } from '@/types/nodes'
 import { getOrchestratorNodeId, isOrchestratorNode } from '@/data/stories'
 import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
+import type { CharacterCreatedEvent } from '@/types/orchestrator-streaming-types'
 
 // =============================================================================
 // PROPS INTERFACE
@@ -577,6 +578,83 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
   }, [nodes, orchestratorNodeId, onAddNode, onAddEdge, onStoryNodeCreated, onSelectNode, onUpdateStructure, userId, storyId])
   
   // ─────────────────────────────────────────────────────────────────────────
+  // handleCreateCharacterNode - Creates character node when AI creates/loads a character
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /**
+   * Creates a character node on the canvas when the AI creates or loads a character.
+   * Characters are positioned ABOVE the orchestrator (as inputs/context sources).
+   * 
+   * @param data - CharacterCreatedEvent from the SSE stream
+   */
+  const handleCreateCharacterNode = useCallback((data: CharacterCreatedEvent) => {
+    console.log('🎭 [CanvasPanels] Creating character node:', data.name)
+    
+    // Find orchestrator node for positioning
+    let orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
+    if (!orchestratorNode) {
+      orchestratorNode = nodes.find(n => isOrchestratorNode(n.id))
+    }
+    if (!orchestratorNode) {
+      console.error('❌ [CanvasPanels] Orchestrator node not found for character placement')
+      return
+    }
+    
+    // Check for duplicate
+    if (nodes.some(n => n.id === data.node_id)) {
+      console.warn('⚠️ [CanvasPanels] Character node already exists:', data.node_id)
+      return
+    }
+    
+    // Count existing character nodes above orchestrator for positioning
+    const existingCharNodes = nodes.filter(n => {
+      const nodeType = (n.data as any)?.nodeType
+      return nodeType === 'character' && n.position.y < orchestratorNode!.position.y
+    })
+    
+    // Position above orchestrator, spread horizontally
+    const xOffset = existingCharNodes.length * 180
+    const newPosition = {
+      x: orchestratorNode.position.x - 100 + xOffset,
+      y: orchestratorNode.position.y - 200,
+    }
+    
+    // Create character node
+    // Use 'storyNode' type (renders via UniversalNode) with nodeType: 'character'
+    // This matches how existing character nodes (Jonas, Leif, etc.) are created
+    const newNode: Node = {
+      id: data.node_id,
+      type: 'storyNode',  // UniversalNode handles this based on nodeType
+      position: newPosition,
+      data: {
+        nodeType: 'character',
+        label: data.name,
+        characterId: data.character_id,
+        characterName: data.name,
+        bio: data.bio || '',
+        role: (data.role as CharacterRole) || 'Active',
+        image: data.photo_url || undefined,  // UniversalNode uses 'image' for photos
+        visibility: data.visibility || 'private',
+        attributes: data.attributes || {},
+        profilerChat: data.profilerChat || [],
+        comments: [],
+      },
+    }
+    
+    // Create edge FROM character TO orchestrator (character feeds context to orchestrator)
+    const newEdge: Edge = {
+      id: `edge-${data.node_id}-${orchestratorNode.id}`,
+      source: data.node_id,
+      target: orchestratorNode.id,
+      type: 'smoothstep',
+    }
+    
+    console.log('✅ [CanvasPanels] Adding character node and edge:', data.node_id)
+    onAddNode(newNode)
+    onAddEdge(newEdge)
+  }, [nodes, orchestratorNodeId, onAddNode, onAddEdge])
+  
+  // ─────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
   
@@ -617,6 +695,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
         storyId={storyId}
         orchestratorNodeId={orchestratorNodeId}
         onCreateStoryNode={handleCreateStoryNode}
+        onCreateCharacterNode={handleCreateCharacterNode}
         onSectionComplete={onSectionComplete}
         onContentChunk={onContentChunk}
         onContentComplete={async (sectionId: string, wordCount: number) => {
