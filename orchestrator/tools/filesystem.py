@@ -2,49 +2,64 @@
 Filesystem Tools
 
 Tools for reading/writing context files in the agent's project filesystem.
-Enables persistent context storage and retrieval.
+Uses Supabase for persistent storage (replaces ephemeral /tmp/ storage).
 """
 
 from typing import Dict, Any, List, Optional
 from langchain_core.tools import tool
+from deep_agent import get_context_user_id, get_context_story_id
 
 
-def _get_backend(node_id: str):
-    """Get filesystem backend for a project."""
+def _get_backend(story_id: str = "", user_id: str = ""):
+    """
+    Get filesystem backend for a project.
+    
+    Uses Supabase for persistent storage.
+    Falls back to context variables if IDs not provided.
+    """
     try:
-        from agents.deep_agent_backend import OrchestratorFilesystemBackend
-        return OrchestratorFilesystemBackend(project_id=node_id)
+        # Get IDs from context if not provided
+        if not story_id:
+            story_id = get_context_story_id()
+        if not user_id:
+            user_id = get_context_user_id()
+        
+        if not story_id or not user_id:
+            print(f"⚠️ [Filesystem] Missing context: story_id={story_id}, user_id={user_id}", flush=True)
+            return None
+        
+        from agents.supabase_backend import SupabaseFilesystemBackend
+        return SupabaseFilesystemBackend(story_id=story_id, user_id=user_id)
     except Exception as e:
-        print(f"⚠️ Could not create filesystem backend: {e}")
+        print(f"⚠️ Could not create filesystem backend: {e}", flush=True)
         return None
 
 
 @tool
 def read_context_file(
     path: str,
-    node_id: str = "",
 ) -> Dict[str, Any]:
     """
-    Read a file from the project context filesystem.
+    Read a file from the project context filesystem (stored in Supabase).
     
     Use this to retrieve previously saved context, notes, or data.
     
     Args:
         path: File path within the context filesystem (e.g., "notes/character_notes.txt")
-        node_id: Story/project node ID (injected by agent)
     
     Returns:
         File contents (as string for text, as dict for JSON)
     
     Example:
         read_context_file(path="notes/plot_outline.txt")
+        read_context_file(path="context/connected_characters.json")
     """
-    backend = _get_backend(node_id)
+    backend = _get_backend()
     
     if not backend:
         return {
             "success": False,
-            "error": "Filesystem backend not available"
+            "error": "Filesystem backend not available (missing story_id or user_id)"
         }
     
     try:
@@ -75,17 +90,16 @@ def read_context_file(
 def write_context_file(
     path: str,
     content: str,
-    node_id: str = "",
 ) -> Dict[str, Any]:
     """
-    Write content to the project context filesystem.
+    Write content to the project context filesystem (stored in Supabase).
     
     Use this to save notes, outlines, research, or any context for later use.
+    Files persist across sessions.
     
     Args:
         path: File path within the context filesystem (e.g., "notes/character_notes.txt")
         content: Content to write (string for text, or JSON-serializable for .json files)
-        node_id: Story/project node ID (injected by agent)
     
     Returns:
         Confirmation of file write
@@ -96,12 +110,12 @@ def write_context_file(
             content="Sarah: 35, detective, skeptical of supernatural"
         )
     """
-    backend = _get_backend(node_id)
+    backend = _get_backend()
     
     if not backend:
         return {
             "success": False,
-            "error": "Filesystem backend not available"
+            "error": "Filesystem backend not available (missing story_id or user_id)"
         }
     
     try:
@@ -134,30 +148,29 @@ def write_context_file(
 @tool
 def list_context_files(
     directory: str = "",
-    node_id: str = "",
 ) -> Dict[str, Any]:
     """
-    List files in the context filesystem.
+    List files in the context filesystem (stored in Supabase).
     
     Use this to see what context files are available.
     
     Args:
-        directory: Directory to list (empty string for root)
-        node_id: Story/project node ID (injected by agent)
+        directory: Directory to list (empty string for all files)
     
     Returns:
-        List of files and directories
+        List of files with path, type, size, and last updated
     
     Example:
         list_context_files(directory="notes")
+        list_context_files(directory="context/")
     """
-    backend = _get_backend(node_id)
+    backend = _get_backend()
     
     if not backend:
         return {
             "success": False,
             "files": [],
-            "error": "Filesystem backend not available"
+            "error": "Filesystem backend not available (missing story_id or user_id)"
         }
     
     try:
@@ -181,7 +194,6 @@ def list_context_files(
 @tool
 def delete_context_file(
     path: str,
-    node_id: str = "",
 ) -> Dict[str, Any]:
     """
     Delete a file from the context filesystem.
@@ -190,17 +202,16 @@ def delete_context_file(
     
     Args:
         path: File path to delete
-        node_id: Story/project node ID (injected by agent)
     
     Returns:
         Confirmation of deletion
     """
-    backend = _get_backend(node_id)
+    backend = _get_backend()
     
     if not backend:
         return {
             "success": False,
-            "error": "Filesystem backend not available"
+            "error": "Filesystem backend not available (missing story_id or user_id)"
         }
     
     try:

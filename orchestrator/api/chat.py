@@ -12,6 +12,7 @@ from typing import Optional, List, Dict, Any, AsyncIterator
 from langsmith import traceable
 import json
 import os
+import asyncio
 
 # Use the new official deepagents-based agent
 from deep_agent import create_publo_deep_agent, run_deep_agent_streaming
@@ -31,77 +32,37 @@ router = APIRouter()
 # HELPER: Token-aware conversation history trimming
 # ============================================================
 
-def get_token_counter():
-    """Get a token counter function for Claude."""
-    # Use Claude's tokenizer for accurate counting
-    model = ChatAnthropic(model="claude-sonnet-4-20250514")
-    return model.get_num_tokens_from_messages
-
-
 def trim_conversation_history(
     history: List[Dict[str, str]],
-    max_tokens: int = 80000,  # Leave room for system prompt + response
+    max_tokens: int = 80000,  # retained for compatibility; we use a fast heuristic
 ) -> List[Dict[str, str]]:
     """
-    Trim conversation history using LangChain's token-aware trimming.
-    
-    Uses the 'last' strategy to keep recent messages that fit within token budget.
+    Trim conversation history quickly.
+
+    Rationale:
+    - Token-aware trimming requires a tokenizer/count call that may be slow or rate-limited.
+    - We already enforce a hard total character budget later in the pipeline.
+    - For responsiveness, we keep a small window of the most recent turns.
     
     Args:
         history: List of {"role": "user"|"assistant", "content": "..."} dicts
-        max_tokens: Maximum tokens to allow for conversation history
+        max_tokens: (unused) kept for API compatibility
     
     Returns:
         Trimmed history as list of dicts
     """
     if not history:
         return []
-    
-    # Convert to LangChain messages
-    lc_messages = []
-    for msg in history:
-        if msg.get("role") == "user":
-            lc_messages.append(HumanMessage(content=msg.get("content", "")))
-        elif msg.get("role") == "system":
-            lc_messages.append(SystemMessage(content=msg.get("content", "")))
-        else:
-            lc_messages.append(AIMessage(content=msg.get("content", "")))
-    
-    original_count = len(lc_messages)
-    
-    try:
-        # Use LangChain's trim_messages with token counting
-        trimmed = trim_messages(
-            lc_messages,
-            max_tokens=max_tokens,
-            strategy="last",  # Keep most recent messages
-            token_counter=get_token_counter(),
-            include_system=True,  # Always keep system messages
-            allow_partial=False,  # Don't split messages
-        )
-        
-        if len(trimmed) < original_count:
-            print(f"✂️ [Chat] Trimmed history: {original_count} → {len(trimmed)} messages (max {max_tokens} tokens)", flush=True)
-        
-        # Convert back to dict format
-        result = []
-        for msg in trimmed:
-            if isinstance(msg, HumanMessage):
-                result.append({"role": "user", "content": msg.content})
-            elif isinstance(msg, SystemMessage):
-                result.append({"role": "system", "content": msg.content})
-            else:
-                result.append({"role": "assistant", "content": msg.content})
-        
-        return result
-        
-    except Exception as e:
-        # Fallback to simple message count limit if token counting fails
-        print(f"⚠️ [Chat] Token trimming failed, using fallback: {e}", flush=True)
-        max_messages = 30
-        if len(history) > max_messages:
-            return history[-max_messages:]
+
+    # Fast heuristic: keep last N messages.
+    # (We still do final MAX_TOTAL_CHARS trimming below.)
+    max_messages = 30
+    if len(history) <= max_messages:
         return history
+
+    trimmed = history[-max_messages:]
+    print(f"✂️ [Chat] Trimmed history by count: {len(history)} → {len(trimmed)} messages", flush=True)
+    return trimmed
 
 
 # ============================================================
@@ -184,6 +145,207 @@ async def chat(request: ChatRequest):
         try:
             print(f"🧠 [Chat] Extended thinking: {request.extended_thinking}", flush=True)
             
+            # ============================================================
+            # FAST PATH: List Characters (avoid LLM + prompt bloat)
+            # ============================================================
+            # Rationale:
+            # - This is a deterministic UI action
+            # - Avoids a second model call after tool execution (which can overflow context)
+            # - Dramatically improves perceived latency (no model roundtrip)
+            msg_lc = (request.message or "").strip().lower()
+            is_list_characters = any(
+                phrase in msg_lc
+                for phrase in [
+                    "list my characters",
+                    "show my characters",
+                    "what characters are available",
+                    "which characters are available",
+                    "available characters",
+                    "list characters",
+                    "show characters",
+                ]
+            )
+            if is_list_characters:
+                try:
+                    from tools.character import list_characters as list_characters_tool
+
+                    result = await list_characters_tool.ainvoke(
+                        {
+                            "include_public": True,
+                            "user_id": request.user_id or "",
+                        }
+                    )
+
+                    own = (result or {}).get("own_characters", []) or []
+                    pub = (result or {}).get("public_characters", []) or []
+
+                    def _bio_stub(name: str) -> str:
+                        # We intentionally keep this lightweight; full bio is fetched on load.
+                        return f"_{name}_"
+
+                    lines: List[str] = []
+                    lines.append("Here are your available characters:\n")
+                    lines.append("**Your Characters:**")
+                    if own:
+                        for idx, c in enumerate(own, 1):
+                            nm = c.get("name") or "Unnamed"
+                            role = c.get("role") or "Active"
+                            vis = c.get("visibility") or "private"
+                            lines.append(f"{idx}. **{nm}** - {role} · {vis.capitalize()}")
+                    else:
+                        lines.append("_No saved characters yet._")
+
+                    lines.append("\n**Public Characters:**")
+                    if pub:
+                        offset = len(own)
+                        for jdx, c in enumerate(pub, 1):
+                            nm = c.get("name") or "Unnamed"
+                            role = c.get("role") or "Active"
+                            lines.append(f"{offset + jdx}. **{nm}** - {role} · Public")
+                    else:
+                        lines.append("_No public characters found._")
+
+                    lines.append("\nTell me the **number** or **name** to add to the canvas.")
+                    text = "\n".join(lines)
+
+                    yield format_sse(SSEEventType.TOKEN, {"content": text})
+                    yield format_sse(SSEEventType.DONE, {"success": True})
+                    return
+                except Exception as e:
+                    # Fall back to the agent path if something unexpected happens
+                    print(f"⚠️ [Chat] List-characters fast path failed, falling back: {e}", flush=True)
+
+            # ============================================================
+            # FAST PATH: Add character from a recent listing (no LLM)
+            # ============================================================
+            # Rationale:
+            # - User often replies "1" or "Lars" right after listing
+            # - We should resolve this deterministically to a character_id
+            # - Avoids relying on the LLM to “remember” IDs or re-fetch
+            # - Emits CHARACTER_CREATED so frontend places the node immediately
+            try:
+                history = request.conversation_history or []
+                last_assistant = next(
+                    (m for m in reversed(history) if isinstance(m, dict) and m.get("role") == "assistant"),
+                    None,
+                )
+                last_text = (last_assistant or {}).get("content", "") if isinstance(last_assistant, dict) else ""
+                came_from_list = (
+                    isinstance(last_text, str)
+                    and "Here are your available characters:" in last_text
+                    and "Tell me the **number** or **name** to add to the canvas." in last_text
+                )
+
+                selection_raw = (request.message or "").strip()
+                if came_from_list and selection_raw:
+                    import re
+                    from tools.character import list_characters as list_characters_tool
+                    from tools.character import load_character as load_character_tool
+
+                    # Re-fetch to get canonical ordering + IDs
+                    listing = await list_characters_tool.ainvoke(
+                        {
+                            "include_public": True,
+                            "user_id": request.user_id or "",
+                        }
+                    )
+                    own = (listing or {}).get("own_characters", []) or []
+                    pub = (listing or {}).get("public_characters", []) or []
+                    combined = [c for c in (own + pub) if isinstance(c, dict)]
+
+                    # Optional role override parsing from user text
+                    role_override = None
+                    role_match = re.search(r"\b(main|active|included|involved|passive)\b", selection_raw, re.I)
+                    if role_match:
+                        role_override = role_match.group(1).capitalize()
+
+                    selected = None
+
+                    # 1) Numeric selection (supports "1", "1.", "1 - Lars")
+                    num_match = re.match(r"^\s*(\d+)\b", selection_raw)
+                    if num_match:
+                        idx = int(num_match.group(1))
+                        if 1 <= idx <= len(combined):
+                            selected = combined[idx - 1]
+                        else:
+                            yield format_sse(
+                                SSEEventType.TOKEN,
+                                {"content": f"That number is out of range (1–{len(combined)}). Try again."},
+                            )
+                            yield format_sse(SSEEventType.DONE, {"success": True})
+                            return
+
+                    # 2) Name selection (exact, case-insensitive)
+                    if selected is None:
+                        name_query = selection_raw
+                        # Strip "as <role>" suffix if present
+                        name_query = re.sub(r"\s+as\s+(main|active|included|involved|passive)\b.*$", "", name_query, flags=re.I).strip()
+                        q = name_query.lower()
+                        matches = [c for c in combined if (c.get("name") or "").strip().lower() == q]
+                        if len(matches) == 1:
+                            selected = matches[0]
+                        elif len(matches) > 1:
+                            # Duplicate names; ask for number deterministically
+                            lines = [
+                                f"I found multiple characters named **{name_query}**. Reply with the number:",
+                                "",
+                            ]
+                            for i, c in enumerate(matches, 1):
+                                role = c.get("role") or "Active"
+                                vis = c.get("visibility") or "public"
+                                lines.append(f"{i}. **{c.get('name') or 'Unnamed'}** - {role} · {str(vis).capitalize()}")
+                            yield format_sse(SSEEventType.TOKEN, {"content": "\n".join(lines)})
+                            yield format_sse(SSEEventType.DONE, {"success": True})
+                            return
+                        else:
+                            # Not a selection; fall through to agent
+                            selected = None
+
+                    if selected is not None:
+                        character_id = selected.get("id") or ""
+                        if not character_id:
+                            yield format_sse(
+                                SSEEventType.TOKEN,
+                                {"content": "I couldn’t resolve that character’s ID. Please try again."},
+                            )
+                            yield format_sse(SSEEventType.DONE, {"success": True})
+                            return
+
+                        loaded = await load_character_tool.ainvoke(
+                            {
+                                "character_id": character_id,
+                                "role_override": role_override,
+                                "user_id": request.user_id or "",
+                            }
+                        )
+
+                        if isinstance(loaded, dict) and loaded.get("success"):
+                            char = loaded.get("character") or {}
+                            payload = {
+                                "character_id": loaded.get("character_id", ""),
+                                "node_id": loaded.get("node_id", ""),
+                                "name": char.get("name", ""),
+                                "bio": char.get("bio", ""),
+                                "role": char.get("role", "Active"),
+                                "photo_url": char.get("photo_url"),
+                                "visibility": char.get("visibility", "private"),
+                                "attributes": char.get("attributes", {}),
+                                "profilerChat": char.get("profilerChat", []),
+                                "is_existing": loaded.get("is_existing", True),
+                            }
+                            yield format_sse(SSEEventType.CHARACTER_CREATED, payload)
+                            yield format_sse(SSEEventType.DONE, {"success": True})
+                            return
+
+                        # Load failed; respond deterministically without LLM
+                        msg = (loaded or {}).get("message") if isinstance(loaded, dict) else None
+                        yield format_sse(SSEEventType.TOKEN, {"content": msg or "Failed to load that character."})
+                        yield format_sse(SSEEventType.DONE, {"success": True})
+                        return
+            except Exception as e:
+                # Non-fatal: fall back to agent
+                print(f"⚠️ [Chat] Add-character fast path failed, falling back: {e}", flush=True)
+
             # Stream extended thinking if enabled
             if request.extended_thinking:
                 try:
@@ -438,6 +600,7 @@ async def chat(request: ChatRequest):
                                 "bio": bio,
                                 "attributes": attributes,
                                 "profilerChat": profiler_chat,
+                                "character_id": cid,  # Include for context file
                             })
 
                         if personas:
@@ -494,6 +657,37 @@ async def chat(request: ChatRequest):
                                         pass
 
                             messages.append({"role": "system", "content": personas_msg})
+                            
+                            # =========================================================
+                            # ALSO: Write full character data to context file
+                            # This ensures agent can always access complete character
+                            # data via read_context_file, not just system message
+                            # =========================================================
+                            try:
+                                from agents.supabase_backend import SupabaseFilesystemBackend
+                                if story_id and user_id:
+                                    backend = SupabaseFilesystemBackend(
+                                        story_id=story_id,
+                                        user_id=user_id
+                                    )
+                                    # Build character context with FULL data
+                                    char_context = {}
+                                    for p in personas:
+                                        char_context[p["name"]] = {
+                                            "role": p.get("role", "Active"),
+                                            "bio": p.get("bio", ""),
+                                            "attributes": p.get("attributes", {}),
+                                            "profilerChat": p.get("profilerChat", []),
+                                            "character_id": p.get("character_id", ""),
+                                        }
+                                    backend.write_file(
+                                        "context/connected_characters.json",
+                                        char_context
+                                    )
+                                    print(f"📝 [Chat] Wrote {len(personas)} characters to context file", flush=True)
+                            except Exception as ctx_err:
+                                print(f"⚠️ [Chat] Failed to write character context file: {ctx_err}", flush=True)
+                            
                 except Exception as e:
                     print(f"⚠️ [Chat] Failed to inject character personas: {e}", flush=True)
             
@@ -828,6 +1022,43 @@ async def chat(request: ChatRequest):
                             print(f"🎭 [Chat] CHARACTER_CREATED SSE event (first 200 chars): {sse_event[:200]}", flush=True)
                             yield sse_event
                             print(f"✅ [Chat] Yielded CHARACTER_CREATED for: {char_data.get('name')}", flush=True)
+
+                            # =========================================================
+                            # ASYNC: Generate photorealistic portrait via Gemini
+                            # =========================================================
+                            # Do NOT block streaming. We spawn a background task that:
+                            # - generates an image from available character info
+                            # - uploads to Supabase Storage
+                            # - updates characters.photo_url
+                            # - best-effort updates nodes.data.image
+                            #
+                            # Frontend will pulse while `isGeneratingImage` is true and
+                            # will poll `characters.photo_url` to update the node live.
+                            if tool_name == "create_character":
+                                try:
+                                    from agents.gemini_portrait import generate_and_store_character_portrait
+
+                                    story_id_bg = request.story_id or ""
+                                    user_id_bg = request.user_id or ""
+                                    node_id_bg = output.get("node_id", "") or ""
+                                    character_id_bg = output.get("character_id", "") or ""
+
+                                    # Skip if missing context or already has photo_url
+                                    if story_id_bg and user_id_bg and node_id_bg and character_id_bg and not char_data.get("photo_url"):
+                                        # Ensure character dict includes id for generator
+                                        char_for_img = dict(char_data)
+                                        char_for_img["id"] = character_id_bg
+                                        asyncio.create_task(
+                                            generate_and_store_character_portrait(
+                                                story_id=story_id_bg,
+                                                user_id=user_id_bg,
+                                                node_id=node_id_bg,
+                                                character=char_for_img,
+                                            )
+                                        )
+                                        print(f"🕒 [Portrait] Spawned async portrait task for {char_data.get('name')}", flush=True)
+                                except Exception as img_err:
+                                    print(f"⚠️ [Portrait] Could not spawn portrait task: {img_err}", flush=True)
                     
                     elif tool_name in ("write_context_file", "delete_context_file") and isinstance(output, dict):
                         # Context file updated - emit event

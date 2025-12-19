@@ -56,6 +56,7 @@ app.add_middleware(
 from api.health import router as health_router
 from api.state import router as state_router
 from api.chat import router as chat_router
+from api.characters import router as characters_router
 
 # Health and state routes
 app.include_router(health_router, tags=["Health"])
@@ -63,6 +64,7 @@ app.include_router(state_router, prefix="/api/state", tags=["State Management"])
 
 # Deep Agent chat endpoint
 app.include_router(chat_router, prefix="/api/orchestrator", tags=["Deep Agent Chat"])
+app.include_router(characters_router, prefix="/api/orchestrator", tags=["Characters"])
 
 # ============================================================
 # ROOT ENDPOINT
@@ -111,6 +113,14 @@ async def startup_event():
     available_optional = [var for var in optional_vars if os.getenv(var)]
     if available_optional:
         print(f"✅ Optional features enabled: {', '.join(available_optional)}")
+
+    # Ensure Storage buckets used by Publo exist (best-effort).
+    # This prevents confusing 404 Bucket not found errors during async portrait generation.
+    try:
+        from agents.gemini_portrait import _ensure_bucket_exists as _ensure_character_bucket_exists
+        _ensure_character_bucket_exists()
+    except Exception as e:
+        print(f"⚠️  [Startup] Could not ensure character image bucket: {e}", flush=True)
 
 
 @app.on_event("shutdown")

@@ -210,31 +210,31 @@ async def list_characters(
     try:
         supabase = get_supabase_client()
         
-        # Get user's own characters
+        # Get user's own characters (minimal data for listing)
         own_result = supabase.table("characters") \
-            .select("id, name, bio, role, visibility, photo_url") \
+            .select("id, name, role, visibility, photo_url") \
             .eq("user_id", user_id) \
             .order("updated_at", desc=True) \
             .limit(20) \
             .execute()
         
-        # Simplify output - just essentials for display (avoid large tool results)
+        # Return MINIMAL data - just enough to display and select
+        # Full bio is fetched when character is loaded/connected
         own_characters = []
         for char in (own_result.data or []):
-            bio = char.get("bio", "") or ""
             own_characters.append({
                 "id": char.get("id"),
                 "name": char.get("name"),
                 "role": char.get("role", "Active"),
                 "visibility": char.get("visibility", "private"),
-                "bio_excerpt": bio[:60] + "..." if len(bio) > 60 else bio,
+                "photo_url": char.get("photo_url"),  # For display
             })
         
-        # Get public characters from other users
+        # Get public characters from other users (minimal data)
         public_characters = []
         if include_public:
             public_result = supabase.table("characters") \
-                .select("id, name, bio, role, visibility") \
+                .select("id, name, role, visibility, photo_url") \
                 .eq("visibility", "public") \
                 .neq("user_id", user_id) \
                 .order("updated_at", desc=True) \
@@ -242,12 +242,11 @@ async def list_characters(
                 .execute()
             
             for char in (public_result.data or []):
-                bio = char.get("bio", "") or ""
                 public_characters.append({
                     "id": char.get("id"),
                     "name": char.get("name"),
                     "role": char.get("role", "Active"),
-                    "bio_excerpt": bio[:60] + "..." if len(bio) > 60 else bio,
+                    "photo_url": char.get("photo_url"),
                 })
         
         print(f"📋 [Character] Listed {len(own_characters)} own + {len(public_characters)} public", flush=True)
@@ -355,17 +354,18 @@ async def load_character(
         
         print(f"📂 [Character] Loading existing: {char.get('name')} (role: {final_role})", flush=True)
         
-        # Simplify output to avoid "large tool result" handling
-        bio = char.get("bio", "") or ""
+        # Return full character data - needed for canvas node and context
+        # The frontend needs this to display the character properly
         return {
             "success": True,
             "character": {
                 "id": char["id"],
                 "name": char.get("name", "Unknown"),
-                "bio": bio[:100] + "..." if len(bio) > 100 else bio,  # Short excerpt
+                "bio": char.get("bio", ""),  # Full bio for canvas node
                 "role": final_role,
                 "photo_url": char.get("photo_url"),
                 "visibility": char.get("visibility", "private"),
+                "attributes": char.get("attributes", {}),
             },
             "character_id": char["id"],
             "node_id": node_id,

@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     GOOGLE_AI_API_KEY: Optional[str] = None
+    # Compatibility: some setups use GOOGLE_API_KEY
+    GOOGLE_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
     
     # ========================================

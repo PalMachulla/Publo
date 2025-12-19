@@ -12,7 +12,19 @@ Migration from custom PubloAgent to official deepagents.
 
 from typing import Optional, List, Dict, Any, AsyncIterator
 from contextvars import ContextVar
-from deepagents import create_deep_agent
+# NOTE:
+# We assemble the agent manually with `langchain.agents.create_agent` so we can
+# opt into Deep Agents features incrementally. `deepagents.create_deep_agent`
+# is a convenience wrapper that auto-attaches middleware (filesystem + others),
+# which in Publo caused:
+# - extra tool calls like `read_file` during simple flows (slower UX)
+# - middleware-driven extra model calls in long threads (rate-limit risk)
+#
+# We are still on the Deep Agents path: we selectively use Deep Agents
+# middleware where it helps, and keep our own Supabase-backed tools for
+# persistence.
+from langchain.agents import create_agent
+from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
 # Subagent middleware - can add later
 # from deepagents.middleware import SubAgentMiddleware, SubAgent
 # Middleware - deepagents includes defaults, add custom if needed
@@ -154,21 +166,21 @@ def create_publo_deep_agent(
         load_character,
     ]
     
-    # Note: deepagents includes middleware by default
-    # Only add custom middleware if needed
-    middleware = None  # Let deepagents use its defaults
-    
     # Memory checkpointer (in-memory for now, could use Supabase)
     checkpointer = MemorySaver()
     
-    # Create the deep agent
-    # Start simple - deepagents includes sensible defaults
-    agent = create_deep_agent(
+    # Create the agent WITHOUT deepagents defaults.
+    # We provide our own filesystem + planning tools tailored to Publo.
+    agent = create_agent(
         model=model,
         tools=tools,
         system_prompt=system_prompt,
         checkpointer=checkpointer,
-        debug=True,  # Enable debug logging
+        # Keep Deep Agents tool-call patching, but DO NOT include filesystem middleware
+        # here (it introduces read_file/write_file, and auto-eviction flows we
+        # control ourselves via Supabase-backed tools).
+        middleware=[PatchToolCallsMiddleware()],
+        debug=False,
         name="publo-agent",
     )
     

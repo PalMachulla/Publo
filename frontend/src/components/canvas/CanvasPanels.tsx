@@ -62,7 +62,7 @@
  * Deep agent architecture uses SSE streaming, not frontend WorldState
  */
 
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Node, Edge } from 'reactflow'
 import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
 import AIDocumentPanel from '@/components/panels/AIDocumentPanel'
@@ -70,6 +70,7 @@ import { StoryFormat, CharacterRole } from '@/types/nodes'
 import { getOrchestratorNodeId, isOrchestratorNode } from '@/data/stories'
 import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
 import type { CharacterCreatedEvent } from '@/types/orchestrator-streaming-types'
+import { createClient } from '@/lib/supabase/client'
 
 // =============================================================================
 // PROPS INTERFACE
@@ -319,6 +320,17 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     refreshSectionsRef,
     onStoryNodeCreated
   } = props
+
+  // Stable placement counter for AI-created character nodes.
+  // Using `nodes` length directly can cause overlap when multiple CHARACTER_CREATED
+  // events arrive before React state updates flush.
+  const nextCharacterIndexRef = useRef<number>(0)
+  const nodesRef = useRef<Node[]>(nodes)
+
+  // Keep latest nodes for polling without recreating timers
+  useEffect(() => {
+    nodesRef.current = nodes
+  }, [nodes])
   
   // ─────────────────────────────────────────────────────────────────────────
   // Computed Values
@@ -612,11 +624,31 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
       return nodeType === 'character' && n.position.y < orchestratorNode!.position.y
     })
     
-    // Position above orchestrator, spread horizontally
-    const xOffset = existingCharNodes.length * 180
+    // Position above orchestrator, spread horizontally in a stable grid.
+    // Use a ref-based index so rapid multi-character creation doesn't overlap
+    // when React state hasn't applied previous node additions yet.
+    //
+    // Layout:
+    // - Up to MAX_PER_ROW characters per row
+    // - Each row is centered over the orchestrator
+    // - Additional characters wrap to the next row above
+    const SPACING_X = 220
+    const SPACING_Y = 220
+    const MAX_PER_ROW = 5
+
+    // Ensure counter starts at least at current existing count (covers refresh + pre-existing chars)
+    if (nextCharacterIndexRef.current < existingCharNodes.length) {
+      nextCharacterIndexRef.current = existingCharNodes.length
+    }
+    const index = nextCharacterIndexRef.current++
+    const row = Math.floor(index / MAX_PER_ROW)
+    const col = index % MAX_PER_ROW
+
+    // Center the row over the orchestrator using fixed width (prevents drift)
+    const rowStartX = orchestratorNode.position.x - ((MAX_PER_ROW - 1) / 2) * SPACING_X
     const newPosition = {
-      x: orchestratorNode.position.x - 100 + xOffset,
-      y: orchestratorNode.position.y - 200,
+      x: rowStartX + col * SPACING_X,
+      y: orchestratorNode.position.y - (row + 1) * SPACING_Y,
     }
     
     // Create character node
@@ -634,6 +666,9 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
         bio: data.bio || '',
         role: (data.role as CharacterRole) || 'Active',
         image: data.photo_url || undefined,  // UniversalNode uses 'image' for photos
+        photoUrl: data.photo_url || undefined, // CharacterPanel expects photoUrl
+        // Async portrait generation: pulse until photo arrives
+        isGeneratingImage: !data.photo_url,
         visibility: data.visibility || 'private',
         attributes: data.attributes || {},
         profilerChat: data.profilerChat || [],
@@ -646,13 +681,188 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
       id: `edge-${data.node_id}-${orchestratorNode.id}`,
       source: data.node_id,
       target: orchestratorNode.id,
-      type: 'smoothstep',
+      // Use bezier curve (not elbow). CanvasViewport also defaults to 'default'.
+      type: 'default',
     }
     
     console.log('✅ [CanvasPanels] Adding character node and edge:', data.node_id)
     onAddNode(newNode)
     onAddEdge(newEdge)
-  }, [nodes, orchestratorNodeId, onAddNode, onAddEdge])
+
+    // Persist immediately so refresh keeps the node/edge.
+    // Mirrors handleCreateStoryNode's immediate persistence.
+    if (userId && storyId) {
+      ;(async () => {
+        try {
+          // 1) Save node (admin-backed endpoint bypasses RLS)
+          const nodeRes = await fetch('/api/node/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nodeId: data.node_id,
+              storyId,
+              nodeType: 'storyNode',
+              data: newNode.data,
+              documentData: null,
+              positionX: newPosition.x,
+              positionY: newPosition.y,
+              userId
+            })
+          })
+          const nodeJson = await nodeRes.json()
+          if (!nodeRes.ok || !nodeJson?.success) {
+            console.error('❌ [CanvasPanels] Failed to persist character node:', nodeJson?.error)
+          } else {
+            console.log('✅ [CanvasPanels] Character node persisted:', data.node_id)
+          }
+
+          // 2) Save edge (admin-backed endpoint bypasses RLS)
+          const edgeRes = await fetch('/api/edge/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              edgeId: newEdge.id,
+              storyId,
+              source: newEdge.source,
+              target: newEdge.target,
+              type: newEdge.type,
+              animated: newEdge.animated ?? false,
+              style: newEdge.style ?? null,
+              userId
+            })
+          })
+          const edgeJson = await edgeRes.json()
+          if (!edgeRes.ok || !edgeJson?.success) {
+            console.error('❌ [CanvasPanels] Failed to persist character edge:', edgeJson?.error)
+          } else {
+            console.log('✅ [CanvasPanels] Character edge persisted:', newEdge.id)
+          }
+        } catch (e) {
+          console.error('❌ [CanvasPanels] Immediate character persistence failed:', e)
+        }
+      })()
+    } else {
+      console.warn('⚠️ [CanvasPanels] userId or storyId missing - character node not persisted yet')
+    }
+  }, [nodes, orchestratorNodeId, onAddNode, onAddEdge, userId, storyId])
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Async portrait polling (client-side)
+  // ─────────────────────────────────────────────────────────────────────────
+  // Backend generates photo_url asynchronously after create_character.
+  // We poll the characters table for pending characterIds and update the node
+  // + persist node.data.image once the portrait is ready.
+  useEffect(() => {
+    if (!userId || !storyId) return
+
+    const supabase = createClient()
+    let cancelled = false
+
+    const tick = async () => {
+      if (cancelled) return
+
+      const pendingNodes = (nodesRef.current || []).filter((n: any) => {
+        const d = n?.data || {}
+        return (
+          d?.nodeType === 'character' &&
+          !!d?.characterId &&
+          !d?.image &&
+          d?.isGeneratingImage === true
+        )
+      })
+
+      if (pendingNodes.length === 0) return
+
+      const ids = Array.from(new Set(pendingNodes.map((n: any) => n.data.characterId).filter(Boolean)))
+      if (ids.length === 0) return
+
+      try {
+        // First: check if backend has marked failure on node.data (stops infinite pulsing)
+        try {
+          const nodeIds = pendingNodes.map((n: any) => n.id)
+          const { data: nodeRows, error: nodeErr } = await supabase
+            .from('nodes')
+            .select('id, data')
+            .eq('story_id', storyId)
+            .in('id', nodeIds)
+
+          if (!nodeErr && Array.isArray(nodeRows)) {
+            for (const row of nodeRows) {
+              const d = (row as any)?.data
+              const isGen = d?.isGeneratingImage
+              const errCode = d?.imageGenerationError
+              if (isGen === false && errCode) {
+                onNodeUpdate?.(row.id, {
+                  isGeneratingImage: false,
+                  imageGenerationError: errCode,
+                })
+              }
+            }
+          }
+        } catch {
+          // Non-fatal; we'll still check characters.photo_url below
+        }
+
+        const { data, error } = await supabase
+          .from('characters')
+          .select('id, photo_url')
+          .in('id', ids)
+
+        if (error) {
+          console.warn('⚠️ [CanvasPanels] Portrait poll failed:', error)
+          return
+        }
+
+        const ready = (data || []).filter((c: any) => !!c?.photo_url)
+        if (ready.length === 0) return
+
+        for (const c of ready) {
+          const url = c.photo_url as string
+          const affected = pendingNodes.filter((n: any) => n.data.characterId === c.id)
+          for (const n of affected) {
+            // Update local state
+            onNodeUpdate?.(n.id, {
+              image: url,
+              photoUrl: url,
+              isGeneratingImage: false,
+            })
+
+            // Persist node data immediately (so refresh shows portrait even if user doesn't save)
+            try {
+              const merged = { ...(n.data || {}), image: url, photoUrl: url, isGeneratingImage: false }
+              await fetch('/api/node/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  nodeId: n.id,
+                  storyId,
+                  userId,
+                  updates: { data: merged },
+                }),
+              })
+            } catch (e) {
+              console.warn('⚠️ [CanvasPanels] Failed to persist portrait node update:', e)
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ [CanvasPanels] Portrait poll tick error:', e)
+      }
+    }
+
+    // Poll every ~2.5s while there are pending nodes
+    const interval = setInterval(() => {
+      tick()
+    }, 2500)
+
+    // Kick once immediately
+    tick()
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [userId, storyId, onNodeUpdate])
   
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER

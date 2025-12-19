@@ -173,7 +173,7 @@ export default function NodeDetailsPanel({
       {nodeType === 'story' ? (
         <StoryBookPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
       ) : nodeType === 'character' ? (
-        <CharacterPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
+        <CharacterPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} userId={user?.id || ''} storyId={storyId || ''} />
       ) : nodeType === 'research' ? (
         <ResearchPanel node={node as any} onUpdate={onUpdate} onDelete={onDelete} />
       ) : nodeType === 'cluster' ? (

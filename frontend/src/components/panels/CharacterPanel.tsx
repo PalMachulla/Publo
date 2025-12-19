@@ -9,12 +9,14 @@ interface CharacterPanelProps {
   node: Node<CharacterNodeData>
   onUpdate: (nodeId: string, newData: CharacterNodeData) => void
   onDelete: (nodeId: string) => void
+  userId: string
+  storyId: string
 }
 
 const CHARACTER_ROLES: CharacterRole[] = ['Main', 'Active', 'Included', 'Involved', 'Passive']
 const VISIBILITY_OPTIONS: CharacterVisibility[] = ['private', 'shared', 'public']
 
-export default function CharacterPanel({ node, onUpdate, onDelete }: CharacterPanelProps) {
+export default function CharacterPanel({ node, onUpdate, onDelete, userId, storyId }: CharacterPanelProps) {
   const [name, setName] = useState(node.data.label || '')
   const [bio, setBio] = useState(node.data.bio || '')
   const [role, setRole] = useState<CharacterRole | ''>(node.data.role || '')
@@ -25,6 +27,7 @@ export default function CharacterPanel({ node, onUpdate, onDelete }: CharacterPa
   const [characters, setCharacters] = useState<Character[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(false)
+  const [isRetryingPortrait, setIsRetryingPortrait] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Load characters for browsing
@@ -40,7 +43,7 @@ export default function CharacterPanel({ node, onUpdate, onDelete }: CharacterPa
     setBio(node.data.bio || '')
     setRole(node.data.role || '')
     setVisibility(node.data.visibility || 'private')
-    setPhotoUrl(node.data.photoUrl || '')
+    setPhotoUrl((node.data.photoUrl || node.data.image || '') as string)
     setShowBrowse(false)
     
     // Clear file input when switching nodes
@@ -48,6 +51,63 @@ export default function CharacterPanel({ node, onUpdate, onDelete }: CharacterPa
       fileInputRef.current.value = ''
     }
   }, [node.id, node.data.label, node.data.bio, node.data.role, node.data.visibility, node.data.photoUrl])
+
+  const isGeneratingImage = !!(node.data as any)?.isGeneratingImage
+  const imageGenerationError = (node.data as any)?.imageGenerationError as string | undefined
+  const canRetryPortrait = !!node.data.characterId && !!userId && !!storyId && !isGeneratingImage
+
+  const handleRetryPortrait = async () => {
+    if (!canRetryPortrait) return
+    try {
+      setIsRetryingPortrait(true)
+
+      // Update local node immediately (pulse)
+      const nextData: any = {
+        ...node.data,
+        isGeneratingImage: true,
+        imageGenerationError: undefined,
+        // clear existing image if any; portrait should repopulate
+        image: undefined,
+        photoUrl: undefined,
+      }
+      onUpdate(node.id, nextData)
+
+      // Persist the pulse state immediately so refresh matches
+      await fetch('/api/node/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: node.id,
+          storyId,
+          userId,
+          updates: { data: nextData },
+        }),
+      })
+
+      // Queue backend generation (deterministic; no LLM)
+      const res = await fetch('/api/orchestrator/characters/portrait', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId,
+          userId,
+          nodeId: node.id,
+          characterId: node.data.characterId,
+          force: true,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json?.success) {
+        console.error('❌ Failed to queue portrait:', json?.error)
+        alert(json?.error || 'Failed to queue portrait generation')
+      }
+    } catch (e) {
+      console.error('❌ Retry portrait failed:', e)
+      alert('Failed to retry portrait')
+    } finally {
+      setIsRetryingPortrait(false)
+    }
+  }
 
   const loadCharacters = async () => {
     try {
@@ -318,6 +378,35 @@ export default function CharacterPanel({ node, onUpdate, onDelete }: CharacterPa
 
         {!showBrowse && (
           <>
+            {/* Portrait generation (Gemini) */}
+            {node.data.characterId && (
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800">AI Portrait</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {isGeneratingImage
+                        ? 'Generating… (may take a bit if rate-limited)'
+                        : imageGenerationError
+                          ? `Last attempt failed: ${imageGenerationError}`
+                          : (photoUrl ? 'Portrait attached.' : 'No portrait yet.')}
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleRetryPortrait}
+                    disabled={!canRetryPortrait || isRetryingPortrait}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      canRetryPortrait && !isRetryingPortrait
+                        ? 'bg-gray-900 text-white hover:bg-gray-800'
+                        : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {isRetryingPortrait ? 'Queuing…' : (photoUrl ? 'Regenerate' : 'Generate')}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Photo Upload */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Photo</label>

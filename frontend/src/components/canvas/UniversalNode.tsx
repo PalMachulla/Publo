@@ -12,6 +12,8 @@ function UniversalNode({ data, selected }: NodeProps<AnyNodeData>) {
   const colorClass = getNodeColor(nodeType as NodeType)
   const label = nodeData.label || 'NODE'
   const image = nodeData.image
+  const isGeneratingImage = !!nodeData.isGeneratingImage
+  const imageGenerationError = nodeData.imageGenerationError as string | undefined
   const role = (nodeType === 'character' || nodeType === 'story') ? nodeData.role : null
   
   return (
@@ -40,7 +42,7 @@ function UniversalNode({ data, selected }: NodeProps<AnyNodeData>) {
       <div
         className={`relative bg-white rounded-lg shadow-lg transition-all overflow-hidden ${
           selected ? 'ring-2 ring-yellow-400 shadow-xl' : 'shadow-md'
-        }`}
+        } ${isGeneratingImage ? 'animate-pulse' : ''}`}
         style={{ width: 90, height: 120, zIndex: 1 }}
       >
         {image ? (
@@ -53,7 +55,7 @@ function UniversalNode({ data, selected }: NodeProps<AnyNodeData>) {
               {icon}
             </div>
             <div className="text-[9px] text-gray-400 font-light">
-              Click to Edit
+              {isGeneratingImage ? 'Generating…' : imageGenerationError ? 'Image failed' : 'Click to Edit'}
             </div>
           </div>
         )}
