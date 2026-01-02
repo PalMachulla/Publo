@@ -36,6 +36,8 @@ class SectionCard:
     characters_present: List[str] = field(default_factory=list)
     places_visited: List[str] = field(default_factory=list)
     events_occurring: List[str] = field(default_factory=list)
+    # New/minor characters introduced in this section (not yet full Character nodes)
+    new_characters_introduced: List[Dict] = field(default_factory=list)
     dependencies: List[Dict] = field(default_factory=list)
     hooks: List[Dict] = field(default_factory=list)
     constraints: List[Dict] = field(default_factory=list)
@@ -455,15 +457,14 @@ class Librarian:
         """
         Create section cards with intelligent summaries from structure creation.
         
-        Uses LLM to generate expectations for each section based on:
-        - Section name and position in the narrative
-        - Overall story prompt and format
-        - Narrative structure conventions
+        The summaries come DIRECTLY from the structure items (generated during
+        create_structure). If summaries are missing, we fall back to generating
+        them via LLM.
         
         This gives writers context and the Librarian control from the get-go.
         
         Args:
-            items: Structure items from create_structure
+            items: Structure items from create_structure (should include 'summary' field)
             planning_context: Dict with prompt, format, template, title
         
         Returns:
@@ -473,19 +474,23 @@ class Librarian:
         format_type = planning_context.get("format", "novel")
         title = planning_context.get("title", "Untitled")
         
-        print(f"📚 [Librarian] Generating intelligent summaries for {len(items)} sections...")
+        print(f"📚 [Librarian] Creating section cards for {len(items)} sections...")
         print(f"📚 [Librarian] Planning context: title={title}, format={format_type}")
-        print(f"📚 [Librarian] Items: {[i.get('name') or i.get('title') for i in items[:5]]}...")
         
-        # Generate summaries for all sections in one LLM call
-        section_summaries = await self._generate_section_summaries(
-            items=items,
-            story_prompt=prompt,
-            format_type=format_type,
-            title=title
-        )
+        # Check if items already have summaries (from enhanced structure creation)
+        items_with_summary = sum(1 for item in items if item.get("summary"))
+        print(f"📚 [Librarian] Items with summaries: {items_with_summary}/{len(items)}")
         
-        print(f"📚 [Librarian] Summary keys returned: {list(section_summaries.keys())[:5]}...")
+        # If most items don't have summaries, generate them via LLM (fallback)
+        section_summaries = {}
+        if items_with_summary < len(items) * 0.5:
+            print(f"📚 [Librarian] Generating missing summaries via LLM...")
+            section_summaries = await self._generate_section_summaries(
+                items=items,
+                story_prompt=prompt,
+                format_type=format_type,
+                title=title
+            )
         
         cards = []
         previous_item = None
@@ -493,19 +498,32 @@ class Librarian:
         for idx, item in enumerate(items):
             section_id = item.get("id", f"sec-{idx+1}")
             section_name = item.get("name") or item.get("title", f"Section {idx+1}")
-            section_desc = item.get("description", "")
             
-            # Use LLM-generated summary, fall back to description
-            # Try exact match first, then case-insensitive
-            generated_summary = (
-                section_summaries.get(section_name) or 
-                section_summaries.get(section_id) or
-                next((v for k, v in section_summaries.items() if k.lower() == section_name.lower()), None)
-            )
-            summary = generated_summary or section_desc or None
+            # Priority 1: Use summary directly from structure item
+            # Priority 2: Use LLM-generated summary (fallback)
+            # Priority 3: Use description field
+            summary = item.get("summary")
+            if not summary:
+                summary = (
+                    section_summaries.get(section_name) or 
+                    section_summaries.get(section_id) or
+                    next((v for k, v in section_summaries.items() if k.lower() == section_name.lower()), None) or
+                    item.get("description")
+                )
+            
+            # Get characters from structure item (if available)
+            characters_present = item.get("characters", [])
+            
+            # Get new/minor characters introduced in this section
+            new_characters_introduced = item.get("newCharactersIntroduced", [])
+            
+            # Get mood from structure item or infer it
+            mood = item.get("mood") or self._infer_mood_from_position(format_type, idx, len(items))
             
             if idx < 3:  # Log first 3 for debugging
-                print(f"📚 [Librarian] Section '{section_name}': summary={'✅ found' if generated_summary else '❌ not found'}")
+                has_summary = "✅" if summary else "❌"
+                new_chars_count = len(new_characters_introduced)
+                print(f"📚 [Librarian] Section '{section_name}': summary={has_summary}, chars={characters_present}, new_chars={new_chars_count}, mood={mood}")
             
             # Build dependencies (each section depends on previous)
             dependencies = []
@@ -517,14 +535,13 @@ class Librarian:
                     "description": f"Follows from {previous_item.get('name', 'previous section')}"
                 })
             
-            # Infer mood from format and position
-            mood = self._infer_mood_from_position(format_type, idx, len(items))
-            
             card = SectionCard(
                 node_id=self.node_id,
                 structure_item_id=section_id,
                 section_name=section_name,
                 summary=summary,
+                characters_present=characters_present,
+                new_characters_introduced=new_characters_introduced,
                 dependencies=dependencies,
                 mood=mood,
                 analyzed=False  # Not yet analyzed - content hasn't been written
@@ -534,7 +551,7 @@ class Librarian:
             cards.append(saved_card)
             previous_item = item
         
-        print(f"📚 [Librarian] Created {len(cards)} section cards with intelligent summaries")
+        print(f"📚 [Librarian] Created {len(cards)} section cards with summaries")
         return cards
     
     async def _generate_section_summaries(
@@ -773,6 +790,7 @@ Be specific to THIS story, not generic advice. Reference the user's vision."""
                 "characters_present": json.dumps(card.characters_present),
                 "places_visited": json.dumps(card.places_visited),
                 "events_occurring": json.dumps(card.events_occurring),
+                "new_characters_introduced": json.dumps(card.new_characters_introduced),
                 "dependencies": json.dumps(card.dependencies),
                 "hooks": json.dumps(card.hooks),
                 "constraints": json.dumps(card.constraints),
@@ -985,6 +1003,7 @@ SUMMARY (2-3 sentences only):"""
             characters_present=self._parse_json(row.get("characters_present"), []),
             places_visited=self._parse_json(row.get("places_visited"), []),
             events_occurring=self._parse_json(row.get("events_occurring"), []),
+            new_characters_introduced=self._parse_json(row.get("new_characters_introduced"), []),
             dependencies=self._parse_json(row.get("dependencies"), []),
             hooks=self._parse_json(row.get("hooks"), []),
             constraints=self._parse_json(row.get("constraints"), []),

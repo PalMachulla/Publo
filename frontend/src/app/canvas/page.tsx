@@ -144,9 +144,38 @@ export default function CanvasPage() {
   // Note: We'll use canvasData refs after it's initialized
   const canvasState = useCanvasState({
     onUnsavedChange: () => {
-      // Will be updated after canvasData is initialized
+      // Mark unsaved changes; persistence is handled via targeted endpoints + explicit saves.
+      // (We don't auto-save the whole canvas on every change.)
+      if (canvasData?.hasUnsavedChangesRef) {
+        canvasData.hasUnsavedChangesRef.current = true
+      }
     },
-    isLoadingRef: undefined // Will use canvasData.isLoadingRef after initialization
+    isLoadingRef: undefined, // Will use canvasData.isLoadingRef after initialization
+    onPositionsCommitted: (positions) => {
+      // Best-effort persistence of node positions on drag end.
+      // This prevents "positions jump on refresh" without requiring a full canvas save.
+      try {
+        const storyIdLocal = storyId
+        const userIdLocal = canvasData?.userId
+        if (!storyIdLocal || !userIdLocal) return
+
+        // Fire-and-forget: update nodes individually
+        positions.forEach((p) => {
+          fetch('/api/node/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nodeId: p.id,
+              storyId: storyIdLocal,
+              userId: userIdLocal,
+              updates: { position_x: p.x, position_y: p.y },
+            }),
+          }).catch(() => {})
+        })
+      } catch {
+        // Non-fatal
+      }
+    }
   })
   
   // Canvas data (story loading, access control, user profile)
@@ -502,13 +531,60 @@ export default function CanvasPage() {
   
   // Handle connect
   const onConnect = useCallback(
-    (params: Connection) => canvasState.setEdges((eds) => addEdge({ 
-      ...params, 
-      animated: false, 
-      style: { stroke: '#9ca3af', strokeWidth: 2 },
-      type: 'default'
-    }, eds)),
-    [canvasState.setEdges]
+    (params: Connection) => {
+      // Create deterministic edge id (prevents duplicates and ensures persistence uses same id)
+      const source = params.source
+      const target = params.target
+      if (!source || !target) return
+
+      const edgeId = `edge-${source}-${target}`
+      const edge: any = {
+        id: edgeId,
+        ...params,
+        animated: false,
+        style: { stroke: '#9ca3af', strokeWidth: 2 },
+        type: 'default',
+      }
+
+      canvasState.setEdges((eds) => addEdge(edge, eds))
+
+      // Persist immediately so refresh keeps the connector.
+      // (Mirrors character-edge persistence in CanvasPanels.)
+      const storyIdLocal = storyId
+      const userIdLocal = canvasData?.userId
+      console.log('🔗 [Canvas] Creating edge:', { edgeId, storyIdLocal, userIdLocal, source, target })
+      
+      if (storyIdLocal && userIdLocal) {
+        fetch('/api/edge/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            edgeId,
+            storyId: storyIdLocal,
+            source,
+            target,
+            type: 'default',
+            animated: false,
+            style: { stroke: '#9ca3af', strokeWidth: 2 },
+            userId: userIdLocal,
+          }),
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              console.log('✅ [Canvas] Edge persisted:', edgeId)
+            } else {
+              console.error('❌ [Canvas] Edge persist failed:', data.error)
+            }
+          })
+          .catch(err => {
+            console.error('❌ [Canvas] Edge persist error:', err)
+          })
+      } else {
+        console.warn('⚠️ [Canvas] Cannot persist edge - missing storyId or userId:', { storyIdLocal, userIdLocal })
+      }
+    },
+    [canvasState.setEdges, storyId, canvasData?.userId]
   )
   
   // Handle node click

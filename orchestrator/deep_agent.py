@@ -13,22 +13,9 @@ Migration from custom PubloAgent to official deepagents.
 from typing import Optional, List, Dict, Any, AsyncIterator
 from contextvars import ContextVar
 # NOTE:
-# We assemble the agent manually with `langchain.agents.create_agent` so we can
-# opt into Deep Agents features incrementally. `deepagents.create_deep_agent`
-# is a convenience wrapper that auto-attaches middleware (filesystem + others),
-# which in Publo caused:
-# - extra tool calls like `read_file` during simple flows (slower UX)
-# - middleware-driven extra model calls in long threads (rate-limit risk)
-#
-# We are still on the Deep Agents path: we selectively use Deep Agents
-# middleware where it helps, and keep our own Supabase-backed tools for
-# persistence.
-from langchain.agents import create_agent
-from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
-# Subagent middleware - can add later
-# from deepagents.middleware import SubAgentMiddleware, SubAgent
-# Middleware - deepagents includes defaults, add custom if needed
-# from langchain.agents.middleware import SummarizationMiddleware
+# We use langgraph.prebuilt.create_react_agent for the agent graph.
+# This provides a standard ReAct agent with tool calling support.
+from langgraph.prebuilt import create_react_agent
 from langchain_anthropic import ChatAnthropic
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import MemorySaver
@@ -43,16 +30,24 @@ from langgraph.checkpoint.memory import MemorySaver
 
 import threading
 _context_lock = threading.Lock()
-_context_data: Dict[str, str] = {"user_id": "", "story_id": ""}
+_context_data: Dict[str, str] = {"user_id": "", "story_id": "", "node_id": ""}
+
+# Mutable reference for node_id updates during execution
+_node_id_ref: Dict[str, str] = {"value": ""}
 
 
-def set_context(user_id: str = "", story_id: str = ""):
+def set_context(user_id: str = "", story_id: str = "", node_id: str = "", node_id_ref: Dict[str, str] = None):
     """Set context data for tool access."""
+    global _node_id_ref
     with _context_lock:
         if user_id:
             _context_data["user_id"] = user_id
         if story_id:
             _context_data["story_id"] = story_id
+        if node_id:
+            _context_data["node_id"] = node_id
+        if node_id_ref is not None:
+            _node_id_ref = node_id_ref
 
 
 def get_context_user_id() -> str:
@@ -65,6 +60,15 @@ def get_context_story_id() -> str:
     """Get current story_id from context."""
     with _context_lock:
         return _context_data.get("story_id", "")
+
+
+def get_context_node_id() -> str:
+    """Get current node_id from context (checks mutable ref first)."""
+    # Check mutable ref first (gets updated when create_structure runs)
+    if _node_id_ref.get("value"):
+        return _node_id_ref["value"]
+    with _context_lock:
+        return _context_data.get("node_id", "")
 
 
 # Keep ContextVar for compatibility but add simpler globals
@@ -169,19 +173,13 @@ def create_publo_deep_agent(
     # Memory checkpointer (in-memory for now, could use Supabase)
     checkpointer = MemorySaver()
     
-    # Create the agent WITHOUT deepagents defaults.
-    # We provide our own filesystem + planning tools tailored to Publo.
-    agent = create_agent(
+    # Create the agent using LangGraph's create_react_agent.
+    # This provides a standard ReAct agent with tool calling support.
+    agent = create_react_agent(
         model=model,
         tools=tools,
-        system_prompt=system_prompt,
+        prompt=system_prompt,
         checkpointer=checkpointer,
-        # Keep Deep Agents tool-call patching, but DO NOT include filesystem middleware
-        # here (it introduces read_file/write_file, and auto-eviction flows we
-        # control ourselves via Supabase-backed tools).
-        middleware=[PatchToolCallsMiddleware()],
-        debug=False,
-        name="publo-agent",
     )
     
     return agent
@@ -208,14 +206,15 @@ async def run_deep_agent_streaming(
     from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
     
     # Set context for tools (deepagents compatibility)
-    # Tools can read these via get_context_user_id() / get_context_story_id()
+    # Tools can read these via get_context_user_id() / get_context_story_id() / get_context_node_id()
     if config:
         cfg = config.get("configurable", {})
         user_id = cfg.get("user_id", "")
         story_id = cfg.get("story_id", "")
-        if user_id or story_id:
-            set_context(user_id=user_id, story_id=story_id)
-            print(f"🔑 [DeepAgent] Set context: user_id={user_id[:8] if user_id else 'NONE'}..., story_id={story_id[:8] if story_id else 'NONE'}...", flush=True)
+        node_id = cfg.get("node_id", "")
+        node_id_ref = cfg.get("node_id_ref")  # Mutable dict for updates during execution
+        set_context(user_id=user_id, story_id=story_id, node_id=node_id, node_id_ref=node_id_ref)
+        print(f"🔑 [DeepAgent] Set context: user_id={user_id[:8] if user_id else 'NONE'}..., story_id={story_id[:8] if story_id else 'NONE'}..., node_id={node_id[:20] if node_id else 'NONE'}...", flush=True)
     
     # Convert messages to LangChain format if needed
     lc_messages = []

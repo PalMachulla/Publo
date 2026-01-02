@@ -14,8 +14,6 @@ async def create_structure(
     prompt: str,
     format_type: str,
     template_id: Optional[str] = None,
-    story_id: str = "",
-    node_id: str = "",
 ) -> Dict[str, Any]:
     """
     Create a new document structure from a template or description.
@@ -34,8 +32,6 @@ async def create_structure(
         format_type: REQUIRED - Document format. Detect from user's message.
                      Use "report" for reports, "article" for articles, etc.
         template_id: Optional template to use (e.g., "business", "research", "technical" for reports)
-        story_id: Canvas/project ID (used for nodes.story_id linkage)
-        node_id: Story node ID (injected by agent)
     
     Returns:
         Dictionary with:
@@ -49,22 +45,49 @@ async def create_structure(
     import random
     import string
     from config import get_model_for_task
+    from deep_agent import get_context_story_id, _node_id_ref
     
-    # Generate node_id if not provided - this ensures Librarian cards are created correctly
-    if not node_id:
-        node_id = f"story-structure-{int(time.time() * 1000)}-{''.join(random.choices(string.ascii_lowercase + string.digits, k=5))}"
-        print(f"📌 [Structure] Generated new node_id: {node_id}")
+    # Get story_id from context
+    story_id = get_context_story_id()
+    
+    # Generate new node_id for this structure
+    node_id = f"story-structure-{int(time.time() * 1000)}-{''.join(random.choices(string.ascii_lowercase + string.digits, k=5))}"
+    print(f"📌 [Structure] Generated new node_id: {node_id}")
+    
+    # Update the mutable ref so subsequent tool calls (like write_section) can use this node_id
+    _node_id_ref["value"] = node_id
+    print(f"📌 [Structure] Updated _node_id_ref to: {node_id}")
     
     # Get template if specified
     template_guidance = ""
     if template_id:
         template_guidance = _get_template_guidance(template_id)
     
+    # Try to load connected characters from context file (written by chat.py)
+    characters = None
+    try:
+        from agents.supabase_backend import SupabaseFilesystemBackend
+        from deep_agent import get_context_user_id
+        user_id = get_context_user_id()
+        
+        if story_id and user_id:
+            backend = SupabaseFilesystemBackend(story_id=story_id, user_id=user_id)
+            char_data = backend.read_file("context/connected_characters.json")
+            if char_data and isinstance(char_data, dict):
+                characters = [
+                    {"name": name, **data} 
+                    for name, data in char_data.items()
+                ]
+                print(f"📌 [Structure] Loaded {len(characters)} connected characters: {[c['name'] for c in characters]}")
+    except Exception as e:
+        print(f"⚠️ [Structure] Could not load characters (non-fatal): {e}")
+    
     # Build prompt for structure generation
     structure_prompt = _build_structure_prompt(
         prompt=prompt,
         format_type=format_type,
         template_guidance=template_guidance,
+        characters=characters,
     )
     
     # Generate structure using LLM
@@ -164,7 +187,6 @@ async def create_structure(
 @tool
 async def update_structure(
     changes_description: str,
-    node_id: str = "",
 ) -> Dict[str, Any]:
     """
     Update an EXISTING document structure based on user's requested changes.
@@ -182,7 +204,6 @@ async def update_structure(
     Args:
         changes_description: What changes to make (e.g., "Add a dolphin that travels with them in the car. 
                             This changes the entire premise - they're now taking the dolphin to the ocean.")
-        node_id: The existing story structure node ID (injected by agent)
     
     Returns:
         Dictionary with:
@@ -194,6 +215,10 @@ async def update_structure(
     """
     from config import get_supabase_client, get_model_for_task
     from librarian import get_librarian
+    from deep_agent import get_context_node_id
+    
+    # Get node_id from context
+    node_id = get_context_node_id()
     
     if not node_id:
         return {
@@ -544,6 +569,7 @@ def _build_structure_prompt(
     prompt: str,
     format_type: str,
     template_guidance: str,
+    characters: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Build the prompt for structure generation."""
     
@@ -557,14 +583,43 @@ def _build_structure_prompt(
         "essay": "Create a clear introduction, body paragraphs with arguments, and conclusion.",
     }
     
-    return f"""Create a document structure based on this request:
+    # Build character context if available
+    character_context = ""
+    if characters:
+        char_lines = []
+        for char in characters:
+            name = char.get("name", "Unknown")
+            role = char.get("role", "Active")
+            bio = char.get("bio", "")[:200] if char.get("bio") else ""
+            char_lines.append(f"- **{name}** ({role}): {bio}" if bio else f"- **{name}** ({role})")
+        
+        character_context = f"""
+## Characters to Include
+These characters MUST be woven into the story structure:
+{chr(10).join(char_lines)}
+
+Plan which characters appear in which chapters. Consider:
+- Whose POV/perspective is featured in each chapter
+- Character arcs and development across the story
+- Key moments for each character
+"""
+    
+    return f"""Create a detailed document structure for this story:
 
 "{prompt}"
 
 Format: {format_type}
 {format_guidance.get(format_type, '')}
-
+{character_context}
 {template_guidance if template_guidance else ''}
+
+## CRITICAL: Section Summaries
+Each section MUST have a detailed "summary" field (2-3 sentences) that describes:
+1. WHAT happens in this section (key events/plot points)
+2. WHO is involved (which characters appear)
+3. WHY it matters to the overall story arc
+
+These summaries will be used to maintain consistency when writing each section.
 
 Return a JSON object with this structure:
 {{
@@ -576,17 +631,33 @@ Return a JSON object with this structure:
       "name": "Chapter/Section Name",
       "type": "chapter",
       "level": 1,
-      "description": "Brief description of what happens"
+      "summary": "Detailed 2-3 sentence summary of what happens in this chapter, who appears, and how it advances the story. Be specific!",
+      "characters": ["Character Name 1", "Character Name 2"],
+      "newCharactersIntroduced": [
+        {{"name": "The Landlord", "description": "Axel's grumpy apartment landlord who threatens eviction"}},
+        {{"name": "A Fan", "description": "Enthusiastic audience member who approaches the band"}}
+      ],
+      "mood": "tense/hopeful/mysterious/etc"
     }},
     ...
   ]
 }}
 
+IMPORTANT for newCharactersIntroduced:
+- These are NEW minor/supporting characters who appear in this scene but aren't main cast
+- Examples: "The Bartender", "A Security Guard", "Marcus's Ex-Girlfriend", "The Venue Owner"
+- Include a brief description of their role in the scene
+- Don't include the main cast characters here - they go in "characters" array
+- Leave empty [] if no new characters are introduced in that section
+
 Guidelines:
 - Create a compelling title
 - Generate 8-15 sections/chapters appropriate for the format
 - Each item needs: id (unique), name (title), type, level (1 for main sections)
-- Add a brief description for each section
+- **EACH ITEM MUST HAVE a detailed "summary" field** - this is critical!
+- Include which characters appear in each section
+- Add a mood for each section
+- Plan the story arc: setup → rising action → climax → resolution
 - Make the structure coherent and well-paced
 
 Return ONLY valid JSON, no markdown formatting or explanation.

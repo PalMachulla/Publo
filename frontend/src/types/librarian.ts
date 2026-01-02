@@ -41,6 +41,9 @@ export interface SectionCard {
   placesVisited: string[]
   eventsOccurring: string[]
   
+  // New/minor characters introduced in this section (not yet full Character nodes)
+  newCharactersIntroduced?: NewCharacterMention[]
+  
   // Cross-chapter connections
   dependencies: Dependency[]
   hooks: NarrativeHook[]
@@ -111,8 +114,26 @@ export interface StoryCharacter {
   secrets: string[]
   status: CharacterStatus
   statusChangedIn?: string
+  /** Photo URL for character avatar */
+  photoUrl?: string
   createdAt: string
   updatedAt: string
+}
+
+/**
+ * New/minor character introduced in a section.
+ * These are characters mentioned but not yet full Character nodes.
+ * Can be promoted to full characters later.
+ */
+export interface NewCharacterMention {
+  /** Name of the character (e.g., "The Landlord", "A Fan") */
+  name: string
+  /** Brief description/role in the scene */
+  description?: string
+  /** Whether this has been promoted to a full Character */
+  promoted?: boolean
+  /** ID of the Character node if promoted */
+  promotedToId?: string
 }
 
 export interface CharacterRelationship {
@@ -269,6 +290,7 @@ export function dbRowToSectionCard(row: Record<string, unknown>): SectionCard {
     charactersPresent: parseJsonArray(row.characters_present),
     placesVisited: parseJsonArray(row.places_visited),
     eventsOccurring: parseJsonArray(row.events_occurring),
+    newCharactersIntroduced: parseJsonArray(row.new_characters_introduced),
     dependencies: parseJsonArray(row.dependencies),
     hooks: parseJsonArray(row.hooks),
     constraints: parseJsonArray(row.constraints),
@@ -303,6 +325,7 @@ export function dbRowToCharacter(row: Record<string, unknown>): StoryCharacter {
     secrets: parseJsonArray(row.secrets),
     status: row.status as CharacterStatus || 'active',
     statusChangedIn: row.status_changed_in as string | undefined,
+    photoUrl: row.photo_url as string | undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   }

@@ -16,7 +16,6 @@ async def get_story_context(
     include_places: bool = True,
     include_events: bool = True,
     include_nearby_summaries: bool = True,
-    node_id: str = "",
 ) -> Dict[str, Any]:
     """
     Get story context for writing or discussion.
@@ -31,7 +30,6 @@ async def get_story_context(
         include_places: Include location registry
         include_events: Include plot events timeline
         include_nearby_summaries: Include summaries of adjacent sections
-        node_id: Story node ID (injected by agent)
     
     Returns:
         Dictionary containing requested story elements:
@@ -45,8 +43,12 @@ async def get_story_context(
     try:
         from librarian import get_librarian
         from config import get_supabase_client
+        from deep_agent import get_context_node_id
     except Exception as e:
         return {"error": f"Import error: {str(e)}"}
+    
+    # Get node_id from context
+    node_id = get_context_node_id()
     
     # Get librarian instance
     try:

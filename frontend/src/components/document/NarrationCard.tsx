@@ -2,7 +2,7 @@
 
 import { memo } from 'react'
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
-import { StarFilledIcon, LightningBoltIcon, PersonIcon, BellIcon } from '@radix-ui/react-icons'
+import { StarFilledIcon, LightningBoltIcon, PersonIcon, BellIcon, PlusIcon } from '@radix-ui/react-icons'
 import type { StoryStructureItem } from '@/types/nodes'
 import type { SectionCardDisplay } from '@/types/librarian'
 
@@ -185,39 +185,78 @@ function NarrationCard({
           </p>
         )}
         
-        {/* Characters from section card (with resolved names) */}
+        {/* Characters from section card (with avatars) */}
         {sectionCard?.characters && sectionCard.characters.length > 0 && (
           <div className="mb-5">
-            <p className="text-xs font-semibold text-gray-800 bg-gray-800/5 px-2 py-1 w-fit rounded-md uppercase tracking-wide mb-2">People Gallery</p>
-            <div className="flex flex-wrap gap-1.5 mb-3">
+            <p className="text-xs font-semibold text-gray-800 bg-gray-800/5 px-2 py-1 w-fit rounded-md uppercase tracking-wide mb-2">Characters</p>
+            <div className="flex flex-wrap gap-2 mb-3">
             {sectionCard.characters.slice(0, 5).map((char) => (
               <span 
                 key={char.id} 
-                className={`inline-flex items-center gap-1.5 text-xs pr-3 pl-1.5 py-1.5 rounded-full ${
+                className={`inline-flex items-center gap-2 text-xs pr-3 pl-1.5 py-1.5 rounded-lg border ${
                   char.role === 'protagonist' 
-                    ? 'bg-blue-100/40 text-blue-700' 
+                    ? 'bg-blue-50 border-blue-200 text-blue-700' 
                     : char.role === 'antagonist'
-                      ? 'bg-red-100/40 text-red-700'
-                      : 'bg-purple-100/40 text-purple-700'
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : 'bg-purple-50 border-purple-200 text-purple-700'
                 }`}
                 title={char.description || char.role}
               >
-                {char.role === 'protagonist' ? (
-                  <StarFilledIcon className="w-3.5 h-3.5 bg-black/5 -p-1 rounded-full" />
-                ) : char.role === 'antagonist' ? (
-                  <LightningBoltIcon className="w-3.5 h-3.5 bg-black/80 -p-1 rounded-full" />
+                {/* Character avatar */}
+                {char.photoUrl ? (
+                  <img
+                    src={char.photoUrl}
+                    alt={char.name}
+                    className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+                  />
                 ) : (
-                  <PersonIcon className="w-3.5 h-3.5 bg-black/5 -p-1 rounded-full" />
+                  <span className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                    {char.name.charAt(0).toUpperCase()}
+                  </span>
                 )}
-                {char.name}
+                <span className="font-medium">{char.name}</span>
+                {char.role === 'protagonist' && (
+                  <StarFilledIcon className="w-3 h-3 text-yellow-500" />
+                )}
+                {char.role === 'antagonist' && (
+                  <LightningBoltIcon className="w-3 h-3 text-red-500" />
+                )}
               </span>
             ))}
             {sectionCard.characters.length > 5 && (
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-gray-400 self-center">
                 +{sectionCard.characters.length - 5} more
               </span>
             )}
             </div>
+          </div>
+        )}
+        
+        {/* New characters introduced (minor/supporting) */}
+        {sectionCard?.newCharactersIntroduced && sectionCard.newCharactersIntroduced.length > 0 && (
+          <div className="mb-5">
+            <p className="text-xs font-semibold text-amber-700 bg-amber-100/50 px-2 py-1 w-fit rounded-md uppercase tracking-wide mb-2">
+              ✨ New Characters
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {sectionCard.newCharactersIntroduced.map((newChar, idx) => (
+                <span
+                  key={idx}
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border border-dashed ${
+                    newChar.promoted
+                      ? 'bg-green-50 border-green-300 text-green-700'
+                      : 'bg-amber-50 border-amber-300 text-amber-700'
+                  }`}
+                  title={newChar.description || `New character: ${newChar.name}`}
+                >
+                  {newChar.promoted ? '✓' : <PlusIcon className="w-3 h-3" />}
+                  <span>{newChar.name}</span>
+                </span>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1 italic">
+              Ask to expand into full character profiles
+            </p>
           </div>
         )}
         

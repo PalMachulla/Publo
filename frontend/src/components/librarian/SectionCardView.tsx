@@ -24,7 +24,7 @@ import {
   SectionCardDisplay, 
   CoherencyIssue, 
   StoryCharacter,
-  CoherencyIssueSeverity 
+  CoherencyIssueSeverity
 } from '@/types/librarian'
 
 interface SectionCardViewProps {
@@ -111,34 +111,75 @@ export function SectionCardView({
       {/* Expanded content */}
       {expanded && (
         <div className="border-t border-gray-200 dark:border-gray-700">
-          {/* Characters */}
+          {/* Characters with avatars */}
           {card.characters.length > 0 && (
             <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
               <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
                 Characters
               </h4>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 {card.characters.map(char => (
                   <button
                     key={char.id}
                     onClick={() => onCharacterClick?.(char)}
                     className={`
-                      inline-flex items-center px-2 py-1 rounded-md text-xs
-                      transition-colors cursor-pointer
+                      inline-flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs
+                      transition-colors cursor-pointer border
                       ${char.role === 'protagonist' 
-                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50' 
+                        ? 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50' 
                         : char.role === 'antagonist'
-                          ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50'
-                          : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                          ? 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/30 dark:border-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50'
+                          : 'bg-gray-50 border-gray-200 text-gray-700 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
                       }
                     `}
                     title={char.description || char.name}
                   >
+                    {/* Character avatar */}
+                    {char.photoUrl ? (
+                      <img
+                        src={char.photoUrl}
+                        alt={char.name}
+                        className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+                      />
+                    ) : (
+                      <span className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                        {char.name.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="font-medium">{char.name}</span>
                     <RoleIcon role={char.role} />
-                    <span className="ml-1">{char.name}</span>
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+          
+          {/* New characters introduced (minor/unnamed) */}
+          {card.newCharactersIntroduced && card.newCharactersIntroduced.length > 0 && (
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+              <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                <span className="text-amber-500">✨</span> New Characters Introduced
+              </h4>
+              <div className="flex flex-wrap gap-1.5">
+                {card.newCharactersIntroduced.map((newChar, idx) => (
+                  <span
+                    key={idx}
+                    className={`
+                      inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs
+                      ${newChar.promoted
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-dashed border-amber-300 dark:border-amber-600'
+                      }
+                    `}
+                    title={newChar.description || `New character: ${newChar.name}`}
+                  >
+                    {newChar.promoted ? '✓' : '+'} {newChar.name}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 italic">
+                Ask to expand these into full character profiles
+              </p>
             </div>
           )}
           

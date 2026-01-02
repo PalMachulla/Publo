@@ -464,7 +464,7 @@ export default function CharacterPanel({ node, onUpdate, onDelete, userId, story
             value={bio}
             onChange={(e) => handleBioChange(e.target.value)}
             placeholder="Brief description of the character..."
-            rows={4}
+            rows={24}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm resize-none"
           />
         </div>

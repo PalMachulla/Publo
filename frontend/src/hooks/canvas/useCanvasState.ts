@@ -41,6 +41,12 @@ export interface UseCanvasStateOptions {
    * Used to prevent marking changes during initial load
    */
   isLoadingRef?: React.MutableRefObject<boolean>
+
+  /**
+   * Optional callback fired when node positions are committed (drag end).
+   * Useful for persisting positions without saving the entire canvas.
+   */
+  onPositionsCommitted?: (positions: Array<{ id: string; x: number; y: number }>) => void
 }
 
 export interface UseCanvasStateReturn {
@@ -75,7 +81,7 @@ export interface UseCanvasStateReturn {
 export function useCanvasState(
   options: UseCanvasStateOptions = {}
 ): UseCanvasStateReturn {
-  const { onUnsavedChange, isLoadingRef } = options
+  const { onUnsavedChange, isLoadingRef, onPositionsCommitted } = options
   
   // ReactFlow state management
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
@@ -166,9 +172,26 @@ export function useCanvasState(
         safeChanges.push(...additionalChanges)
       }
     }
+
+    // Persist positions only when dragging has ended (prevents spamming writes while dragging)
+    // React Flow emits position changes with `dragging: true` during drag and `dragging: false` at the end.
+    // We include additionalChanges (cluster-connected resources) too, since those are appended above.
+    try {
+      if (onPositionsCommitted && safeChanges.length > 0 && (!isLoadingRef || !isLoadingRef.current)) {
+        const committed = safeChanges
+          .filter((c: any) => c?.type === 'position' && c?.position && c?.dragging === false)
+          .map((c: any) => ({ id: String(c.id), x: Number(c.position.x), y: Number(c.position.y) }))
+          .filter((p: any) => p.id && Number.isFinite(p.x) && Number.isFinite(p.y))
+        if (committed.length > 0) {
+          onPositionsCommitted(committed)
+        }
+      }
+    } catch {
+      // Non-fatal: persistence is best-effort
+    }
     
     onNodesChange(safeChanges)
-  }, [onNodesChange, nodes, edges, onUnsavedChange, isLoadingRef])
+  }, [onNodesChange, nodes, edges, onUnsavedChange, isLoadingRef, onPositionsCommitted])
   
   /**
    * Handle edge changes with unsaved changes tracking

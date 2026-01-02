@@ -6,7 +6,7 @@ Handles Server-Sent Events for real-time frontend updates.
 
 import json
 import asyncio
-from typing import Any, Dict, Optional, Literal
+from typing import Any, Dict, Optional, Literal, Union
 from enum import Enum
 from dataclasses import dataclass, asdict
 
@@ -66,7 +66,7 @@ class SSEEventType(str, Enum):
     SELECT_SECTION = "SELECT_SECTION"
 
 
-def format_sse(event_type: str | SSEEventType, data: Dict[str, Any]) -> str:
+def format_sse(event_type: Union[str, SSEEventType], data: Dict[str, Any]) -> str:
     """
     Format data as an SSE event string.
     

@@ -18,7 +18,6 @@ async def write_section(
     guidance: str,
     style_notes: Optional[str] = None,
     target_length: str = "medium",
-    node_id: str = "",
 ) -> Dict[str, Any]:
     """
     Write content for a story section.
@@ -34,7 +33,6 @@ async def write_section(
         guidance: What to write (e.g., "confrontation scene between Marcus and Elena")
         style_notes: Optional style guidance (e.g., "tense, short sentences")
         target_length: "short" (~500 words), "medium" (~1500 words), "long" (~3000 words)
-        node_id: Story node ID (injected by agent)
     
     Returns:
         Dictionary with:
@@ -43,7 +41,11 @@ async def write_section(
         - word_count: Word count
         - status: "complete"
     """
-    print(f"📝 [write_section] Called with section_id='{section_id}', section_name='{section_name}'")
+    # Get node_id from context (set by deep_agent before tool execution)
+    from deep_agent import get_context_node_id
+    node_id = get_context_node_id()
+    
+    print(f"📝 [write_section] Called with section_id='{section_id}', section_name='{section_name}', node_id='{node_id}'")
     try:
         from librarian import get_librarian
         from config import get_supabase_client, get_model_for_task
@@ -117,7 +119,7 @@ async def write_section_streaming(
     guidance: str,
     style_notes: Optional[str] = None,
     target_length: str = "medium",
-    node_id: str = "",
+    node_id: str = "",  # Optional override, will use context if empty
 ) -> AsyncIterator[Tuple[str, Dict[str, Any]]]:
     """
     Streaming version of write_section that yields chunks as they're generated.
@@ -130,7 +132,12 @@ async def write_section_streaming(
         - ("content_complete", {"section_id": str, "word_count": int, "content": str})
         - ("error", {"error": str})
     """
-    print(f"📝 [write_section_streaming] Called with section_id='{section_id}', section_name='{section_name}'")
+    # Get node_id from context if not provided
+    if not node_id:
+        from deep_agent import get_context_node_id
+        node_id = get_context_node_id()
+    
+    print(f"📝 [write_section_streaming] Called with section_id='{section_id}', section_name='{section_name}', node_id='{node_id}'")
     
     try:
         from librarian import get_librarian
@@ -209,7 +216,6 @@ async def edit_section(
     section_id: str,
     instructions: str,
     preserve_length: bool = True,
-    node_id: str = "",
 ) -> Dict[str, Any]:
     """
     Edit existing content in a section based on instructions.
@@ -218,7 +224,6 @@ async def edit_section(
         section_id: The section to edit
         instructions: What changes to make (e.g., "make the dialogue more tense")
         preserve_length: Try to maintain similar word count
-        node_id: Story node ID (injected by agent)
     
     Returns:
         Dictionary with:
@@ -227,8 +232,12 @@ async def edit_section(
         - word_count: New word count
         - status: "complete"
     """
+    from deep_agent import get_context_node_id
     from librarian import get_librarian
     from config import get_supabase_client, get_model_for_task
+    
+    # Get node_id from context
+    node_id = get_context_node_id()
     
     supabase = get_supabase_client()
     librarian = get_librarian(node_id, supabase)
