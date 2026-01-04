@@ -1193,11 +1193,16 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           if (line.startsWith('event: ')) {
             currentEventType = line.slice(7).trim();
           } else if (line.startsWith('data: ') && currentEventType) {
+            const rawData = line.slice(6);
             try {
-              const data = JSON.parse(line.slice(6));
+              const data = JSON.parse(rawData);
               handleEvent({ type: currentEventType as any, data });
             } catch (e) {
-              console.error('Failed to parse event data:', e);
+              // Log the raw data that failed to parse
+              console.error('[Streaming] Error:', rawData.substring(0, 100));
+              console.error('[Streaming] Full line:', line.substring(0, 200));
+              console.error('[Streaming] Event type:', currentEventType);
+              // Don't throw - just skip this malformed event and continue
             }
             currentEventType = '';
           }

@@ -1046,14 +1046,76 @@ async def chat(request: ChatRequest):
                     
                     elif tool_name == "arrange_nodes" and isinstance(output, dict):
                         # Canvas arrangement requested - emit event for frontend
-                        print(f"📐 [Chat] arrange_nodes output: {output}", flush=True)
-                        yield format_sse(SSEEventType.NODES_ARRANGED, {
-                            "node_type": output.get("node_type", "all"),
-                            "sort_by": output.get("sort_by"),
-                            "layout": output.get("layout", "default"),
-                            "ascending": output.get("ascending", True),
-                        })
-                        print(f"✅ [Chat] Yielded NODES_ARRANGED", flush=True)
+                        try:
+                            print(f"📐 [Chat] arrange_nodes output type: {type(output)}", flush=True)
+                            print(f"📐 [Chat] arrange_nodes output: {output}", flush=True)
+                            
+                            # Get clusters - ensure it's a proper dict, not a string
+                            clusters = output.get("clusters")
+                            print(f"📐 [Chat] clusters type: {type(clusters)}", flush=True)
+                            
+                            if clusters is not None:
+                                # Safely print clusters (might be large or malformed)
+                                try:
+                                    clusters_str = str(clusters)[:500]
+                                    print(f"📐 [Chat] clusters value: {clusters_str}", flush=True)
+                                except:
+                                    print(f"📐 [Chat] clusters value: (unable to stringify)", flush=True)
+                            
+                            if isinstance(clusters, str):
+                                print(f"⚠️ [Chat] clusters is a string, attempting to parse", flush=True)
+                                try:
+                                    import ast
+                                    clusters = ast.literal_eval(clusters)
+                                    print(f"✅ [Chat] Parsed clusters with ast.literal_eval", flush=True)
+                                except Exception as e:
+                                    print(f"⚠️ [Chat] ast.literal_eval failed: {e}", flush=True)
+                                    # Try JSON parse as fallback
+                                    try:
+                                        import json
+                                        clusters = json.loads(clusters)
+                                        print(f"✅ [Chat] JSON parsed clusters", flush=True)
+                                    except Exception as e2:
+                                        print(f"❌ [Chat] JSON parse also failed: {e2}", flush=True)
+                                        clusters = None
+                            
+                            # Validate clusters is a proper dict if present
+                            if clusters is not None and not isinstance(clusters, dict):
+                                print(f"⚠️ [Chat] clusters is not a dict after parsing: {type(clusters)}", flush=True)
+                                clusters = None
+                            
+                            event_data = {
+                                "node_type": output.get("node_type", "all"),
+                                "sort_by": output.get("sort_by"),
+                                "layout": output.get("layout", "default"),
+                                "ascending": output.get("ascending", True),
+                                "clusters": clusters,
+                            }
+                            
+                            # Test JSON serialization before sending
+                            import json
+                            try:
+                                test_json = json.dumps(event_data)
+                                print(f"📐 [Chat] JSON serialization OK, length: {len(test_json)}", flush=True)
+                            except Exception as e:
+                                print(f"❌ [Chat] JSON serialization FAILED: {e}", flush=True)
+                                # Remove clusters if they can't be serialized
+                                event_data["clusters"] = None
+                            
+                            yield format_sse(SSEEventType.NODES_ARRANGED, event_data)
+                            print(f"✅ [Chat] Yielded NODES_ARRANGED", flush=True)
+                        except Exception as e:
+                            print(f"❌ [Chat] Error handling arrange_nodes: {e}", flush=True)
+                            import traceback
+                            traceback.print_exc()
+                            # Still emit the event without clusters
+                            yield format_sse(SSEEventType.NODES_ARRANGED, {
+                                "node_type": output.get("node_type", "all"),
+                                "sort_by": output.get("sort_by"),
+                                "layout": output.get("layout", "default"),
+                                "ascending": output.get("ascending", True),
+                                "clusters": None,
+                            })
                     
                     elif tool_name in ("create_character", "load_character"):
                         # Character created or loaded - emit event for canvas node creation
