@@ -85,7 +85,14 @@ export async function createCharacter(character: {
 // Update an existing character
 export async function updateCharacter(
   id: string,
-  updates: Partial<Omit<Character, 'id' | 'user_id' | 'created_at' | 'updated_at'>>
+  updates: Partial<{
+    name: string
+    bio: string
+    photo_url: string
+    visibility: CharacterVisibility
+    role: CharacterRole
+    attributes: Record<string, unknown>
+  }>
 ): Promise<Character> {
   const { data, error } = await supabase
     .from('characters')

@@ -38,6 +38,7 @@ export type OrchestratorEventType =
   | 'STRUCTURE_CREATED'
   | 'STRUCTURE_UPDATED'
   | 'CHARACTER_CREATED'
+  | 'CHARACTER_UPDATED'
   | 'SECTION_WRITING'
   | 'SECTION_COMPLETE'
   | 'PROGRESS'
@@ -191,6 +192,15 @@ export interface CharacterCreatedEvent {
     answer: string;
   }>;
   is_existing?: boolean; // True if loaded from DB, false if newly created
+}
+
+// Emitted when a character is updated on the canvas
+export interface CharacterUpdatedEvent {
+  node_id: string;
+  name: string;
+  bio?: string;
+  role?: 'Main' | 'Active' | 'Included' | 'Involved' | 'Passive';
+  attributes?: Record<string, unknown>;
 }
 
 // Emitted when starting to write a section
@@ -358,6 +368,7 @@ export type OrchestratorEvent =
   | { type: 'STRUCTURE_CREATED'; data: StructureCreatedEvent }
   | { type: 'STRUCTURE_UPDATED'; data: StructureUpdatedEvent }
   | { type: 'CHARACTER_CREATED'; data: CharacterCreatedEvent }
+  | { type: 'CHARACTER_UPDATED'; data: CharacterUpdatedEvent }
   | { type: 'SECTION_WRITING'; data: SectionWritingEvent }
   | { type: 'SECTION_COMPLETE'; data: SectionCompleteEvent }
   | { type: 'PROGRESS'; data: ProgressEvent }

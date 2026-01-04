@@ -26,8 +26,10 @@ def _get_context_user_id() -> str:
 def _get_context_story_id() -> str:
     """Get story_id from context (for deepagents compatibility)."""
     try:
-        from deep_agent import get_context_story_id
-        return get_context_story_id()
+        from deep_agent import get_context_story_id, _context_data
+        result = get_context_story_id()
+        print(f"🔍 [Character] Context lookup: story_id={result[:8] if result else 'EMPTY'}..., full_context={_context_data}", flush=True)
+        return result
     except Exception as e:
         print(f"⚠️ [Character] Failed to get context story_id: {e}", flush=True)
         return ""
@@ -166,6 +168,275 @@ async def create_character(
         "saved_to_db": saved_to_db,
         "message": f"Created character '{name}' with role '{role}'"
     }
+
+
+# =============================================================================
+# UPDATE CHARACTER
+# =============================================================================
+
+@tool
+async def update_character(
+    name: str,
+    new_name: Optional[str] = None,
+    bio: Optional[str] = None,
+    role: Optional[str] = None,
+    attributes: Optional[Dict[str, Any]] = None,
+    # Profile fields (stored in attributes)
+    age: Optional[str] = None,
+    occupation: Optional[str] = None,
+    birthplace: Optional[str] = None,
+    personality_type: Optional[str] = None,
+    core_motivation: Optional[str] = None,
+    fears: Optional[List[str]] = None,
+    desires: Optional[List[str]] = None,
+    height: Optional[str] = None,
+    weight: Optional[str] = None,
+    eye_color: Optional[str] = None,
+    hair_color: Optional[str] = None,
+    distinguishing_features: Optional[str] = None,
+    health_conditions: Optional[List[str]] = None,
+    education: Optional[str] = None,
+    # Big Five personality traits (0-100 scale)
+    openness: Optional[int] = None,
+    conscientiousness: Optional[int] = None,
+    extraversion: Optional[int] = None,
+    agreeableness: Optional[int] = None,
+    neuroticism: Optional[int] = None,
+    story_id: str = "",
+    user_id: str = "",
+) -> Dict[str, Any]:
+    """
+    Update an existing character's name, bio, role, or profile attributes.
+    
+    Use this when the user wants to modify a character that's already on the canvas.
+    This is the correct tool to use when developing a character's backstory further,
+    renaming them, changing their personality traits, or updating their profile.
+    Do NOT create a duplicate - always use this to update existing characters!
+    
+    Args:
+        name: Character's CURRENT name (used to find them on the canvas) - REQUIRED
+        new_name: New name for the character (optional - use to rename)
+        bio: New/updated biography (optional - only updates if provided)
+        role: New role - Main, Active, Included, Involved, Passive (optional)
+        attributes: Additional attributes to add/update (merged with existing)
+        
+        Profile fields (all optional, stored in attributes):
+        age: Character's age (e.g., "35", "mid-40s", "elderly")
+        occupation: Character's job or profession
+        birthplace: Where the character was born
+        personality_type: MBTI type (e.g., "INFJ", "ENTP") or description
+        core_motivation: What drives this character
+        fears: List of character's fears (e.g., ["abandonment", "failure", "being alone"])
+        desires: List of character's desires/goals (e.g., ["acceptance", "power", "love"])
+        height: Character's height
+        weight: Character's weight
+        eye_color: Character's eye color
+        hair_color: Character's hair color
+        distinguishing_features: Notable physical features, scars, etc.
+        health_conditions: Medical conditions or disabilities
+        education: Educational background
+        
+        Big Five personality traits (0-100 scale, used for emotional radar chart):
+        openness: Openness to experience (0=conventional/practical, 100=inventive/curious)
+        conscientiousness: Conscientiousness (0=spontaneous/careless, 100=organized/efficient)
+        extraversion: Extraversion (0=reserved/solitary, 100=outgoing/energetic)
+        agreeableness: Agreeableness (0=challenging/detached, 100=friendly/compassionate)
+        neuroticism: Neuroticism (0=calm/confident, 100=anxious/sensitive)
+        
+        story_id: Canvas/project ID (injected by agent)
+        user_id: Current user's ID (injected by agent)
+    
+    Returns:
+        Dictionary with:
+        - success: Boolean indicating success
+        - character: Updated character data
+        - message: Human-readable result message
+    """
+    from config import get_supabase_client
+    
+    # Get user_id and story_id from context if not provided
+    if not user_id:
+        user_id = _get_context_user_id()
+    if not story_id:
+        story_id = _get_context_story_id()
+    
+    if not name or not name.strip():
+        return {
+            "success": False,
+            "error": "Character name is required to find and update them",
+            "message": "Please provide the character's name."
+        }
+    
+    name = name.strip()
+    search_name = name.lower()
+    print(f"🎭 [Character] Updating character: {name}", flush=True)
+    print(f"🎭 [Character] Story ID: {story_id}", flush=True)
+    
+    try:
+        supabase = get_supabase_client()
+        
+        # Find the character node on the canvas by name
+        # Search in nodes table where type='character' or data contains character info
+        result = supabase.table("nodes") \
+            .select("id, data, type") \
+            .eq("story_id", story_id) \
+            .execute()
+        
+        print(f"🎭 [Character] Found {len(result.data or [])} nodes in story", flush=True)
+        
+        # Find the matching character node - use flexible matching
+        character_node = None
+        all_names = []
+        for node in result.data or []:
+            node_data = node.get("data", {})
+            node_name = node_data.get("name") or node_data.get("characterName") or node_data.get("label")
+            if node_name:
+                all_names.append(node_name)
+                node_name_lower = node_name.lower()
+                # Match if: exact match, or search name is contained in node name, or node name is contained in search name
+                if (node_name_lower == search_name or 
+                    search_name in node_name_lower or 
+                    node_name_lower in search_name):
+                    character_node = node
+                    print(f"🎭 [Character] Found match: '{node_name}' for search '{name}'", flush=True)
+                    break
+        
+        if not character_node:
+            print(f"🎭 [Character] No match found. Available names: {all_names}", flush=True)
+            return {
+                "success": False,
+                "error": f"Character '{name}' not found on canvas",
+                "message": f"Could not find a character named '{name}' on the canvas. Check the spelling or create them first."
+            }
+        
+        # Merge updates into existing data
+        updated_data = character_node.get("data", {}).copy()
+        
+        if new_name is not None:
+            # Update all name fields
+            updated_data["name"] = new_name
+            if "characterName" in updated_data:
+                updated_data["characterName"] = new_name
+            if "label" in updated_data:
+                updated_data["label"] = new_name
+            print(f"🎭 [Character] Renaming to: {new_name}", flush=True)
+        if bio is not None:
+            updated_data["bio"] = bio
+            print(f"🎭 [Character] Updating bio ({len(bio)} chars)", flush=True)
+        if role is not None:
+            updated_data["role"] = role
+            print(f"🎭 [Character] Updating role to: {role}", flush=True)
+        
+        # Handle attributes and profile fields
+        existing_attrs = updated_data.get("attributes", {}) or {}
+        
+        # Merge raw attributes if provided
+        if attributes is not None:
+            existing_attrs.update(attributes)
+        
+        # Merge individual profile fields (using camelCase for frontend)
+        profile_updates = {}
+        if age is not None:
+            profile_updates["age"] = age
+        if occupation is not None:
+            profile_updates["occupation"] = occupation
+        if birthplace is not None:
+            profile_updates["birthplace"] = birthplace
+        if personality_type is not None:
+            profile_updates["personalityType"] = personality_type
+        if core_motivation is not None:
+            profile_updates["coreMotivation"] = core_motivation
+        if fears is not None:
+            profile_updates["fears"] = fears
+        if desires is not None:
+            profile_updates["desires"] = desires
+        if height is not None:
+            profile_updates["height"] = height
+        if weight is not None:
+            profile_updates["weight"] = weight
+        if eye_color is not None:
+            profile_updates["eyeColor"] = eye_color
+        if hair_color is not None:
+            profile_updates["hairColor"] = hair_color
+        if distinguishing_features is not None:
+            profile_updates["distinguishingFeatures"] = distinguishing_features
+        if health_conditions is not None:
+            profile_updates["healthConditions"] = health_conditions
+        if education is not None:
+            profile_updates["education"] = education
+        
+        if profile_updates:
+            existing_attrs.update(profile_updates)
+            print(f"🎭 [Character] Updating profile fields: {list(profile_updates.keys())}", flush=True)
+        
+        # Handle Big Five emotional traits (for radar chart)
+        emotional_traits_updates = {}
+        if openness is not None:
+            emotional_traits_updates["openness"] = max(0, min(100, openness))
+        if conscientiousness is not None:
+            emotional_traits_updates["conscientiousness"] = max(0, min(100, conscientiousness))
+        if extraversion is not None:
+            emotional_traits_updates["extraversion"] = max(0, min(100, extraversion))
+        if agreeableness is not None:
+            emotional_traits_updates["agreeableness"] = max(0, min(100, agreeableness))
+        if neuroticism is not None:
+            emotional_traits_updates["neuroticism"] = max(0, min(100, neuroticism))
+        
+        if emotional_traits_updates:
+            existing_emotional = existing_attrs.get("emotionalTraits", {})
+            existing_emotional.update(emotional_traits_updates)
+            existing_attrs["emotionalTraits"] = existing_emotional
+            print(f"🎭 [Character] Updating emotional traits: {emotional_traits_updates}", flush=True)
+        
+        updated_data["attributes"] = existing_attrs
+        
+        # Update the node in the database
+        update_result = supabase.table("nodes") \
+            .update({"data": updated_data}) \
+            .eq("id", character_node["id"]) \
+            .execute()
+        
+        if update_result.data:
+            print(f"✅ [Character] Updated character node: {character_node['id']}", flush=True)
+            
+            # Also update the characters table if it exists there
+            if user_id:
+                try:
+                    char_id = updated_data.get("characterId")
+                    if char_id:
+                        char_update = {}
+                        if bio is not None:
+                            char_update["bio"] = bio
+                        if role is not None:
+                            char_update["role"] = role
+                        if char_update:
+                            supabase.table("characters") \
+                                .update(char_update) \
+                                .eq("id", char_id) \
+                                .execute()
+                except Exception as e:
+                    print(f"⚠️ [Character] Characters table update skipped: {e}", flush=True)
+            
+            return {
+                "success": True,
+                "character": updated_data,
+                "node_id": character_node["id"],
+                "message": f"Updated character '{name}' successfully"
+            }
+        else:
+            return {
+                "success": False,
+                "error": "Database update failed",
+                "message": f"Failed to update character '{name}' in the database."
+            }
+            
+    except Exception as e:
+        print(f"❌ [Character] Update failed: {e}", flush=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Error updating character '{name}': {str(e)}"
+        }
 
 
 # =============================================================================

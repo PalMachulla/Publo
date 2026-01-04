@@ -95,6 +95,7 @@ from tools import (
 )
 from tools.character import (
     create_character,
+    update_character,
     list_characters,
     load_character,
 )
@@ -166,6 +167,7 @@ def create_publo_deep_agent(
         delete_context_file,
         # Character management
         create_character,
+        update_character,
         list_characters,
         load_character,
     ]

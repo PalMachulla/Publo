@@ -587,6 +587,10 @@ export default function CanvasPage() {
     [canvasState.setEdges, storyId, canvasData?.userId]
   )
   
+  // State for character selection from canvas double-click
+  // Use object with timestamp to ensure effect triggers even for same character
+  const [selectedCharacterTrigger, setSelectedCharacterTrigger] = useState<{ nodeId: string; timestamp: number } | null>(null)
+  
   // Handle node click
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     console.log('Node clicked:', { id: node.id, type: node.type, nodeType: node.data?.nodeType })
@@ -607,6 +611,28 @@ export default function CanvasPage() {
     canvasState.setSelectedNode(node)
     canvasState.setIsPanelOpen(true)
   }, [canvasState, documentState])
+  
+  // Handle node double-click - opens character in ProjectContentPanel
+  const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: Node) => {
+    console.log('Node double-clicked:', { id: node.id, type: node.type, nodeType: node.data?.nodeType })
+    
+    // Check if it's a character node
+    const isCharacter = node.type === 'characterNode' || 
+                        node.data?.nodeType === 'character' ||
+                        (node.type === 'universalNode' && node.data?.nodeType === 'character')
+    
+    if (isCharacter) {
+      console.log('📂 Character double-clicked - opening in ProjectContentPanel')
+      // Find the orchestrator node to keep it selected (for the chat panel)
+      const orchestratorNode = canvasState.nodes.find(n => isOrchestratorNode(n.id))
+      if (orchestratorNode) {
+        canvasState.setSelectedNode(orchestratorNode)
+      }
+      // Set character selection with timestamp to ensure effect triggers
+      setSelectedCharacterTrigger({ nodeId: node.id, timestamp: Date.now() })
+      documentState.setIsAIDocPanelOpen(true)
+    }
+  }, [documentState, canvasState])
   
   // Handle prompt submit
   const handlePromptSubmit = useCallback((prompt: string) => {
@@ -737,6 +763,7 @@ export default function CanvasPage() {
           onEdgesChange={canvasState.handleEdgesChange}
           onConnect={onConnect}
           onNodeClick={onNodeClick}
+          onNodeDoubleClick={onNodeDoubleClick}
           onAddNode={handleAddNewNode}
           onPromptSubmit={handlePromptSubmit}
           // 2024-12-11: Removed worldState
@@ -879,6 +906,15 @@ export default function CanvasPage() {
             documentState.setActiveContext(null)
           }}
           initialSectionId={documentState.initialSectionId}
+          selectedCharacterTrigger={selectedCharacterTrigger}
+          onClearCharacterTrigger={() => setSelectedCharacterTrigger(null)}
+          onSetCharacterTrigger={(trigger) => {
+            setSelectedCharacterTrigger(trigger)
+            // Ensure document panel is open
+            if (!documentState.isAIDocPanelOpen) {
+              documentState.setIsAIDocPanelOpen(true)
+            }
+          }}
           onUpdateStructure={handleStructureItemsUpdate}
           orchestratorPanelWidth={documentState.orchestratorPanelWidth}
           onSwitchDocument={handleSwitchDocument}

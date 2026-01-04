@@ -35,7 +35,8 @@ import GenericNodePanel from './GenericNodePanel'
 import { OrchestratorPanelStreaming } from '@/components/orchestrator/OrchestratorPanelStreaming'
 
 import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
-import type { CharacterCreatedEvent } from '@/types/orchestrator-streaming-types'
+import type { CharacterCreatedEvent, CharacterUpdatedEvent } from '@/types/orchestrator-streaming-types'
+import type { FocusedContent } from '@/types/focused-content'
 
 // ============================================================================
 // TYPES
@@ -78,10 +79,14 @@ export interface NodeDetailsPanelProps {
   orchestratorNodeId?: string
   onCreateStoryNode?: (data: CreateStoryNodeData) => void
   onCreateCharacterNode?: (data: CharacterCreatedEvent) => void
+  onUpdateCharacterNode?: (data: CharacterUpdatedEvent) => void
+  onSelectCharacter?: (characterName: string) => void
   onSectionComplete?: (sectionId: string, content: string) => void
   onContentChunk?: (sectionId: string, chunk: string, accumulated: string) => void
   onContentComplete?: (sectionId: string, wordCount: number) => void
   activeSectionCard?: any
+  /** Currently focused content in the project panel (for contextual AI commands) */
+  focusedContent?: FocusedContent | null
 }
 
 // ============================================================================
@@ -116,10 +121,13 @@ export default function NodeDetailsPanel({
   orchestratorNodeId,
   onCreateStoryNode,
   onCreateCharacterNode,
+  onUpdateCharacterNode,
+  onSelectCharacter,
   onSectionComplete,
   onContentChunk,
   onContentComplete,
   activeSectionCard,
+  focusedContent,
 }: NodeDetailsPanelProps) {
   
   const { user } = useAuth()
@@ -198,6 +206,8 @@ export default function NodeDetailsPanel({
           }}
           onCreateStoryNode={onCreateStoryNode}
           onCharacterComplete={onCreateCharacterNode}
+          onCharacterUpdated={onUpdateCharacterNode}
+          onSelectCharacter={onSelectCharacter}
           onToggleDocumentView={onToggleDocumentView}
           isDocumentViewOpen={isDocumentViewOpen}
           structureItems={structureItems}
@@ -221,6 +231,7 @@ export default function NodeDetailsPanel({
             onContentComplete?.(sectionId, wordCount)
           }}
           activeSectionCard={activeSectionCard}
+          focusedContent={focusedContent}
         />
       ) : nodeType === 'story-structure' ? (
         // 2024-12-14: Extracted to StoryStructureMetadataPanel

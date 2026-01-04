@@ -20,6 +20,7 @@ import type {
   OpenDocumentEvent,
   SelectSectionEvent,
   CharacterCreatedEvent,
+  CharacterUpdatedEvent,
   // Deep Agent events
   TokenEvent,
   ToolStartEvent,
@@ -73,6 +74,7 @@ interface UseOrchestratorStreamOptions {
   onStructureComplete?: (structure: StructureCreatedEvent) => void;
   onStructureUpdated?: (structure: StructureUpdatedEvent) => void;
   onCharacterComplete?: (character: CharacterCreatedEvent) => void;  // Character created/loaded
+  onCharacterUpdated?: (character: CharacterUpdatedEvent) => void;   // Character updated
   onSectionComplete?: (sectionId: string, content: string) => void;
   onClarificationNeeded?: (clarification: ClarificationEvent) => void;
   onOpenDocument?: (nodeId: string, nodeName: string) => void;  // Navigation: open document
@@ -95,6 +97,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     onStructureComplete,
     onStructureUpdated,
     onCharacterComplete,
+    onCharacterUpdated,
     onSectionComplete,
     onClarificationNeeded,
     onOpenDocument,
@@ -710,6 +713,23 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           setTimeout(() => onCharacterComplete(characterData), 0);
         }
         break;
+      
+      case 'CHARACTER_UPDATED':
+        const charUpdateData = event.data as CharacterUpdatedEvent;
+        console.log('🎭 [Stream] CHARACTER_UPDATED received:', charUpdateData);
+        
+        // Add visual message
+        addMessage(
+          'assistant',
+          `✏️ Updated character **${charUpdateData.name}**`
+        );
+        
+        // Callback to update node on canvas
+        if (onCharacterUpdated) {
+          console.log('🎭 [Stream] Calling onCharacterUpdated with:', charUpdateData.name, charUpdateData.node_id);
+          setTimeout(() => onCharacterUpdated(charUpdateData), 0);
+        }
+        break;
 
       case 'SECTION_WRITING':
         const writingData = event.data as SectionWritingEvent;
@@ -959,7 +979,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         onError?.(event.data.error);
         break;
     }
-  }, [addMessage, updateMessage, progress.structure, onStructureComplete, onStructureUpdated, onCharacterComplete, onSectionComplete, onClarificationNeeded, onOpenDocument, onSelectSection, onError, onComplete]);
+  }, [addMessage, updateMessage, progress.structure, onStructureComplete, onStructureUpdated, onCharacterComplete, onCharacterUpdated, onSectionComplete, onClarificationNeeded, onOpenDocument, onSelectSection, onError, onComplete]);
 
   // Start streaming
   const startStream = useCallback(async (request: {
@@ -1107,6 +1127,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
       original_action: request.originalAction,
       active_section_card: request.activeSectionCard,  // Section card currently being viewed
       extended_thinking: request.extendedThinking,  // Enable Claude's chain-of-thought reasoning
+      focused_content: request.focusedContent,  // Currently focused content for contextual commands
     };
 
     // Debug: Log if this is a clarification response

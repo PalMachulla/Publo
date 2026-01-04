@@ -9,9 +9,11 @@ interface ResearchPanelProps {
   node: Node<ResearchNodeData>
   onUpdate: (nodeId: string, newData: ResearchNodeData) => void
   onDelete: (nodeId: string) => void
+  /** When true, renders content for embedding in ProjectContentPanel */
+  embedded?: boolean
 }
 
-export default function ResearchPanel({ node, onUpdate, onDelete }: ResearchPanelProps) {
+export default function ResearchPanel({ node, onUpdate, onDelete, embedded = false }: ResearchPanelProps) {
   const [prompt, setPrompt] = useState(node.data.prompt || '')
   const [isResearching, setIsResearching] = useState(false)
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set())

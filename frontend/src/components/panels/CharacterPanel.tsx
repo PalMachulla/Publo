@@ -11,12 +11,14 @@ interface CharacterPanelProps {
   onDelete: (nodeId: string) => void
   userId: string
   storyId: string
+  /** When true, renders content without wrapper styling (for embedding in ProjectContentPanel) */
+  embedded?: boolean
 }
 
 const CHARACTER_ROLES: CharacterRole[] = ['Main', 'Active', 'Included', 'Involved', 'Passive']
 const VISIBILITY_OPTIONS: CharacterVisibility[] = ['private', 'shared', 'public']
 
-export default function CharacterPanel({ node, onUpdate, onDelete, userId, storyId }: CharacterPanelProps) {
+export default function CharacterPanel({ node, onUpdate, onDelete, userId, storyId, embedded = false }: CharacterPanelProps) {
   const [name, setName] = useState(node.data.label || '')
   const [bio, setBio] = useState(node.data.bio || '')
   const [role, setRole] = useState<CharacterRole | ''>(node.data.role || '')
@@ -301,9 +303,9 @@ export default function CharacterPanel({ node, onUpdate, onDelete, userId, story
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className={`flex flex-col h-full ${embedded ? '' : ''}`}>
       {/* Editable Name */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-3xl">
+      <div className={`px-6 py-4 border-b border-gray-200 bg-gray-50 ${embedded ? '' : 'rounded-t-3xl'}`}>
         <input
           type="text"
           value={name}

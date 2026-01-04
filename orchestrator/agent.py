@@ -47,6 +47,7 @@ from tools import (
 )
 from tools.character import (
     create_character,
+    update_character,
     list_characters,
     load_character,
 )
@@ -388,6 +389,7 @@ def create_publo_agent(
         delete_context_file,
         # Character/canvas node creation
         create_character,
+        update_character,
         list_characters,
         load_character,
     ]
@@ -465,6 +467,7 @@ async def create_publo_agent_with_mcp(
         delete_context_file,
         # Character/canvas node creation
         create_character,
+        update_character,
         list_characters,
         load_character,
     ]

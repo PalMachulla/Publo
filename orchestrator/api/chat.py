@@ -94,6 +94,10 @@ class ChatRequest(BaseModel):
     # Librarian context - active section card being viewed
     active_section_card: Optional[Dict[str, Any]] = None  # Section card currently in view
     
+    # Focused content - what the user is currently viewing in the project panel
+    # Used for contextual commands like "give this person another name"
+    focused_content: Optional[Dict[str, Any]] = None  # {type, nodeId, sectionId?, name, data?}
+    
     # Conversation
     conversation_history: Optional[List[Dict[str, str]]] = None
     
@@ -748,6 +752,45 @@ async def chat(request: ChatRequest):
                 card_msg += "\n**When the user talks about 'this section' or 'this card', they mean the section above.**\n"
                 messages.append({"role": "system", "content": card_msg})
             
+            # Add focused content context (what user is currently viewing in project panel)
+            if request.focused_content:
+                fc = request.focused_content
+                fc_type = fc.get('type', 'unknown')
+                fc_name = fc.get('name', 'Unknown')
+                fc_node_id = fc.get('nodeId') or fc.get('node_id', '')
+                fc_data = fc.get('data', {}) or {}
+                
+                focus_msg = f"## 👁️ Currently Viewing: {fc_type.title()}\n\n"
+                focus_msg += f"The user is currently viewing **{fc_name}**"
+                
+                if fc_type == 'character':
+                    focus_msg += " in the project panel.\n"
+                    if fc_data.get('bio'):
+                        bio = str(fc_data['bio'])[:500]
+                        focus_msg += f"**Bio:** {bio}\n"
+                    if fc_data.get('role'):
+                        focus_msg += f"**Role:** {fc_data['role']}\n"
+                    focus_msg += f"\n**When the user says 'this person', 'this character', or 'give them...', they mean {fc_name}.**\n"
+                    focus_msg += f"Use the `update_character` tool with name='{fc_name}' to modify this character.\n"
+                elif fc_type == 'section':
+                    section_id = fc.get('sectionId') or fc.get('section_id', '')
+                    focus_msg += f" (Section ID: {section_id}).\n"
+                    focus_msg += f"\n**When the user says 'this section' or 'write this', they mean {fc_name}.**\n"
+                elif fc_type == 'librarian':
+                    focus_msg += " - the Librarian/Cards view for this story.\n"
+                    focus_msg += "\n**The user is viewing story intelligence cards showing section summaries and characters.**\n"
+                elif fc_type == 'story':
+                    focus_msg += ".\n"
+                    if fc_data.get('format'):
+                        focus_msg += f"**Format:** {fc_data['format']}\n"
+                    focus_msg += f"\n**When the user says 'this story', they mean {fc_name}.**\n"
+                elif fc_type == 'research':
+                    focus_msg += " - a research document.\n"
+                    focus_msg += f"\n**When the user says 'this research', they mean {fc_name}.**\n"
+                
+                messages.append({"role": "system", "content": focus_msg})
+                print(f"👁️ [Chat] Focused content context: {fc_type} - {fc_name}", flush=True)
+            
             if request.conversation_history:
                 # Token-aware trimming using LangChain (Claude max ~200k tokens)
                 # Leave ~50k for history (system prompts can be large!)
@@ -1059,6 +1102,26 @@ async def chat(request: ChatRequest):
                                         print(f"🕒 [Portrait] Spawned async portrait task for {char_data.get('name')}", flush=True)
                                 except Exception as img_err:
                                     print(f"⚠️ [Portrait] Could not spawn portrait task: {img_err}", flush=True)
+                    
+                    elif tool_name == "update_character":
+                        # Character updated - emit event for canvas to refresh
+                        print(f"🔍 [Chat] update_character tool - output: {output}", flush=True)
+                        if isinstance(output, dict):
+                            if output.get("success"):
+                                char_data = output.get("character", {})
+                                # Name might be in different fields depending on node type
+                                char_name = char_data.get("name") or char_data.get("characterName") or char_data.get("label") or ""
+                                sse_payload = {
+                                    "node_id": output.get("node_id", ""),
+                                    "name": char_name,
+                                    "bio": char_data.get("bio", ""),
+                                    "role": char_data.get("role", "Active"),
+                                    "attributes": char_data.get("attributes", {}),
+                                }
+                                yield format_sse(SSEEventType.CHARACTER_UPDATED, sse_payload)
+                                print(f"✅ [Chat] Yielded CHARACTER_UPDATED for: {char_name}", flush=True)
+                            else:
+                                print(f"⚠️ [Chat] update_character failed: {output.get('error')} - Available names: {output.get('available_names', [])}", flush=True)
                     
                     elif tool_name in ("write_context_file", "delete_context_file") and isinstance(output, dict):
                         # Context file updated - emit event

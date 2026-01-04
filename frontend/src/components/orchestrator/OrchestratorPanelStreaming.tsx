@@ -27,7 +27,7 @@ import {
   MagicWandIcon,
 } from '@radix-ui/react-icons'
 import { useOrchestratorStream, ChatMessage } from '@/hooks/useOrchestratorStream'
-import { StructureCreatedEvent, ClarificationEvent, CreationProgress, CharacterCreatedEvent } from '@/types/orchestrator-streaming-types'
+import { StructureCreatedEvent, ClarificationEvent, CreationProgress, CharacterCreatedEvent, CharacterUpdatedEvent } from '@/types/orchestrator-streaming-types'
 import { useOrchestratorSession } from '@/lib/orchestrator/hooks/useOrchestratorSession'
 import { ThinkingBlock } from '@/components/ui/molecules/ThinkingBlock'
 import { StructureProgress } from '@/components/ui/molecules/StructureProgress'
@@ -36,6 +36,95 @@ import { ChatOptionPill } from '@/components/ui/atoms/ChatOptionPill'
 import { TodoPanel } from '@/components/ui/organisms/TodoPanel'
 import { SubagentActivity } from '@/components/ui/organisms/SubagentActivity'
 import { ViewToggle, ViewToggleIcons } from '@/components/ui/atoms/ViewToggle'
+
+// ============================================================
+// Isolated Input Component - prevents parent re-renders on typing
+// ============================================================
+
+interface IsolatedInputProps {
+  onSubmit: (value: string) => void
+  disabled?: boolean
+  placeholder?: string
+}
+
+const IsolatedInput = React.memo(function IsolatedInput({ 
+  onSubmit, 
+  disabled = false,
+  placeholder = 'Plan, @ for context, / for commands'
+}: IsolatedInputProps) {
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [hasContent, setHasContent] = useState(false)
+  
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value
+    setHasContent(value.trim().length > 0)
+    
+    // Auto-resize
+    const textarea = e.target
+    textarea.style.height = 'auto'
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
+  }, [])
+  
+  const handleSubmit = useCallback(() => {
+    const value = inputRef.current?.value?.trim()
+    if (value && !disabled) {
+      onSubmit(value)
+      if (inputRef.current) {
+        inputRef.current.value = ''
+        inputRef.current.style.height = 'auto'
+      }
+      setHasContent(false)
+    }
+  }, [onSubmit, disabled])
+  
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }, [handleSubmit])
+  
+  return (
+    <div className="flex items-end gap-2 w-full">
+      <div className="flex-1 relative">
+        <textarea
+          ref={inputRef}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          rows={1}
+          placeholder={disabled ? 'Creating your story...' : placeholder}
+          disabled={disabled}
+          className="border rounded-t-2xl border-b-0 w-full px-4 py-3 border-gray-300 dark:border-gray-600 
+                     bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
+                     placeholder-gray-200 dark:placeholder-gray-500
+                     placeholder-italic focus:outline-none
+                     disabled:opacity-50 disabled:cursor-not-allowed
+                     resize-none overflow-y-auto"
+          style={{ minHeight: '44px', maxHeight: '200px' }}
+        />
+      </div>
+      <div className="flex items-center gap-2 pb-2">
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={disabled}
+          className={`w-9 h-9 rounded-full flex items-center justify-center
+                      transition-all duration-200 ${
+                        hasContent
+                          ? 'bg-yellow-400 hover:bg-yellow-500 text-gray-700'
+                          : 'bg-gray-500 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-200 dark:text-gray-400'
+                      }`}
+        >
+          {hasContent ? (
+            <PaperPlaneIcon className="w-4 h-4" />
+          ) : (
+            <SpeakerLoudIcon className="w-4 h-4" />
+          )}
+        </button>
+      </div>
+    </div>
+  )
+})
 
 // ============================================================
 // Props Interface
@@ -52,9 +141,13 @@ export interface OrchestratorPanelStreamingProps {
   // Canvas/editor integration callbacks
   onStructureComplete?: (structure: StructureCreatedEvent) => void
   onCharacterComplete?: (character: CharacterCreatedEvent) => void
+  onCharacterUpdated?: (character: CharacterUpdatedEvent) => void
   onSectionComplete?: (sectionId: string, content: string) => void
   onClarificationNeeded?: (clarification: ClarificationEvent) => void
   onCreateStoryNode?: (structure: any) => string | Promise<string> | void
+  
+  // Character selection - triggered when user asks to view a character
+  onSelectCharacter?: (characterName: string) => void
   
   // Navigation callbacks - triggered when user asks to open/navigate
   onOpenDocument?: (nodeId: string, nodeName: string) => void
@@ -74,6 +167,15 @@ export interface OrchestratorPanelStreamingProps {
   conversationHistory?: any[]
   currentStoryStructureNodeId?: string  // Active structure node for Librarian context
   activeSectionCard?: any  // Section card currently being viewed (for Librarian context)
+  
+  /** Currently focused content in the project panel (for contextual AI commands) */
+  focusedContent?: {
+    type: 'story' | 'section' | 'librarian' | 'character' | 'research'
+    nodeId: string
+    sectionId?: string
+    name: string
+    data?: { bio?: string; role?: string; content?: string; format?: string }
+  } | null
   
   // Document panel toggle
   isDocumentViewOpen?: boolean
@@ -105,6 +207,8 @@ export function OrchestratorPanelStreaming({
   orchestratorNodeId,
   onStructureComplete,
   onCharacterComplete,
+  onCharacterUpdated,
+  onSelectCharacter,
   onSectionComplete,
   onClarificationNeeded,
   onCreateStoryNode,
@@ -121,14 +225,13 @@ export function OrchestratorPanelStreaming({
   conversationHistory,
   currentStoryStructureNodeId,
   activeSectionCard,
+  focusedContent,
   isDocumentViewOpen = false,
   onToggleDocumentView,
   className = '',
   onOrchestratorNodeUpdate,
 }: OrchestratorPanelStreamingProps) {
-  const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
   
   // Track the most recently created structure node ID (updated synchronously)
   // This is used as a fallback when effectiveStoryStructureNodeId hasn't updated yet
@@ -307,6 +410,11 @@ export function OrchestratorPanelStreaming({
     onCharacterComplete: (character) => {
       console.log('🎭 [Streaming] Character created:', character.name, 'role:', character.role)
       onCharacterComplete?.(character)
+    },
+    
+    onCharacterUpdated: (character) => {
+      console.log('✏️ [Streaming] Character updated:', character.name, 'node:', character.node_id)
+      onCharacterUpdated?.(character)
     },
     
     onSectionComplete: (sectionId, content) => {
@@ -503,6 +611,7 @@ export function OrchestratorPanelStreaming({
       originalAction: originalAction || 'create_structure',  // Action that needed clarification
       activeSectionCard,  // Section card being viewed
       extendedThinking: extendedThinkingEnabled,  // Enable Claude's chain-of-thought
+      focusedContent,  // Currently focused content for contextual commands
     })
   }, [
     startStream,
@@ -520,15 +629,38 @@ export function OrchestratorPanelStreaming({
     canvasEdges,
     conversationHistory,
     extendedThinkingEnabled,
+    focusedContent,
   ])
 
-  // Handle form submission
-  const handleSubmit = useCallback((e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isStreaming) return
-
-    const message = input.trim()
-    setInput('')
+  // Handle form submission - receives message from IsolatedInput
+  const handleSubmit = useCallback((message: string) => {
+    if (!message.trim() || isStreaming) return
+    
+    // Detect character view requests and switch to that character
+    // Patterns: "look at [name]", "show me [name]", "view [name]", "let's see [name]", "what about [name]"
+    const viewPatterns = [
+      /(?:look at|show me|view|let'?s see|what about|switch to|open|go to)\s+(.+?)(?:\s*$|\s*[.,!?])/i,
+      /(?:have a look at|take a look at|check out)\s+(.+?)(?:\s*$|\s*[.,!?])/i,
+    ]
+    
+    for (const pattern of viewPatterns) {
+      const match = message.match(pattern)
+      if (match && match[1] && onSelectCharacter && canvasNodes) {
+        const requestedName = match[1].trim().toLowerCase()
+        // Find matching character in canvas nodes
+        const charNode = canvasNodes.find(n => {
+          if (n.data?.nodeType !== 'character') return false
+          const nodeName = (n.data?.label || n.data?.characterName || n.data?.name || '').toLowerCase()
+          return nodeName.includes(requestedName) || requestedName.includes(nodeName)
+        })
+        if (charNode) {
+          const charName = charNode.data?.label || charNode.data?.characterName || charNode.data?.name
+          console.log('📂 [Orchestrator] Detected character view request:', charName)
+          onSelectCharacter(charName)
+          break
+        }
+      }
+    }
 
     // Check if we're responding to a pending clarification
     if (pendingClarification) {
@@ -558,6 +690,7 @@ export function OrchestratorPanelStreaming({
         originalAction,
         activeSectionCard,  // Section card being viewed
         extendedThinking: extendedThinkingEnabled,  // Enable Claude's chain-of-thought
+        focusedContent,  // Currently focused content for contextual commands
       })
       return
     }
@@ -580,9 +713,9 @@ export function OrchestratorPanelStreaming({
       conversationHistory,
       activeSectionCard,  // Section card being viewed
       extendedThinking: extendedThinkingEnabled,  // Enable Claude's chain-of-thought
+      focusedContent,  // Currently focused content for contextual commands
     })
   }, [
-    input, 
     isStreaming, 
     startStream, 
     userId, 
@@ -601,15 +734,8 @@ export function OrchestratorPanelStreaming({
     pendingClarification,
     activeSectionCard,
     extendedThinkingEnabled,
+    focusedContent,
   ])
-
-  // Handle keyboard shortcuts
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit(e)
-    }
-  }
 
   return (
     <div className={`flex flex-col h-full  dark:bg-gray-900 ${className}`}>
@@ -718,38 +844,17 @@ export function OrchestratorPanelStreaming({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
-      <form 
-        onSubmit={handleSubmit}
-        className="pb-8 bg-zinc-50 dark:bg-gray-800 border-zinc-200 dark:border-gray-700 flex flex-col justify-end"
-      >
-       
-        
+      {/* Input Area - Using isolated component to prevent re-renders on typing */}
+      <div className="pb-8 bg-zinc-50 dark:bg-gray-800 border-zinc-200 dark:border-gray-700 flex flex-col justify-end">
         <div className="px-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value)
-              // Auto-resize: reset height then set to scrollHeight
-              e.target.style.height = 'auto'
-              e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`
-            }}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            placeholder={isStreaming ? 'Creating your story...' : 'Plan, @ for context, / for commands'}
+          <IsolatedInput
+            onSubmit={handleSubmit}
             disabled={isStreaming}
-            className="border rounded-t-2xl border-b-0 w-full px-4 py-3 border-gray-300 dark:border-gray-600 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
-                       placeholder-gray-200 dark:placeholder-gray-500
-                       placeholder-italic focus:outline-none
-                       disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-all duration-200 resize-none overflow-hidden
-                       min-h-[44px] max-h-[200px]"
+            placeholder={isStreaming ? 'Creating your story...' : 'Plan, @ for context, / for commands'}
           />
         </div>
         
-        {/* Toolbar: Pills + Submit/Voice Button */}
+        {/* Toolbar: Pills */}
         <div className="flex items-center justify-between -mx-2 -mt-2 px-4 py-2 border-t border-gray-300 dark:border-gray-700">
           {/* Left: Pill Selectors */}
           <div className="flex items-center gap-1.5">
@@ -778,13 +883,10 @@ export function OrchestratorPanelStreaming({
               <span>Model</span>
               <ChevronDownIcon className="w-3 h-3 opacity-50" />
             </button>
-            
-            
           </div>
           
-          {/* Right: Extended Thinking Toggle + Voice/Submit */}
+          {/* Right: Extended Thinking Toggle */}
           <div className="flex items-center gap-2">
-            {/* Extended Thinking Toggle */}
             <button
               type="button"
               onClick={() => setExtendedThinkingEnabled(!extendedThinkingEnabled)}
@@ -797,32 +899,9 @@ export function OrchestratorPanelStreaming({
             >
               <MagicWandIcon className="w-4 h-4" />
             </button>
-            
-            {/* Voice/Submit Button */}
-            <button
-              type="button"
-              onClick={() => {
-                if (input.trim()) {
-                  handleSubmit({ preventDefault: () => {} } as React.FormEvent)
-                }
-                // Voice functionality placeholder
-              }}
-              className={`w-9 h-9 rounded-full flex items-center justify-center
-                          transition-all duration-200 ${
-                            input.trim()
-                              ? 'bg-yellow-400 hover:bg-yellow-500 text-gray-700'
-                              : 'bg-gray-500 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-200 dark:text-gray-400'
-                          }`}
-            >
-              {input.trim() ? (
-                <PaperPlaneIcon className="w-4 h-4" />
-              ) : (
-                <SpeakerLoudIcon className="w-4 h-4" />
-              )}
-            </button>
           </div>
         </div>
-      </form>
+      </div>
       
       <div 
         className={`absolute bottom-0 left-0 right-0 flex justify-center items-center gap-1 pt-1 pb-2

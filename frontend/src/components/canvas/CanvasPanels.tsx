@@ -62,15 +62,20 @@
  * Deep agent architecture uses SSE streaming, not frontend WorldState
  */
 
-import React, { useCallback, useEffect, useMemo, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Node, Edge } from 'reactflow'
 import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
 import AIDocumentPanel from '@/components/panels/AIDocumentPanel'
+import ProjectContentPanel from '@/components/panels/ProjectContentPanel'
 import { StoryFormat, CharacterRole } from '@/types/nodes'
 import { getOrchestratorNodeId, isOrchestratorNode } from '@/data/stories'
 import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
-import type { CharacterCreatedEvent } from '@/types/orchestrator-streaming-types'
+import type { CharacterCreatedEvent, CharacterUpdatedEvent } from '@/types/orchestrator-streaming-types'
+import type { FocusedContent } from '@/types/focused-content'
 import { createClient } from '@/lib/supabase/client'
+
+// Feature flag for new ProjectContentPanel
+const USE_PROJECT_PANEL = process.env.NEXT_PUBLIC_USE_PROJECT_PANEL === 'true'
 
 // =============================================================================
 // PROPS INTERFACE
@@ -231,6 +236,15 @@ export interface CanvasPanelsProps {
   /** Initial section to scroll to when opening */
   initialSectionId: string | null
   
+  /** Character selection trigger (for opening character from canvas double-click) */
+  selectedCharacterTrigger?: { nodeId: string; timestamp: number } | null
+  
+  /** Clear the character selection trigger after processing */
+  onClearCharacterTrigger?: () => void
+  
+  /** Set character selection trigger (for orchestrator character view requests) */
+  onSetCharacterTrigger?: (trigger: { nodeId: string; timestamp: number }) => void
+  
   /** Update structure items for a node */
   onUpdateStructure: (nodeId: string, items: any[]) => void
   
@@ -311,6 +325,9 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     isAIDocPanelOpen,
     onCloseDocumentPanel,
     initialSectionId,
+    selectedCharacterTrigger,
+    onClearCharacterTrigger,
+    onSetCharacterTrigger,
     onUpdateStructure,
     orchestratorPanelWidth,
     onSwitchDocument,
@@ -368,13 +385,24 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
       summary: item.description || null,  // From structure generation
       wordCount: item.wordCount || 0,
       mood: null,  // Will be populated by Librarian after analysis
-      characters: [],  // Will be populated by Librarian
+      characters: [],  // Will be populated by Librarian  
       keyMoments: [],  // Will be populated by Librarian
       dependencies: [],  // Will be populated by Librarian
       issues: [],  // Will be populated by Librarian
       analyzed: false,  // Not yet analyzed
     }
   }, [activeContext, structureItems])
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Focused Content State (for ProjectContentPanel)
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  /**
+   * Track currently focused content in the ProjectContentPanel.
+   * This is passed to the orchestrator for contextual commands like
+   * "give this person another name" when viewing a character.
+   */
+  const [focusedContent, setFocusedContent] = useState<FocusedContent | null>(null)
   
   // ─────────────────────────────────────────────────────────────────────────
   // Story Node Creation
@@ -746,6 +774,39 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     }
   }, [nodes, orchestratorNodeId, onAddNode, onAddEdge, userId, storyId])
 
+  /**
+   * Handler for CHARACTER_UPDATED SSE event.
+   * Updates an existing character node's data on the canvas.
+   * 
+   * @param data - CharacterUpdatedEvent from the SSE stream
+   */
+  const handleUpdateCharacterNode = useCallback((data: CharacterUpdatedEvent) => {
+    console.log('✏️ [CanvasPanels] Updating character node:', data.name, 'node_id:', data.node_id)
+    
+    // Find the existing node
+    const existingNode = nodes.find(n => n.id === data.node_id)
+    if (!existingNode) {
+      console.warn('⚠️ [CanvasPanels] Character node not found for update:', data.node_id)
+      return
+    }
+    
+    // Merge the updates into existing data
+    const updatedFields: Record<string, any> = {}
+    if (data.name) updatedFields.name = data.name
+    if (data.bio) updatedFields.bio = data.bio
+    if (data.role) updatedFields.role = data.role
+    if (data.attributes) {
+      updatedFields.attributes = {
+        ...(existingNode.data as any).attributes,
+        ...data.attributes,
+      }
+    }
+    
+    // Update in React Flow using the existing onNodeUpdate
+    onNodeUpdate?.(data.node_id, updatedFields)
+    console.log('✅ [CanvasPanels] Character node updated in React Flow:', data.node_id, updatedFields)
+  }, [nodes, onNodeUpdate])
+
   // ─────────────────────────────────────────────────────────────────────────
   // Async portrait polling (client-side)
   // ─────────────────────────────────────────────────────────────────────────
@@ -901,11 +962,26 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
         contentMap={contentMap}
         currentStoryStructureNodeId={currentStoryStructureNodeId}
         activeSectionCard={activeSectionCard}
+        focusedContent={focusedContent}
         // New props for orchestrator integration
         storyId={storyId}
         orchestratorNodeId={orchestratorNodeId}
         onCreateStoryNode={handleCreateStoryNode}
         onCreateCharacterNode={handleCreateCharacterNode}
+        onUpdateCharacterNode={handleUpdateCharacterNode}
+        onSelectCharacter={(characterName: string) => {
+          // Find character node by name and trigger selection
+          const charNode = nodes.find(n => {
+            if (n.data?.nodeType !== 'character') return false
+            const nodeName = (n.data?.label || n.data?.characterName || n.data?.name || '').toLowerCase()
+            return nodeName.toLowerCase() === characterName.toLowerCase()
+          })
+          if (charNode && onSetCharacterTrigger) {
+            console.log('📂 [CanvasPanels] Selecting character from orchestrator:', characterName, charNode.id)
+            // Set the character trigger to open the character in ProjectContentPanel
+            onSetCharacterTrigger({ nodeId: charNode.id, timestamp: Date.now() })
+          }
+        }}
         onSectionComplete={onSectionComplete}
         onContentChunk={onContentChunk}
         onContentComplete={async (sectionId: string, wordCount: number) => {
@@ -922,32 +998,64 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
       />
 
       {/* 
-        AIDocumentPanel - Full document editing experience.
+        Document Panel - Full document editing experience.
         Opens when user:
         - Creates a new story (via onStoryNodeCreated callback)
         - Clicks edit button on a story node (via onItemClick → onSelectNode)
         
         Key prop: currentStoryStructureNodeId determines which document to show.
         Force re-mount when document changes using key prop.
+        
+        Feature flag USE_PROJECT_PANEL switches between:
+        - AIDocumentPanel (legacy): Document-focused with Tree/Cards toggle
+        - ProjectContentPanel (new): Project-centric with unified tree for stories/characters/research
       */}
-      <AIDocumentPanel
-        key={currentStoryStructureNodeId || 'no-document'}
-        isOpen={isAIDocPanelOpen}
-        onClose={onCloseDocumentPanel}
-        storyStructureNodeId={currentStoryStructureNodeId}
-        structureItems={structureItems}
-        contentMap={contentMap}
-        streamingContent={streamingContent}
-        initialSectionId={initialSectionId}
-        onUpdateStructure={onUpdateStructure}
-        canvasEdges={edges}
-        canvasNodes={nodes}
-        orchestratorPanelWidth={orchestratorPanelWidth}
-        onSwitchDocument={onSwitchDocument}
-        onSetContext={onSetContext}
-        onSectionsLoaded={onSectionsLoaded}
-        onRefreshSections={onRefreshSections}
-      />
+      {USE_PROJECT_PANEL ? (
+        <ProjectContentPanel
+          key={currentStoryStructureNodeId || 'no-document'}
+          isOpen={isAIDocPanelOpen}
+          onClose={onCloseDocumentPanel}
+          storyStructureNodeId={currentStoryStructureNodeId}
+          structureItems={structureItems}
+          contentMap={contentMap}
+          streamingContent={streamingContent}
+          initialSectionId={initialSectionId}
+          selectedCharacterTrigger={selectedCharacterTrigger}
+          onClearCharacterTrigger={onClearCharacterTrigger}
+          onUpdateStructure={onUpdateStructure}
+          canvasEdges={edges}
+          canvasNodes={nodes}
+          orchestratorPanelWidth={orchestratorPanelWidth}
+          onSwitchDocument={onSwitchDocument}
+          onSetContext={onSetContext}
+          onSectionsLoaded={onSectionsLoaded}
+          onRefreshSections={onRefreshSections}
+          onFocusedContentChange={setFocusedContent}
+          userId={userId}
+          storyId={storyId}
+          onNodeUpdate={onNodeUpdate}
+          onNodeDelete={onNodeDelete}
+        />
+      ) : (
+        <AIDocumentPanel
+          key={currentStoryStructureNodeId || 'no-document'}
+          isOpen={isAIDocPanelOpen}
+          onClose={onCloseDocumentPanel}
+          storyStructureNodeId={currentStoryStructureNodeId}
+          structureItems={structureItems}
+          contentMap={contentMap}
+          streamingContent={streamingContent}
+          initialSectionId={initialSectionId}
+          onUpdateStructure={onUpdateStructure}
+          canvasEdges={edges}
+          canvasNodes={nodes}
+          orchestratorPanelWidth={orchestratorPanelWidth}
+          onSwitchDocument={onSwitchDocument}
+          onSetContext={onSetContext}
+          onSectionsLoaded={onSectionsLoaded}
+          onRefreshSections={onRefreshSections}
+        />
+      )}
     </>
   )
 }

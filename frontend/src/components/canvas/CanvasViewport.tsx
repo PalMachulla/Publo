@@ -47,6 +47,7 @@ export interface CanvasViewportProps {
   onEdgesChange: (changes: any) => void
   onConnect: (connection: Connection) => void
   onNodeClick: (event: React.MouseEvent, node: Node) => void
+  onNodeDoubleClick?: (event: React.MouseEvent, node: Node) => void
   
   // Node operations
   onAddNode: (nodeType: any) => void
@@ -67,6 +68,7 @@ export default function CanvasViewport(props: CanvasViewportProps) {
     onEdgesChange,
     onConnect,
     onNodeClick,
+    onNodeDoubleClick,
     onAddNode,
     onPromptSubmit
     // 2024-12-11: Removed worldState
@@ -99,6 +101,7 @@ export default function CanvasViewport(props: CanvasViewportProps) {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeClick={onNodeClick}
+          onNodeDoubleClick={onNodeDoubleClick}
           nodeTypes={nodeTypes}
           fitView
           defaultViewport={defaultViewport}
