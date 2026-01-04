@@ -294,13 +294,26 @@ async def run_deep_agent_streaming(
                 # Extract output and ensure it's JSON serializable
                 raw_output = event_data.get("output", {})
                 
+                # Debug: log the raw output for arrange_nodes
+                if event_name == "arrange_nodes":
+                    print(f"📐 [DeepAgent] arrange_nodes raw_output type: {type(raw_output)}", flush=True)
+                    if hasattr(raw_output, "content"):
+                        content_preview = str(raw_output.content)[:300] if raw_output.content else "None"
+                        print(f"📐 [DeepAgent] arrange_nodes content preview: {content_preview}", flush=True)
+                
                 # Handle ToolMessage or other LangChain objects
                 if hasattr(raw_output, "content"):
                     # ToolMessage has content attribute
                     try:
                         import json
                         output = json.loads(raw_output.content) if isinstance(raw_output.content, str) else raw_output.content
-                    except (json.JSONDecodeError, TypeError):
+                        if event_name == "arrange_nodes":
+                            print(f"📐 [DeepAgent] arrange_nodes parsed output type: {type(output)}", flush=True)
+                            if isinstance(output, dict):
+                                print(f"📐 [DeepAgent] arrange_nodes output keys: {list(output.keys())}", flush=True)
+                    except (json.JSONDecodeError, TypeError) as e:
+                        if event_name == "arrange_nodes":
+                            print(f"❌ [DeepAgent] arrange_nodes JSON parse failed: {e}", flush=True)
                         output = {"result": str(raw_output.content)}
                 elif hasattr(raw_output, "dict"):
                     output = raw_output.dict()

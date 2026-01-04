@@ -81,17 +81,7 @@ When the user wants to take action, you have these tools:
   - When user asks for groupings based on relationships, social dynamics, or story roles, use the `clusters` parameter
   - You MUST provide a dictionary mapping cluster names to lists of character names
   - Example: "Group characters who would socialize together" →
-    ```
-    arrange_nodes(
-        node_type="character", 
-        layout="clusters",
-        clusters={
-            "The Inner Circle": ["Alice Chen", "Bob Smith"],
-            "The Outsiders": ["Charlie Brown", "Diana Ross"],
-            "The Wildcards": ["Eddie Murphy"]
-        }
-    )
-    ```
+    arrange_nodes(node_type="character", layout="clusters", clusters={{"The Inner Circle": ["Alice", "Bob"], "The Outsiders": ["Charlie", "Diana"]}})
   - Use character names (full or partial) - the frontend will match them to nodes
 
 ### Research (if available)
