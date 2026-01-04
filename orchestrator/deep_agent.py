@@ -84,6 +84,7 @@ from tools import (
     update_structure,
     navigate_to,
     present_options,
+    arrange_nodes,
     read_context_file,
     write_context_file,
     list_context_files,
@@ -152,9 +153,10 @@ def create_publo_deep_agent(
         # Structure
         create_structure,
         update_structure,
-        # Navigation
+        # Navigation & Canvas
         navigate_to,
         present_options,
+        arrange_nodes,
         # Memory
         save_preference,
         save_pattern,
