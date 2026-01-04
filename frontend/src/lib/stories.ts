@@ -161,8 +161,9 @@ export async function createStory(title: string = 'Untitled Story') {
   if (error) throw error
 
   // Always create the orchestrator node for new stories
+  // Use unique ID per story to avoid conflicts
   const contextNode = {
-    id: 'context',
+    id: `context-${data.id}`,  // FIX: Make ID unique per story
     story_id: data.id,
     type: 'orchestratorNode',
     position_x: 250,

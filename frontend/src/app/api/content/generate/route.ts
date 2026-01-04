@@ -122,15 +122,47 @@ export async function POST(request: NextRequest) {
     const adapter = getProviderAdapter(provider)
     
     // BUILD STRATEGIC CONTEXT FOR WRITER (orchestrator's instructions)
-    // Find the target segment in structure
-    const targetSegment = structureItems.find((item: any) => item.id === segmentId)
-    const targetIndex = structureItems.findIndex((item: any) => item.id === segmentId)
+    // ✅ FIX: Flatten structure items if they're hierarchical (some structures have nested children)
+    // This ensures we can find the target segment even if it's nested
+    const flattenStructureItems = (items: any[]): any[] => {
+      const flattened: any[] = []
+      items.forEach((item: any) => {
+        flattened.push(item)
+        if (item.children && Array.isArray(item.children)) {
+          flattened.push(...flattenStructureItems(item.children))
+        }
+      })
+      return flattened
+    }
+    
+    const flatStructureItems = flattenStructureItems(structureItems)
+    
+    // Find the target segment in structure (search in flattened structure)
+    const targetSegment = flatStructureItems.find((item: any) => item.id === segmentId)
+    const targetIndex = flatStructureItems.findIndex((item: any) => item.id === segmentId)
+    
+    // ✅ DEBUG: Log structure item properties to verify summary is present
+    console.log('[API /content/generate] Target segment check:', {
+      segmentId,
+      found: !!targetSegment,
+      targetSegmentName: targetSegment?.name,
+      hasSummary: !!targetSegment?.summary,
+      summary: targetSegment?.summary?.substring(0, 100),
+      allProperties: targetSegment ? Object.keys(targetSegment) : [],
+      structureItemsSample: structureItems.slice(0, 2).map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        hasSummary: !!item.summary,
+        summary: item.summary?.substring(0, 50)
+      }))
+    })
     
     // Build context sections
     let contextSections = ''
     
     // 1. BEFORE: What has happened (previous segments)
-    const previousSegments = structureItems.slice(0, targetIndex)
+    // Use flattened structure for context building
+    const previousSegments = flatStructureItems.slice(0, targetIndex)
     if (previousSegments.length > 0) {
       contextSections += `\n\n=== WHAT HAS HAPPENED (Before this segment) ===\n`
       previousSegments.forEach((item: any) => {
@@ -141,19 +173,36 @@ export async function POST(request: NextRequest) {
             ? content.substring(0, 300) + '...[continues]'
             : content
           contextSections += `\n${item.name}: ${preview}\n`
+        } else if (item.summary) {
+          // ✅ FIX: If no content exists, use summary as context
+          contextSections += `\n${item.name}: ${item.summary}\n`
         }
       })
     }
     
     // 2. CURRENT: What should happen (target segment summary)
+    // ✅ CRITICAL: This is the primary guidance for the writer
+    // The summary describes what should happen in this segment (e.g., "Mice face their greatest adversary...")
     if (targetSegment?.summary) {
       contextSections += `\n\n=== YOUR WRITING GOAL (This segment) ===\n`
       contextSections += `${targetSegment.name}: ${targetSegment.summary}\n`
+      contextSections += `\n⚠️ CRITICAL: Your content MUST accomplish what is described above. This summary is the core objective for this segment.\n`
+      contextSections += `\nUser's specific instruction: ${prompt}\n`
+    } else {
+      // ✅ FALLBACK: If no summary, log warning and use section name
+      console.warn('[API /content/generate] ⚠️ Target segment has no summary!', {
+        segmentId,
+        segmentName: targetSegment?.name,
+        availableProperties: targetSegment ? Object.keys(targetSegment) : []
+      })
+      contextSections += `\n\n=== YOUR WRITING GOAL (This segment) ===\n`
+      contextSections += `${targetSegment?.name || segmentId}\n`
       contextSections += `\nUser's specific instruction: ${prompt}\n`
     }
     
     // 3. AFTER: What will happen (future segments)
-    const futureSegments = structureItems.slice(targetIndex + 1)
+    // Use flattened structure for context building
+    const futureSegments = flatStructureItems.slice(targetIndex + 1)
     if (futureSegments.length > 0) {
       contextSections += `\n\n=== WHAT WILL HAPPEN (After this segment) ===\n`
       contextSections += `You should subtly foreshadow or set up for these future events:\n`

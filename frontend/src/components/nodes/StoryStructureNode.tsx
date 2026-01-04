@@ -76,7 +76,7 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
         <div className="flex justify-center -mb-1 transition-all duration-300 ease-in-out" style={{ width: nodeWidth }}>
           <div className={`px-8 py-3 rounded-t-xl flex items-center gap-2 transition-all  ${isLoading ? 'bg-gray-200 animate-pulse' : 'bg-gray-100 border-2 border-gray-400 shadow-xl'}`}>
             <div className="text-sm text-gray-700 uppercase tracking-widest font-sans font-bold">
-              {label || (format ? format.toUpperCase() : 'STORY')}
+            {format ? format.toUpperCase() : 'STORY'}
             </div>
             
             {/* Toggle between Cover and Timeline */}
@@ -105,11 +105,11 @@ function StoryStructureNode({ data, selected, id }: NodeProps<StoryStructureNode
               )}
             </button>
             
-            {/* Edit Content Button - Opens Content Canvas */}
+            {/* Edit Content Button - Opens AiDocumentPanel */}
             <button
               onClick={(e) => {
                 e.stopPropagation() // Stop it from opening structure panel
-                // Open Content Canvas by triggering onItemClick with first item (or a dummy item to show full document)
+                // Open Document Panel by triggering onItemClick with first item (or a dummy item to show full document)
                 if (onItemClick && items.length > 0) {
                   // Get the first top-level item to open the document at the start
                   const firstItem = items.find(item => item.level === 1) || items[0]

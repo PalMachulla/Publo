@@ -15,7 +15,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getProviderAdapter } from '@/lib/providers'
 import { decryptAPIKey } from '@/lib/security/encryption'
-import { MODEL_TIERS, type TieredModel } from '@/lib/orchestrator/core/modelRouter'
+import { MODEL_TIERS, type TieredModel, type ModelTier } from '@/lib/orchestrator/core/modelRouter'
 import type { NormalizedModel, LLMProvider } from '@/types/api-keys'
 
 export interface AvailableModel extends TieredModel {
@@ -28,6 +28,14 @@ export interface AvailableModel extends TieredModel {
   input_price_per_1m: number | null
   output_price_per_1m: number | null
   max_output_tokens: number | null
+  
+  // ✅ NEW: From database metadata (enriched)
+  cost_per_1k_tokens_input?: number | null
+  cost_per_1k_tokens_output?: number | null
+  speed_tokens_per_sec?: number | null
+  vendor_category?: 'production' | 'preview' | 'deprecated' | null
+  vendor_synced_at?: string | null
+  admin_verified?: boolean
 }
 
 export interface AvailableModelsResponse {
@@ -72,6 +80,29 @@ export async function GET(request: Request) {
     }
 
     console.log('🔍 [/api/models/available] Fetching models for user:', user.id)
+
+    // ✅ NEW: Fetch admin metadata for models (includes active/inactive status)
+    const { data: adminMetadata, error: metadataError } = await supabase
+      .from('model_metadata')
+      .select('*')
+    
+    if (metadataError) {
+      console.warn('⚠️ [Available Models] Failed to fetch admin metadata:', metadataError)
+    }
+    
+    // Create a map for quick lookup: provider:model_id -> metadata
+    const metadataMap = new Map<string, any>()
+    if (adminMetadata) {
+      for (const meta of adminMetadata) {
+        // Only include active, non-deprecated models in metadata map
+        // (We'll still check is_active and vendor_category when filtering, but this map is for enrichment)
+        if (meta.is_active !== false && meta.vendor_category !== 'deprecated') {
+          metadataMap.set(`${meta.provider}:${meta.model_id}`, meta)
+        }
+      }
+    }
+    
+    console.log(`📦 [Available Models] Loaded ${metadataMap.size} active admin metadata entries`)
 
     // Fetch user's active API keys
     const { data: userKeys, error: keysError } = await supabase
@@ -170,8 +201,21 @@ export async function GET(request: Request) {
 
         console.log(`📊 ${key.provider}: ${models.length} total → ${filteredModels.length} enabled`)
 
-        // Cross-reference with MODEL_TIERS and enrich
+        // Cross-reference with MODEL_TIERS and admin metadata, then enrich
         for (const model of filteredModels) {
+          // ✅ Check if model is marked inactive or deprecated by admin
+          const adminMeta = metadataMap.get(`${key.provider}:${model.id}`)
+          if (adminMeta) {
+            if (adminMeta.is_active === false) {
+              console.log(`⏭️ [Available Models] Skipping inactive model: ${key.provider}:${model.id}`)
+              continue
+            }
+            if (adminMeta.vendor_category === 'deprecated') {
+              console.log(`⏭️ [Available Models] Skipping deprecated model: ${key.provider}:${model.id}`)
+              continue
+            }
+          }
+          
           // Find matching tier metadata
           const tierModel = MODEL_TIERS.find(t => 
             t.id === model.id || 
@@ -182,9 +226,23 @@ export async function GET(request: Request) {
           if (tierModel && !modelIdSet.has(model.id)) {
             modelIdSet.add(model.id)
             
-            availableModels.push({
-              // From MODEL_TIERS
+            // ✅ ENHANCED: Merge admin metadata with MODEL_TIERS (admin metadata takes precedence)
+            const mergedModel: AvailableModel = {
+              // Start with MODEL_TIERS as base
               ...tierModel,
+              
+              // ✅ Override with admin metadata if available (database is source of truth)
+              ...(adminMeta ? {
+                structuredOutput: (adminMeta.supports_structured_output || tierModel.structuredOutput) as 'full' | 'json-mode' | 'none',
+                reasoning: adminMeta.supports_reasoning ?? tierModel.reasoning,
+                tier: (adminMeta.tier || tierModel.tier) as ModelTier,
+                speed: (adminMeta.speed || tierModel.speed) as 'instant' | 'fast' | 'medium' | 'slow',
+                cost: (adminMeta.cost || tierModel.cost) as 'cheap' | 'moderate' | 'expensive',
+                contextWindow: adminMeta.context_window || tierModel.contextWindow,
+                bestFor: adminMeta.best_for && Array.isArray(adminMeta.best_for) 
+                  ? adminMeta.best_for as TieredModel['bestFor']
+                  : tierModel.bestFor,
+              } : {}),
               
               // From user's API
               available: true,
@@ -195,7 +253,17 @@ export async function GET(request: Request) {
               input_price_per_1m: model.input_price_per_1m,
               output_price_per_1m: model.output_price_per_1m,
               max_output_tokens: model.max_output_tokens,
-            })
+              
+              // ✅ NEW: Enrich with database metadata (pricing, speed, vendor info)
+              cost_per_1k_tokens_input: adminMeta?.cost_per_1k_tokens_input ?? null,
+              cost_per_1k_tokens_output: adminMeta?.cost_per_1k_tokens_output ?? null,
+              speed_tokens_per_sec: adminMeta?.speed_tokens_per_sec ?? null,
+              vendor_category: adminMeta?.vendor_category ?? null,
+              vendor_synced_at: adminMeta?.vendor_synced_at ?? null,
+              admin_verified: adminMeta?.admin_verified ?? false,
+            }
+            
+            availableModels.push(mergedModel)
           }
         }
       } catch (error) {
@@ -217,6 +285,29 @@ export async function GET(request: Request) {
     
     for (const tierModel of MODEL_TIERS) {
       if (!modelIdSet.has(tierModel.id)) {
+        // ✅ Check if model is marked inactive or deprecated by admin
+        const adminMeta = metadataMap.get(`${tierModel.provider}:${tierModel.id}`)
+        if (adminMeta) {
+          if (adminMeta.is_active === false) {
+            console.log(`⏭️ [Optimistic] Skipping inactive model: ${tierModel.provider}:${tierModel.id}`)
+            unavailable.push({
+              id: tierModel.id,
+              displayName: tierModel.displayName,
+              reason: 'disabled' // Admin disabled this model
+            })
+            continue
+          }
+          if (adminMeta.vendor_category === 'deprecated') {
+            console.log(`⏭️ [Optimistic] Skipping deprecated model: ${tierModel.provider}:${tierModel.id}`)
+            unavailable.push({
+              id: tierModel.id,
+              displayName: tierModel.displayName,
+              reason: 'disabled' // Model is deprecated
+            })
+            continue
+          }
+        }
+        
         if (availableProviders.has(tierModel.provider as LLMProvider)) {
           // User has API key for this provider - assume model is available!
           // If it's not, the actual generation will fail gracefully
@@ -225,16 +316,43 @@ export async function GET(request: Request) {
           const userKey = userKeys.find(k => k.provider === tierModel.provider)
           if (userKey) {
             modelIdSet.add(tierModel.id)
-            availableModels.push({
+            
+            // ✅ ENHANCED: Merge admin metadata with MODEL_TIERS (admin metadata takes precedence)
+            const mergedModel: AvailableModel = {
+              // Start with MODEL_TIERS as base
               ...tierModel,
+              
+              // ✅ Override with admin metadata if available (database is source of truth)
+              ...(adminMeta ? {
+                structuredOutput: (adminMeta.supports_structured_output || tierModel.structuredOutput) as 'full' | 'json-mode' | 'none',
+                reasoning: adminMeta.supports_reasoning ?? tierModel.reasoning,
+                tier: (adminMeta.tier || tierModel.tier) as ModelTier,
+                speed: (adminMeta.speed || tierModel.speed) as 'instant' | 'fast' | 'medium' | 'slow',
+                cost: (adminMeta.cost || tierModel.cost) as 'cheap' | 'moderate' | 'expensive',
+                contextWindow: adminMeta.context_window || tierModel.contextWindow,
+                bestFor: adminMeta.best_for && Array.isArray(adminMeta.best_for) 
+                  ? adminMeta.best_for as TieredModel['bestFor']
+                  : tierModel.bestFor,
+              } : {}),
+              
               available: true,
               apiKeyId: userKey.id,
               apiKeyNickname: userKey.nickname || undefined,
-              // Use estimated pricing from MODEL_TIERS
+              // Use estimated pricing from MODEL_TIERS (no API data for optimistic models)
               input_price_per_1m: null,
               output_price_per_1m: null,
               max_output_tokens: null,
-            })
+              
+              // ✅ NEW: Enrich with database metadata (pricing, speed, vendor info)
+              cost_per_1k_tokens_input: adminMeta?.cost_per_1k_tokens_input ?? null,
+              cost_per_1k_tokens_output: adminMeta?.cost_per_1k_tokens_output ?? null,
+              speed_tokens_per_sec: adminMeta?.speed_tokens_per_sec ?? null,
+              vendor_category: adminMeta?.vendor_category ?? null,
+              vendor_synced_at: adminMeta?.vendor_synced_at ?? null,
+              admin_verified: adminMeta?.admin_verified ?? false,
+            }
+            
+            availableModels.push(mergedModel)
           } else {
             console.warn(`⚠️ [Optimistic] Could not find API key for ${tierModel.provider}`)
           }

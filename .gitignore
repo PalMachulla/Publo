@@ -44,6 +44,12 @@ docker-compose.override.yml
 temp/
 tmp/
 
+# Python
+orchestrator/venv/
+orchestrator/__pycache__/
+*.pyc
+*.pyo
+
 # Supabase
 supabase/.branches
 supabase/.temp

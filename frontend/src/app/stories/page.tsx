@@ -19,7 +19,8 @@ export default function StoriesPage() {
   
   // TEMPORARY: Force admin for your email while debugging
   const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
-  console.log('🔧 Stories page - isForceAdmin check:', { email: user?.email, isForceAdmin })
+  // Removed excessive logging
+  // console.log('🔧 Stories page - isForceAdmin check:', { email: user?.email, isForceAdmin })
 
   // Check user access and role
   useEffect(() => {

@@ -11,24 +11,33 @@ interface MarkdownEditorProps {
   onUpdate: (content: string) => void
   placeholder?: string
   className?: string
+  /** When true, disables editing and content syncing (use during streaming) */
+  readOnly?: boolean
 }
 
 export default function MarkdownEditor({
   content,
   onUpdate,
   placeholder = 'Start writing...',
-  className = ''
+  className = '',
+  readOnly = false
 }: MarkdownEditorProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(content)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  
+  // Track previous content to avoid unnecessary state updates
+  const prevContentRef = useRef(content)
 
   // Sync content when it changes externally
+  // Skip syncing in readOnly mode (streaming) to avoid infinite loops
   useEffect(() => {
-    if (!isEditing) {
+    if (readOnly) return // Don't sync during streaming
+    if (!isEditing && content !== prevContentRef.current) {
+      prevContentRef.current = content
       setEditContent(content)
     }
-  }, [content, isEditing])
+  }, [content, isEditing, readOnly])
 
   // Auto-focus textarea when entering edit mode
   useEffect(() => {
@@ -99,8 +108,8 @@ export default function MarkdownEditor({
 
   return (
     <div
-      onClick={() => setIsEditing(true)}
-      className={`cursor-text min-h-full ${className}`}
+      onDoubleClick={() => !readOnly && setIsEditing(true)}
+      className={`${readOnly ? 'cursor-default' : 'cursor-text'} min-h-full ${className}`}
     >
       {content ? (
         <div className="screenplay-document">

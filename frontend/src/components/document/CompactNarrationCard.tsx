@@ -1,7 +1,9 @@
 'use client'
 
 import { memo, useState } from 'react'
+import { StarFilledIcon, LightningBoltIcon, PersonIcon } from '@radix-ui/react-icons'
 import type { StoryStructureItem } from '@/types/nodes'
+import type { SectionCardDisplay } from '@/types/librarian'
 
 interface CompactNarrationCardProps {
   item: StoryStructureItem
@@ -15,6 +17,10 @@ interface CompactNarrationCardProps {
   hasChildren?: boolean
   isCollapsed?: boolean
   onToggleCollapse?: () => void
+  /** Section card from Librarian with resolved character details */
+  sectionCard?: SectionCardDisplay
+  /** Whether this section is currently being written (shows shimmer effect) */
+  isWriting?: boolean
 }
 
 function CompactNarrationCard({ 
@@ -28,7 +34,9 @@ function CompactNarrationCard({
   indentLevel = 0,
   hasChildren = false,
   isCollapsed = false,
-  onToggleCollapse
+  onToggleCollapse,
+  sectionCard,
+  isWriting = false,
 }: CompactNarrationCardProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
   
@@ -123,11 +131,12 @@ function CompactNarrationCard({
     <div
       style={{ 
         borderLeft: `${getBorderWidth()} solid ${borderColor}`,
-        backgroundColor: backgroundColor,
+        backgroundColor: isWriting ? undefined : backgroundColor,
       }}
       className={`
         group relative pl-2 pr-2 py-1.5 transition-all cursor-pointer
         ${isActive ? 'text-gray-900' : 'text-gray-700 hover:bg-gray-100/50'}
+        ${isWriting ? 'animate-shimmer bg-gradient-to-r from-blue-50 via-white to-blue-50 bg-[length:200%_100%]' : ''}
       `}
     >
       <div className="flex items-start gap-1.5">
@@ -167,6 +176,50 @@ function CompactNarrationCard({
           <h3 className="font-medium text-sm truncate">
             {getCleanTitle()}
           </h3>
+          
+          {/* Section Card Summary (from Librarian) */}
+          {sectionCard?.summary ? (
+            <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+              {sectionCard.summary}
+            </p>
+          ) : item.description ? (
+            <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 italic">
+              {item.description}
+            </p>
+          ) : null}
+          
+          {/* Character badges with names from section card */}
+          {sectionCard?.characters && sectionCard.characters.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {sectionCard.characters.slice(0, 3).map((char) => (
+                <span
+                  key={char.id}
+                  className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${
+                    char.role === 'protagonist'
+                      ? 'bg-blue-100/40 text-blue-700'
+                      : char.role === 'antagonist'
+                        ? 'bg-red-100/40 text-red-700'
+                        : 'bg-purple-100/40 text-purple-700'
+                  }`}
+                  title={char.description || char.role}
+                >
+                  {char.role === 'protagonist' ? (
+                    <StarFilledIcon className="w-2.5 h-2.5" />
+                  ) : char.role === 'antagonist' ? (
+                    <LightningBoltIcon className="w-2.5 h-2.5" />
+                  ) : (
+                    <PersonIcon className="w-2.5 h-2.5" />
+                  )}
+                  {char.name}
+                </span>
+              ))}
+              {sectionCard.characters.length > 3 && (
+                <span className="text-[10px] text-gray-400">
+                  +{sectionCard.characters.length - 3} more
+                </span>
+              )}
+            </div>
+          )}
         </div>
         
         {/* Action Buttons (show on hover or when active) */}

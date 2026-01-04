@@ -1,0 +1,61 @@
+# ============================================================
+# PUBLO BACKEND - Python Dependencies
+# ============================================================
+# 
+# Install with: pip install -r requirements.txt
+# 
+# For development: pip install -r requirements.txt --break-system-packages
+# (The --break-system-packages flag is needed on some Linux systems)
+
+# ============================================================
+# CORE FRAMEWORK
+# ============================================================
+fastapi>=0.109.0,<1.0.0   # Web framework (like Next.js API routes)
+uvicorn[standard]>=0.27.0 # ASGI server (runs FastAPI)
+python-dotenv>=1.0.0      # Environment variable management
+
+# ============================================================
+# LANGCHAIN & LANGGRAPH & LANGSMITH
+# ============================================================
+langchain>=0.2.0          # LLM orchestration framework
+langchain-core>=0.2.0     # Core abstractions
+langchain-openai>=0.1.0   # OpenAI integration
+langchain-anthropic>=0.1.15  # Anthropic/Claude integration
+# langchain-google-genai>=1.0.1  # Google AI integration (optional - comment out if not using)
+langchain-community>=0.2.0    # Community tools (Tavily, etc.)
+langgraph>=0.1.0          # Graph-based agent workflows (with react agent)
+langsmith>=0.1.17         # LangSmith SDK for tracing
+
+# ============================================================
+# MCP INTEGRATION (Optional)
+# ============================================================
+# langchain-mcp-adapters>=0.1.0  # MCP tool adapters (when available)
+tavily-python>=0.3.0      # Web search via Tavily
+
+# ============================================================
+# DATABASE & STATE
+# ============================================================
+supabase>=2.4.0,<3.0.0    # Supabase Python client
+asyncpg>=0.29.0           # Async PostgreSQL driver
+
+# ============================================================
+# VALIDATION & TYPES
+# ============================================================
+pydantic>=2.6.0           # Data validation (like Zod in TypeScript)
+pydantic-settings>=2.1.0  # Settings management
+
+# ============================================================
+# UTILITIES
+# ============================================================
+# Note: httpx version is constrained by supabase - let it resolve automatically
+httpx[http2]>=0.26,<0.29  # Async HTTP client (compatible with supabase)
+python-multipart>=0.0.6   # Form data parsing (for file uploads)
+sse-starlette>=2.0.0      # Server-Sent Events (real-time updates)
+
+# ============================================================
+# DEVELOPMENT & TESTING
+# ============================================================
+pytest>=7.0.0,<8          # Testing framework
+pytest-asyncio>=0.23.0    # Async test support
+black>=24.1.0             # Code formatting
+ruff>=0.2.0               # Fast linting

@@ -3,6 +3,12 @@
 **Last Updated:** November 27, 2025  
 **Status:** Production (Post-Refactoring)
 
+> ⚠️ **Important (2025-12):** This document primarily describes the **legacy TypeScript orchestrator** that lives under `frontend/src/lib/orchestrator/` (many files are now suffixed `.deprecated`).
+>
+> **Active path today:** Python **Deep Agent** + SSE streaming: `frontend/src/hooks/useOrchestratorStream.ts` → `orchestrator/api/chat.py`.
+>
+> For how canvas nodes (e.g. **Character nodes**) influence generation when connected to the Orchestrator node, see `docs/orchestrator/DEEP_AGENT_CANVAS_SOURCES.md`.
+
 ---
 
 ## 🎯 Overview

@@ -2,6 +2,12 @@
 
 **For developers working on the Publo orchestrator**
 
+> ⚠️ **Important (2025-12):** This quick reference is largely for the **legacy TypeScript orchestrator** in `frontend/src/lib/orchestrator/` (many files are now `.deprecated`).
+>
+> **Active path today:** Python **Deep Agent** + SSE streaming: `frontend/src/hooks/useOrchestratorStream.ts` → `orchestrator/api/chat.py`.
+>
+> For “connected canvas nodes → agent context” (including Character nodes), see `docs/orchestrator/DEEP_AGENT_CANVAS_SOURCES.md`.
+
 ---
 
 ## 📂 Key Files

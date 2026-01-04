@@ -663,21 +663,39 @@ export function assessTaskComplexity(
 /**
  * PHASE 1.2: Convert TieredModel to ModelCapability for selectModel() scoring
  * This allows us to use both static MODEL_TIERS and dynamic available models
+ * 
+ * ✅ STEP 3: Now uses actual pricing and speed from database metadata when available
  */
 function convertTieredToCapability(tiered: TieredModel): ModelCapability {
-  // Map tier and speed to estimated cost and speed
+  // ✅ STEP 3: Check for actual pricing from database metadata (enriched in /api/models/available)
+  const enrichedModel = tiered as any // Type assertion to access enriched fields
+  const actualCostPer1kInput = enrichedModel.cost_per_1k_tokens_input
+  const actualSpeedTokensPerSec = enrichedModel.speed_tokens_per_sec
+  
+  // Fallback to estimated cost if actual pricing not available
   const costMap: Record<string, number> = {
     'cheap': 0.2,
     'moderate': 1.5,
     'expensive': 10.0
   }
   
+  // Fallback to estimated speed if actual speed not available
   const speedMap: Record<string, number> = {
     'instant': 500,
     'fast': 200,
     'medium': 100,
     'slow': 50
   }
+  
+  // ✅ Use actual pricing from metadata if available, otherwise estimate
+  const costPer1kTokens = actualCostPer1kInput !== null && actualCostPer1kInput !== undefined
+    ? actualCostPer1kInput
+    : (costMap[tiered.cost] || 1.0)
+  
+  // ✅ Use actual speed from metadata if available, otherwise estimate
+  const speedTokensPerSec = actualSpeedTokensPerSec !== null && actualSpeedTokensPerSec !== undefined
+    ? actualSpeedTokensPerSec
+    : (speedMap[tiered.speed] || 100)
   
   // Map bestFor from TieredModel to TaskComplexity for ModelCapability
   const bestForMap: Record<string, TaskComplexity[]> = {
@@ -697,12 +715,20 @@ function convertTieredToCapability(tiered: TieredModel): ModelCapability {
   // Deduplicate
   const uniqueBestFor = [...new Set(bestFor)]
   
+  // Log if using actual vs estimated values (for debugging)
+  if (actualCostPer1kInput !== null && actualCostPer1kInput !== undefined) {
+    console.log(`💰 [Model Router] Using actual pricing for ${tiered.id}: $${actualCostPer1kInput}/1k tokens`)
+  }
+  if (actualSpeedTokensPerSec !== null && actualSpeedTokensPerSec !== undefined) {
+    console.log(`⚡ [Model Router] Using actual speed for ${tiered.id}: ${actualSpeedTokensPerSec} tokens/sec`)
+  }
+  
   return {
     modelId: tiered.id,
     provider: tiered.provider as 'openai' | 'anthropic' | 'groq' | 'google',
     displayName: tiered.displayName,
-    costPer1kTokens: costMap[tiered.cost] || 1.0,
-    speedTokensPerSec: speedMap[tiered.speed] || 100,
+    costPer1kTokens: costPer1kTokens,
+    speedTokensPerSec: speedTokensPerSec,
     contextWindow: tiered.contextWindow,
     capabilities: {
       reasoning: tiered.reasoning,
@@ -812,8 +838,12 @@ export function selectModel(
   
   let reasoning = `Selected ${selected.displayName} for ${taskComplexity} task (${priority} priority)`
   
+  // ✅ STEP 3: Show actual pricing/speed in reasoning when available
   if (priority === 'cost') {
-    reasoning += ` - Cheapest option at $${selected.costPer1kTokens}/1k tokens`
+    const costDisplay = selected.costPer1kTokens < 1 
+      ? `$${selected.costPer1kTokens.toFixed(4)}` 
+      : `$${selected.costPer1kTokens.toFixed(2)}`
+    reasoning += ` - Cheapest option at ${costDisplay}/1k tokens`
   } else if (priority === 'speed') {
     reasoning += ` - Fastest at ${selected.speedTokensPerSec} tokens/sec`
   } else if (priority === 'quality') {
@@ -822,12 +852,16 @@ export function selectModel(
   
   console.log(`✅ [selectModel] ${reasoning}`)
   
+  // ✅ STEP 3: Use actual pricing for cost estimation (more accurate)
+  const estimatedCost = selected.costPer1kTokens * 2 // Assume ~2k tokens for typical request
+  const estimatedTime = 2000 / selected.speedTokensPerSec // Assume ~2k tokens output
+  
   return {
     modelId: selected.modelId,
     provider: selected.provider,
     reasoning,
-    estimatedCost: selected.costPer1kTokens * 2,
-    estimatedTime: 2000 / selected.speedTokensPerSec
+    estimatedCost,
+    estimatedTime
   }
 }
 

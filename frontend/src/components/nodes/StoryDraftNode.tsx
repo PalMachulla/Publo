@@ -3,7 +3,8 @@
 import { memo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { StoryDraftNodeData } from '@/types/nodes'
-import { getFormatIcon } from '@/components/menus/StoryFormatMenu'
+// ✅ SINGLE SOURCE OF TRUTH: Import from schemas
+import { getFormatIcon } from '@/lib/orchestrator/schemas/formatMetadata'
 
 function StoryDraftNode({ data, selected }: NodeProps<StoryDraftNodeData>) {
   const { title, status, format } = data

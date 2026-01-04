@@ -41,6 +41,44 @@ export interface DocsNodeData extends BaseNodeData {
 export type CharacterRole = 'Main' | 'Active' | 'Included' | 'Involved' | 'Passive'
 export type CharacterVisibility = 'private' | 'shared' | 'public'
 
+// Extended character profile data (stored in attributes JSONB column)
+export interface CharacterProfile {
+  // Psychology
+  emotionalTraits?: {
+    openness: number
+    conscientiousness: number
+    extraversion: number
+    agreeableness: number
+    neuroticism: number
+  }
+  personalityType?: string // e.g., 'INFJ', 'ENTP'
+  coreMotivation?: string
+  fears?: string[]
+  desires?: string[]
+  
+  // Physical
+  age?: string
+  height?: string
+  weight?: string
+  eyeColor?: string
+  hairColor?: string
+  distinguishingFeatures?: string
+  healthConditions?: string[]
+  
+  // History
+  birthplace?: string
+  occupation?: string
+  education?: string
+  keyEvents?: { year: string; event: string }[]
+  
+  // Relationships
+  relationships?: { characterId: string; type: string; description: string }[]
+  
+  // Documents
+  attachedFiles?: { name: string; type: string; url: string }[]
+  notes?: string
+}
+
 export interface Character {
   id: string
   user_id: string
@@ -49,6 +87,7 @@ export interface Character {
   photo_url?: string
   visibility: CharacterVisibility
   role?: CharacterRole
+  attributes?: CharacterProfile
   created_at: string
   updated_at: string
 }
@@ -68,7 +107,7 @@ export interface CharacterNodeData extends BaseNodeData {
     answer: string
     timestamp: string
   }>
-  attributes?: Record<string, any>
+  attributes?: CharacterProfile
 }
 
 export interface LocationNodeData extends BaseNodeData {
@@ -108,6 +147,8 @@ export interface CreateStoryNodeData extends BaseNodeData {
   isOrchestrating?: boolean // Whether the orchestrator is active
   orchestratorProgress?: number // Progress percentage (0-100)
   loadingText?: string // Text to show below logo during operations
+  /** Optional explicit stage (preferred over parsing loadingText) */
+  orchestratorStage?: 'idle' | 'thinking' | 'structuring' | 'writing' | 'done' | 'error'
   chatPrompt?: string // User's prompt from the chat input
   reasoningMessages?: Array<{ // Orchestrator's reasoning messages
     timestamp: string

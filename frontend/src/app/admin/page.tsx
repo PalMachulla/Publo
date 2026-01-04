@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
+import ModelMetadataManager, { ModelMetadata } from '@/components/admin/ModelMetadataManager'
+import ModelEditForm from '@/components/admin/ModelEditForm'
 
 interface UserProfile {
   id: string
@@ -30,6 +32,12 @@ export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null)
   const [savingUserId, setSavingUserId] = useState<string | null>(null)
+  
+  // Model management state
+  const [activeTab, setActiveTab] = useState<'users' | 'models'>('users')
+  const [models, setModels] = useState<ModelMetadata[]>([])
+  const [fetchingModels, setFetchingModels] = useState(false)
+  const [editingModel, setEditingModel] = useState<ModelMetadata | null>(null)
   
   // TEMPORARY: Force admin for your email while debugging
   const isForceAdmin = user?.email === 'pal.machulla@gmail.com'
@@ -116,6 +124,53 @@ export default function AdminPage() {
       fetchUsers()
     }
   }, [isAdmin])
+
+  // Fetch models when models tab is active
+  const fetchModels = async () => {
+    if (!isAdmin) return
+    
+    setFetchingModels(true)
+    try {
+      const response = await fetch('/api/admin/models')
+      const data = await response.json()
+      if (data.success) {
+        setModels(data.models || [])
+      } else {
+        console.error('Failed to fetch models:', data.error)
+      }
+    } catch (error) {
+      console.error('Failed to fetch models:', error)
+    } finally {
+      setFetchingModels(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'models' && isAdmin) {
+      fetchModels()
+    }
+  }, [activeTab, isAdmin])
+
+  const handleSaveModel = async (model: ModelMetadata) => {
+    try {
+      const response = await fetch('/api/admin/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(model)
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        await fetchModels()
+        setEditingModel(null)
+      } else {
+        throw new Error(data.error || 'Failed to save model')
+      }
+    } catch (error) {
+      console.error('Failed to save model:', error)
+      throw error
+    }
+  }
 
   // Filter users based on search
   useEffect(() => {
@@ -220,7 +275,7 @@ export default function AdminPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Admin Panel</h1>
-            <p className="text-gray-600 mt-1 font-mono text-sm">User Management & Access Control</p>
+            <p className="text-gray-600 mt-1 font-mono text-sm">User Management & Model Configuration</p>
           </div>
           <button
             onClick={() => router.push('/canvas')}
@@ -233,43 +288,74 @@ export default function AdminPage() {
           </button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-            <div className="text-sm text-gray-600 mb-1">Total Users</div>
-            <div className="text-2xl font-bold text-gray-900">{users.length}</div>
-          </div>
-          <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-            <div className="text-sm text-gray-600 mb-1">Admins</div>
-            <div className="text-2xl font-bold text-purple-600">{users.filter(u => u.role === 'admin').length}</div>
-          </div>
-          <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-            <div className="text-sm text-gray-600 mb-1">Active Users</div>
-            <div className="text-2xl font-bold text-green-600">{users.filter(u => u.access_status === 'granted').length}</div>
-          </div>
-          <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-            <div className="text-sm text-gray-600 mb-1">Waitlist</div>
-            <div className="text-2xl font-bold text-orange-600">{users.filter(u => u.access_status === 'waitlist').length}</div>
-          </div>
+        {/* Tabs */}
+        <div className="mb-6 border-b border-gray-200">
+          <nav className="flex space-x-8">
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'users'
+                  ? 'border-gray-900 text-gray-900'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Users
+            </button>
+            <button
+              onClick={() => setActiveTab('models')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'models'
+                  ? 'border-gray-900 text-gray-900'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Model Metadata
+            </button>
+          </nav>
         </div>
 
-        {/* Search Bar */}
-        <div className="mb-6">
-          <div className="relative">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by email, name, role, or status..."
-              className="w-full px-4 py-3 pl-12 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white shadow-sm"
-            />
-            <svg className="w-5 h-5 text-gray-400 absolute left-4 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-        </div>
+        {/* Stats - Users Tab */}
+        {activeTab === 'users' && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+              <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                <div className="text-sm text-gray-600 mb-1">Total Users</div>
+                <div className="text-2xl font-bold text-gray-900">{users.length}</div>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                <div className="text-sm text-gray-600 mb-1">Admins</div>
+                <div className="text-2xl font-bold text-purple-600">{users.filter(u => u.role === 'admin').length}</div>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                <div className="text-sm text-gray-600 mb-1">Active Users</div>
+                <div className="text-2xl font-bold text-green-600">{users.filter(u => u.access_status === 'granted').length}</div>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                <div className="text-sm text-gray-600 mb-1">Waitlist</div>
+                <div className="text-2xl font-bold text-orange-600">{users.filter(u => u.access_status === 'waitlist').length}</div>
+              </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="mb-6">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by email, name, role, or status..."
+                  className="w-full px-4 py-3 pl-12 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white shadow-sm"
+                />
+                <svg className="w-5 h-5 text-gray-400 absolute left-4 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Users Table */}
+        {activeTab === 'users' && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -359,9 +445,19 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+        )}
+
+        {/* Model Metadata Manager */}
+        {activeTab === 'models' && (
+          <ModelMetadataManager
+            models={models}
+            onRefresh={fetchModels}
+            onEdit={setEditingModel}
+          />
+        )}
       </div>
 
-      {/* Edit Notes Modal */}
+      {/* Edit User Notes Modal */}
       {editingUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
@@ -397,6 +493,15 @@ export default function AdminPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Edit Model Modal */}
+      {editingModel !== null && (
+        <ModelEditForm
+          model={editingModel}
+          onClose={() => setEditingModel(null)}
+          onSave={handleSaveModel}
+        />
       )}
     </div>
   )

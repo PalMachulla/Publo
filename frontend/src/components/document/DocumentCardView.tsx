@@ -2,6 +2,7 @@
 
 import { memo, useMemo, useState } from 'react'
 import type { StoryStructureItem } from '@/types/nodes'
+import type { SectionCardDisplay } from '@/types/librarian'
 import NarrationCard from './NarrationCard'
 
 interface DocumentCardViewProps {
@@ -12,6 +13,8 @@ interface DocumentCardViewProps {
   onAddSubAgent?: (itemId: string) => void
   onEdit?: (itemId: string) => void
   themeColors?: Record<string, string>
+  /** Section cards from Librarian with resolved character details */
+  sectionCards?: SectionCardDisplay[]
 }
 
 function DocumentCardView({ 
@@ -21,7 +24,8 @@ function DocumentCardView({
   onColorChange,
   onAddSubAgent,
   onEdit,
-  themeColors = {}
+  themeColors = {},
+  sectionCards = [],
 }: DocumentCardViewProps) {
   
   // Find the active item
@@ -69,6 +73,13 @@ function DocumentCardView({
       wordCount: calculateWordCount(activeItem.id)
     }
   }, [activeItem, structureItems])
+  
+  // Get the section card for the active item (from Librarian with resolved characters)
+  // Must be before early returns to satisfy React's rules of hooks
+  const activeSectionCard = useMemo(() => {
+    if (!activeItem) return undefined
+    return sectionCards.find(card => card.structureItemId === activeItem.id)
+  }, [activeItem, sectionCards])
   
   if (structureItems.length === 0) {
     return (
@@ -118,6 +129,7 @@ function DocumentCardView({
           onEdit={onEdit}
           themeColor={activeItemColor}
           indentLevel={0}
+          sectionCard={activeSectionCard}
         />
       </div>
     </div>

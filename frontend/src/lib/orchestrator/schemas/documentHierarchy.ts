@@ -13,6 +13,7 @@ export interface HierarchyLevel {
 export interface DocumentType {
   description: string
   hierarchy: HierarchyLevel[]
+  guidance?: string // Format-specific guidance for structure generation (word counts, standards, etc.)
 }
 
 export interface DocumentHierarchy {
@@ -25,6 +26,7 @@ export const DOCUMENT_HIERARCHY: DocumentHierarchy = {
   document_types: {
     novel: {
       description: "Long-form narrative fiction",
+      guidance: "Target: 60,000-100,000 words total. Chapters: 2,000-4,000 words each.",
       hierarchy: [
         {
           level: 1,
@@ -58,6 +60,7 @@ export const DOCUMENT_HIERARCHY: DocumentHierarchy = {
     },
     short_story: {
       description: "Brief narrative fiction",
+      guidance: "Target: 1,000-7,500 words total.",
       hierarchy: [
         {
           level: 1,
@@ -79,6 +82,7 @@ export const DOCUMENT_HIERARCHY: DocumentHierarchy = {
     },
     report: {
       description: "Structured analysis document",
+      guidance: "Focus on clarity, scanability, and logical flow.",
       hierarchy: [
         {
           level: 1,
@@ -118,6 +122,7 @@ export const DOCUMENT_HIERARCHY: DocumentHierarchy = {
     },
     report_script_coverage: {
       description: "Industry-standard screenplay coverage report",
+      guidance: "✅ Industry standard screenplay coverage format.\nCRITICAL: Extract content from the screenplay - DO NOT just analyze its structure!\nExecutive Summary must include Pass/Consider/Recommend rating.\nLogline should be compelling one-sentence premise.\nSynopsis: 2-3 paragraph plot summary capturing key story beats.\nAnalyze actual characters, dialogue, pacing, and marketability from the screenplay content.",
       hierarchy: [
         {
           level: 1,
@@ -189,6 +194,7 @@ export const DOCUMENT_HIERARCHY: DocumentHierarchy = {
     },
     report_business: {
       description: "Business analysis or strategic report",
+      guidance: "Professional business/strategic analysis format.\nFocus on data-driven insights and actionable recommendations.\nExecutive Summary should highlight key findings up front.\nUse clear section numbering (1.0, 2.0, etc.).",
       hierarchy: [
         {
           level: 1,
@@ -242,6 +248,7 @@ export const DOCUMENT_HIERARCHY: DocumentHierarchy = {
     },
     report_content_analysis: {
       description: "Analysis report for podcasts, articles, or media content",
+      guidance: "Thematic and content-focused analysis.\nExtract key themes, insights, and takeaways from the source material.\nProvide actionable recommendations for the audience.\nFocus on quality, clarity, and engagement factors.",
       hierarchy: [
         {
           level: 1,
@@ -328,6 +335,7 @@ export const DOCUMENT_HIERARCHY: DocumentHierarchy = {
     },
     screenplay: {
       description: "Script for film or TV",
+      guidance: "Target: 90-120 pages (90-120 scenes). Each scene: 1-3 pages.",
       hierarchy: [
         {
           level: 1,
@@ -367,6 +375,7 @@ export const DOCUMENT_HIERARCHY: DocumentHierarchy = {
     },
     essay: {
       description: "Opinion or argumentative piece",
+      guidance: "Target: 1,000-5,000 words. Strong thesis and supporting arguments.",
       hierarchy: [
         {
           level: 1,
@@ -395,6 +404,7 @@ export const DOCUMENT_HIERARCHY: DocumentHierarchy = {
     },
     podcast: {
       description: "Audio show with host and guests",
+      guidance: "Target: 20-60 minutes (3,000-9,000 words). Conversational and engaging.",
       hierarchy: [
         {
           level: 1,
@@ -506,6 +516,22 @@ export function buildFormatDescriptionsForLLM(): string {
   }
   
   return descriptions
+}
+
+/**
+ * Get format-specific guidance for structure generation
+ * Returns word count targets, writing standards, and format-specific instructions
+ */
+export function getFormatGuidance(format: string): string {
+  // Normalize format (e.g., 'short-story' -> 'short_story')
+  const normalizedFormat = format.toLowerCase().replace(/-/g, '_')
+  const docType = DOCUMENT_HIERARCHY.document_types[normalizedFormat]
+  
+  if (!docType || !docType.guidance) {
+    return ''
+  }
+  
+  return docType.guidance
 }
 
 /**

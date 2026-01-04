@@ -94,6 +94,11 @@ export function validateDocumentData(data: any): data is DocumentData {
 
 // Helper to find a node by ID in the tree
 export function findNodeById(nodes: DocumentNode[], id: string): DocumentNode | null {
+  // Guard: handle undefined/null/non-array input
+  if (!nodes || !Array.isArray(nodes)) {
+    return null
+  }
+  
   for (const node of nodes) {
     if (node.id === id) return node
     const found = findNodeById(node.children, id)
@@ -105,6 +110,11 @@ export function findNodeById(nodes: DocumentNode[], id: string): DocumentNode | 
 // Helper to flatten hierarchy for UI
 export function flattenDocumentStructure(nodes: DocumentNode[], parentId: string | null = null): FlatDocumentSection[] {
   const flat: FlatDocumentSection[] = []
+  
+  // Guard: handle undefined/null/non-array input
+  if (!nodes || !Array.isArray(nodes)) {
+    return flat
+  }
   
   for (const node of nodes) {
     flat.push({
@@ -131,6 +141,11 @@ export function flattenDocumentStructure(nodes: DocumentNode[], parentId: string
 // Helper to build full document markdown
 export function buildFullDocument(nodes: DocumentNode[], includeHeaders: boolean = true): string {
   const parts: string[] = []
+  
+  // Guard: handle undefined/null/non-array input
+  if (!nodes || !Array.isArray(nodes)) {
+    return ''
+  }
   
   for (const node of nodes) {
     if (includeHeaders) {
