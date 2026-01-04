@@ -4,6 +4,7 @@
 // Manages SSE connection and progressive UI state
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { createGapDetector } from './useProgressiveReveal';
 import type {
   OrchestratorEvent,
   CreationProgress,
@@ -206,6 +207,14 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
   // Accumulate content to avoid React batching issues
   const accumulatedContentRef = useRef<string>('');
   
+  // Progressive reveal: Gap detection for smooth streaming
+  // When there's a pause (tool execution), we buffer and reveal smoothly
+  const gapDetectorRef = useRef(createGapDetector(500)); // 500ms threshold
+  const isBufferingRef = useRef(false);
+  const revealIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingRevealRef = useRef<string>(''); // Text waiting to be revealed
+  const revealedCountRef = useRef(0); // How many words have been revealed
+  
   // Handle incoming events
   const handleEvent = useCallback((event: OrchestratorEvent) => {
     switch (event.type) {
@@ -217,26 +226,68 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         /**
          * Streaming text token from Deep Agent
          * 
-         * FIX: Only accumulate in ref during streaming.
-         * State updates happen on DONE to avoid React batching issues.
-         * Show placeholder during streaming for UX.
+         * HYBRID STREAMING: Smooth out pauses with progressive reveal
+         * - When tokens flow smoothly, update in real-time
+         * - When there's a gap (tool execution), buffer and reveal word-by-word
          */
         const tokenContent = (event.data as TokenEvent).content || '';
         
         // Accumulate in ref (always succeeds, no batching issues)
         accumulatedContentRef.current += tokenContent;
+        
+        // Check for gap (indicates tool execution just finished)
+        const { hadGap, buffer: gapBuffer } = gapDetectorRef.current.addToken(tokenContent);
+        
+        if (hadGap && gapBuffer) {
+          // There was a pause - we have buffered content to reveal smoothly
+          isBufferingRef.current = true;
+          pendingRevealRef.current = gapBuffer;
+          
+          // Start word-by-word reveal of buffered content
+          if (!revealIntervalRef.current && assistantMessageIdRef.current) {
+            const words = pendingRevealRef.current.split(/(\s+)/);
+            revealedCountRef.current = 0;
+            
+            revealIntervalRef.current = setInterval(() => {
+              if (revealedCountRef.current < words.length) {
+                const revealedSoFar = words.slice(0, revealedCountRef.current + 1).join('');
+                const fullContent = accumulatedContentRef.current.slice(0, 
+                  accumulatedContentRef.current.indexOf(pendingRevealRef.current) + revealedSoFar.length
+                );
+                
+                if (assistantMessageIdRef.current) {
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === assistantMessageIdRef.current
+                      ? { ...msg, content: fullContent }
+                      : msg
+                  ));
+                }
+                revealedCountRef.current++;
+              } else {
+                // Reveal complete - clear interval
+                if (revealIntervalRef.current) {
+                  clearInterval(revealIntervalRef.current);
+                  revealIntervalRef.current = null;
+                }
+                isBufferingRef.current = false;
+                pendingRevealRef.current = '';
+              }
+            }, 30); // 30ms per word for smooth reveal
+          }
+        }
 
         if (!assistantMessageIdRef.current) {
-          // First token - create placeholder message
+          // First token - create placeholder message with skeleton metadata
           const messageId = generateId();
           assistantMessageIdRef.current = messageId;
+          gapDetectorRef.current.reset(); // Reset gap detector for new message
 
           const assistantMessage: ChatMessage = {
             id: messageId,
             type: 'assistant',
-            content: accumulatedContentRef.current,
+            content: '', // Start empty, will be revealed
             timestamp: new Date(),
-            metadata: { isStreaming: true }
+            metadata: { isStreaming: true, showSkeleton: true }
           };
           setMessages(prev => [...prev, assistantMessage]);
           
@@ -250,8 +301,25 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
             });
             thinkingIndicatorIdRef.current = null;
           }
+          
+          // Start showing content after a brief moment (let skeleton show)
+          setTimeout(() => {
+            if (assistantMessageIdRef.current) {
+              setMessages(prev => prev.map(msg =>
+                msg.id === assistantMessageIdRef.current
+                  ? { ...msg, content: accumulatedContentRef.current, metadata: { isStreaming: true, showSkeleton: false } }
+                  : msg
+              ));
+            }
+          }, 100);
+        } else if (!isBufferingRef.current) {
+          // Normal streaming - update content in real-time (not during buffered reveal)
+          setMessages(prev => prev.map(msg =>
+            msg.id === assistantMessageIdRef.current
+              ? { ...msg, content: accumulatedContentRef.current }
+              : msg
+          ));
         }
-        // Don't update state on every token - wait for DONE
         break;
       
       case 'TOOL_START':
@@ -908,6 +976,15 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         break;
 
       case 'DONE':
+        // Clean up progressive reveal interval if running
+        if (revealIntervalRef.current) {
+          clearInterval(revealIntervalRef.current);
+          revealIntervalRef.current = null;
+        }
+        isBufferingRef.current = false;
+        pendingRevealRef.current = '';
+        gapDetectorRef.current.reset();
+        
         // Mark thinking indicator as complete if still active
         if (thinkingIndicatorIdRef.current) {
           updateMessage(thinkingIndicatorIdRef.current, {
@@ -929,7 +1006,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           
           setMessages(prev => prev.map(msg =>
             msg.id === msgId
-              ? { ...msg, content: finalContent, metadata: { isStreaming: false } }
+              ? { ...msg, content: finalContent, metadata: { isStreaming: false, showSkeleton: false } }
               : msg
           ));
           

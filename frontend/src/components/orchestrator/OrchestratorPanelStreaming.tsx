@@ -1006,6 +1006,23 @@ function MessageBubble({ message, onOptionSelect }: { message: ChatMessage; onOp
         )
       }
       
+      // Check if we should show skeleton (streaming with no/little content yet)
+      const showSkeleton = message.metadata?.showSkeleton === true || 
+        (message.metadata?.isStreaming && !message.content);
+      
+      if (showSkeleton) {
+        // Pulsing skeleton while waiting for content
+        return (
+          <div className="w-full animate-fadeIn">
+            <div className="space-y-2.5 animate-pulse">
+              <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 rounded-full w-3/4 bg-[length:200%_100%] animate-shimmer" />
+              <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 rounded-full w-1/2 bg-[length:200%_100%] animate-shimmer" style={{ animationDelay: '0.1s' }} />
+              <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 rounded-full w-5/6 bg-[length:200%_100%] animate-shimmer" style={{ animationDelay: '0.2s' }} />
+            </div>
+          </div>
+        )
+      }
+      
       // Regular assistant message - full width, clean styling
       return (
         <div className="w-full animate-fadeIn text-gray-900 dark:text-gray-100">
