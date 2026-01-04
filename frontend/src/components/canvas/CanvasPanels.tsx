@@ -824,14 +824,29 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
    * @param data - NodesArrangedEvent from the SSE stream
    */
   const handleArrangeNodes = useCallback((data: NodesArrangedEvent) => {
-    console.log('📐 [CanvasPanels] Arranging nodes:', data)
+    console.log('📐 [CanvasPanels] ====== ARRANGE NODES CALLED ======')
+    console.log('📐 [CanvasPanels] Data:', data)
+    console.log('📐 [CanvasPanels] Total nodes:', nodes.length)
+    console.log('📐 [CanvasPanels] orchestratorNodeId:', orchestratorNodeId)
+    console.log('📐 [CanvasPanels] onSetNodes exists:', !!onSetNodes)
     
     // Find orchestrator node as the anchor point
-    const orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
+    // Try exact match first, then fallback to 'context' or any orchestrator node
+    let orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
+    if (!orchestratorNode) {
+      // Fallback: look for 'context' node or any node that looks like an orchestrator
+      orchestratorNode = nodes.find(n => 
+        n.id === 'context' || 
+        n.id.startsWith('context_') || 
+        n.data?.nodeType === 'orchestrator'
+      )
+    }
     if (!orchestratorNode) {
       console.warn('⚠️ [CanvasPanels] Orchestrator node not found for arrangement')
+      console.log('📐 [CanvasPanels] Available node IDs:', nodes.map(n => n.id))
       return
     }
+    console.log('📐 [CanvasPanels] Found orchestrator node:', orchestratorNode.id, 'at', orchestratorNode.position)
     
     const orchestratorPos = orchestratorNode.position
     const nodeWidth = 120
@@ -839,13 +854,33 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     const horizontalGap = 40
     const verticalGap = 60
     
+    // Debug: log all node types
+    console.log('📐 [CanvasPanels] Node types:', nodes.map(n => ({ 
+      id: n.id, 
+      type: n.type, 
+      nodeType: n.data?.nodeType,
+      name: n.data?.name || n.data?.label
+    })))
+    
     // Collect nodes to arrange based on node_type
+    // Support multiple ways to identify character nodes
     let characterNodes = nodes.filter(n => 
-      n.type === 'universalNode' && n.data?.nodeType === 'character'
+      n.type === 'universalNode' || 
+      n.type === 'characterNode' ||
+      n.data?.nodeType === 'character' ||
+      n.id.startsWith('character-')
     )
+    // Exclude the orchestrator node
+    characterNodes = characterNodes.filter(n => n.id !== orchestratorNode.id && n.id !== 'context')
+    
     let storyNodes = nodes.filter(n => 
-      n.type === 'storyStructureNode' || n.data?.nodeType === 'story-structure'
+      n.type === 'storyStructureNode' || 
+      n.data?.nodeType === 'story-structure' ||
+      n.id.startsWith('story-structure-')
     )
+    
+    console.log('📐 [CanvasPanels] Character nodes found:', characterNodes.length, characterNodes.map(n => n.id))
+    console.log('📐 [CanvasPanels] Story nodes found:', storyNodes.length, storyNodes.map(n => n.id))
     
     // Sort function for nodes
     const sortNodes = (nodesToSort: typeof nodes, sortBy: string | undefined, ascending: boolean) => {
@@ -958,7 +993,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
             
             newPositions[node.id] = {
               x: clusterStartX + groupIndex * (nodeWidth * 2 + horizontalGap * 2) + col * (nodeWidth + horizontalGap),
-              y: orchestratorPos.y - 250 - row * (nodeHeight + verticalGap)
+              y: orchestratorPos.y - 350 - row * (nodeHeight + verticalGap)
             }
           })
         })
@@ -969,7 +1004,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
         characterNodes.forEach((node, index) => {
           newPositions[node.id] = {
             x: startX + index * (nodeWidth + horizontalGap),
-            y: orchestratorPos.y - 200
+            y: orchestratorPos.y - 350
           }
         })
       } else {
@@ -983,7 +1018,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
           
           newPositions[node.id] = {
             x: startX + col * (nodeWidth + horizontalGap),
-            y: orchestratorPos.y - 250 - row * (nodeHeight + verticalGap)
+            y: orchestratorPos.y - 350 - row * (nodeHeight + verticalGap)
           }
         })
       }
@@ -1010,12 +1045,16 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     }
     
     // Apply new positions to nodes
-    console.log('📐 [CanvasPanels] New positions:', newPositions)
+    console.log('📐 [CanvasPanels] New positions calculated:', Object.keys(newPositions).length, 'nodes')
+    console.log('📐 [CanvasPanels] Position details:', newPositions)
     
     if (onSetNodes) {
-      onSetNodes(currentNodes => 
-        currentNodes.map(node => {
+      console.log('📐 [CanvasPanels] Calling onSetNodes...')
+      onSetNodes(currentNodes => {
+        console.log('📐 [CanvasPanels] Inside onSetNodes callback, updating', currentNodes.length, 'nodes')
+        const updated = currentNodes.map(node => {
           if (newPositions[node.id]) {
+            console.log('📐 [CanvasPanels] Moving node', node.id, 'to', newPositions[node.id])
             return {
               ...node,
               position: newPositions[node.id]
@@ -1023,10 +1062,11 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
           }
           return node
         })
-      )
-      console.log('✅ [CanvasPanels] Nodes arranged successfully')
+        return updated
+      })
+      console.log('✅ [CanvasPanels] onSetNodes called successfully')
     } else {
-      console.warn('⚠️ [CanvasPanels] onSetNodes not provided, cannot arrange nodes')
+      console.error('❌ [CanvasPanels] onSetNodes NOT provided, cannot arrange nodes!')
     }
   }, [nodes, orchestratorNodeId, onSetNodes])
 

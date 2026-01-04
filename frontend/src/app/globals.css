@@ -20,6 +20,13 @@ body {
 /* React Flow custom styling */
 .react-flow__node {
   cursor: pointer;
+  /* Smooth animation when nodes are repositioned (e.g., arrange_nodes) */
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Disable transition during drag for responsiveness */
+.react-flow__node.dragging {
+  transition: none;
 }
 
 .react-flow__edge-path {
