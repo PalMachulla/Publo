@@ -223,11 +223,12 @@ async def arrange_nodes(
     sort_by: Optional[str] = None,
     layout: Literal["default", "grid", "horizontal", "clusters"] = "default",
     ascending: bool = True,
+    clusters: Optional[Dict[str, List[str]]] = None,
     story_id: str = "",
     user_id: str = "",
 ) -> Dict[str, Any]:
     """
-    Arrange nodes on the canvas by a specified attribute.
+    Arrange nodes on the canvas by a specified attribute or custom clusters.
     
     Use this when the user wants to organize, sort, or layout nodes on the canvas.
     Characters are always positioned ABOVE the orchestrator node.
@@ -239,6 +240,15 @@ async def arrange_nodes(
     - "Arrange characters by extraversion" → arrange_nodes(node_type="character", sort_by="extraversion", layout="horizontal")
     - "Put characters in a grid" → arrange_nodes(node_type="character", layout="grid")
     - "Organize the canvas" → arrange_nodes(node_type="all", layout="default")
+    - "Group characters who would socialize together" → arrange_nodes(
+          node_type="character", 
+          layout="clusters",
+          clusters={
+              "The Adventurers": ["Alice", "Bob"],
+              "The Scholars": ["Charles", "Diana"],
+              "The Loners": ["Eve"]
+          }
+      )
     
     Args:
         node_type: Which nodes to arrange - "character", "story", or "all"
@@ -250,8 +260,12 @@ async def arrange_nodes(
                 - "default": Characters above, stories below orchestrator (grid within each zone)
                 - "grid": Arrange in a grid pattern
                 - "horizontal": Arrange in a horizontal line (good for trait scales)
-                - "clusters": Group by sort_by attribute (good for categorical like gender/role)
+                - "clusters": Group by sort_by attribute OR by custom clusters
         ascending: Sort order (True = low→high or A→Z, False = high→low or Z→A)
+        clusters: Custom cluster assignments. Dict where keys are cluster names and values 
+                  are lists of character names. Use this for conceptual groupings like 
+                  "people who would socialize together" or "characters with similar goals".
+                  When provided with layout="clusters", this takes precedence over sort_by.
         story_id: Current story ID (injected by system)
         user_id: Current user ID (injected by system)
     
@@ -259,6 +273,8 @@ async def arrange_nodes(
         Confirmation with arrangement details
     """
     print(f"📐 [ArrangeNodes] Arranging {node_type} nodes by {sort_by} using {layout} layout", flush=True)
+    if clusters:
+        print(f"📐 [ArrangeNodes] Custom clusters provided: {list(clusters.keys())}", flush=True)
     
     # The actual positioning is done by the frontend based on the SSE event.
     # We just tell it what to do and it calculates positions.
@@ -269,5 +285,6 @@ async def arrange_nodes(
         "sort_by": sort_by,
         "layout": layout,
         "ascending": ascending,
+        "clusters": clusters,
         "message": f"Arranged {node_type} nodes" + (f" by {sort_by}" if sort_by else "") + f" using {layout} layout"
     }

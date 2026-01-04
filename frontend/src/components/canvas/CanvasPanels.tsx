@@ -976,7 +976,60 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
         characterNodes = sortNodes(characterNodes, data.sort_by, data.ascending)
       }
       
-      if (data.layout === 'clusters' && data.sort_by) {
+      // Check for custom clusters (AI-defined groupings like "people who would socialize")
+      if (data.layout === 'clusters' && data.clusters) {
+        console.log('📐 [CanvasPanels] Using custom clusters:', data.clusters)
+        
+        // Custom cluster layout - AI provides cluster assignments by character name
+        const clusterNames = Object.keys(data.clusters)
+        const clusterGap = 100 // Gap between clusters
+        
+        // Calculate total width needed for all clusters
+        let totalWidth = 0
+        const clusterWidths: number[] = []
+        clusterNames.forEach((clusterName) => {
+          const namesInCluster = data.clusters![clusterName]
+          const nodesPerRow = Math.min(3, namesInCluster.length)
+          const width = nodesPerRow * (nodeWidth + horizontalGap)
+          clusterWidths.push(width)
+          totalWidth += width
+        })
+        totalWidth += (clusterNames.length - 1) * clusterGap
+        
+        let clusterStartX = orchestratorPos.x - totalWidth / 2
+        
+        clusterNames.forEach((clusterName, clusterIndex) => {
+          const namesInCluster = data.clusters![clusterName]
+          console.log(`📐 [CanvasPanels] Cluster "${clusterName}":`, namesInCluster)
+          
+          // Find nodes matching these character names
+          const clusterNodes = characterNodes.filter(node => {
+            const nodeName = node.data?.name || node.data?.label || ''
+            // Match by full name or partial match (case-insensitive)
+            return namesInCluster.some(name => 
+              nodeName.toLowerCase().includes(name.toLowerCase()) ||
+              name.toLowerCase().includes(nodeName.toLowerCase())
+            )
+          })
+          
+          console.log(`📐 [CanvasPanels] Matched ${clusterNodes.length} nodes for cluster "${clusterName}"`)
+          
+          const nodesPerRow = Math.min(3, Math.max(1, clusterNodes.length))
+          
+          clusterNodes.forEach((node, index) => {
+            const row = Math.floor(index / nodesPerRow)
+            const col = index % nodesPerRow
+            
+            newPositions[node.id] = {
+              x: clusterStartX + col * (nodeWidth + horizontalGap),
+              y: orchestratorPos.y - 350 - row * (nodeHeight + verticalGap)
+            }
+          })
+          
+          // Move to next cluster position
+          clusterStartX += clusterWidths[clusterIndex] + clusterGap
+        })
+      } else if (data.layout === 'clusters' && data.sort_by) {
         // Cluster layout - group by attribute
         const groups = groupNodes(characterNodes, data.sort_by)
         const groupNames = Object.keys(groups).sort()

@@ -66,14 +66,33 @@ When the user wants to take action, you have these tools:
 - `present_options`: Show the user clickable options (templates, sections, etc.)
 
 ### Canvas Organization
-- `arrange_nodes`: Organize nodes on the canvas by attributes.
+- `arrange_nodes`: Organize nodes on the canvas by attributes or custom groupings.
   - Characters are always positioned ABOVE the orchestrator (input/context area)
   - Stories are always positioned BELOW the orchestrator (output area)
   - Supports sorting by: gender, role, age, personality traits (openness, extraversion, etc.), format
   - Layouts: "default" (grid), "horizontal" (line), "clusters" (groups by attribute)
-  - Example: "Sort characters by gender" → `arrange_nodes(node_type="character", sort_by="gender", layout="clusters")`
-  - Example: "Organize characters by extraversion" → `arrange_nodes(node_type="character", sort_by="extraversion", layout="horizontal")`
-  - Example: "Put the canvas in order" → `arrange_nodes(node_type="all", layout="default")`
+  
+  **Standard sorting examples:**
+  - "Sort characters by gender" → `arrange_nodes(node_type="character", sort_by="gender", layout="clusters")`
+  - "Organize characters by extraversion" → `arrange_nodes(node_type="character", sort_by="extraversion", layout="horizontal")`
+  - "Put the canvas in order" → `arrange_nodes(node_type="all", layout="default")`
+  
+  **IMPORTANT: Custom cluster groupings** (for conceptual/social groupings):
+  - When user asks for groupings based on relationships, social dynamics, or story roles, use the `clusters` parameter
+  - You MUST provide a dictionary mapping cluster names to lists of character names
+  - Example: "Group characters who would socialize together" →
+    ```
+    arrange_nodes(
+        node_type="character", 
+        layout="clusters",
+        clusters={
+            "The Inner Circle": ["Alice Chen", "Bob Smith"],
+            "The Outsiders": ["Charlie Brown", "Diana Ross"],
+            "The Wildcards": ["Eddie Murphy"]
+        }
+    )
+    ```
+  - Use character names (full or partial) - the frontend will match them to nodes
 
 ### Research (if available)
 - `web_search`: Search for research material, historical details, etc.

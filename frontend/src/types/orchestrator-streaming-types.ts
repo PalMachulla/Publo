@@ -214,6 +214,9 @@ export interface NodesArrangedEvent {
   sort_by?: string;  // e.g., "gender", "role", "extraversion"
   layout: 'default' | 'grid' | 'horizontal' | 'clusters';
   ascending: boolean;
+  // Custom cluster assignments - keys are cluster names, values are lists of character names
+  // Used for conceptual groupings like "people who would socialize together"
+  clusters?: Record<string, string[]>;
 }
 
 // Emitted when starting to write a section
