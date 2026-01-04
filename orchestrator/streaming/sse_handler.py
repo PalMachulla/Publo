@@ -91,7 +91,17 @@ def format_sse(event_type: Union[str, SSEEventType], data: Dict[str, Any]) -> st
     else:
         event_name = str(event_type)
     
-    return f"event: {event_name}\ndata: {json.dumps(data)}\n\n"
+    # Ensure JSON is compact (single line) - SSE splits on newlines
+    # Use separators to avoid any spaces that could cause issues
+    json_data = json.dumps(data, separators=(',', ':'), ensure_ascii=False)
+    
+    # Safety check: if json_data somehow contains newlines, escape them
+    # (shouldn't happen with json.dumps, but be safe)
+    if '\n' in json_data:
+        print(f"⚠️ [SSE] Warning: JSON contains newlines, escaping: {json_data[:100]}", flush=True)
+        json_data = json_data.replace('\n', '\\n')
+    
+    return f"event: {event_name}\ndata: {json_data}\n\n"
 
 
 # Global event queue for SSE streaming
