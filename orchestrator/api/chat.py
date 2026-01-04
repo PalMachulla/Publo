@@ -753,12 +753,16 @@ async def chat(request: ChatRequest):
                 messages.append({"role": "system", "content": card_msg})
             
             # Add focused content context (what user is currently viewing in project panel)
+            print(f"👁️ [Chat] Checking focused_content: {request.focused_content}", flush=True)
             if request.focused_content:
                 fc = request.focused_content
                 fc_type = fc.get('type', 'unknown')
                 fc_name = fc.get('name', 'Unknown')
+                fc_section_id = fc.get('sectionId') or fc.get('section_id', '')
                 fc_node_id = fc.get('nodeId') or fc.get('node_id', '')
                 fc_data = fc.get('data', {}) or {}
+                
+                print(f"👁️ [Chat] Focused content received: type={fc_type}, name={fc_name}, sectionId={fc_section_id}", flush=True)
                 
                 focus_msg = f"## 👁️ Currently Viewing: {fc_type.title()}\n\n"
                 focus_msg += f"The user is currently viewing **{fc_name}**"
@@ -775,7 +779,8 @@ async def chat(request: ChatRequest):
                 elif fc_type == 'section':
                     section_id = fc.get('sectionId') or fc.get('section_id', '')
                     focus_msg += f" (Section ID: {section_id}).\n"
-                    focus_msg += f"\n**When the user says 'this section' or 'write this', they mean {fc_name}.**\n"
+                    focus_msg += f"\n**When the user says 'this section', 'this chapter', 'this part', or refers to content they're viewing, they mean: {fc_name}.**\n"
+                    focus_msg += f"Use the section ID '{section_id}' when editing or referencing this content.\n"
                 elif fc_type == 'librarian':
                     focus_msg += " - the Librarian/Cards view for this story.\n"
                     focus_msg += "\n**The user is viewing story intelligence cards showing section summaries and characters.**\n"

@@ -182,7 +182,7 @@ export async function loadCanvas(storyId: string) {
     id: e.id,
     source: e.source,
     target: e.target,
-    type: e.type || 'smoothstep',
+    type: e.type || 'default', // Smooth bezier curve
     animated: e.animated || false,
     style: e.style || {}
   }))

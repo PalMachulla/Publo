@@ -468,7 +468,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
           id: edgeId,
           source: orchestratorNode.id,
           target: newNodeId,
-          type: 'smoothstep',
+          type: 'default', // Smooth bezier curve
         }
         onAddEdge(dedupedEdge)
       }
@@ -536,7 +536,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
       id: `edge-${orchestratorNode.id}-${newNodeId}`,
       source: orchestratorNode.id,
       target: newNodeId,
-      type: 'smoothstep' // Curved connector line
+      type: 'default' // Smooth bezier curve
     }
     
     console.log('✅ [CanvasPanels] Adding node and edge:', { newNodeId, edgeId: newEdge.id })

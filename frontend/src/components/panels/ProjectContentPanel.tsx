@@ -228,6 +228,10 @@ export default function ProjectContentPanel({
   useEffect(() => {
     if (onFocusedContentChange) {
       const focusedContent = selectionToFocusedContent(treeSelection, canvasNodes)
+      console.log('📂 [ProjectContentPanel] Updating focused content:', {
+        selection: treeSelection,
+        focusedContent,
+      })
       onFocusedContentChange(focusedContent)
     }
   }, [treeSelection, canvasNodes, onFocusedContentChange])

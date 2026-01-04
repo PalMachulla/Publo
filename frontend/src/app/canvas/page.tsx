@@ -591,6 +591,87 @@ export default function CanvasPage() {
   // Use object with timestamp to ensure effect triggers even for same character
   const [selectedCharacterTrigger, setSelectedCharacterTrigger] = useState<{ nodeId: string; timestamp: number } | null>(null)
   
+  // Auto-load structure items when canvas loads (so tree shows Content folder)
+  useEffect(() => {
+    // Only run if we have nodes but no current structure items
+    if (canvasState.nodes.length > 0 && documentState.currentStructureItems.length === 0) {
+      // Find the first story structure node
+      const storyNode = canvasState.nodes.find(n => 
+        n.type === 'storyStructureNode' || n.data?.nodeType === 'story-structure'
+      )
+      
+      if (storyNode) {
+        const nodeData = storyNode.data as StoryStructureNodeData
+        if (nodeData.items && nodeData.items.length > 0) {
+          console.log('📚 [Canvas] Auto-loading structure items from:', storyNode.id)
+          documentState.setCurrentStoryStructureNodeId(storyNode.id)
+          documentState.setCurrentStructureItems(nodeData.items)
+          documentState.setCurrentStructureFormat(nodeData.format)
+          documentState.setCurrentContentMap(nodeData.contentMap || {})
+        }
+      }
+    }
+  }, [canvasState.nodes, documentState])
+  
+  // Auto-create missing edges for character nodes without connections to orchestrator
+  useEffect(() => {
+    if (canvasState.nodes.length === 0 || canvasState.edges.length === 0) return
+    
+    // Find orchestrator node
+    const orchestratorNode = canvasState.nodes.find(n => isOrchestratorNode(n.id))
+    if (!orchestratorNode) return
+    
+    // Find character nodes
+    const characterNodes = canvasState.nodes.filter(n => 
+      n.type === 'universalNode' && n.data?.nodeType === 'character'
+    )
+    
+    // Find character nodes missing edges to orchestrator
+    const missingEdges: Edge[] = []
+    characterNodes.forEach(charNode => {
+      const hasEdgeToOrchestrator = canvasState.edges.some(e => 
+        (e.source === charNode.id && e.target === orchestratorNode.id) ||
+        (e.target === charNode.id && e.source === orchestratorNode.id)
+      )
+      
+      if (!hasEdgeToOrchestrator) {
+        console.log('🔗 [Canvas] Creating missing edge for character:', charNode.id)
+        missingEdges.push({
+          id: `edge-${charNode.id}-${orchestratorNode.id}`,
+          source: charNode.id,
+          target: orchestratorNode.id,
+          type: 'default',
+        })
+      }
+    })
+    
+    // Add missing edges
+    if (missingEdges.length > 0) {
+      console.log('🔗 [Canvas] Adding', missingEdges.length, 'missing character edges')
+      canvasState.setEdges(eds => [...eds, ...missingEdges])
+      
+      // Persist the new edges
+      if (storyId && canvasData?.userId) {
+        missingEdges.forEach(edge => {
+          fetch('/api/edge/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              edgeId: edge.id,
+              storyId,
+              source: edge.source,
+              target: edge.target,
+              type: 'default',
+              animated: false,
+              style: {},
+              userId: canvasData.userId,
+            }),
+          }).catch(err => console.error('Failed to persist edge:', err))
+        })
+      }
+    }
+  }, [canvasState.nodes, canvasState.edges, canvasState.setEdges, storyId, canvasData?.userId])
+  
   // Handle node click
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     console.log('Node clicked:', { id: node.id, type: node.type, nodeType: node.data?.nodeType })
@@ -612,7 +693,7 @@ export default function CanvasPage() {
     canvasState.setIsPanelOpen(true)
   }, [canvasState, documentState])
   
-  // Handle node double-click - opens character in ProjectContentPanel
+  // Handle node double-click - opens character or story in ProjectContentPanel
   const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: Node) => {
     console.log('Node double-clicked:', { id: node.id, type: node.type, nodeType: node.data?.nodeType })
     
@@ -620,6 +701,10 @@ export default function CanvasPage() {
     const isCharacter = node.type === 'characterNode' || 
                         node.data?.nodeType === 'character' ||
                         (node.type === 'universalNode' && node.data?.nodeType === 'character')
+    
+    // Check if it's a story structure node
+    const isStoryStructure = node.type === 'storyStructureNode' || 
+                             node.data?.nodeType === 'story-structure'
     
     if (isCharacter) {
       console.log('📂 Character double-clicked - opening in ProjectContentPanel')
@@ -630,6 +715,16 @@ export default function CanvasPage() {
       }
       // Set character selection with timestamp to ensure effect triggers
       setSelectedCharacterTrigger({ nodeId: node.id, timestamp: Date.now() })
+      documentState.setIsAIDocPanelOpen(true)
+    } else if (isStoryStructure) {
+      console.log('📖 Story double-clicked - opening in ProjectContentPanel')
+      // Find the orchestrator node to keep it selected (for the chat panel)
+      const orchestratorNode = canvasState.nodes.find(n => isOrchestratorNode(n.id))
+      if (orchestratorNode) {
+        canvasState.setSelectedNode(orchestratorNode)
+      }
+      // Set story structure node for document panel
+      documentState.setCurrentStoryStructureNodeId(node.id)
       documentState.setIsAIDocPanelOpen(true)
     }
   }, [documentState, canvasState])
