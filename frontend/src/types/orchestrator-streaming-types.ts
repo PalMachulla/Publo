@@ -39,6 +39,7 @@ export type OrchestratorEventType =
   | 'STRUCTURE_UPDATED'
   | 'CHARACTER_CREATED'
   | 'CHARACTER_UPDATED'
+  | 'NODES_ARRANGED'
   | 'SECTION_WRITING'
   | 'SECTION_COMPLETE'
   | 'PROGRESS'
@@ -201,6 +202,18 @@ export interface CharacterUpdatedEvent {
   bio?: string;
   role?: 'Main' | 'Active' | 'Included' | 'Involved' | 'Passive';
   attributes?: Record<string, unknown>;
+}
+
+// ============================================================
+// CANVAS ARRANGEMENT EVENTS
+// ============================================================
+
+// Emitted when nodes should be rearranged on the canvas
+export interface NodesArrangedEvent {
+  node_type: 'character' | 'story' | 'all';
+  sort_by?: string;  // e.g., "gender", "role", "extraversion"
+  layout: 'default' | 'grid' | 'horizontal' | 'clusters';
+  ascending: boolean;
 }
 
 // Emitted when starting to write a section
@@ -369,6 +382,7 @@ export type OrchestratorEvent =
   | { type: 'STRUCTURE_UPDATED'; data: StructureUpdatedEvent }
   | { type: 'CHARACTER_CREATED'; data: CharacterCreatedEvent }
   | { type: 'CHARACTER_UPDATED'; data: CharacterUpdatedEvent }
+  | { type: 'NODES_ARRANGED'; data: NodesArrangedEvent }
   | { type: 'SECTION_WRITING'; data: SectionWritingEvent }
   | { type: 'SECTION_COMPLETE'; data: SectionCompleteEvent }
   | { type: 'PROGRESS'; data: ProgressEvent }

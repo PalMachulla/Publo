@@ -1,10 +1,11 @@
 """
 Navigation Tools
 
-Tools for navigating the UI and presenting options to users.
+Tools for navigating the UI and presenting options to users,
+and arranging nodes on the canvas.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 from langchain_core.tools import tool
 
 
@@ -210,3 +211,63 @@ def format_options_event(
         "options": options,
         "allow_multiple": allow_multiple
     })
+
+
+# =============================================================================
+# CANVAS ARRANGEMENT
+# =============================================================================
+
+@tool
+async def arrange_nodes(
+    node_type: Literal["character", "story", "all"] = "all",
+    sort_by: Optional[str] = None,
+    layout: Literal["default", "grid", "horizontal", "clusters"] = "default",
+    ascending: bool = True,
+    story_id: str = "",
+    user_id: str = "",
+) -> Dict[str, Any]:
+    """
+    Arrange nodes on the canvas by a specified attribute.
+    
+    Use this when the user wants to organize, sort, or layout nodes on the canvas.
+    Characters are always positioned ABOVE the orchestrator node.
+    Stories are always positioned BELOW the orchestrator node.
+    
+    Examples:
+    - "Sort the characters by gender" → arrange_nodes(node_type="character", sort_by="gender", layout="clusters")
+    - "Organize characters by role" → arrange_nodes(node_type="character", sort_by="role", layout="clusters")
+    - "Arrange characters by extraversion" → arrange_nodes(node_type="character", sort_by="extraversion", layout="horizontal")
+    - "Put characters in a grid" → arrange_nodes(node_type="character", layout="grid")
+    - "Organize the canvas" → arrange_nodes(node_type="all", layout="default")
+    
+    Args:
+        node_type: Which nodes to arrange - "character", "story", or "all"
+        sort_by: Attribute to sort/group by. For characters: "gender", "role", "age", 
+                 "openness", "conscientiousness", "extraversion", "agreeableness", 
+                 "neuroticism", "personality_type". For stories: "format". 
+                 None = don't sort, just layout.
+        layout: Layout algorithm:
+                - "default": Characters above, stories below orchestrator (grid within each zone)
+                - "grid": Arrange in a grid pattern
+                - "horizontal": Arrange in a horizontal line (good for trait scales)
+                - "clusters": Group by sort_by attribute (good for categorical like gender/role)
+        ascending: Sort order (True = low→high or A→Z, False = high→low or Z→A)
+        story_id: Current story ID (injected by system)
+        user_id: Current user ID (injected by system)
+    
+    Returns:
+        Confirmation with arrangement details
+    """
+    print(f"📐 [ArrangeNodes] Arranging {node_type} nodes by {sort_by} using {layout} layout", flush=True)
+    
+    # The actual positioning is done by the frontend based on the SSE event.
+    # We just tell it what to do and it calculates positions.
+    
+    return {
+        "status": "arrangement_requested",
+        "node_type": node_type,
+        "sort_by": sort_by,
+        "layout": layout,
+        "ascending": ascending,
+        "message": f"Arranged {node_type} nodes" + (f" by {sort_by}" if sort_by else "") + f" using {layout} layout"
+    }

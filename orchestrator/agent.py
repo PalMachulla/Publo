@@ -32,6 +32,7 @@ from tools import (
     update_structure,
     navigate_to,
     present_options,
+    arrange_nodes,
     write_todos,
     get_todos,
     task,
@@ -371,6 +372,7 @@ def create_publo_agent(
         update_structure,
         navigate_to,
         present_options,
+        arrange_nodes,
         # Deep Agent planning
         write_todos,
         get_todos,
@@ -449,6 +451,7 @@ async def create_publo_agent_with_mcp(
         update_structure,
         navigate_to,
         present_options,
+        arrange_nodes,
         # Deep Agent planning
         write_todos,
         get_todos,

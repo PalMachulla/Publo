@@ -35,7 +35,7 @@ import GenericNodePanel from './GenericNodePanel'
 import { OrchestratorPanelStreaming } from '@/components/orchestrator/OrchestratorPanelStreaming'
 
 import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
-import type { CharacterCreatedEvent, CharacterUpdatedEvent } from '@/types/orchestrator-streaming-types'
+import type { CharacterCreatedEvent, CharacterUpdatedEvent, NodesArrangedEvent } from '@/types/orchestrator-streaming-types'
 import type { FocusedContent } from '@/types/focused-content'
 
 // ============================================================================
@@ -80,6 +80,7 @@ export interface NodeDetailsPanelProps {
   onCreateStoryNode?: (data: CreateStoryNodeData) => void
   onCreateCharacterNode?: (data: CharacterCreatedEvent) => void
   onUpdateCharacterNode?: (data: CharacterUpdatedEvent) => void
+  onArrangeNodes?: (data: NodesArrangedEvent) => void
   onSelectCharacter?: (characterName: string) => void
   onSectionComplete?: (sectionId: string, content: string) => void
   onContentChunk?: (sectionId: string, chunk: string, accumulated: string) => void
@@ -122,6 +123,7 @@ export default function NodeDetailsPanel({
   onCreateStoryNode,
   onCreateCharacterNode,
   onUpdateCharacterNode,
+  onArrangeNodes,
   onSelectCharacter,
   onSectionComplete,
   onContentChunk,
@@ -207,6 +209,7 @@ export default function NodeDetailsPanel({
           onCreateStoryNode={onCreateStoryNode}
           onCharacterComplete={onCreateCharacterNode}
           onCharacterUpdated={onUpdateCharacterNode}
+          onNodesArranged={onArrangeNodes}
           onSelectCharacter={onSelectCharacter}
           onToggleDocumentView={onToggleDocumentView}
           isDocumentViewOpen={isDocumentViewOpen}

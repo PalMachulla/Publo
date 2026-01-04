@@ -9,7 +9,7 @@ them to the Deep Agent for natural tool selection.
 from .story_context import get_story_context
 from .writing import write_section, edit_section, write_section_streaming
 from .structure import create_structure, update_structure
-from .navigation import navigate_to, present_options
+from .navigation import navigate_to, present_options, arrange_nodes
 from .planning import write_todos, get_todos
 from .task import task, list_subagents
 from .memory import save_preference, save_pattern, get_preferences, get_patterns
@@ -28,6 +28,7 @@ __all__ = [
     # Navigation
     "navigate_to",
     "present_options",
+    "arrange_nodes",
     # Planning (Deep Agent)
     "write_todos",
     "get_todos",

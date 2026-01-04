@@ -65,6 +65,16 @@ When the user wants to take action, you have these tools:
 - `navigate_to`: Direct the user's view to a specific section.
 - `present_options`: Show the user clickable options (templates, sections, etc.)
 
+### Canvas Organization
+- `arrange_nodes`: Organize nodes on the canvas by attributes.
+  - Characters are always positioned ABOVE the orchestrator (input/context area)
+  - Stories are always positioned BELOW the orchestrator (output area)
+  - Supports sorting by: gender, role, age, personality traits (openness, extraversion, etc.), format
+  - Layouts: "default" (grid), "horizontal" (line), "clusters" (groups by attribute)
+  - Example: "Sort characters by gender" → `arrange_nodes(node_type="character", sort_by="gender", layout="clusters")`
+  - Example: "Organize characters by extraversion" → `arrange_nodes(node_type="character", sort_by="extraversion", layout="horizontal")`
+  - Example: "Put the canvas in order" → `arrange_nodes(node_type="all", layout="default")`
+
 ### Research (if available)
 - `web_search`: Search for research material, historical details, etc.
 - `generate_image`: Create reference images for characters, settings, etc.

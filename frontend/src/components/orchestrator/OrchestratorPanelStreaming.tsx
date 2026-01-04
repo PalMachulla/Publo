@@ -27,7 +27,7 @@ import {
   MagicWandIcon,
 } from '@radix-ui/react-icons'
 import { useOrchestratorStream, ChatMessage } from '@/hooks/useOrchestratorStream'
-import { StructureCreatedEvent, ClarificationEvent, CreationProgress, CharacterCreatedEvent, CharacterUpdatedEvent } from '@/types/orchestrator-streaming-types'
+import { StructureCreatedEvent, ClarificationEvent, CreationProgress, CharacterCreatedEvent, CharacterUpdatedEvent, NodesArrangedEvent } from '@/types/orchestrator-streaming-types'
 import { useOrchestratorSession } from '@/lib/orchestrator/hooks/useOrchestratorSession'
 import { ThinkingBlock } from '@/components/ui/molecules/ThinkingBlock'
 import { StructureProgress } from '@/components/ui/molecules/StructureProgress'
@@ -142,6 +142,7 @@ export interface OrchestratorPanelStreamingProps {
   onStructureComplete?: (structure: StructureCreatedEvent) => void
   onCharacterComplete?: (character: CharacterCreatedEvent) => void
   onCharacterUpdated?: (character: CharacterUpdatedEvent) => void
+  onNodesArranged?: (arrangement: NodesArrangedEvent) => void
   onSectionComplete?: (sectionId: string, content: string) => void
   onClarificationNeeded?: (clarification: ClarificationEvent) => void
   onCreateStoryNode?: (structure: any) => string | Promise<string> | void
@@ -208,6 +209,7 @@ export function OrchestratorPanelStreaming({
   onStructureComplete,
   onCharacterComplete,
   onCharacterUpdated,
+  onNodesArranged,
   onSelectCharacter,
   onSectionComplete,
   onClarificationNeeded,
@@ -415,6 +417,11 @@ export function OrchestratorPanelStreaming({
     onCharacterUpdated: (character) => {
       console.log('✏️ [Streaming] Character updated:', character.name, 'node:', character.node_id)
       onCharacterUpdated?.(character)
+    },
+    
+    onNodesArranged: (arrangement) => {
+      console.log('📐 [Streaming] Nodes arranged:', arrangement.node_type, 'by:', arrangement.sort_by, 'layout:', arrangement.layout)
+      onNodesArranged?.(arrangement)
     },
     
     onSectionComplete: (sectionId, content) => {

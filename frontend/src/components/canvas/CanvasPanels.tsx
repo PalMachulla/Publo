@@ -70,7 +70,7 @@ import ProjectContentPanel from '@/components/panels/ProjectContentPanel'
 import { StoryFormat, CharacterRole } from '@/types/nodes'
 import { getOrchestratorNodeId, isOrchestratorNode } from '@/data/stories'
 import type { CreateStoryNodeData } from '@/lib/orchestrator/components/OrchestratorPanel/types'
-import type { CharacterCreatedEvent, CharacterUpdatedEvent } from '@/types/orchestrator-streaming-types'
+import type { CharacterCreatedEvent, CharacterUpdatedEvent, NodesArrangedEvent } from '@/types/orchestrator-streaming-types'
 import type { FocusedContent } from '@/types/focused-content'
 import { createClient } from '@/lib/supabase/client'
 
@@ -134,6 +134,12 @@ export interface CanvasPanelsProps {
    * Same pattern as onAddNode for edges.
    */
   onAddEdge: (newEdge: Edge) => void
+  
+  /**
+   * Update multiple nodes at once (for batch operations like arrangement).
+   * Pass a function that receives current nodes and returns updated nodes.
+   */
+  onSetNodes?: (updater: (nodes: Node[]) => Node[]) => void
   
   /** Current edges (for rendering and querying connections) */
   edges: Edge[]
@@ -303,6 +309,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     onCreateStory,
     onAddNode,
     onAddEdge,
+    onSetNodes,
     edges,
     nodes,
     // 2024-12-11: Removed worldState
@@ -807,6 +814,222 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
     console.log('✅ [CanvasPanels] Character node updated in React Flow:', data.node_id, updatedFields)
   }, [nodes, onNodeUpdate])
 
+  /**
+   * Handler for NODES_ARRANGED SSE event.
+   * Rearranges nodes on the canvas based on the specified layout and sort criteria.
+   * 
+   * Characters are positioned ABOVE the orchestrator (as inputs/context).
+   * Stories are positioned BELOW the orchestrator (as outputs).
+   * 
+   * @param data - NodesArrangedEvent from the SSE stream
+   */
+  const handleArrangeNodes = useCallback((data: NodesArrangedEvent) => {
+    console.log('📐 [CanvasPanels] Arranging nodes:', data)
+    
+    // Find orchestrator node as the anchor point
+    const orchestratorNode = nodes.find(n => n.id === orchestratorNodeId)
+    if (!orchestratorNode) {
+      console.warn('⚠️ [CanvasPanels] Orchestrator node not found for arrangement')
+      return
+    }
+    
+    const orchestratorPos = orchestratorNode.position
+    const nodeWidth = 120
+    const nodeHeight = 150
+    const horizontalGap = 40
+    const verticalGap = 60
+    
+    // Collect nodes to arrange based on node_type
+    let characterNodes = nodes.filter(n => 
+      n.type === 'universalNode' && n.data?.nodeType === 'character'
+    )
+    let storyNodes = nodes.filter(n => 
+      n.type === 'storyStructureNode' || n.data?.nodeType === 'story-structure'
+    )
+    
+    // Sort function for nodes
+    const sortNodes = (nodesToSort: typeof nodes, sortBy: string | undefined, ascending: boolean) => {
+      if (!sortBy) return nodesToSort
+      
+      return [...nodesToSort].sort((a, b) => {
+        let aVal: any
+        let bVal: any
+        
+        // Get value based on sort_by field
+        const getData = (n: typeof a) => n.data as any
+        
+        switch (sortBy.toLowerCase()) {
+          case 'gender':
+            aVal = getData(a)?.attributes?.gender || getData(a)?.gender || ''
+            bVal = getData(b)?.attributes?.gender || getData(b)?.gender || ''
+            break
+          case 'role':
+            aVal = getData(a)?.role || ''
+            bVal = getData(b)?.role || ''
+            break
+          case 'age':
+            aVal = parseInt(getData(a)?.attributes?.age || '0') || 0
+            bVal = parseInt(getData(b)?.attributes?.age || '0') || 0
+            break
+          case 'openness':
+          case 'conscientiousness':
+          case 'extraversion':
+          case 'agreeableness':
+          case 'neuroticism':
+            aVal = getData(a)?.attributes?.emotionalTraits?.[sortBy] || 50
+            bVal = getData(b)?.attributes?.emotionalTraits?.[sortBy] || 50
+            break
+          case 'personality_type':
+          case 'personalitytype':
+            aVal = getData(a)?.attributes?.personalityType || ''
+            bVal = getData(b)?.attributes?.personalityType || ''
+            break
+          case 'format':
+            aVal = getData(a)?.format || ''
+            bVal = getData(b)?.format || ''
+            break
+          case 'name':
+          default:
+            aVal = getData(a)?.name || getData(a)?.label || ''
+            bVal = getData(b)?.name || getData(b)?.label || ''
+        }
+        
+        // Compare values
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return ascending ? aVal - bVal : bVal - aVal
+        }
+        const cmp = String(aVal).localeCompare(String(bVal))
+        return ascending ? cmp : -cmp
+      })
+    }
+    
+    // Group nodes by attribute value for clustering
+    const groupNodes = (nodesToGroup: typeof nodes, groupBy: string) => {
+      const groups: Record<string, typeof nodes> = {}
+      
+      nodesToGroup.forEach(n => {
+        const data = n.data as any
+        let value: string
+        
+        switch (groupBy.toLowerCase()) {
+          case 'gender':
+            value = data?.attributes?.gender || data?.gender || 'Unknown'
+            break
+          case 'role':
+            value = data?.role || 'Unknown'
+            break
+          case 'format':
+            value = data?.format || 'Unknown'
+            break
+          default:
+            value = 'All'
+        }
+        
+        if (!groups[value]) groups[value] = []
+        groups[value].push(n)
+      })
+      
+      return groups
+    }
+    
+    // Calculate positions based on layout
+    const newPositions: Record<string, { x: number; y: number }> = {}
+    
+    // Position CHARACTERS (above orchestrator)
+    if (data.node_type === 'character' || data.node_type === 'all') {
+      if (data.sort_by) {
+        characterNodes = sortNodes(characterNodes, data.sort_by, data.ascending)
+      }
+      
+      if (data.layout === 'clusters' && data.sort_by) {
+        // Cluster layout - group by attribute
+        const groups = groupNodes(characterNodes, data.sort_by)
+        const groupNames = Object.keys(groups).sort()
+        
+        let clusterStartX = orchestratorPos.x - ((groupNames.length - 1) * (nodeWidth * 2 + horizontalGap * 2)) / 2
+        
+        groupNames.forEach((groupName, groupIndex) => {
+          const groupNodes = groups[groupName]
+          const nodesPerRow = Math.ceil(Math.sqrt(groupNodes.length))
+          
+          groupNodes.forEach((node, index) => {
+            const row = Math.floor(index / nodesPerRow)
+            const col = index % nodesPerRow
+            
+            newPositions[node.id] = {
+              x: clusterStartX + groupIndex * (nodeWidth * 2 + horizontalGap * 2) + col * (nodeWidth + horizontalGap),
+              y: orchestratorPos.y - 250 - row * (nodeHeight + verticalGap)
+            }
+          })
+        })
+      } else if (data.layout === 'horizontal') {
+        // Horizontal line layout
+        const startX = orchestratorPos.x - ((characterNodes.length - 1) * (nodeWidth + horizontalGap)) / 2
+        
+        characterNodes.forEach((node, index) => {
+          newPositions[node.id] = {
+            x: startX + index * (nodeWidth + horizontalGap),
+            y: orchestratorPos.y - 200
+          }
+        })
+      } else {
+        // Grid layout (default)
+        const nodesPerRow = Math.max(3, Math.ceil(Math.sqrt(characterNodes.length)))
+        const startX = orchestratorPos.x - ((nodesPerRow - 1) * (nodeWidth + horizontalGap)) / 2
+        
+        characterNodes.forEach((node, index) => {
+          const row = Math.floor(index / nodesPerRow)
+          const col = index % nodesPerRow
+          
+          newPositions[node.id] = {
+            x: startX + col * (nodeWidth + horizontalGap),
+            y: orchestratorPos.y - 250 - row * (nodeHeight + verticalGap)
+          }
+        })
+      }
+    }
+    
+    // Position STORIES (below orchestrator)
+    if (data.node_type === 'story' || data.node_type === 'all') {
+      if (data.sort_by) {
+        storyNodes = sortNodes(storyNodes, data.sort_by, data.ascending)
+      }
+      
+      const nodesPerRow = Math.max(3, Math.ceil(Math.sqrt(storyNodes.length)))
+      const startX = orchestratorPos.x - ((Math.min(nodesPerRow, storyNodes.length) - 1) * (nodeWidth + horizontalGap)) / 2
+      
+      storyNodes.forEach((node, index) => {
+        const row = Math.floor(index / nodesPerRow)
+        const col = index % nodesPerRow
+        
+        newPositions[node.id] = {
+          x: startX + col * (nodeWidth + horizontalGap),
+          y: orchestratorPos.y + 200 + row * (nodeHeight + verticalGap)
+        }
+      })
+    }
+    
+    // Apply new positions to nodes
+    console.log('📐 [CanvasPanels] New positions:', newPositions)
+    
+    if (onSetNodes) {
+      onSetNodes(currentNodes => 
+        currentNodes.map(node => {
+          if (newPositions[node.id]) {
+            return {
+              ...node,
+              position: newPositions[node.id]
+            }
+          }
+          return node
+        })
+      )
+      console.log('✅ [CanvasPanels] Nodes arranged successfully')
+    } else {
+      console.warn('⚠️ [CanvasPanels] onSetNodes not provided, cannot arrange nodes')
+    }
+  }, [nodes, orchestratorNodeId, onSetNodes])
+
   // ─────────────────────────────────────────────────────────────────────────
   // Async portrait polling (client-side)
   // ─────────────────────────────────────────────────────────────────────────
@@ -969,6 +1192,7 @@ export default function CanvasPanels(props: CanvasPanelsProps) {
         onCreateStoryNode={handleCreateStoryNode}
         onCreateCharacterNode={handleCreateCharacterNode}
         onUpdateCharacterNode={handleUpdateCharacterNode}
+        onArrangeNodes={handleArrangeNodes}
         onSelectCharacter={(characterName: string) => {
           // Find character node by name and trigger selection
           const charNode = nodes.find(n => {

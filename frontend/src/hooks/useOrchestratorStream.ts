@@ -21,6 +21,7 @@ import type {
   SelectSectionEvent,
   CharacterCreatedEvent,
   CharacterUpdatedEvent,
+  NodesArrangedEvent,
   // Deep Agent events
   TokenEvent,
   ToolStartEvent,
@@ -75,6 +76,7 @@ interface UseOrchestratorStreamOptions {
   onStructureUpdated?: (structure: StructureUpdatedEvent) => void;
   onCharacterComplete?: (character: CharacterCreatedEvent) => void;  // Character created/loaded
   onCharacterUpdated?: (character: CharacterUpdatedEvent) => void;   // Character updated
+  onNodesArranged?: (arrangement: NodesArrangedEvent) => void;       // Canvas arrangement requested
   onSectionComplete?: (sectionId: string, content: string) => void;
   onClarificationNeeded?: (clarification: ClarificationEvent) => void;
   onOpenDocument?: (nodeId: string, nodeName: string) => void;  // Navigation: open document
@@ -98,6 +100,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
     onStructureUpdated,
     onCharacterComplete,
     onCharacterUpdated,
+    onNodesArranged,
     onSectionComplete,
     onClarificationNeeded,
     onOpenDocument,
@@ -730,6 +733,24 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
           setTimeout(() => onCharacterUpdated(charUpdateData), 0);
         }
         break;
+      
+      case 'NODES_ARRANGED':
+        const arrangeData = event.data as NodesArrangedEvent;
+        console.log('📐 [Stream] NODES_ARRANGED received:', arrangeData);
+        
+        // Add visual message
+        const sortInfo = arrangeData.sort_by ? ` by ${arrangeData.sort_by}` : '';
+        addMessage(
+          'assistant',
+          `📐 Arranged ${arrangeData.node_type} nodes${sortInfo} (${arrangeData.layout} layout)`
+        );
+        
+        // Callback to rearrange nodes on canvas
+        if (onNodesArranged) {
+          console.log('📐 [Stream] Calling onNodesArranged');
+          setTimeout(() => onNodesArranged(arrangeData), 0);
+        }
+        break;
 
       case 'SECTION_WRITING':
         const writingData = event.data as SectionWritingEvent;
@@ -979,7 +1000,7 @@ export function useOrchestratorStream(options: UseOrchestratorStreamOptions = {}
         onError?.(event.data.error);
         break;
     }
-  }, [addMessage, updateMessage, progress.structure, onStructureComplete, onStructureUpdated, onCharacterComplete, onCharacterUpdated, onSectionComplete, onClarificationNeeded, onOpenDocument, onSelectSection, onError, onComplete]);
+  }, [addMessage, updateMessage, progress.structure, onStructureComplete, onStructureUpdated, onCharacterComplete, onCharacterUpdated, onNodesArranged, onSectionComplete, onClarificationNeeded, onOpenDocument, onSelectSection, onError, onComplete]);
 
   // Start streaming
   const startStream = useCallback(async (request: {

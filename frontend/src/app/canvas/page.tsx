@@ -926,6 +926,7 @@ export default function CanvasPage() {
           onAddEdge={(newEdge) =>
             canvasState.setEdges((eds) => (eds.some((e) => e.id === newEdge.id) ? eds : [...eds, newEdge]))
           }
+          onSetNodes={canvasState.setNodes}
           edges={canvasState.edges}
           nodes={canvasState.nodes}
           // 2024-12-11: Removed worldState

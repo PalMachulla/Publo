@@ -1044,6 +1044,17 @@ async def chat(request: ChatRequest):
                                 "value": output.get("value") or output.get("description")
                             })
                     
+                    elif tool_name == "arrange_nodes" and isinstance(output, dict):
+                        # Canvas arrangement requested - emit event for frontend
+                        print(f"📐 [Chat] arrange_nodes output: {output}", flush=True)
+                        yield format_sse(SSEEventType.NODES_ARRANGED, {
+                            "node_type": output.get("node_type", "all"),
+                            "sort_by": output.get("sort_by"),
+                            "layout": output.get("layout", "default"),
+                            "ascending": output.get("ascending", True),
+                        })
+                        print(f"✅ [Chat] Yielded NODES_ARRANGED", flush=True)
+                    
                     elif tool_name in ("create_character", "load_character"):
                         # Character created or loaded - emit event for canvas node creation
                         print(f"🔍 [Chat] Character tool - output is dict: {isinstance(output, dict)}", flush=True)

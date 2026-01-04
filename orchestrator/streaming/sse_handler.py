@@ -32,6 +32,9 @@ class SSEEventType(str, Enum):
     CHARACTER_CREATED = "CHARACTER_CREATED"  # Character created/loaded onto canvas
     CHARACTER_UPDATED = "CHARACTER_UPDATED"  # Character data updated
     
+    # Canvas arrangement
+    NODES_ARRANGED = "NODES_ARRANGED"  # Arrange/sort nodes on canvas
+    
     # Navigation/UI
     NAVIGATE = "NAVIGATE"  # Navigate frontend to section
     PRESENT_OPTIONS = "PRESENT_OPTIONS"  # Show option selector UI
